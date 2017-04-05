@@ -1,0 +1,84 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1)//$WriteProgress
+C_DATE($2;$StartDate)//Start and Month Dates
+C_TEXT($3)//Facility code is coming from webservice
+
+C_LONGINT($i;$j;$Progress)
+DEFAULT TABLE([Customer])
+If (Count parameters>2)
+QUERY([Customer];[Customer]CustomerCode=$3+"@";*)
+Else 
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@";*)
+End if 
+QUERY([Customer]; & ;[Customer]NoTrxs=False)
+ARRAY TEXT(aCustCode;0)
+ARRAY TEXT(aCustName;0)
+ARRAY REAL(aOBal;0)
+ARRAY REAL(aChgs;0)
+ARRAY REAL(aRecs;0)
+ARRAY REAL(aCBal;0)
+If (<>tBatch=False)
+Open window(50;100;500;200;0;Get localized string("Progress"))
+End if 
+$StartDate:=GetDate (1;Month of($2);Year of($2))
+CREATE EMPTY SET("ToPrint")
+FIRST RECORD
+For ($i;1;Records in selection)
+If (<>tBatch=False)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection)+"    ")
+End if 
+If ($1)
+$Progress:=($i/Records in selection([Customer])*20)+80
+If ($Progress>Num([Message]Subject))
+[Message]Subject:=String($Progress)
+SAVE RECORD([Message])
+End if 
+End if 
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$StartDate)
+CREATE SET([Trxs];"Current")
+QUERY SELECTION([Trxs];[Trxs]TrxDate>$2)
+CREATE SET([Trxs];"Temp")
+DIFFERENCE("Current";"Temp";"Current")
+vAmt4:=Round([Customer]Balance;2)
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]Charge=True)
+vAmt4:=Round(vAmt4-[Trxs]TotAmt;2)
+Else 
+vAmt4:=Round(vAmt4+[Trxs]TotAmt;2)
+End if 
+NEXT RECORD([Trxs])
+End for 
+USE SET("Current")
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+CREATE SET([Trxs];"Temp")
+DIFFERENCE("Current";"Temp";"Current")
+vAmt2:=0
+For ($j;1;Records in selection([Trxs]))
+vAmt2:=Round(vAmt2+[Trxs]TotAmt;2)
+NEXT RECORD([Trxs])
+End for 
+USE SET("Current")
+FIRST RECORD([Trxs])
+vAmt3:=0
+For ($j;1;Records in selection([Trxs]))
+vAmt3:=Round(vAmt3+[Trxs]TotAmt;2)
+NEXT RECORD([Trxs])
+End for 
+vAmt1:=Round(vAmt4+vAmt3-vAmt2;2)
+If (vAmt1#0) | (vAmt2#0) | (vAmt3#0) | (vAmt4#0) | ([Customer]Balance#0)
+ADD TO SET("ToPrint")
+APPEND TO ARRAY(aCustCode;[Customer]CustomerCode)
+APPEND TO ARRAY(aCustName;[Customer]CustomerName)
+APPEND TO ARRAY(aOBal;vAmt1)
+APPEND TO ARRAY(aChgs;vAmt2)
+APPEND TO ARRAY(aRecs;vAmt3)
+APPEND TO ARRAY(aCBal;vAmt4)
+End if 
+NEXT RECORD([Customer])
+End for 
+If (<>tBatch=False)
+CLOSE WINDOW
+End if 
+USE SET("ToPrint")

@@ -1,0 +1,115 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 28/02/13 Add following lines to allow for Mirror Backup Server
+C_BOOLEAN(<>tMirror)
+
+<>tMirror:=False
+If (Test path name(GetPath (Data file)+"StormanFiles"+GetFolderDelimiter +"Preferences"+GetFolderDelimiter +"Mirror.txt")=Is a document)
+<>tMirror:=True
+End if 
+If (<>tMirror)//Mirror Server must not execute any code that would save or delete a record
+READ ONLY(*)
+<>iLogMonitor:=New process("MirrorServer";400000;"MirrorServer";True)
+Else 
+If (Current date<=!2017-01-01!)
+aa4D_NP_Schedule_Reports_Server (5)
+aa4D_NP_Reports_Max_Set_Limit (8640)
+End if 
+
+If (Test path name(Get 4D folder(Current resources folder)+"DebugMode.txt")=Is a document)
+SET DATABASE PARAMETER(34;3)
+End if 
+C_LONGINT(<>iVersion;<>iPlatform;<>iLogMonitor;<>iServerMonitor;<>iDesign;<>iFloating;<>iSetGate;$i)
+READ ONLY(*)
+SET DEFAULT CENTURY(19;50)
+<>iVersion:=10042//Also change in On Startup
+<>dCompileDate:=!2017-03-31!
+
+$i:=0
+PLATFORM PROPERTIES(<>iPlatform;$i)//Platform 1=Mac OS Classic, 2=Mac OS X, 3=Windows
+If (<>iPlatform<3) & (($i >> 8)<16)//Mac OS 8 or 9
+<>iPlatform:=1
+End if 
+CheckBackupLogs //Test to ensure 4D is using Log Journal file
+SetupArrays //Must happen before Initialise
+Initialise 
+ON ERR CALL("ErrorLog")
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+Case of 
+: ([Facility]ProductCode="@R")
+<>sOEMName:="Rental Manager"
+Else 
+<>sOEMName:="Storman"
+//SET ABOUT("About Storman...";"AboutStorman")
+End case 
+
+//22/10/14 DAM Added for Win name
+If (<>iPlatform=3)
+C_LONGINT($lErr;$lWindowHandle)
+C_TEXT($WinTitle)
+Case of 
+: (Application type=4D Server)
+$WinTitle:="Storman Server - "+[Facility]BusinessName
+: (Application type=4D Remote mode)
+$WinTitle:="Storman Client - "+[Facility]BusinessName
+Else 
+$WinTitle:="Storman - "+[Facility]BusinessName
+End case 
+$lWindowHandle:=gui_GetWindow ("")// main 4D window
+If ($lWindowHandle>0)
+$lErr:=gui_SetWindowTitle ($lWindowHandle;$WinTitle)
+End if 
+End if 
+
+<>sFacility:=[Facility]FacilityCode
+
+If ([Facility]FacilityCode="SK@") & ([Facility]CentralAddress="@mv2.storman.com@")
+If (Test path name(<>sPreferencesPath+"SKBilling.xml")#Is a document)
+$Doc:=Create document(<>sPreferencesPath+"SKBilling.xml")
+CLOSE DOCUMENT($Doc)
+End if 
+End if 
+
+Case of 
+: ([Facility]TutorialData=True)
+vsWindowTitle:="Tutorial Database"
+: ([Facility]FacilityName>"")
+vsWindowTitle:=[Facility]BusinessName+" - "+[Facility]FacilityName
+: ([Facility]BusinessName>"")
+vsWindowTitle:=[Facility]BusinessName
+Else 
+vsWindowTitle:=<>sOEMName
+End case 
+SET WINDOW TITLE(vsWindowTitle)
+If (Records in selection([Facility])#1) & (Current user#"Designer") & ([Facility]ODBCPassword="")//Server
+AlertMessage (Get localized string("Your main database has not been set up correctly - a system record was not found! Please contact Technical Support for assistance."))
+QUIT 4D
+End if 
+//Check for Server Log File
+//Open floating palette
+ARRAY TEXT(<>asSiteCodes;0)
+ARRAY LONGINT(<>iProcess;1)
+ARRAY TEXT(<>aButton;0)//fb10996
+
+
+<>iProcess{1}:=Current process
+<>tDetailLog:=False
+If (Shift down=False)
+<>tLoggingOn:=True
+LogAction (True;"Storman Server started")//Server - Show logins separately
+If (<>tLoggingOn)
+<>iLogMonitor:=New process("LogMonServer";400000;"LogMonServer";True)
+If (<>iLogMonitor<1)
+AlertMessage (Get localized string("WARNING - The Log Monitor process could not be started. Please contact technical support!"))
+End if 
+Else 
+<>iLogMonitor:=0
+End if 
+<>tWebServer:=False
+If (<>tLoggingOn)
+<>iServerMonitor:=New process("ServerMonitor";128000;"ServerMonitor")
+End if 
+//Else 
+//AlertMessage ("Restore Log file (ONLY Do full backup & select New if necessary) and then qui"+"t Storman Server and relaunch!")
+End if 
+End if 

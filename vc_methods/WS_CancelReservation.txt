@@ -1,0 +1,105 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 23/04/11, 14:33:26
+// ----------------------------------------------------
+// Method: WS_CancelReservation
+// Description
+// This method is used to cancel an exisiting active reservation.
+//
+// Parameters
+// ----------------------------------------------------
+// Standardized
+
+SOAP DECLARATION(WS_ResNo;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+//WS_OLD=SOAP DECLARATION(WS_Edit;Is Boolean;SOAP Output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_CancelReservation"+Char(13)
+$String:=$String+"WS_ResNo: "+WS_ResNo+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+WS_Edit:=False
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_ResNo;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+QUERY([Reservation];[Reservation]RReserveNo=WS_ResNo)
+
+If (Records in selection([Reservation])=1)
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Cancelled"
+[Reservation]OutcomeDate:=Current date
+READ WRITE([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+For ($i;1;Records in selection([Unit]))
+If ([Unit]Status="Reserved")
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]ReservedTo:=""
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+//WS_OLD=WS_Edit:=True
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Reservation successfully cancelled in database Storman."
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1014
+WS_ORErrorDescription:="Reservation record not found in database Storman."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([BillPlan])
+UNLOAD RECORD([BillPlan])
+
+$String:="End WS_CancelReservation"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

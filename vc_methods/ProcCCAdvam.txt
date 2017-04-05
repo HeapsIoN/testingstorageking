@@ -1,0 +1,346 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//ProcCCAdvam
+
+//Primary Server Name – gateway.advam.com
+//Test Server Name – demo-gateway.advam.com
+//Request URL-/gateway.php
+//Port – 443
+//Protocol – http 1.0
+C_TEXT($0)//Authorization Code
+C_BOOLEAN($1)//Display Decline / Error Alerts
+C_TEXT($2;$Type)// (P=Process, C=Credit, V=Void)
+C_REAL($3)//Transaction Amount
+C_TEXT($4)//Card Number
+C_TEXT($5)//Expiry Date
+C_TEXT($6)//TransID
+C_TEXT($7;$8;$9)//AgreeNo, Description, CustomerCode
+C_TEXT($10;$11)//Customer Name, Address
+C_TEXT($12)//City
+C_TEXT($13)//Zip Code
+C_TEXT($14;$15;$16)
+C_LONGINT($17;$18;$19;$Logging)//Logging,Timeout
+C_TEXT($Message;$Header;$Response)
+C_LONGINT($TCPID;$Error;$Pos;$TCP_ReceiveError)
+C_TIME($vhDocRef;$WaitTime)
+
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$Logging:=$17
+$Folder:="/gateway.php"
+$cr:=Char(13)+Char(10)
+
+$ServerPort:="443"
+
+If ([Facility]TestAccount)
+$ServerAddress:="demo-gateway.advam.com"
+Else 
+$ServerAddress:="gateway.advam.com"
+End if 
+
+Case of 
+: ($2="P")
+$Type:="P"
+Else 
+$Type:="R"
+End case 
+
+//Build the transaction message
+$Message:="AC="+$Type
+$Message:=$Message+"&RS=WEB"
+
+$Message:=$Message+"&AA="+$14
+
+$Message:=$Message+"&PA="+$4//Card Number
+$Message:=$Message+"&ED="+Replace string($5;"/";"")//Card Expiry Date
+$Message:=$Message+"&P7="+$10//Customer Name
+$Message:=$Message+"&TA="+String($3;"######0.00")//Transaction Amount
+$Message:=$Message+"&RE="+$7//Agreement Number
+If ($19=1)
+$Message:=$Message+"&CUR=NZD"//Currency
+Else 
+$Message:=$Message+"&CUR=AUD"//Currency
+End if 
+$Message:=$Message+"&OID="+$15
+$Message:=$Message+"&OPW="+$16
+
+$Header:=$Header+"POST "+$Folder+" HTTP/1.0"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr//+":"+$ServerPort+$cr
+$Header:=$Header+"Accept: "+"*/*"+$cr
+$Header:=$Header+"Content-type: application/x-www-form-urlencoded"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr
+viTick1:=Tickcount
+$Error:=IT_SetTimeOut (10)
+$Error:=TCP_Open ($ServerAddress;Num($ServerPort);$TCPID;3)
+If ($Logging=1)
+SyncRecordLog ("ProcCCAdvam Agreement "+$7+" - TCP Open = "+String($Error))
+End if 
+If ($Error=0)
+viTick2:=Tickcount
+$Error:=TCP_Send ($TCPID;$Header+$cr+$Message+$cr+$cr)
+If ($Logging=1)
+SyncRecordLog ("ProcCCAdvam Agreement "+$7+" - TCP Send = "+String($Error))
+End if 
+If ([Facility]TestAccount) & ($Logging=1)
+$vhDocRef:=Create document("Request.txt")
+SEND PACKET($vhDocRef;$Header+$cr+$Message+$cr+$cr)
+CLOSE DOCUMENT($vhDocRef)
+End if 
+
+If ($Error=0)
+$Message:=""
+$WaitTime:=Current time+$18
+viTick3:=Tickcount
+Repeat //While a HTTP response is being received
+$TCP_ReceiveError:=TCP_Receive ($TCPID;$Buffer)
+$Error:=TCP_State ($TCPID;$Status)//0=closed, 2=listening, 8=Established
+$Message:=$Message+$Buffer
+Until ($Status=0) | ($TCP_ReceiveError#0) | (Current time>$WaitTime)
+If ($Logging=1)
+SyncRecordLog ("ProcCCAdvam Agreement "+$7+" - TCP Receive = "+String($TCP_ReceiveError))
+SyncRecordLog ("ProcCCAdvam Agreement "+$7+" - TCP Receive Message = "+$Message)
+End if 
+End if 
+
+If ([Facility]TestAccount) & ($Logging=1)
+$vhDocRef:=Create document("Response.txt")
+SEND PACKET($vhDocRef;$Message)
+CLOSE DOCUMENT($vhDocRef)
+End if 
+
+viTick4:=Tickcount
+$Error:=TCP_Close ($TCPID)
+If ($Logging=1)
+SyncRecordLog ("ProcCCAdvam Agreement "+$7+" - TCP Close = "+String($Error))
+End if 
+viTick5:=Tickcount
+
+Case of 
+: ($TCP_ReceiveError#0)
+$0:="ERRTCP"
+If (Not(IsAWebProcess ))
+AlertMessage ("TCP Receiving Error # "+String($TCP_ReceiveError))
+End if 
+: ($Message="")
+$0:="ERRTCP"
+If (Not(IsAWebProcess ))
+AlertMessage ("Invalid Server Response")
+End if 
+Else 
+$Pos:=Tickcount
+$HTTPResponseCode:=""
+Repeat 
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)//Get the string after the 'HTTP' code line
+If ($HTTPResponse#"") | (Position("HTTP";$HTTPResponse)#0)//Checks to see if the response is invalid, if not the exits loop
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//Gets the HTTP code number
+If ($HTTPResponseCode="100") | ($HTTPResponseCode="200")//Only two valid codes allowed - 100 (Continue / Wait) and 200 (OK), otherwise it exits
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else 
+$Message:=""//Invalid Response Code - Exit
+End if 
+Else 
+$Message:=""//Invalid Response String/Message Format - Exit
+End if 
+Until (Num($HTTPResponseCode)=200) | (Num($HTTPResponseCode)#100) | ($Message="") | (Tickcount>($Pos+120))//Only stays in loop if response code = 100 and $Message is not empty
+If ($Logging=1)
+SyncRecordLog ("ProcCCAdvam Agreement "+$7+" - Response = "+$Message)
+End if 
+End case 
+If ($Message#"")//Parse the returned HTML response
+ARRAY TEXT(atResultValue;0)
+$Message:=$Message+":"
+Repeat 
+$Pos:=Position(":";$Message)
+$Value:=Substring($Message;1;$Pos-1)
+INSERT IN ARRAY(atResultValue;Size of array(atResultValue)+1;1)
+atResultValue{Size of array(atResultValue)}:=$Value
+$Message:=Substring($Message;$Pos+1)
+Until (Length($Message)=0)
+$Message:=""
+If (atResultValue{1}="True")
+If (atResultValue{6}="")
+$0:="000000"
+Else 
+$0:=atResultValue{6}//Authorisation Number
+End if 
+[Trxs]CCTransID:=atResultValue{7}//Transaction ID, 
+If ([Analysis]SetBankedDate=False)//The Date Banked value is set to 'Off' in the Analysis Code
+[Trxs]DateBanked:=Date(Substring(atResultValue{8};9;2)+"/"+Substring(atResultValue{8};6;2)+"/"+Substring(atResultValue{8};1;4))
+End if 
+Else 
+$0:="ERR"+Substring(atResultValue{2};Length(atResultValue{2})-2;3)//substring to prevent "destination string is smaller than source"
+If ($1) & (Not(IsAWebProcess ))
+Case of 
+: (atResultValue{2}="00")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The requested transaction has been approved.")
+: (atResultValue{2}="01")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has declined the payment request.")
+: (atResultValue{2}="02")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has had special conditions applied to the card.")
+: (atResultValue{2}="03")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Merchant ID not found on Bank's System.")
+: (atResultValue{2}="04")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has declined the transaction and requested the card be retained.")
+: (atResultValue{2}="05")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The bank that issued this card to your customer has imposed some special conditi"+"o"+"ns on the card or the use of the card. This could also indicate that the use of t"+"he card has been temporarily suspended.")
+: (atResultValue{2}="06")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The message sent by the terminal to the bank's system contained an error.")
+: (atResultValue{2}="07")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has declined the transaction and requested the card be retained.")
+: (atResultValue{2}="08")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" This transaction is approved subject to the usual fraud checks and the operator'"+"s"+" satisfactory assessment that the card user is the legal user and that signatures"+" match.")
+: (atResultValue{2}="12")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The bank that issued this card to your customer has declined the transaction as "+"t"+"he type of transaction is not valid for the type of card. e.g. Selecting to pay f"+"rom a credit card account with standard issue EFTPOS card.")
+: (atResultValue{2}="13")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The transaction amount is invalid.")
+: (atResultValue{2}="14")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Credit Card number presented is Invalid. This could be because the card numb"+"e"+"r or card series has been revoked or the number was simply miskeyed.")
+: (atResultValue{2}="15")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Credit Card number presented is Invalid. This could be because the card numb"+"e"+"r or card series has been revoked or the number was simply miskeyed.")
+: (atResultValue{2}="19")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The transaction has not been processed. Retry the transaction.")
+: (atResultValue{2}="21")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Reversal Approved")
+: (atResultValue{2}="30")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Message Format Error.")
+: (atResultValue{2}="31")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Card Issuer is not supported.")
+: (atResultValue{2}="33")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card has expired")
+: (atResultValue{2}="36")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Restricted Card")
+: (atResultValue{2}="38")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has indicated that the card has exceeded the maximum number of PIN t"+"r"+"ies.")
+: (atResultValue{2}="39")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" There is no credit account linked to the card.")
+: (atResultValue{2}="41")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card has been reported as lost.")
+: (atResultValue{2}="43")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card has been reported as stolen.")
+: (atResultValue{2}="51")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card/account has insufficient funds for this transaction.")
+: (atResultValue{2}="52")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" No cheque account connected to card.")
+: (atResultValue{2}="53")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" No savings account connected to card.")
+: (atResultValue{2}="54")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card has expired")
+: (atResultValue{2}="55")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Cardholder PIN has failed validation")
+: (atResultValue{2}="56")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has no record of the card.")
+: (atResultValue{2}="57")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has indicated that the transaction is not permitted to cardholder")
+: (atResultValue{2}="58")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Transaction not permitted on this terminal.")
+: (atResultValue{2}="59")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has indicated that the card is suspected as being fraudulent")
+: (atResultValue{2}="60")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" There has been a problem processing the transaction.")
+: (atResultValue{2}="61")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Transaction will exceed card/account withdrawal frequency limit.")
+: (atResultValue{2}="62")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has indicated that there are restrictions placed on the card.")
+: (atResultValue{2}="63")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The terminal's verification code has failed certification.")
+: (atResultValue{2}="65")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Transaction will exceed card/account withdrawal frequency limit.")
+: (atResultValue{2}="67")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card issuer has indicated the card is suspected counterfeit.")
+: (atResultValue{2}="75")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card Issuer has indicated that the card has exceeded the maximum number of PIN t"+"r"+"ies")
+: (atResultValue{2}="91")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Link with the Card Issuer is not available.")
+: (atResultValue{2}="96")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" There has been a problem processing the transaction.")
+: (atResultValue{2}="98")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The secure encryption device and the acquiring bank don't agree on the key used "+"i"+"n the transaction, therefore the acquiring bank is rejecting the transaction.")
+: (atResultValue{2}="A4")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The acquiring bank is currently unavailable. This could be due to a telecommunic"+"a"+"tions error, or the bank is currently unable to process transactions.")
+: (atResultValue{2}="A5")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The secure hardware encryption device is currently offline.")
+: (atResultValue{2}="AA")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Card Number is invalid")
+: (atResultValue{2}="AB")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Invalid Expiry Date")
+: (atResultValue{2}="AC")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Card has expired")
+: (atResultValue{2}="AD")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Invalid Account")
+: (atResultValue{2}="AE")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Unable to connect to a Transaction Server")
+: (atResultValue{2}="AF")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The record is not a valid record")
+: (atResultValue{2}="AV100")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The request was not formatted correctly")
+: (atResultValue{2}="AV200")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The request could not be processed")
+: (atResultValue{2}="AV300")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" There was an internal error in the gateway")
+: (atResultValue{2}="AV400")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Operator login failed")
+: (atResultValue{2}="AV401")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Operator login failed too many times")
+: (atResultValue{2}="AV402")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Operator account has expired")
+: (atResultValue{2}="AV500")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Operator not authorised to perform request")
+: (atResultValue{2}="AV501")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Merchant account has been disabled")
+: (atResultValue{2}="AV502")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Merchant account does not allow this currency")
+: (atResultValue{2}="AV503")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Amount is less than minimum payment amount for this Merchant")
+: (atResultValue{2}="AV504")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Amount is more than maximum payment amount for this Merchant")
+: (atResultValue{2}="AV505")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Payments are not allowed for this Operator")
+: (atResultValue{2}="AV506")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Refunds are not allowed for this Operator")
+: (atResultValue{2}="AV507")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Invalid action supplied, must be P, R, A or C")
+: (atResultValue{2}="AV508")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Amount is more than the maximum refund amount for this Operator")
+: (atResultValue{2}="AV509")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Amount is more than the maximum refund amount for this Operator")
+: (atResultValue{2}="AV510")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Amount is more than the maximum payment amount for this Operator")
+: (atResultValue{2}="AV511")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Pre-authorisations are not allowed for this Operator")
+: (atResultValue{2}="AV512")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Completions are not allowed for this Operator")
+: (atResultValue{2}="AV513")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Operator is not authorised for this Merchant")
+: (atResultValue{2}="AV600")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The credit card number is incorrect or invalid")
+: (atResultValue{2}="AV610")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The credit card is expired")
+: (atResultValue{2}="AV700")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" Pre-Authorisation Number is required")
+: (atResultValue{2}="AV800")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" The Original Receipt Number is required for a refund")
+: (atResultValue{2}="AV900")
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3}+" An error has occurred with third-party software at the acquiring bank.")
+Else 
+AlertMessage ("Result Code: "+$0+" - "+atResultValue{3})
+End case 
+End if 
+End if 
+vCCText:=atResultValue{3}
+Else 
+If (Not(IsAWebProcess ))
+AlertMessage ("TCP Response Error")
+End if 
+$0:="ERR4IC"
+End if 
+Else 
+If (Not(IsAWebProcess ))
+AlertMessage ("The TCP connection could not be opened.  Error #"+String($Error))
+End if 
+$0:="ERR4IC"
+End if 
+$Error:=IT_SetTimeOut (30)

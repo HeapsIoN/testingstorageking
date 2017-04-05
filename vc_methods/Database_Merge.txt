@@ -1,0 +1,490 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($FacilityCodeNew;$FacilityCodeOld)
+ARRAY TEXT($CustCode;0)
+ARRAY TEXT($CustCodeGen;0)
+ARRAY TEXT($OldCustCodeGen;0)
+ARRAY TEXT($AnCode;0)
+$FacilityCodeNew:=RequestMessage ("Please enter Facility Code for new datafile")
+$FacilityCodeOld:=RequestMessage ("Please enter Facility Code for old datafile")
+READ WRITE([Facility])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([Reservation])
+READ WRITE([Analysis])
+READ WRITE([MarketingTypes])
+READ WRITE([Letters])
+READ WRITE([Quote])
+READ WRITE([PhotosCards])
+READ WRITE([UnitHistory])
+READ WRITE([NotesHistory])
+READ WRITE([Contacts])
+QUERY([Facility];[Facility]FacilityCode=$FacilityCodeNew)
+
+If (Records in selection([Facility])#0)
+
+// Billing Plans Table
+QUERY([BillPlan];[BillPlan]Code=$FacilityCodeOld+"@")
+If (Records in selection([BillPlan])#0)
+APPLY TO SELECTION([BillPlan];[BillPlan]Code:=Replace string([BillPlan]Code;$FacilityCodeold;$FacilityCodeNew))
+End if 
+
+//Agreement Table
+QUERY([Agreement];[Agreement]RAgreeNo=$FacilityCodeOld+"@")
+If (Records in selection([Agreement])#0)
+FIRST RECORD([Agreement])
+For ($i;1;Records in selection([Agreement]))
+$OldAgr:=[Agreement]AgreeNo
+$OldCustCode:=[Agreement]CustomerCode
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+[Agreement]RAgreeNo:=$FacilityCodeNew+[Agreement]AgreeNo
+[Agreement]NoticePlanNo:=0
+[Agreement]BillingPlanCode:=Replace string([Agreement]BillingPlanCode;$FacilityCodeold;$FacilityCodeNew)
+$NewAgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([Facility])
+
+If (Find in array($OldCustCodeGen;$OldCustCode)=-1)
+QUERY([Customer];[Customer]CustomerCode=$FacilityCodeNew+Substring($OldCustCode;6))
+If (Records in selection([Customer])=0)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+[Agreement]CustomerCode:=$FacilityCodeNew+Substring([Agreement]CustomerCode;6)
+[Customer]CustomerCode:=[Agreement]CustomerCode
+Else 
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+vName:=[Customer]CustomerName
+CreateCustCodeConversion ([Facility]FacilityCode)
+[Agreement]CustomerCode:=[Customer]CustomerCode
+End if 
+$NewCustCode:=[Agreement]CustomerCode
+[Customer]AgreemtsOperating:=Replace string([Customer]AgreemtsOperating;$OldAgr;[Agreement]AgreeNo)
+SAVE RECORD([Customer])
+APPEND TO ARRAY($CustCodeGen;$NewCustCode)
+APPEND TO ARRAY($OldCustCodeGen;$OldCustCode)
+Else 
+$index:=Find in array($OldCustCodeGen;$OldCustCode)
+[Agreement]CustomerCode:=$CustCodeGen{$index}
+End if 
+
+
+QUERY([Reservation];[Reservation]CustomerCode=$OldCustCode)
+If (Records in selection([Reservation])#0)
+FIRST RECORD([Reservation])
+For ($k;1;Records in selection([Reservation]))
+$OldResNo:=[Reservation]RReserveNo
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Reservation]RReserveNo:=$FacilityCodeNew+[Reservation]ReserveNo
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+[Reservation]CustomerCode:=$NewCustCode
+
+
+If ($OldResNo#"")
+QUERY([Unit];[Unit]ReservedTo=$OldResNo)
+If (Records in selection([Unit])#0)
+For ($j;1;Records in selection([Unit]))
+[Unit]ReservedTo:=[Reservation]RReserveNo
+[Unit]RUnitNo:=Replace string([Unit]RUnitNo;$FacilityCodeOld;$FacilityCodeNew)
+[Unit]UnitTypeCode:=Replace string([Unit]UnitTypeCode;$FacilityCodeOld;$FacilityCodeNew)
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End if 
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=$OldResNo)
+If (Records in selection([Trxs])#0)
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]SeqNo:=[Facility]TrxSeqNo
+[Facility]TrxSeqNo:=[Facility]TrxSeqNo+1
+If ([Trxs]Charge=True)
+[Trxs]InvDate:=[Trxs]TrxDate
+[Trxs]InvNo:=[Facility]NextInvNo
+[Facility]NextInvNo:=[Facility]NextInvNo+1
+End if 
+SAVE RECORD([Facility])
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+End if 
+
+SAVE RECORD([Reservation])
+SAVE RECORD([Facility])
+NEXT RECORD([Reservation])
+End for 
+End if 
+
+QUERY([Unit];[Unit]AgreeNo=$FacilityCodeOld+$OldAgr;*)
+QUERY([Unit]; & ;[Unit]Vacant=False)
+If (Records in selection([Unit])#0)
+FIRST RECORD([Unit])
+For ($k;1;Records in selection([Unit]))
+[Unit]AgreeNo:=[Agreement]RAgreeNo
+[Unit]RUnitNo:=Replace string([Unit]RUnitNo;$FacilityCodeOld;$FacilityCodeNew)
+[Unit]UnitTypeCode:=Replace string([Unit]UnitTypeCode;$FacilityCodeOld;$FacilityCodeNew)
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=$FacilityCodeOld+$OldAgr)
+If (Records in selection([Trxs])#0)
+FIRST RECORD([Trxs])
+For ($k;1;Records in selection([Trxs]))
+[Trxs]AgreeNo:=$NewAgreeNo
+[Trxs]CustomerCode:=$NewCustCode
+[Trxs]SeqNo:=[Facility]TrxSeqNo
+[Facility]TrxSeqNo:=[Facility]TrxSeqNo+1
+If ([Trxs]Charge=True)
+[Trxs]InvDate:=[Trxs]TrxDate
+[Trxs]InvNo:=[Facility]NextInvNo
+[Facility]NextInvNo:=[Facility]NextInvNo+1
+End if 
+SAVE RECORD([Facility])
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+End if 
+
+QUERY([Letters];[Letters]AgreeNo=$FacilityCodeOld+$OldAgr)
+If (Records in selection([Letters])#0)
+FIRST RECORD([Letters])
+For ($k;1;Records in selection([Letters]))
+[Letters]AgreeNo:=$NewAgreeNo
+SAVE RECORD([Letters])
+NEXT RECORD([Letters])
+End for 
+End if 
+
+QUERY([PhotosCards];[PhotosCards]Code=$OldCustCode)
+If (Records in selection([PhotosCards])#0)
+FIRST RECORD([PhotosCards])
+For ($k;1;Records in selection([PhotosCards]))
+[PhotosCards]Code:=$NewCustCode
+SAVE RECORD([PhotosCards])
+NEXT RECORD([PhotosCards])
+End for 
+End if 
+
+QUERY([Message];[Message]CustCode=$OldCustCode)
+If (Records in selection([Message])#0)
+FIRST RECORD([Message])
+For ($k;1;Records in selection([Message]))
+[Message]CustCode:=$NewCustCode
+SAVE RECORD([Message])
+NEXT RECORD([Message])
+End for 
+End if 
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=$FacilityCodeOld+$OldAgr)
+If (Records in selection([UnitHistory])#0)
+FIRST RECORD([UnitHistory])
+For ($k;1;Records in selection([UnitHistory]))
+[UnitHistory]AgreeNo:=$NewAgreeNo
+[UnitHistory]UnitNo:=Replace string([UnitHistory]UnitNo;$FacilityCodeold;$FacilityCodeNew)
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+End if 
+
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+End if 
+
+
+//  //Contact table
+QUERY([Contacts];[Contacts]Facility=$FacilityCodeOld)
+If (Records in selection([Contacts])#0)
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+$ContNoOld:=[Contacts]ContactNo
+Repeat 
+[Contacts]ContactNo:=[Facility]FacilityCode+String([Facility]NextContactNo;"0000000000")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+$Key:=[Contacts]ContactNo
+$k:=Find in field([Contacts]ContactNo;$Key)
+Until ($k<=0)
+$ContNoNew:=[Contacts]ContactNo
+[Contacts]Facility:=$FacilityCodeNew
+
+//Quote table
+QUERY([Quote];[Quote]ContactNo=$ContNoOld)
+If (Records in selection([Quote])#0)
+FIRST RECORD([Quote])
+For ($j;1;Records in selection([Quote]))
+[Quote]ContactNo:=$ContNoNew
+[Quote]UnitTypeCode:=Replace string([Quote]UnitTypeCode;$FacilityCodeOld;$FacilityCodeNew)
+SAVE RECORD([Quote])
+NEXT RECORD([Quote])
+End for 
+End if 
+
+
+//Letters Table
+If ($ContNoOld#"")
+
+QUERY([Letters];[Letters]ContactNo=$ContNoOld)
+If (Records in selection([Letters])#0)
+FIRST RECORD([Letters])
+For ($j;1;Records in selection([Letters]))
+[Letters]ContactNo:=$ContNoNew
+SAVE RECORD([Letters])
+NEXT RECORD([Letters])
+End for 
+End if 
+End if 
+//  //NotesHistory
+//QUERY([NotesHistory];[NotesHistory]ContactNo=$ContNoOld
+//If (Records in selection([NotesHistory])#0)
+//FIRST RECORD([NotesHistory])
+//For ($i;1;Records in selection([NotesHistory]))
+//[NotesHistory]ContactNo:=$ContNoNew
+//SAVE RECORD([NotesHistory])
+//NEXT RECORD([NotesHistory])
+//End for 
+//End if 
+
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+SAVE RECORD([Facility])
+End for 
+End if 
+
+
+//Reservations
+QUERY([Reservation];[Reservation]RReserveNo=$FacilityCodeOld+"@")
+If (Records in selection([Reservation])#0)
+FIRST RECORD([Reservation])
+For ($i;1;Records in selection([Reservation]))
+$OldResNo:=[Reservation]RReserveNo
+$OldCustCode:=[Reservation]CustomerCode
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Reservation]RReserveNo:=$FacilityCodeNew+[Reservation]ReserveNo
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+SAVE RECORD([Facility])
+//QUERY([Reservation];[Reservation]RReserveNo=$NewResNo)
+//If (Records in selection([Reservation])=0)
+//
+//Else 
+//While (Records in selection([Reservation])#0)
+//$NewResNo1:=$FacilityCodeNew+String([Facility]NextReserveNo;"00000000")
+//[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+//QUERY([Reservation];[Reservation]RReserveNo=$NewResNo1)
+//End while 
+//End if 
+
+
+If (Find in array($OldCustCodeGen;$OldCustCode)=-1)
+QUERY([Customer];[Customer]CustomerCode=$FacilityCodeNew+Substring($OldCustCode;6))
+If (Records in selection([Customer])=0)
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+[Reservation]CustomerCode:=$FacilityCodeNew+Substring([Reservation]CustomerCode;6)
+[Customer]CustomerCode:=[Reservation]CustomerCode
+Else 
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+vName:=[Customer]CustomerName
+CreateCustCodeConversion ([Facility]FacilityCode)
+[Reservation]CustomerCode:=[Customer]CustomerCode
+End if 
+$NewCustCode:=[Reservation]CustomerCode
+SAVE RECORD([Customer])
+APPEND TO ARRAY($CustCodeGen;$NewCustCode)
+APPEND TO ARRAY($OldCustCodeGen;$OldCustCode)
+Else 
+$index:=Find in array($OldCustCodeGen;$OldCustCode)
+[Reservation]CustomerCode:=$CustCodeGen{$index}
+End if 
+
+
+
+If ($OldResNo#"")
+QUERY([Unit];[Unit]ReservedTo=$OldResNo)
+If (Records in selection([Unit])#0)
+For ($k;1;Records in selection([Unit]))
+[Unit]ReservedTo:=[Reservation]RReserveNo
+[Unit]RUnitNo:=Replace string([Unit]RUnitNo;$FacilityCodeOld;$FacilityCodeNew)
+[Unit]UnitTypeCode:=Replace string([Unit]UnitTypeCode;$FacilityCodeOld;$FacilityCodeNew)
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End if 
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=$OldResNo)
+If (Records in selection([Trxs])#0)
+FIRST RECORD([Trxs])
+For ($k;1;Records in selection([Trxs]))
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]SeqNo:=[Facility]TrxSeqNo
+[Facility]TrxSeqNo:=[Facility]TrxSeqNo+1
+If ([Trxs]Charge=True)
+[Trxs]InvDate:=[Trxs]TrxDate
+[Trxs]InvNo:=[Facility]NextInvNo
+[Facility]NextInvNo:=[Facility]NextInvNo+1
+End if 
+SAVE RECORD([Facility])
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+End if 
+
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+NEXT RECORD([Reservation])
+End for 
+End if 
+
+//Transaction
+QUERY([Trxs];[Trxs]AgreeNo=$FacilityCodeOld)
+If (Records in selection([Trxs])#0)
+FIRST RECORD([Trxs])
+For ($k;1;Records in selection([Trxs]))
+[Trxs]AgreeNo:=$FacilityCodeNew
+[Trxs]CustomerCode:=$FacilityCodeNew
+[Trxs]SeqNo:=[Facility]TrxSeqNo
+[Facility]TrxSeqNo:=[Facility]TrxSeqNo+1
+If ([Trxs]Charge=True)
+[Trxs]InvDate:=[Trxs]TrxDate
+[Trxs]InvNo:=[Facility]NextInvNo
+[Facility]NextInvNo:=[Facility]NextInvNo+1
+End if 
+SAVE RECORD([Facility])
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+End if 
+
+//UnitType Table
+QUERY([UnitType];[UnitType]RUnitType=$FacilityCodeOld+"@")
+If (Records in selection([UnitType])#0)
+APPLY TO SELECTION([UnitType];[UnitType]RUnitType:=Replace string([UnitType]RUnitType;$FacilityCodeOld;$FacilityCodeNew))
+End if 
+
+//Unit Table
+QUERY([Unit];[Unit]RUnitNo=$FacilityCodeold+"@")
+If (Records in selection([Unit])#0)
+FIRST RECORD([Unit])
+For ($i;1;Records in selection([Unit]))
+[Unit]RUnitNo:=Replace string([Unit]RUnitNo;$FacilityCodeOld;$FacilityCodeNew)
+[Unit]UnitTypeCode:=Replace string([Unit]UnitTypeCode;$FacilityCodeOld;$FacilityCodeNew)
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End if 
+
+//Customers Table
+QUERY([Customer];[Customer]CustomerCode=$FacilityCodeOld+"@")
+SELECTION TO ARRAY([Customer]CustomerCode;$CustCode)
+If (Size of array($CustCode)#0)
+For ($i;1;Size of array($CustCode))
+QUERY([Customer];[Customer]CustomerCode=$FacilityCodeNew+Substring($CustCode{$i};6))
+If (Records in selection([Customer])#0)
+QUERY([Customer];[Customer]CustomerCode=$CustCode{$i})
+vName:=[Customer]CustomerName
+CreateCustCodeConversion ($FacilityCodeNew)
+Else 
+QUERY([Customer];[Customer]CustomerCode=$CustCode{$i})
+[Customer]CustomerCode:=$FacilityCodeNew+Substring($CustCode{$i};6)
+End if 
+
+SAVE RECORD([Customer])
+End for 
+End if 
+
+//Analysis Codes Tables + Transactions table
+QUERY([Analysis];[Analysis]Code=$FacilityCodeOld+"@")
+If (Records in selection([Analysis])#0)
+
+SELECTION TO ARRAY([Analysis]Code;$AnCode)
+For ($i;1;Size of array($AnCode))
+QUERY([Analysis];[Analysis]Code=$FacilityCodeNew+Substring($AnCode{$i};6))
+
+If (Records in selection([Analysis])#0)
+$k:=0
+While (Records in selection([Analysis])#0)
+$k:=$k+1
+If (Length(Substring($AnCode{$i};6))=3)
+$AnCodeName:=$FacilityCodeNew+Substring($AnCode{$i};6;2)+String($k)
+Else 
+$AnCodeName:=$FacilityCodeNew+Substring($AnCode{$i};6)+String($k)
+End if 
+QUERY([Analysis];[Analysis]Code=$AnCodeName)
+End while 
+QUERY([Analysis];[Analysis]Code=$AnCode{$i})
+[Analysis]Code:=$AnCodeName
+Else 
+QUERY([Analysis];[Analysis]Code=$AnCode{$i})
+[Analysis]Code:=$FacilityCodeNew+Substring($AnCode{$i};6)
+End if 
+SAVE RECORD([Analysis])
+$AnName:=[Analysis]Code
+$AnDesc:=[Analysis]Description
+QUERY([Trxs];[Trxs]AnalysisCode=$AnCode{$i})
+If (Records in selection([Trxs])#0)
+APPLY TO SELECTION([Trxs];[Trxs]AnalysisCode:=$AnName)
+End if 
+
+QUERY([Quote];[Quote]AnalysisCode=$AnCode{$i})
+If (Records in selection([Quote])#0)
+FIRST RECORD([Quote])
+For ($j;1;Records in selection([Quote]))
+[Quote]AnalysisCode:=$AnName
+[Quote]AnalysisDescription:=$AnDesc
+SAVE RECORD([Quote])
+NEXT RECORD([Quote])
+End for 
+End if 
+
+
+//Merchant Plan Table
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=$FacilityCodeOld+"@")
+If (Records in selection([MerchPlan])#0)
+FIRST RECORD([MerchPlan])
+For ($j;1;Records in selection([MerchPlan]))
+[MerchPlan]AnalysisCodes:=Replace string([MerchPlan]AnalysisCodes;$AnCode{$i};$AnName)
+[MerchPlan]MerchPlanID:=Replace string([MerchPlan]MerchPlanID;$FacilityCodeOld;$FacilityCodeNew)
+SAVE RECORD([MerchPlan])
+NEXT RECORD([MerchPlan])
+End for 
+End if 
+End for 
+End if 
+
+
+// Marketing Types
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=$FacilityCodeOld)
+If (Records in selection([MarketingTypes])#0)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Facility:=$FacilityCodeNew)
+End if 
+
+// Notices Types
+QUERY([Notices];[Notices]FacilityCode=$FacilityCodeOld)
+If (Records in selection([Notices])#0)
+APPLY TO SELECTION([Notices];[Notices]FacilityCode:=$FacilityCodeNew)
+End if 
+
+//UnitStatusTrx
+
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=$FacilityCodeOld+"@")
+If (Records in selection([UnitStatusTrx])#0)
+FIRST RECORD([UnitStatusTrx])
+For ($i;1;Records in selection([UnitStatusTrx]))
+[UnitStatusTrx]UnitNo:=Replace string([UnitStatusTrx]UnitNo;$FacilityCodeOld;$FacilityCodeNew)
+[UnitStatusTrx]OldNo:=$FacilityCodeNew
+SAVE RECORD([UnitStatusTrx])
+NEXT RECORD([UnitStatusTrx])
+End for 
+End if 
+
+AlertMessage ("Done!")
+Else 
+AlertMessage ("The Facility Code is wrong")
+End if 
+

@@ -1,0 +1,224 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN(vRecalc)
+C_LONGINT(bAll)
+C_REAL(vLastHist;trxBalance)
+
+If (Form event=On Load)
+
+//28/05/15 DAM Disable "Delete" button
+If ([Trxs]CCTransID>"") | ([Trxs]CCAuthNo>"")
+OBJECT SET ENABLED(bDelete;False)
+End if 
+
+///////////////fb 9025 by eugene, 27/05/2015///////////////////////
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False)
+If (Records in selection([MerchPlan])>0) & (<>sFacility#"ST@")
+OBJECT SET VISIBLE(bAddCharge;False)
+Else 
+OBJECT SET VISIBLE(bAddCharge;True)
+End if 
+///////////////////////
+vCountyState:=<>tStateCountry
+vPostCode:=<>tPostCode
+
+bPrtRec:=0
+bEmailReceipt:=0
+vLastHist:=1
+
+ARRAY TEXT(asShowHistory;4)
+asShowHistory{1}:=Get localized string("Unmatched + Most Recent Match")
+asShowHistory{2}:=Get localized string("Last Month")
+asShowHistory{3}:=Get localized string("Last 6 Months")
+asShowHistory{4}:=Get localized string("All Transactions")
+asShowHistory:=4
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=viCashMatch)
+CREATE SET([Trxs];"AllCash")
+
+viMatch:=-1
+vRecalc:=False
+
+bAll:=1
+//viMatch:=-1
+
+If (bAdd=1)
+vCustomerName:=Get localized string("Cash Sale")
+vMailAddress:=""
+vMailCity:=""
+vMailState:=""//[Facility]Statea
+vMailPostZIPCode:=""//[Facility]PostZIPCode
+//OBJECT SET ENTERABLE([Transaction]DateBanked;False)`NLT 7/9/11 commented out since KSS complained couldn't edit date banked; no idea why this would be here anyway?
+Else 
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+$Narration:=[Trxs]Narration
+For ($i;1;5)
+$Pos:=Position(Char(17);$Narration;*)
+$String:=Substring($Narration;1;$Pos-1)
+$Narration:=Substring($Narration;$Pos+1)
+Case of 
+
+: ($i=1)
+vCustomerName:=$String//[Transaction]MiscDetls'CustName
+: ($i=2)
+vMailAddress:=$String//[Transaction]MiscDetls'MailAddress
+: ($i=3)
+vMailCity:=$String//[Transaction]MiscDetls'MailCity
+: ($i=4)
+vMailState:=$String//[Transaction]MiscDetls'MailState
+: ($i=5)
+vMailPostZIPCode:=$String//[Transaction]MiscDetls'MailPostZIPCode
+Else 
+//do nothing 
+End case 
+End for 
+End if 
+USE SET("AllCash")
+CLEAR SET("AllCash")
+LoadBackground 
+viOwing:=Get localized string("Balance")
+vPayments:=0
+trxBalance:=0
+vrCustBalance:=trxBalance
+[Agreement]BalanceOwing:=trxBalance
+[Customer]Balance:=trxBalance
+OBJECT SET TITLE(*;"Text1";Get localized string("Transactions")+":")
+
+If (PermissionsControl (185;False)=False)
+OBJECT SET ENABLED(bMod;False)
+OBJECT SET ENABLED(addChargeArray;False)
+OBJECT SET ENABLED(bAddCharge;False)
+OBJECT SET ENABLED(bAddCredit;False)
+OBJECT SET ENABLED(bAddRec;False)
+OBJECT SET ENABLED(bAddRefund;False)
+OBJECT SET ENABLED(bOK;False)
+OBJECT SET ENTERABLE(vCustomerName;False)
+OBJECT SET ENTERABLE(vMailAddress;False)
+OBJECT SET ENTERABLE(vMailCity;False)
+OBJECT SET ENTERABLE(vMailState;False)
+OBJECT SET ENTERABLE(vMailPostZIPCode;False)
+Else 
+OBJECT SET ENABLED(bMod;True)
+OBJECT SET ENABLED(addChargeArray;True)
+OBJECT SET ENABLED(bAddCharge;True)
+OBJECT SET ENABLED(bAddCredit;True)
+OBJECT SET ENABLED(bAddRec;True)
+OBJECT SET ENABLED(bAddRefund;True)
+OBJECT SET ENABLED(bOK;True)
+OBJECT SET ENTERABLE(vCustomerName;True)
+OBJECT SET ENTERABLE(vMailAddress;True)
+OBJECT SET ENTERABLE(vMailCity;True)
+OBJECT SET ENTERABLE(vMailState;True)
+OBJECT SET ENTERABLE(vMailPostZIPCode;True)
+End if 
+
+If (PermissionsControl (45;False)=False)
+OBJECT SET ENABLED(bDelete;False)
+Else 
+OBJECT SET ENABLED(bDelete;True)
+End if 
+
+
+START TRANSACTION
+
+End if 
+
+
+If (Form event=On Display Detail)
+
+If ([Trxs]Charge)
+trxCharge:=[Trxs]TotAmt
+trxTax:=[Trxs]TaxAmt
+trxNetAmt:=[Trxs]TotAmt-[Trxs]TaxAmt
+trxReceipt:=0
+trxBalance:=trxBalance+[Trxs]TotAmt
+Else 
+trxReceipt:=[Trxs]TotAmt
+trxCharge:=0
+trxTax:=0
+trxNetAmt:=0
+trxBalance:=trxBalance-[Trxs]TotAmt
+End if 
+If ([Trxs]AnalysisCode="")
+trxBalance:=0
+Else 
+vrCustBalance:=trxBalance
+[Agreement]BalanceOwing:=trxBalance
+[Customer]Balance:=trxBalance
+End if 
+
+If ([Trxs]Confirmed=False)
+[Trxs]Description:=[Trxs]Description+" •"
+End if 
+
+If ([Trxs]SetMatch)
+trxBMatch:=True
+Else 
+trxBMatch:=False
+End if 
+
+
+//10/11/16 RNE1 Set format 
+
+If ([Agreement]BalanceOwing>0)
+OBJECT SET FORMAT([Agreement]BalanceOwing;<>sFormat)
+Else 
+OBJECT SET FORMAT([Agreement]BalanceOwing;<>sFormatNeg)
+End if 
+
+If (trxBalance>0)
+OBJECT SET FORMAT(trxBalance;<>sFormat)
+Else 
+OBJECT SET FORMAT(trxBalance;<>sFormatNeg)
+End if 
+
+If (trxNetAmt>0)
+OBJECT SET FORMAT(trxNetAmt;<>sFormat)
+Else 
+OBJECT SET FORMAT(trxNetAmt;<>sFormatNeg)
+End if 
+
+If (trxTax>0)
+OBJECT SET FORMAT(trxTax;<>sFormat)
+Else 
+OBJECT SET FORMAT(trxTax;<>sFormatNeg)
+End if 
+
+If (trxReceipt>0)
+OBJECT SET FORMAT(trxReceipt;<>sFormat)
+Else 
+OBJECT SET FORMAT(trxReceipt;<>sFormatNeg)
+End if 
+
+If (trxCharge>0)
+OBJECT SET FORMAT(trxCharge;<>sFormat)
+Else 
+OBJECT SET FORMAT(trxCharge;<>sFormatNeg)
+End if 
+End if 
+
+
+If ((Form event=On Clicked) | (Form event=On Data Change))
+If (asShowHistory#vLastHist)
+vRecalc:=True
+vLastHist:=asShowHistory
+End if 
+
+If (vRecalc)
+
+If ([Trxs]Match=0)
+viMatch:=-1
+Else 
+viMatch:=[Trxs]Match+1
+End if 
+
+//ReCalc 
+vRecalc:=False
+
+//vrCustBalance:=[Customer]Balance
+REDRAW(vrCustBalance)
+End if 
+End if 
+
+vTitle:=Get localized string("Other Cash Sales")+"..."

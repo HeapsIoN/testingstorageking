@@ -1,0 +1,94 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Checks SessionID value passed in $2 and verifies it is valid
+//If SessionID value is valid it returns it in $0, if it is not valid then a new one is created and returned in $0
+
+//$1 - Check, Create, Delete
+//$2 - SessionID
+//$3 - IPAddress
+//$4 - Date
+//$5 - Time
+//$6 - RAgreeNo
+
+C_TEXT($0;$1;$2;$3;$6;$IPAddress)
+C_DATE($4)
+C_TIME($5)
+
+$0:=""
+
+Case of 
+: ($1="check")
+QUERY([Authenticate];[Authenticate]DateAuth=Current date;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress=$3;*)
+QUERY([Authenticate]; & ;[Authenticate]SessionID=$2)
+Case of 
+: (Records in selection([Authenticate])=1)
+If ([Authenticate]RAgreeNo#"")
+$0:="reserved"
+Else 
+$0:="valid"
+End if 
+: (Records in selection([Authenticate])>1)
+$0:="duplicate"
+Else 
+$0:="invalid"
+End case 
+
+
+: ($1="create")
+READ WRITE([Authenticate])
+CREATE RECORD([Authenticate])
+[Authenticate]DateAuth:=$4
+[Authenticate]TimeAuth:=$5
+[Authenticate]IPAddress:=$3
+[Authenticate]SessionID:=$2
+[Authenticate]RAgreeNo:=$6
+SAVE RECORD([Authenticate])
+$0:=[Authenticate]SessionID
+
+
+: ($1="reserve")
+READ WRITE([Authenticate])
+QUERY([Authenticate];[Authenticate]DateAuth=Current date;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress=$3;*)
+QUERY([Authenticate]; & ;[Authenticate]SessionID=$2)
+Case of 
+: (Records in selection([Authenticate])=1)
+[Authenticate]RAgreeNo:=$6
+SAVE RECORD([Authenticate])//1 record only found and Reserve status saved
+$0:="success"
+
+: (Records in selection([Authenticate])=0)//SessionID not found
+$0:="invalid"
+
+: (Records in selection([Authenticate])>1)
+DELETE SELECTION([Authenticate])//Multiple records found, all deleted
+$0:="invalid"
+Else 
+//Do nothing
+End case 
+
+
+
+: ($1="delete")
+READ WRITE([Authenticate])
+QUERY([Authenticate];[Authenticate]SessionID=$2)
+Case of 
+: (Records in selection([Authenticate])=1)
+DELETE RECORD([Authenticate])//1 record only found and deleted
+$0:="success"
+
+: (Records in selection([Authenticate])=0)//SessionID not found
+$0:="invalid"
+
+: (Records in selection([Authenticate])>1)
+DELETE SELECTION([Authenticate])//Multiple records found, all deleted
+$0:="success"
+Else 
+//Do nothing
+End case 
+Else 
+$0:="error"
+End case 
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+REDUCE SELECTION([Authenticate];0)

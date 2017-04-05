@@ -1,0 +1,131 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$k)
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+
+vDateLeg:="From "+String(vDate)+" to "+String(vMthDate)
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+For ($i;1;8)
+$p:=Get pointer("vTot"+String($i))//("vTot"+String($i))
+$p->:=0
+End for 
+vTax:=0
+ARRAY TEXT(aAnalysisCode;0)
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+ARRAY INTEGER($aType;4)
+$aType{1}:=8
+$aType{2}:=-3
+$aType{3}:=-3
+$aType{4}:=-2
+$Total:=0
+TextToArrays (->[Trxs]MiscDetls;->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+For ($j;1;Size of array(aAnalysisCode))
+QUERY([Analysis];[Analysis]Code=aAnalysisCode{$j})
+If (Records in selection([Analysis])>0)
+$x:=[Analysis]SortOrder
+If ($x>7) | ($x<1)
+$x:=8
+End if 
+$p:=Get pointer("vTot"+String($x))
+vTax:=Round(vTax+aTaxAmt{$j};2)
+$p->:=Round($p->+aTotAmt{$j}-aTaxAmt{$j};2)
+$Total:=Round($Total+aTotAmt{$j};2)
+Else 
+AlertMessage ("WARNING - The analysis report will be incorrect, because the analysis code for ch"+"arges :"+aAnalysisCode{$j}+" is not on file!")
+End if 
+End for 
+If ([Trxs]TotAmt#$Total)
+vTot8:=Round(vTot8+[Trxs]TotAmt-$Total;2)//Put any remainder to other
+End if 
+
+If (False)
+$RecNo:=Record number([Trxs])
+$x:=Find in array(aRecNo;$RecNo)
+[Trxs]TaxAmt:=aTaxs{$x}
+If (False)
+$Total:=0
+For ($i;1;8)
+$Total:=$Total+aTotals{$i}{[Trxs]Balance}
+End for 
+If ($Total#[Trxs]TotAmt)
+$Total:=$Total-[Trxs]TotAmt
+$k:=0
+$j:=0
+For ($i;1;8)
+If (aTotals{$i}{[Trxs]Balance}#0)
+If ($k=0)
+$j:=$i
+$k:=1
+Else 
+$j:=0
+End if 
+End if 
+End for 
+If ($k=0) | ($j<1) | ($j>8)
+$j:=8
+End if 
+aTotals{$j}{[Trxs]Balance}:=aTotals{$j}{[Trxs]Balance}-$Total
+End if 
+For ($i;1;8)
+$p:=Get pointer("vTot"+String($i))
+$p->:=aTotals{$i}{[Trxs]Balance}
+End for 
+End if 
+End if 
+If ([Trxs]CustomerCode="@MISCL")
+$Pos:=Position(Char(17);[Trxs]Narration;*)
+If ($Pos>0)
+[Customer]CustomerName:=Substring([Trxs]Narration;1;$Pos-1)
+Else 
+[Customer]CustomerName:="Cash Sale"
+End if 
+End if 
+End if 
+If (Form event=On Printing Break)
+vTotal:=Subtotal([Trxs]TotAmt)
+vTax:=Subtotal(vTax)
+vTot1:=Subtotal(vTot1)
+vTot2:=Subtotal(vTot2)
+vTot3:=Subtotal(vTot3)
+vTot4:=Subtotal(vTot4)
+vTot5:=Subtotal(vTot5)
+vTot6:=Subtotal(vTot6)
+vTot7:=Subtotal(vTot7)
+vTot8:=Subtotal(vTot8)
+If (Level=0)
+For ($i;1;8)
+QUERY([Analysis];[Analysis]SortOrder=$i)
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+$p:=Get pointer("vHdr"+String($i))
+$p->:=[Analysis]GLCode
+End for 
+End if 
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+SetFormats 

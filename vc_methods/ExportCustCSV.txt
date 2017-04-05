@@ -1,0 +1,108 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 15/12/10, 15:25:17
+// ----------------------------------------------------
+// Method: ExportCustCSV
+// Description
+// Export Customer details for all customers to a CSV file
+//
+// ----------------------------------------------------
+
+
+SetFacility 
+$Doc:=Create document("";"csv")
+Open window(20;50;400;150;0)
+If (OK=1)
+<>ProgressInd:=1
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+
+CREATE SET([Customer];"$AllCust")
+RELATE MANY SELECTION([Agreement]CustomerCode)
+RELATE ONE SELECTION([Agreement];[Customer])
+CREATE SET([Customer];"$WithAgree")
+
+ORDER BY([Agreement];[Agreement]ActiveAgreemt;<;[Agreement]RAgreeNo;>)
+
+SEND PACKET($Doc;"Title,First Name,Customer Name,Address,Suburb,City,State,PostZip Code,Country,Email Address,Agreement Number,Units Occupied,Active Agreement;HomePhone,WorkPhone,CellPhone"+Char(Line feed))
+
+$SetSize:=Records in set("$AllCust")
+$Count:=0
+For ($i;1;Records in selection([Agreement]))
+RELATE ONE([Agreement]CustomerCode)
+GOTO XY(2;2)
+MESSAGE("Exporting Agreement records "+String($i)+" of "+String(Records in selection([Agreement])))//Johnno
+$MailAddress:=Replace string([Customer]MailAddress;",";" ")
+$MailAddress:=Replace string($MailAddress;Char(Carriage return);" ";*)
+$MailAddress:=Replace string($MailAddress;Char(Line feed);" ";*)
+$MailCity:=Replace string(Replace string(Replace string([Customer]MailCity;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$MailSuburb:=Replace string(Replace string(Replace string([Customer]MailSuburb;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+
+$CustTitle:=Replace string(Replace string(Replace string([Customer]Title;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$FirstName:=Replace string(Replace string(Replace string([Customer]FirstName;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+
+If ([Customer]LetterCustomerName>"")
+$CustName:=Replace string(Replace string(Replace string([Customer]LetterCustomerName;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+Else 
+$CustName:=Replace string(Replace string(Replace string([Customer]CustomerName;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+End if 
+
+
+
+
+RELATE MANY([Agreement]RAgreeNo)
+
+$UnitList:=""
+For ($j;1;Records in selection([Unit]))
+$UnitList:=$UnitList+[Unit]UnitNo+" "
+End for 
+
+
+If ([Agreement]ActiveAgreemt)
+$Active:="Yes"
+Else 
+$Active:="No"
+End if 
+
+$Count:=$Count+1
+<>ProgressInd:=($Count/$SetSize)*100
+SEND PACKET($Doc;$CustTitle+","+$FirstName+","+$CustName+","+$MailAddress+","+$MailSuburb+","+$MailCity+","+[Customer]MailState+","+[Customer]MailPostZIPCode+","+[Customer]MailCountry+","+[Customer]EmailAddress+","+[Agreement]AgreeNo+","+$UnitList+","+$Active+","+[Customer]PhonePrivate+","+[Customer]PhoneBus+","+[Customer]MobilePhone+Char(Line feed))
+NEXT RECORD([Agreement])
+End for 
+
+
+DIFFERENCE("$AllCust";"$WithAgree";"$AllCust")
+USE SET("$AllCust")
+
+For ($i;1;Records in selection([Customer]))
+GOTO XY(2;2)
+MESSAGE("Exporting Customer records "+String($i)+" of "+String(Records in selection([Customer])))//Johnno
+
+$MailAddress:=Replace string([Customer]MailAddress;",";" ")
+$MailAddress:=Replace string($MailAddress;Char(Carriage return);" ";*)
+$MailAddress:=Replace string($MailAddress;Char(Line feed);" ";*)
+$MailCity:=Replace string(Replace string(Replace string([Customer]MailCity;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$MailSuburb:=Replace string(Replace string(Replace string([Customer]MailSuburb;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+
+$CustTitle:=Replace string(Replace string(Replace string([Customer]Title;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$FirstName:=Replace string(Replace string(Replace string([Customer]FirstName;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+If ([Customer]LetterCustomerName>"")
+$CustName:=Replace string(Replace string(Replace string([Customer]LetterCustomerName;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+Else 
+$CustName:=Replace string(Replace string(Replace string([Customer]CustomerName;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+End if 
+$Count:=$Count+1
+<>ProgressInd:=($Count/$SetSize)*100
+
+SEND PACKET($Doc;$CustTitle+","+$FirstName+","+$CustName+","+$MailAddress+","+$MailSuburb+","+$MailCity+","+[Customer]MailState+","+[Customer]MailPostZIPCode+","+[Customer]MailCountry+","+[Customer]EmailAddress+",,,No"+Char(Line feed))
+
+NEXT RECORD([Customer])
+End for 
+
+CLOSE DOCUMENT($Doc)
+<>ProgressInd:=100
+AlertMessage ("Customer Export complete!")
+End if 
+

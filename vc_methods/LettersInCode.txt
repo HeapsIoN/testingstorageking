@@ -1,0 +1,198 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$Compressed;$Count)
+C_TEXT($Text;$Text2;$1)
+C_TEXT($Name;$Type)
+$j:=0
+$Count:=0
+$Name:=""
+$Type:=""
+$Text:=""
+$Text2:=""
+If (Form event=On Load)
+//SetColours 
+If (Count parameters=0)
+OBJECT SET VISIBLE(bBoth;False)
+BLOB PROPERTIES([Letters]LetterBLOB;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Letters]LetterBLOB)
+End if 
+LoadPictures 
+WR BLOB TO AREA (veLetter;[Letters]LetterBLOB)
+For ($i;331;334)//Turn back on all toolbars
+WR GET COMMAND INFO (veLetter;$i;$j;$Name;$Type;$Count)
+If ($j=0)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if on
+End if 
+End for 
+//WR O MENU STATUS (Letter;710;$i;$j;$Text)
+WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+If ($i=1)//($Text="Show Values") If on turn it off
+//WR O DO COMMAND (Letter;710) Below is also changed but not commented
+WR EXECUTE COMMAND (veLetter;wr cmd view references)
+End if 
+End if 
+QUERY([Notices];[Notices]NoticePlanNo=9;*)
+If ([Reservation]RReserveNo>"")
+QUERY([Notices]; | ;[Notices]NoticePlanNo=0;*)
+Else 
+QUERY([Notices]; | ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+End if 
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]HideNotice=False;*)
+QUERY([Notices]; & ;[Notices]LetterBlank=False)
+ORDER BY([Notices];[Notices]DaysAfter;>;[Notices]Description;>)
+SELECTION TO ARRAY([Notices]Description;asFiles)
+For ($i;Size of array(asFiles)-1;1;-1)
+If (asFiles{$i}=asFiles{$i+1})
+DELETE FROM ARRAY(asFiles;$i+1;1)
+End if 
+End for 
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+LAST RECORD([Trxs])
+
+$i:=Find in array(asFiles;[Letters]LetterDesc)
+If ($i>0) & (Count parameters<1)
+asFiles:=$i
+Else 
+If (Count parameters=1)
+$i:=Find in array(asFiles;"RentIncrease")
+
+Else 
+$i:=Find in array(asFiles;"Default")
+End if 
+If ($i>0)
+asFiles:=$i
+If (Count parameters=1)
+QUERY([Notices];[Notices]NoticePlanNo=9;*)
+If ([Reservation]RReserveNo>"")
+QUERY([Notices]; | ;[Notices]NoticePlanNo=0;*)
+Else 
+QUERY([Notices]; | ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+End if 
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]Description=asFiles{$i})
+
+EXPAND BLOB([Notices]Letter)
+WR BLOB TO AREA (veLetter;[Notices]Letter)
+For ($i;310;311)//Turn on menu & ruler
+WR GET COMMAND INFO (veLetter;$i;$j;$Name;$Type;$Count)
+If ($j=0)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if on
+End if 
+End for 
+For ($i;331;334)//Turn back on all toolbars
+WR GET COMMAND INFO (veLetter;$i;$j;$Name;$Type;$Count)
+If ($j=0)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if on
+End if 
+End for 
+End if 
+Else 
+asFiles:=1
+End if 
+End if 
+bLast:=asFiles
+If ([Letters]SMSMessage="")
+OBJECT SET VISIBLE(*;"@SMS";False)
+End if 
+End if 
+If (Form event=On Clicked)
+If (Modified([Letters]LetterDesc)) | (asFiles#bLast)
+If (asFiles#bLast)
+[Letters]LetterDesc:=asFiles{asFiles}
+bLast:=asFiles
+End if 
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+If (Count parameters=1)
+QUERY([Notices]; & ;[Notices]Description=asFiles{asFiles})
+Else 
+QUERY([Notices]; & ;[Notices]Description=[Letters]LetterDesc)
+End if 
+
+If (Records in selection([Notices])>1)
+QUERY SELECTION([Notices];[Notices]NoticePlanNo=[Agreement]NoticePlanNo)
+End if 
+If (Records in selection([Notices])=1)
+ConfirmTwo (Get localized string("Use layout for letter")+": "+[Notices]Description+"?")
+If (OK=1)
+[Letters]LetterDesc:=[Notices]Description
+EXPAND BLOB([Notices]Letter)
+WR BLOB TO AREA (veLetter;[Notices]Letter)
+WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+If ($i=1)
+WR EXECUTE COMMAND (veLetter;wr cmd view references)
+End if 
+If ([Notices]MinimumCharge>0) & (Records in selection([Agreement])>0)
+$BillCharge:=[Notices]MinimumCharge
+
+If ([Agreement]LateFeeAmt>0)
+$BillCharge:=[Agreement]LateFeeAmt
+End if 
+ConfirmTwo (Get localized string("Bill notice charge of")+" "+String($BillCharge;<>sFormat)+" "+Get localized string("to this customer?"))
+If (OK=1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+[Notices]AnalysisCode)
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Letters]DateSent)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Notices]Description
+[Trxs]TotAmt:=RoundAmt ($BillCharge)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=True
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Agreement]TotLateUnpaid:=Round([Agreement]TotLateUnpaid+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+SAVE RECORD([Customer])
+ReCalc 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+End if 
+End if 
+End if 
+End if 
+//If (bSend=1)
+//$Address:=[Customer]EmailAddress
+//If ($Address="")
+//$Address:=Request("Please enter email address?")
+//If (OK#1)
+//$Address:=""
+//End if 
+//End if 
+//If ($Address>"")
+//CREATE RECORD([Message])
+//[Message]Subject:=[Letters]LetterDesc
+//[Message]Address:=$Address
+//[Message]OutIn:=True
+//[Message]MsgDate:=Current date
+//[Message]MsgTime:=Current time
+//WR GET COMMAND INFO (veLetter;wr cmd view references ;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references )
+//End if 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+//SAVE RECORD([Message])
+//[Letters]SentViaEmail:=True
+//QUERY([Message];[Message]OutIn=True;*)
+//QUERY([Message]; & ;[Message]SentRead=False)
+//If (Records in selection([Message])>0)
+//READ WRITE([Message])
+//CheckMail 
+//READ ONLY([Message])
+//UNLOAD RECORD([Message])
+//End if 
+//End if 
+//End if 
+If (bPrint=1)
+WR SET PRINT OPTION (veLetter;wr number of copies option;1)
+WR EXECUTE COMMAND (veLetter;wr cmd print)
+End if 
+End if 

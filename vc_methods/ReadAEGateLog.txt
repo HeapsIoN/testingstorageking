@@ -1,0 +1,257 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Buffer)
+C_LONGINT($i;$j)
+ARRAY TEXT(asEmails;0)
+$Beep:=False
+If (Test path name(<>sTutPath+"AELog.txt")=Is a document)
+$Doc:=Open document(<>sTutPath+"AELog.txt")
+SET AUTOMATIC RELATIONS(True;False)
+READ WRITE([GateLog])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+While (Length($Buffer)>=15)//Otherwise EOF
+CREATE RECORD([GateLog])
+[GateLog]CustCode:=<>sFacility
+For ($i;1;7)//Seven fields
+$j:=Position(",";$Buffer)
+If ($j>1)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)
+If ([Facility]FalconUSDate=True)
+$FirstPos:=Position("/";$Field)
+$SecondPos:=Position("/";$Field;$FirstPos+1)
+$Day:=Substring($Field;$FirstPos+1;$SecondPos-$FirstPos-1)
+$Month:=Substring($Field;1;$FirstPos-1)
+$MonthNum:=Num($Month)// if there is a space before date
+$Year:=Substring($Field;$SecondPos+1)
+[GateLog]GateDate:=Date($Day+"/"+String($MonthNum)+"/"+$Year)
+Else 
+[GateLog]GateDate:=Date($Field)
+End if 
+: ($i=2)
+[GateLog]GateTime:=Time($Field)
+: ($i=3)
+$Name:=$Field
+If ($Name="Unit")
+$Buffer:=$Buffer+","
+End if 
+: ($i=4)
+[GateLog]GateKeyed:=$Field
+: ($i=5)
+If ($Name="Unit")
+[GateLog]GateActionText:=$Field
+Else 
+If ($Field="Entry@")
+[GateLog]GateNo:=1
+Else 
+[GateLog]GateNo:=2
+End if 
+End if 
+: ($i=6)
+If ($Name="Unit")
+Else 
+If ([GateLog]GateNo=1) | ([GateLog]GateNo=2)
+If ($Field="1")
+[GateLog]GateActionText:=""
+Else 
+[GateLog]GateActionText:="DENIED"
+End if 
+Else 
+[GateLog]GateActionText:=$Field
+End if 
+End if 
+: ($i=7)
+//AE Login not required
+Else 
+//Do Nothing
+End case 
+End if 
+End for 
+If ($Name="Unit")
+[GateLog]CustCode:=<>sFacility
+[GateLog]UnitNo:=[GateLog]GateKeyed
+[GateLog]GateKeyed:=""
+Case of 
+: ([GateLog]GateActionText="0")
+[GateLog]GateActionText:="Unit "+[GateLog]UnitNo+" Disarmed"
+: ([GateLog]GateActionText="1")
+[GateLog]GateActionText:="Unit "+[GateLog]UnitNo+" Armed"
+: ([GateLog]GateActionText="2")
+[GateLog]GateActionText:="Unit "+[GateLog]UnitNo+" In Alarm"
+: ([GateLog]GateActionText="3")
+[GateLog]GateActionText:="Unit "+[GateLog]UnitNo+" Open"
+: ([GateLog]GateActionText="4")
+[GateLog]GateActionText:="Unit "+[GateLog]UnitNo+" Closed"
+: ([GateLog]GateActionText="5")
+[GateLog]GateActionText:="Unit "+[GateLog]UnitNo+" Restored"
+Else 
+//Do Nothing
+End case 
+SAVE RECORD([GateLog])
+ReadGateLogAlarmAction 
+Else 
+If ([Facility]SerialPortNo>0)//Access Ezy Prefix
+[GateLog]GateKeyed:=CalcBinHex (7;Substring(CalcBinHex (1;[GateLog]GateKeyed;32);17))
+End if 
+$Continue:=True
+QUERY([Customer];[Customer]GatePIN=[GateLog]GateKeyed)
+If (Records in selection([Customer])>0)
+ORDER BY([Customer];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[Customer]CustomerCode
+Case of 
+: ([GateLog]GateActionText="DENIED") | ((([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False))
+[GateLog]GateActionText:="DENIED:"+Substring([Customer]CustomerName;1;19)
+: ([GateLog]GateNo=1)
+[GateLog]GateActionText:="Entry:"+Substring([Customer]CustomerName;1;20)
+If ([Facility]AccessFee=True)
+If ([Customer]CustomAccessFee#[Facility]AccessFeeCost)
+If ([Customer]CustomAccessFee>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Customer]CustomAccessFee
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Facility]AccessFeeCost
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+End if 
+Else 
+[GateLog]GateActionText:="Exit:"+Substring([Customer]CustomerName;1;21)
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+If ($Continue)
+QUERY([PhotosCards];[PhotosCards]PINCardNo=[GateLog]GateKeyed;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+If (Records in selection([PhotosCards])>0)
+ORDER BY([PhotosCards];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[PhotosCards]Code
+RELATE ONE([PhotosCards]Code)
+Case of 
+: ([GateLog]GateActionText="DENIED") | ((([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False))
+[GateLog]GateActionText:="DENIED:"+Substring([PhotosCards]Name;1;19)
+: ([GateLog]GateNo=1)
+[GateLog]GateActionText:="Entry:"+Substring([PhotosCards]Name;1;20)
+If ([Facility]AccessFee=True)
+If ([Customer]CustomAccessFee#[Facility]AccessFeeCost)
+If ([Customer]CustomAccessFee>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Customer]CustomAccessFee
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Facility]AccessFeeCost
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+End if 
+Else 
+[GateLog]GateActionText:="Exit:"+Substring([PhotosCards]Name;1;21)
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+End if 
+If ($Continue)
+QUERY([StaffPINS];[StaffPINS]PINNumber=[GateLog]GateKeyed)
+If (Records in selection([StaffPINS])>0)
+[GateLog]GateActionText:="STAFF:"+Substring([StaffPINS]Name;1;20)
+Else 
+If ([GateLog]GateActionText="@Entry@") | ([GateLog]GateActionText="@Entry@")
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateKeyed+" "+[GateLog]UnitNo+" should be denied"
+Else 
+[GateLog]GateActionText:="INVALID:"+[GateLog]GateKeyed
+End if 
+End if 
+End if 
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+If ([GateLog]GateKeyed>"") | (([GateLog]GateActionText="@Armed@") & (Length([GateLog]CustCode)>5))
+If (([GateLog]GateActionText="@Entry@") | ([GateLog]GateActionText="@Exit@") | ([GateLog]GateActionText="@Armed@")) & ([Facility]OnSiteDisable=False)
+READ WRITE([Unit])
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+RELATE MANY SELECTION([Unit]AgreeNo)
+If ([GateLog]GateActionText="@Entry@")
+APPLY TO SELECTION([Unit];[Unit]Status:="OnSite")
+Else 
+APPLY TO SELECTION([Unit];[Unit]Status:="Rented")
+End if 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+End if 
+SAVE RECORD([GateLog])
+$Beep:=True
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+DELETE DOCUMENT(<>sTutPath+"AELog.txt")
+If ([GateLog]GateDate>=vdLastGateDate) & ([GateLog]GateDate<=Current date)
+vdLastGateDate:=[GateLog]GateDate
+vtLastGateTime:=[GateLog]GateTime
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+READ ONLY([GateLog])
+UNLOAD RECORD([GateLog])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+End if 
+If ($Beep)//Trx Received
+BEEP
+End if 

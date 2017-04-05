@@ -1,0 +1,147 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//RWFR Various Lines - Removed Area related fields from KeyStats for RR - 18/11/05
+//SDD 18/10/10 Added back Various Lines that were lost in relation to the adjustment for prepaid made for Kennards
+//SDD 19/10/10 All lines like this +Num(asData{1}{49})-vCurrPrepaidLate;0) were reversed.  Subtracting the old prepaid and adding the current prepaid - now corrected
+//SDD 03/08/11 Adjust descriptions for Billing
+//SDD 27/11/13 Make Calculation of arrays for report a separate method that can be called by webservice
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Key Statistic Report started.")// records the report being started in the eventlog
+If (PermissionsControl (51))
+SetFacility 
+vReportSettings:=[Facility]ReportSettings//Documentation
+OK:=1
+If (<>tBatch=False)
+If (<>sProduct="M@")
+vMthDate:=Current date-1
+Else 
+vMthDate:=[Facility]ReCalcActivity
+End if 
+//Open window(20;50;427;465;5)
+$Window:=Open window((Screen width/2)-205;(Screen height/2)-215;(Screen width/2)+205;(Screen height/2)+215;Movable dialog box;Get localized string("MenuReportkeyStatisticsReport"))
+DIALOG([Activity];"KeyStatsDialog")
+CLOSE WINDOW($Window)
+End if 
+If (OK=1) & (Length(vReportSettings)>10)
+//If (vMthDate>[Facility]ReCalcActivity) SDD Removed 20/5/11 as this does not work well for MV
+//vMthDate:=[Facility]ReCalcActivity
+//End if 
+
+If ([Facility]FacilityCode="SK@") & ([Facility]UTExcludeKeyStat)
+KeyStatsCalcSK (vMthDate)
+
+READ WRITE([Activity])
+ALL RECORDS([Activity])
+
+//If there are less than 52 Activity records, create blank ones in the future
+If (Records in selection([Activity])<52)
+ORDER BY([Activity];[Activity]ActivityDate;<)//Find most Recent date
+$NextActivityDate:=Current date
+$ActivityRecordsToGenerate:=52-Records in selection([Activity])
+For ($i;1;$ActivityRecordsToGenerate)
+CREATE RECORD([Activity])
+[Activity]ActivityDate:=$NextActivityDate
+SAVE RECORD([Activity])
+$NextActivityDate:=Add to date($NextActivityDate;0;0;1)
+End for 
+End if 
+
+Else 
+KeyStatsCalc (vMthDate)
+
+READ WRITE([Activity])
+ALL RECORDS([Activity])
+
+//If there are less than 48 Activity records, create blank ones in the future
+If (Records in selection([Activity])<48)
+ORDER BY([Activity];[Activity]ActivityDate;<)//Find most Recent date
+$NextActivityDate:=Current date
+$ActivityRecordsToGenerate:=48-Records in selection([Activity])
+For ($i;1;$ActivityRecordsToGenerate)
+CREATE RECORD([Activity])
+[Activity]ActivityDate:=$NextActivityDate
+SAVE RECORD([Activity])
+$NextActivityDate:=Add to date($NextActivityDate;0;0;1)
+End for 
+End if 
+End if 
+
+If ([Facility]FacilityCode="SK@") & ([Facility]UTExcludeKeyStat)
+ALL RECORDS([Activity])
+REDUCE SELECTION([Activity];52)
+If (Records in selection([Activity])=52)
+For ($i;1;52)
+Case of 
+: ($i<=8)
+[Activity]SortReport:=1
+: ($i<=22)
+[Activity]SortReport:=2
+: ($i<=44)
+[Activity]SortReport:=3
+Else 
+[Activity]SortReport:=4
+End case 
+SAVE RECORD([Activity])
+NEXT RECORD([Activity])
+End for 
+READ ONLY([Activity])
+ORDER BY([Activity];[Activity]SortReport;>)
+bFromMoveIn:=False
+
+FORM SET OUTPUT([Activity];"KeyStatSK")
+
+BREAK LEVEL(1)
+ACCUMULATE([Activity]DepositsHeld)
+//vTitle:=Get localized string("MenuReportkeyStatisticsReport")+" - "+String(vMthDate;2)
+vTitle:=Get localized string("MenuReportkeyStatisticsReport")+" - "+String(GetDate (Day of(vMthDate);Month of(vMthDate);Year of(vMthDate)))
+
+PrintSelection ("P")
+
+FORM SET OUTPUT([Activity];"Output")
+Else 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+AlertMessage (Get localized string("KeyStatMethod9"))
+End if 
+Else 
+ALL RECORDS([Activity])
+REDUCE SELECTION([Activity];48)
+If (Records in selection([Activity])=48)
+For ($i;1;48)
+Case of 
+: ($i<=8)
+[Activity]SortReport:=1
+: ($i<=18)
+[Activity]SortReport:=2
+: ($i<=40)
+[Activity]SortReport:=3
+Else 
+[Activity]SortReport:=4
+End case 
+SAVE RECORD([Activity])
+NEXT RECORD([Activity])
+End for 
+READ ONLY([Activity])
+ORDER BY([Activity];[Activity]SortReport;>)
+bFromMoveIn:=False
+
+FORM SET OUTPUT([Activity];"KeyStats")
+
+BREAK LEVEL(1)
+ACCUMULATE([Activity]DepositsHeld)
+//vTitle:=Get localized string("MenuReportkeyStatisticsReport")+" - "+String(vMthDate;2)
+vTitle:=Get localized string("MenuReportkeyStatisticsReport")+" - "+String(GetDate (Day of(vMthDate);Month of(vMthDate);Year of(vMthDate)))
+
+PrintSelection ("P")
+
+FORM SET OUTPUT([Activity];"Output")
+Else 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+AlertMessage (Get localized string("KeyStatMethod9"))
+End if 
+End if 
+
+End if 
+End if 
+LogAction (True;"Key Statistic Report ended.")

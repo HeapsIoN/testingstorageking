@@ -1,0 +1,53 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+If ([Customer]CustomerCode>"")
+If (Records in selection([PhotosCards])>=10) & (([Facility]GateSysType=4) | ([Facility]GateSysType=3))
+AlertMessage (Get localized string("Cannot have more than 10 addtional users with Falcon Gate System!"))
+Else 
+CREATE RECORD([PhotosCards])
+[PhotosCards]Code:=[Customer]CustomerCode
+[PhotosCards]TimeZone:=1
+[PhotosCards]SeqNo:=1
+[PhotosCards]UnitAccess:="All"
+[PhotosCards]Name:="Please enter name"
+QUERY([Analysis];[Analysis]Code=<>sFacility+"CRD")
+If (Records in selection([Analysis])=1)
+[PhotosCards]Deposit:=[Analysis]DfltSellAmt
+End if 
+If ([PhotosCards]Deposit>0)
+ConfirmTwo (Get localized string("Do you wish to charge the deposit of")+" "+String([PhotosCards]Deposit)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate (Current date)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=[PhotosCards]Deposit
+[Trxs]Qty:=1
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=True
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Agreement]TotOthrUnpaid:=Round([Agreement]TotOthrUnpaid+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+Else 
+[PhotosCards]Deposit:=0
+End if 
+End if 
+While (Find in array(aiCheck;[PhotosCards]SeqNo)>0)
+[PhotosCards]SeqNo:=[PhotosCards]SeqNo+1
+End while 
+INSERT IN ARRAY(aiCheck;0;1)
+aiCheck{1}:=[PhotosCards]SeqNo
+SAVE RECORD([PhotosCards])
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+End if 
+Else 
+AlertMessage (Get localized string("Please enter a customer name before continuing..."))
+End if 

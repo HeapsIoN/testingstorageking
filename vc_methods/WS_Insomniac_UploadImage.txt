@@ -1,0 +1,85 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_File_Name;Is text;SOAP input)
+SOAP DECLARATION(WS_Extension;Is text;SOAP input)
+SOAP DECLARATION(WS_Picture;Is BLOB;SOAP input)
+
+$String:="Start WS_Insomniac_UploadImage"+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_File_Name: "+WS_File_Name+Char(13)
+$String:=$String+"WS_Extension: "+WS_Extension+Char(13)
+$String:=$String+"WS_Picture: "+String(BLOB size(WS_Picture))+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_Success;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+
+C_PICTURE($Picture)
+C_REAL($Compression)
+C_LONGINT($Compress)
+READ WRITE([PhotosCards])
+BLOB TO PICTURE(WS_Picture;$Picture)
+WS_Success:=True
+
+If (Length(WS_Cust_Code)#10)
+WS_Success:=False
+WS_ERROR:="Customer Code is invalid"
+Else 
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_Cust_Code;1;5))
+End if 
+
+If (BLOB size(WS_Picture)=0)
+WS_Success:=False
+WS_ERROR:="Picture not Found"
+End if 
+
+If (Length(WS_Extension)=0)
+WS_Success:=False
+WS_ERROR:="No Extension"
+End if 
+
+If (Length(WS_File_Name)=0)
+WS_Success:=False
+WS_ERROR:="No file Name"
+End if 
+
+If (WS_Extension#".pdf")
+$Compress:=Abs([Facility]PhotoCompression)//Value to be between 1-1000 with 1000 being no compression require slider control
+If ($Compress<20) | ($Compress>1000)
+$Compress:=1000
+End if 
+If ($Compress>0) & ($Compress<=1000)
+ON ERR CALL("ErrorPhoto")
+If ($Compress#0)
+$Compression:=0.25+((0.75/1000)*$Compress)
+Else 
+$Compression:=0.25
+End if 
+CONVERT PICTURE($Picture;".jpg";$Compression)
+End if 
+End if 
+
+
+If (WS_Success=True)
+QUERY([Customer];[Customer]CustomerCode=WS_Cust_Code)
+If (Records in selection([Customer])>0)
+CREATE RECORD([PhotosCards])
+[PhotosCards]Code:=[Customer]CustomerCode
+[PhotosCards]Photo:=$Picture
+[PhotosCards]Name:=WS_File_Name
+[PhotosCards]UnitAccess:=WS_Extension
+[PhotosCards]DateTaken:=Current date
+[PhotosCards]Size:=Picture size($Picture)
+SAVE RECORD([PhotosCards])
+End if 
+Else 
+End if 
+
+$String:="End WS_Insomniac_UploadImage"+Char(13)
+$String:=$String+"WS_Success: "+String(WS_Success)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

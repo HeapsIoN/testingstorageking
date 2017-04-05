@@ -1,0 +1,326 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]CallDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+If (Records in selection([Contacts])>0)
+vYTD:=Records in selection([Contacts])
+Else 
+vYTD:=0
+End if 
+//MTD
+$emonth:=GetDate (31;Month of(vDateFor);Year of(vDateFor))
+$smonth:=Date("1/"+String(Month of(vDateFor))+"/"+String(Year of(vDateFor)))
+QUERY([Contacts];[Contacts]CallDate>=$smonth;*)
+QUERY([Contacts]; & ;[Contacts]CallDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+If (Records in selection([Contacts])>0)
+vMTD:=Records in selection([Contacts])
+Else 
+vMTD:=0
+End if 
+
+//WTD
+$startweek:=[Facility]WeekEndDay-Abs(6)
+$day:=Day number(vDateFor)
+$diff:=$day-$startweek
+$startweekdate:=vDateFor-$diff
+QUERY([Contacts];[Contacts]CallDate>=$startweekdate;*)
+QUERY([Contacts]; & ;[Contacts]CallDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+If (Records in selection([Contacts])>0)
+vWTD:=Records in selection([Contacts])
+Else 
+vWTD:=0
+End if 
+
+
+//Today
+QUERY([Contacts];[Contacts]CallDate=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+If (Records in selection([Contacts])>0)
+vToday:=Records in selection([Contacts])
+Else 
+vToday:=0
+End if 
+
+//Sales Enq Declined
+//YTD
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Declined")
+If (Records in selection([Contacts])>0)
+vYDeclined:=Records in selection([Contacts])
+Else 
+vYDeclined:=0
+End if 
+
+$emonth:=GetDate (31;Month of(vDateFor);Year of(vDateFor))
+$smonth:=Date("1/"+String(Month of(vDateFor))+"/"+String(Year of(vDateFor)))
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=$smonth;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Declined")
+If (Records in selection([Contacts])>0)
+vMDeclined:=Records in selection([Contacts])
+Else 
+vMDeclined:=0
+End if 
+$startweek:=[Facility]WeekEndDay-Abs(6)
+$day:=Day number(vDateFor)
+$diff:=$day-$startweek
+$startweekdate:=vDateFor-$diff
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=$startweekdate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Declined")
+If (Records in selection([Contacts])>0)
+vWDeclined:=Records in selection([Contacts])
+Else 
+vWDeclined:=0
+End if 
+
+
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Declined")
+If (Records in selection([Contacts])>0)
+vTDeclined:=Records in selection([Contacts])
+Else 
+vTDeclined:=0
+End if 
+
+//Reservations
+//YTD
+$self:=0
+$other:=0
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Reserved")
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+QUERY([Reservation];[Reservation]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Reservation])>0)
+If ([Reservation]UserLogin=[Reservation]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Reservation]UserLogin#[Reservation]CallTakenBy)
+$other:=$other+1
+End if 
+
+End if 
+End if 
+NEXT RECORD([Contacts])
+End for 
+vYTDSelfRes:=$self
+vYTDOtherRes:=$other
+
+
+
+$emonth:=GetDate (31;Month of(vDateFor);Year of(vDateFor))
+$smonth:=Date("1/"+String(Month of(vDateFor))+"/"+String(Year of(vDateFor)))
+$self:=0
+$other:=0
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=$smonth;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name;*)
+QUERY([Contacts]; & ;[Contacts]Outcome="Reserved")
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+QUERY([Reservation];[Reservation]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Reservation])>0)
+If ([Reservation]UserLogin=[Reservation]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Reservation]UserLogin#[Reservation]CallTakenBy)
+$other:=$other+1
+End if 
+End if 
+End if 
+NEXT RECORD([Contacts])
+End for 
+
+vMTDSelfRes:=$self
+vMTDOtherRes:=$other
+
+
+$self:=0
+$other:=0
+$startweek:=[Facility]WeekEndDay-Abs(6)
+$day:=Day number(vDateFor)
+$diff:=$day-$startweek
+$startweekdate:=vDateFor-$diff
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=$startweekdate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name;*)
+QUERY([Contacts]; & ;[Contacts]Outcome="Reserved")
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+QUERY([Reservation];[Reservation]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Reservation])>0)
+If ([Reservation]UserLogin=[Reservation]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Reservation]UserLogin#[Reservation]CallTakenBy)
+$other:=$other+1
+End if 
+End if 
+End if 
+NEXT RECORD([Contacts])
+End for 
+vWTDSelfRes:=$self
+vWTDOtherRes:=$other
+
+
+$self:=0
+$other:=0
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Reserved")
+
+For ($i;1;Records in selection([Contacts]))
+QUERY([Reservation];[Reservation]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Reservation])>0)
+If ([Reservation]UserLogin=[Reservation]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Reservation]UserLogin#[Reservation]CallTakenBy)
+$other:=$other+1
+End if 
+
+End if 
+End if 
+NEXT RECORD([Contacts])
+End for 
+vTSelfRes:=$self
+vTOtherRes:=$other
+
+//Agreements
+//YTD
+$self:=0
+$other:=0
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Rented")
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+QUERY([Agreement];[Agreement]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Agreement])>0)
+If ([Agreement]UserLogin=[Agreement]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Agreement]UserLogin#[Agreement]CallTakenBy)
+$other:=$other+1
+End if 
+End if 
+End if 
+NEXT RECORD([Contacts])
+End for 
+vYTDSelfAgree:=$self
+vYTDOtherAgree:=$other
+
+
+$self:=0
+$other:=0
+$emonth:=GetDate (31;Month of(vDateFor);Year of(vDateFor))
+$smonth:=Date("1/"+String(Month of(vDateFor))+"/"+String(Year of(vDateFor)))
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=$smonth;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Rented")
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+QUERY([Agreement];[Agreement]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Agreement])>0)
+If ([Agreement]UserLogin=[Agreement]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Agreement]UserLogin#[Agreement]CallTakenBy)
+$other:=$other+1
+End if 
+End if 
+End if 
+NEXT RECORD([Contacts])
+End for 
+vMTDSelfAgree:=$self
+vMTDOtherAgree:=$other
+
+$self:=0
+$other:=0
+$startweek:=[Facility]WeekEndDay-Abs(6)
+$day:=Day number(vDateFor)
+$diff:=$day-$startweek
+$startweekdate:=vDateFor-$diff
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate>=$startweekdate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate<=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Rented")
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+QUERY([Agreement];[Agreement]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Agreement])>0)
+If ([Agreement]UserLogin=[Agreement]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Agreement]UserLogin#[Agreement]CallTakenBy)
+$other:=$other+1
+End if 
+End if 
+
+End if 
+NEXT RECORD([Contacts])
+End for 
+vWTDSelfAgree:=$self
+vWTDOtherAgree:=$other
+
+$self:=0
+$other:=0
+QUERY([Contacts];[Contacts]CallDate>=[Facility]YearStartDate;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate=vDateFor;*)
+QUERY([Contacts]; & ;[Contacts]CallTakenBy=[UserLogins]Name;*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode)
+QUERY SELECTION([Contacts];[Contacts]Outcome="Rented")
+FIRST RECORD([Contacts])
+For ($i;1;Records in selection([Contacts]))
+QUERY([Agreement];[Agreement]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Agreement])>0)
+If ([Agreement]UserLogin=[Agreement]CallTakenBy)
+$self:=$self+1
+Else 
+If ([Agreement]UserLogin#[Agreement]CallTakenBy)
+$other:=$other+1
+End if 
+End if 
+End if 
+NEXT RECORD([Contacts])
+End for 
+vTSelfAgree:=$self
+vTOtherAgree:=$other

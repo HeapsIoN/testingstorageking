@@ -1,0 +1,102 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//JCW commentd 08/08/2016 as no longer needed
+
+
+
+//  //EmailWeeklySales - Created by SDD on 11/3/10 to send a weekly email with Billing sales details
+//  //Called by LogMonServer
+//C_BOOLEAN($0)  //True if successful
+//C_DATE($1;$EdDate)  //Weekend date for report - must be Saturday Day=7
+//C_TEXT($Message;$Body)
+//C_LONGINT($i;$x;$y)
+//$EdDate:=$1
+//While (Day number($EdDate)#7)
+//$EdDate:=$EdDate-1
+//End while 
+//QUERY([EventLog];[EventLog]EventDate>$EdDate-7;*)
+//QUERY([EventLog]; & ;[EventLog]EventDate<=$EdDate;*)
+//QUERY([EventLog]; & ;[EventLog]EventTable=6;*)  //Just transactions
+//QUERY([EventLog]; & ;[EventLog]EventType="A@")  //Adds
+//CREATE EMPTY SET([Trxs];"ToEmail")
+//For ($i;1;Records in selection([EventLog]))
+//QUERY([Trxs];[Trxs]AgreeNo=GetKeyNo ([EventLog]KeyValue;1);*)
+//QUERY([Trxs]; & ;[Trxs]SeqNo=Num(GetKeyNo ([EventLog]KeyValue;2)))
+//If ([Trxs]Charge=True) & ([Trxs]Drawer>"")
+//ADD TO SET([Trxs];"ToEmail")
+//End if 
+//NEXT RECORD([EventLog])
+//End for 
+//USE SET("ToEmail")
+//CLEAR SET("ToEmail")
+//$Message:="Storman Software Sales Report for the Week Ended "+String($EdDate)+Char(13)+Char(13)
+//$Message:=$Message+"New Sales"+Char(13)
+//ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>)
+//For ($i;1;Records in selection([Trxs]))
+//RELATE ONE([Trxs]CustomerCode)
+//RELATE ONE([Trxs]AnalysisCode)
+//$Message:=$Message+PadString ([Trxs]AgreeNo;11)+PadString (Substring([Customer]CustomerName;1;20);21)+PadString (String([Trxs]TrxDate);9)
+//$Message:=$Message+PadString (Substring([Analysis]Description;1;15);16)+PadString (Substring([Trxs]Drawer;1;8);9)+String([Trxs]TotAmt;"###,###.00")+Char(13)
+//NEXT RECORD([Trxs])
+//End for 
+//$Body:=$Message
+//QUERY([EventLog];[EventLog]EventDate>$EdDate-7;*)
+//QUERY([EventLog]; & ;[EventLog]EventDate<=$EdDate;*)
+//QUERY([EventLog]; & ;[EventLog]EventTable=6;*)  //Just transactions
+//QUERY([EventLog]; & ;[EventLog]EventType="M@")  //Mods
+//CREATE SET([EventLog];"Modified")
+//CREATE EMPTY SET([Trxs];"ToEmail")
+//For ($i;1;Records in selection([EventLog]))
+//QUERY([Trxs];[Trxs]AgreeNo=GetKeyNo ([EventLog]KeyValue;1);*)
+//QUERY([Trxs]; & ;[Trxs]SeqNo=Num(GetKeyNo ([EventLog]KeyValue;2)))
+//If ([Trxs]Charge=True) & ([Trxs]Drawer>"")
+//ADD TO SET([Trxs];"ToEmail")
+//End if 
+//NEXT RECORD([EventLog])
+//End for 
+//USE SET("ToEmail")
+//CLEAR SET("ToEmail")
+//$Message:=$Message+Char(13)+"Modified Sales"+Char(13)
+//ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>)
+//For ($i;1;Records in selection([Trxs]))
+//RELATE ONE([Trxs]CustomerCode)
+//RELATE ONE([Trxs]AnalysisCode)
+//$Message:=$Message+PadString ([Trxs]AgreeNo;11)+PadString (Substring([Customer]CustomerName;1;20);21)+PadString (String([Trxs]TrxDate);9)
+//$Message:=$Message+PadString (Substring([Analysis]Description;1;15);16)+PadString (Substring([Trxs]Drawer;1;8);9)+String([Trxs]TotAmt;"###,###.00")+Char(13)
+//USE SET("Modified")
+//QUERY SELECTION([EventLog];[EventLog]KeyValue=([Trxs]AgreeNo+","+String([Trxs]SeqNo)))
+//ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+//$Message:=$Message+[EventLog]LogDetail+Char(13)
+//NEXT RECORD([Trxs])
+//End for 
+//CLEAR SET("Modified")
+//QUERY([EventLog];[EventLog]EventDate>$EdDate-7;*)
+//QUERY([EventLog]; & ;[EventLog]EventDate<=$EdDate;*)
+//QUERY([EventLog]; & ;[EventLog]EventTable=6;*)  //Just transactions
+//QUERY([EventLog]; & ;[EventLog]EventType="D@")  //Dels
+//$Message:=$Message+Char(13)+"All Deleted"+Char(13)
+//ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+//For ($i;1;Records in selection([EventLog]))
+//$x:=Position("Charge was:";[EventLog]LogDetail)
+//$y:=Position("Drawer was:";[EventLog]LogDetail)
+//If ($x>1)
+//If (Substring([EventLog]LogDetail;$x+12;4)="True")
+//$x:=10
+//End if 
+//End if 
+//If ($y>1)
+//If (Substring([EventLog]LogDetail;$y+12;1)#Char(34))
+//$y:=10
+//End if 
+//End if 
+//If ($x>1) & ($y>1)
+//End if 
+//$Message:=$Message+[EventLog]LogDetail+Char(13)  //for now I want to see all deletions - in the future putting this in the above condition will only show sales deletions
+//NEXT RECORD([EventLog])
+//End for 
+//$Doc:=Create document(<>sTutPath+"SalesBilling.txt")
+//SEND PACKET($Doc;$Message)
+//CLOSE DOCUMENT($Doc)
+//ARRAY TEXT(aText;1)
+//aText{1}:=<>sTutPath+"SalesBilling.txt"
+//$0:=SendEmail ("aaron@storman.com,stephen@storman.com";"Weekly Sales Billing Report "+String($EdDate);$Body;True)
+//DELETE DOCUMENT(<>sTutPath+"SalesBilling.txt")

@@ -1,0 +1,48 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Use the current Facility Table selection, check each table for each Facility record to ensure there aren't any records that are outside of the allocated Primary Key range
+//SDD 28/08/12 Modified to only display the tables that have primary keys out of range
+C_BOOLEAN($0;$InvalidRecords)
+C_LONGINT($i;$j)
+
+$InvalidRecords:=False
+$ErrorAlert:=False
+
+ORDER BY([Facility];[Facility]FacilityCode;>)
+
+For ($j;1;Records in selection([Facility]))
+$PrimaryKeyMax:=[Facility]PrimaryKeyMax
+$PrimaryKeyMin:=[Facility]PrimaryKeyMin
+$ProductCode:=[Facility]ProductCode
+$TablesWithBadPrimaryKey:=Get localized string("Facility")+": "+[Facility]FacilityCode+" - "
+For ($i;2;Size of array(<>aiPrimaryKeyField))//SetupArrays
+If (<>aiPrimaryKeyField{$i}>0) & (<>aiFacilityField{$i}>0)
+$pTable:=Table($i)
+$pPrimary:=Field($i;<>aiPrimaryKeyField{$i})
+$pFacility:=Field($i;<>aiFacilityField{$i})
+QUERY($pTable->;$pPrimary-><$PrimaryKeyMin;*)
+QUERY($pTable->; | ;$pPrimary->>$PrimaryKeyMax;*)
+QUERY($pTable->; & ;$pPrimary->>=0;*)
+QUERY($pTable->; & ;$pFacility->=[Facility]FacilityCode+"@")
+$InvalidRecords:=(Records in selection($pTable->)>0)
+If (Records in selection($pTable->)>0)
+$TablesWithBadPrimaryKey:=$TablesWithBadPrimaryKey+Table name($pTable)+": "+String(Records in selection($pTable->))+", "
+End if 
+End if 
+End for 
+
+Case of 
+: ($InvalidRecords=True) & (Records in selection([Facility])=1)
+AlertMessage (Char(Carriage return)+Get localized string("There are records in the database that have invalid Primary Key values - this will cause problems, please correct!")+Char(Carriage return)+$TablesWithBadPrimaryKey)
+SyncRecordLog (Char(Carriage return)+Get localized string("There are records in the database that have invalid Primary Key values - this will cause problems, please correct!")+Char(Carriage return)+$TablesWithBadPrimaryKey)
+: ($InvalidRecords=True) & (Records in selection([Facility])>1)
+SyncRecordLog (Char(Carriage return)+Get localized string("Records with Primary Key value issues")+": "+Char(Carriage return)+$TablesWithBadPrimaryKey)
+End case 
+NEXT RECORD([Facility])
+End for 
+
+If ($InvalidRecords=True) & (Records in selection([Facility])>1)
+AlertMessage (Get localized string("There are records in the database that have invalid Primary Key values - please check the synclog.txt file for details."))
+SyncRecordLog (Get localized string("There are records in the database that have invalid Primary Key values - please check the synclog.txt file for details."))
+End if 
+
+$0:=Not($InvalidRecords)

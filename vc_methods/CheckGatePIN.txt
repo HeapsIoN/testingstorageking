@@ -1,0 +1,89 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//If False then duplicate
+C_POINTER($1)//Pointer to either [PhotoCards]PINCardNo or [Customer]GatePIN
+C_BOOLEAN($2)
+C_LONGINT($i;$Count)
+C_TEXT($PIN)
+$0:=True
+$Web:=False
+
+If (Count parameters>1)
+$Web:=$2
+End if 
+
+
+If (Records in selection([Customer])=1)
+If (<>tGateSys)// & ($1->>"") REMOVED otherwise deletion of PIN is not sent to Gate Sys 8/4/04
+Case of 
+: ($1->="") | ($1->="0")
+vbUpdateGate:=True
+: ($1->="0@")
+If ($Web=False)
+AlertMessage (Get localized string("PIN cannot contain leading zeros!"))
+End if 
+$1->:=""
+REJECT($1->)
+: ($1=Field(14;6)) & ([Facility]GateSysType=5) & ([PhotosCards]Name<"  ")
+If ($Web=False)
+AlertMessage (Get localized string("Name must be entered before a PIN can be entered."))
+End if 
+$1->:=""
+REJECT($1->)
+: ([Facility]GateSysType=5) & ([Facility]SerialPortNo>0) & (Num($1->)>65535)
+If ($Web=False)
+AlertMessage (Get localized string("When using Access Ezy with Card Prefix the GatePIN cannot be greater than 65535!"))
+End if 
+$1->:=""
+//REJECT($1->)
+: ((Length($1->)<[Facility]GatePINRandomLen) | (Length($1->)>10)) & ([Facility]ProxCard=False)
+If ($Web=False)
+AlertMessage (Get localized string("Gate PIN Number must be between")+" "+String([Facility]GatePINRandomLen)+" "+Get localized string("& 10 digits"))
+End if 
+$1->:=""
+REJECT($1->)
+Else 
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+//SAVE RECORD([Customer])
+tRejectPIN:=False
+If ([Facility]PrefixPIN=True)
+While ($1->#(String([Unit]UnitNumeric)+"@")) & (End selection([Unit])=False)
+NEXT RECORD([Unit])
+End while 
+If (End selection([Unit])=True)
+If ($Web=False)
+AlertMessage (Get localized string("The PIN must be prefixed by a unit number")+"...")
+End if 
+tRejectPIN:=True
+End if 
+FIRST RECORD([Unit])
+End if 
+$PIN:=$1->
+SET QUERY DESTINATION(3;$i)
+QUERY([PhotosCards];[PhotosCards]PINCardNo=$PIN)
+//QUERY([PhotosCards]; & ;[Customer]NoActiveAgreemts>0)
+//QUERY([PhotosCards]; & ;[PhotosCards]Code#[Agreement]CustomerCode)
+$Count:=$i
+QUERY([Customer];[Customer]GatePIN=$PIN)
+//QUERY([Customer]; & ;[Customer]NoActiveAgreemts>0;*)
+//QUERY([Customer]; & ;[Customer]CustomerCode#[Agreement]CustomerCode)
+$Count:=$Count+$i
+QUERY([UserLogins];[UserLogins]PinCode=$PIN)
+$Count:=$Count+$i
+QUERY([StaffPINS];[StaffPINS]PINNumber=$PIN)
+$Count:=$Count+$i
+SET QUERY DESTINATION(0)
+If ($Count>0) & ($1->#"")// | ([Facility]GateSysType<7))  `Duplicates allowed for Digigate & Sentinel
+If ($Web=False)
+AlertMessage (Get localized string("Warning - There are already")+" "+String($Count)+" "+Get localized string("customer(s) or staff member(s) using PIN")+" "+$1->+".  "+Get localized string("Please change this PIN."))
+End if 
+REJECT($1->)
+$0:=False
+End if 
+vbUpdateGate:=True
+End case 
+End if 
+Else 
+If ($Web=False)
+AlertMessage (Get localized string("Customer must be entered before Gate PIN."))
+End if 
+End if 

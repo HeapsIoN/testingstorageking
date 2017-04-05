@@ -1,0 +1,454 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD Called from On Web Connection - formerly part of SUV
+
+C_LONGINT($Pos)
+C_TEXT($0;$1;$2;$Message;$Location;$cr)
+C_TEXT($PaidUpTo)
+C_LONGINT($Error;$x;$y;$z;$Index;$Key)
+C_BOOLEAN($ValidFacilityID;$ValidBusinessName)
+C_LONGINT($Version)
+ARRAY TEXT($atMsgParam;40)//Number of parameters * 2
+C_LONGINT($Index)
+ARRAY TEXT(Attachments;0)
+
+$Error:=0
+$cr:=Char(13)
+
+
+//fb9848 by eugene
+$num_gate_type:=0
+$str_gate_type:=""
+ARRAY TEXT(Gate_Types;35)
+Gate_Types{1}:="1"
+Gate_Types{2}:="2"
+Gate_Types{3}:="3"
+Gate_Types{4}:="4"
+Gate_Types{5}:="5"
+Gate_Types{6}:="6"
+Gate_Types{7}:="7"
+Gate_Types{8}:="8"
+Gate_Types{9}:="9"
+Gate_Types{10}:="a"
+Gate_Types{11}:="b"
+Gate_Types{12}:="c"
+Gate_Types{13}:="d"
+Gate_Types{14}:="e"
+Gate_Types{15}:="f"
+Gate_Types{16}:="g"
+Gate_Types{17}:="h"
+Gate_Types{18}:="i"
+Gate_Types{19}:="j"
+Gate_Types{20}:="k"
+Gate_Types{21}:="l"
+Gate_Types{22}:="m"
+Gate_Types{23}:="n"
+Gate_Types{24}:="o"
+Gate_Types{25}:="p"
+Gate_Types{26}:="q"
+Gate_Types{27}:="r"
+Gate_Types{28}:="s"
+Gate_Types{29}:="t"
+Gate_Types{30}:="u"
+Gate_Types{31}:="v"
+Gate_Types{32}:="w"
+Gate_Types{33}:="x"
+Gate_Types{34}:="y"
+Gate_Types{35}:="z"
+
+
+
+//LoadSystemRecord(False)
+
+If ($Error=0)
+$Message:=Substring($1;20)
+$Message:=Substring($Message;1;Position("HTTP";$Message)-2)
+$Message:=EncodeIt ($Message;False)
+
+//Read the passed values into the array
+For ($Counter;1;Size of array($atMsgParam))
+$Pos:=Position(":";$Message)
+$atMsgParam{$Counter}:=Substring($Message;1;$Pos-1)
+$Message:=Substring($Message;$Pos+1)
+End for 
+$ValidBusinessName:=False
+$ValidFacilityID:=False
+READ WRITE([Facility])//Determine whether they have a valid Facility ID (UserCode)
+$Key:=Num($atMsgParam{2})
+QUERY([Facility];[Facility]UserCode=String($Key;"00000"))
+If (Records in selection([Facility])=1)//Facility Found 
+If ([Facility]BusinessName=$atMsgParam{11})//| (([Facility]UpdateLicence=True) & ($atMsgParam{11}=[Facility]TempBusinessName)) | ($Key=10000)  //Business Name Match    
+If ([Facility]ProductCode="M@")//& ([Facility]LastIPAddress#Substring($2;1;20)) & ([Facility]DisableStormanUpdateIPCheck=False)
+//AddEvent("Central Facility "+String([Facility]ID;"00000")+" IP address has changed from "+[Facility]LastIPAddress+" to "+Substring($2;1;20);"E";"StormanUpdate";[Facility]ID;[Staff]ID;False)  //New message
+End if 
+If (Locked([Facility])=True)
+LOAD RECORD([Facility])
+End if 
+//[Facility]LastIPAddress:=Substring($2;1;20)  //The IPAddress of the Facility Computer
+//[Facility]LastUpdateTime:=Current time
+//[Facility]LastUpdateDate:=Current date
+If ([Facility]Version#Num($atMsgParam{3}))//If StormanUsers Facility version is earlier than actual
+[Facility]Version:=Num($atMsgParam{3})
+End if 
+//[Facility]BuildDate:=Date($atMsgParam{20})
+//[Facility]UnitsInUse:=Num($atMsgParam{21})
+$ValidBusinessName:=True
+Else 
+$Message:="BusinessName mismatch:"+$Message
+$Error:=1
+End if 
+$ValidFacilityID:=True
+Else 
+$Message:="Facility not found:"+$atMsgParam{2}
+$Error:=1
+End if 
+End if 
+
+If ($Error=0)
+Case of 
+: ($atMsgParam{1}="NEW")//NEW, CHK, UPD 
+//New code to be added
+: ($atMsgParam{1}="UPD")//Record differences between StormanUsers and Storman licence details
+//[Facility]UpdateLicence:=False
+SAVE RECORD([Facility])
+$Message:="Success"
+//AddEvent("Facility "+String([Facility]ID;"00000")+" License Details Updated!";"I";"StormanUpdate";[Facility]ID;[Staff]ID;False)
+
+: ($atMsgParam{1}="CHK")
+If (True) & ($ValidBusinessName=True) & ($ValidFacilityID=True)//Generate the new licence details to return to Storman //was ([Facility]UpdateLicence=True)
+
+//Array Details for MsgParam
+//1=Control = CHK, NEW, UPD
+//2=User Code
+//3=Version
+//4=Storman Product  MV03N0N or SP01Y5N     was Max Units
+//5=Max Sites    was Modules
+//6=Max Units   was Expiry Date below all offset by one
+//7=Expiry Date
+//8=Rented
+//9=Upgrades Paid To Date
+
+//10=Facility Code
+//11=Business Name
+//12=Facility Name
+//13=Company Name
+//14=Country Code
+//15=Email Address
+//16=Phone Number
+//17=Fax Number
+//18=OS Platform Details = Platform,OpSys,Computer
+//19=Computer Date  
+//20=Build Date
+
+$LicenceExpiry:=!00-00-00!//DATE HERE
+$BackupNextDate:=!00-00-00!//BackupNextDate
+
+If (Num($atMsgParam{3})>=350)
+//If (Length([Facility]FacilityCode)<5)    NOT USED ANYMORE
+//[Facility]FacilityCode:=[Facility]CompanySpecificCode+[Facility]FacilityCode
+//[Facility]CompanySpecificCode:=""
+//End if 
+$Message:="UPD"+":"+String([Facility]UserCode;"00000")+":"+String([Facility]Version)+":"+[Facility]ProductCode+String([Facility]Max4DClients;"00")
+
+
+$Message:=$Message+BooleanToString ([Facility]UseGateSys;"Y";"N")+String([Facility]GateSysType;"0")+BooleanToString ([Facility]UseCashBook;"Y";"N")+BooleanToString ([Facility]UseWebServer;"Y";"N")
+
+
+$Message:=$Message+":"+String([Facility]MaxSites;"00000")+":"+String([Facility]MaxUnits;"000000")+":"
+$Message:=$Message+GetDateString ([Facility]LicExpiryDate)+":"+BooleanToString ([Facility]LicRentExpWarn;"Y";"N")+":"
+//If ([Facility]PayByAutomaticPayment=True)
+//$Message:=$Message+GetDateString (Add to date([Facility]PaidUpTo;0;1;0))
+//Else 
+$Message:=$Message+GetDateString ([Facility]UpgradesPaidTo)
+//End if 
+If (Num($atMsgParam{3})<8200)
+$Message:=$Message+":"+[Facility]FacilityCode+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":0"//+String([Facility]CountryID)
+Else 
+//QUERY([Country];[Country]ID=[Facility]CountryID)
+$Message:=$Message+":"+[Facility]FacilityCode+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":"+[Facility]Country
+End if 
+If (Num($atMsgParam{3})>425)
+$Message:=$Message+":"+BooleanToString ([Facility]UseStorerCheck;"Y";"N")//+String([Facility]AutoBackupFrequency)+String([Facility]AutoBackupDay;"00")+String([Facility]AutoBackupHour;"00")+":"+String([Facility]AutoBackupNextDate;7)+":"
+End if //above line was UsePhoto
+If (Num($atMsgParam{3})>800)
+$Message:=$Message+BooleanToString ([Facility]UseOnlineReservations;"Y";"N")+":"
+$Message:=$Message//+[Facility]WebPaymentHostName+":"
+End if 
+
+Else 
+$Message:="UPD"+":"+String([Facility]UserCode;"00000")+":"+String([Facility]Version)+":"
+$Message:=$Message+String([Facility]MaxUnits;"000000")+":"+"N"+BooleanToString ([Facility]UseWebServer;"Y";"N")
+$Message:=$Message+BooleanToString ([Facility]UseGateSys;"Y";"N")+BooleanToString ([Facility]UseStorerCheck;"Y";"N")+BooleanToString ([Facility]UseCashBook;"Y";"N")+":"
+$Message:=$Message+GetDateString ([Facility]LicExpiryDate)+":"+BooleanToString ([Facility]LicRentExpWarn;"Y";"N")+":"
+//If ([Facility]PayByAutomaticPayment=True)
+//$Message:=$Message+GetDateString (Add to date([Facility]upgradesPaidTo;0;1;0))
+//Else 
+$Message:=$Message+GetDateString ([Facility]UpgradesPaidTo)
+//End if 
+$Message:=$Message+":"+Substring([Facility]FacilityCode;1;3)
+If (Num($atMsgParam{3})<8200)
+//$Message:=$Message+":"+[Facility]CompanySpecificCode+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":"+String([Facility]CountryID)
+Else 
+//QUERY([Country];[Country]ID=[Facility]CountryID)
+//$Message:=$Message+":"+[Facility]CompanySpecificCode+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":"+[Country]Code
+End if 
+End if 
+
+//$Incoming:="INC"+":"+String(Num($atMsgParam{2});"00000")+":"+$atMsgParam{3}+":"+$atMsgParam{4}+":"+$atMsgParam{5}+":"+$atMsgParam{6}+":"
+//$Incoming:=$Incoming+$atMsgParam{7}+":"+$atMsgParam{8}+":"+$atMsgParam{9}+":"+$atMsgParam{10}
+//$Incoming:=$Incoming+":"+$atMsgParam{11}+":"+$atMsgParam{12}+":"+$atMsgParam{13}+":"+$atMsgParam{14}
+
+$Incoming:="INC:"
+For ($ParamCounter;1;Size of array($atMsgParam))
+$Incoming:=$Incoming+$atMsgParam{$ParamCounter}+":"
+End for 
+$Incoming:=$Incoming+"2000"
+
+
+$Outgoing:="OUT"+":"+String([Facility]UserCode;"00000")+":"+String([Facility]Version)+":"+[Facility]ProductCode+String([Facility]Max4DClients;"00")
+
+$Outgoing:=$Outgoing+BooleanToString ([Facility]UseGateSys;"Y";"N")+String([Facility]GateSysType;"0")+BooleanToString ([Facility]UseCashBook;"Y";"N")+BooleanToString ([Facility]UseWebServer;"Y";"N")
+
+$Outgoing:=$Outgoing+":"+String([Facility]MaxSites;"00000")+":"+String([Facility]MaxUnits;"000000")+":"
+$Outgoing:=$Outgoing+GetDateString ([Facility]LicExpiryDate)+":"+BooleanToString ([Facility]LicRentExpWarn;"Y";"N")+":"+GetDateString ([Facility]UpgradesPaidTo)+":"+[Facility]FacilityCode
+If (Num($atMsgParam{3})<8200)
+$Outgoing:=$Outgoing+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":"//+String([Facility]CountryID)
+Else 
+//QUERY([Country];[Country]ID=[Facility]CountryID)
+$Outgoing:=$Outgoing+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":"+[Facility]Country
+End if 
+If (Num($atMsgParam{3})>425)
+$Outgoing:=$Outgoing+":"//+BooleanToString ([Facility]UsePhoto;"Y";"N")+String([Facility]AutoBackupFrequency)+String([Facility]AutoBackupDay;"00")+String([Facility]AutoBackupHour;"00")+":"+String([Facility]AutoBackupNextDate;7)+":"
+End if 
+
+If ([Facility]UpgradesPaidTo>=Current date)
+//AddEvent("Facility "+String([Facility]UserCode;"00000")+" - Check License:"+$cr+$cr+$Incoming+$cr+$Outgoing;"I";"StormanUpdate";[Facility]UserCode;[Staff]ID;False)
+End if 
+
+PLATFORM PROPERTIES($x;$y;$z)
+$Message:=$Message+":"+String($x)+","+String($z)+":"+GetDateString (Current date)+":"
+If (Num($atMsgParam{3})>800)
+$Outgoing:=$Outgoing+BooleanToString ([Facility]UseOnlineReservations;"Y";"N")+":"
+$Outgoing:=$Outgoing//+[Facility]WebPaymentHostName+":"
+End if 
+SAVE RECORD([Facility])
+Else 
+//$Incoming:="INC"+":"+String(Num($atMsgParam{2});"00000")+":"+$atMsgParam{3}+":"+$atMsgParam{4}+":"+$atMsgParam{5}+":"+$atMsgParam{6}+":"
+//$Incoming:=$Incoming+$atMsgParam{7}+":"+$atMsgParam{8}+":"+$atMsgParam{9}+":"+$atMsgParam{10}
+//$Incoming:=$Incoming+":"+$atMsgParam{11}+":"+$atMsgParam{12}+":"+$atMsgParam{13}+":"+$atMsgParam{14}
+
+$Incoming:="INC:"
+For ($ParamCounter;1;Size of array($atMsgParam))
+$Incoming:=$Incoming+$atMsgParam{$ParamCounter}+":"
+End for 
+$Incoming:=$Incoming+"3000"
+
+
+$Outgoing:="OUT"+":"+String([Facility]UserCode;"00000")+":"+String([Facility]Version)+":"+[Facility]ProductCode+String([Facility]Max4DClients;"00")
+
+
+$Outgoing:=$Outgoing+BooleanToString ([Facility]UseGateSys;"Y";"N")+String([Facility]GateSysType;"0")+BooleanToString ([Facility]UseCashBook;"Y";"N")+BooleanToString ([Facility]UseWebServer;"Y";"N")
+
+
+$Outgoing:=$Outgoing+":"+String([Facility]MaxSites;"00000")+":"+String([Facility]MaxUnits;"000000")+":"
+$Outgoing:=$Outgoing+GetDateString ([Facility]LicExpiryDate)+":"+BooleanToString ([Facility]LicRentExpWarn;"Y";"N")+":"+GetDateString ([Facility]UpgradesPaidTo)+":"+[Facility]FacilityCode
+If (Num($atMsgParam{3})<8200)
+$Outgoing:=$Outgoing+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":"//+String([Facility]CountryID)
+Else 
+//QUERY([Country];[Country]ID=[Facility]CountryID)
+$Outgoing:=$Outgoing+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName+":"+[Facility]Country
+End if 
+If (Num($atMsgParam{3})>425)
+$Outgoing:=$Outgoing+":"//+BooleanToString ([Facility]UsePhoto;"Y";"N")+String([Facility]AutoBackupFrequency)+String([Facility]AutoBackupDay;"00")+String([Facility]AutoBackupHour;"00")+":"+String([Facility]AutoBackupNextDate;7)+":"
+End if 
+If (Num($atMsgParam{3})>800)
+$Outgoing:=$Outgoing+BooleanToString ([Facility]UseOnlineReservations;"Y";"N")+":"
+$Outgoing:=$Outgoing//+[Facility]WebPaymentHostName+":"
+End if 
+
+If ([Facility]UpgradesPaidTo>=Current date)
+//AddEvent("Facility "+String([Facility]usercode;"00000")+" - Check License:"+$cr+$cr+$Incoming+$cr+$Outgoing;"I";"StormanUpdate";[Facility]usercode;[Staff]ID;False)
+End if 
+
+
+//commented by eugene fb9848
+//[Facility]GateSysType:=Num(Substring($atMsgParam{4};6;1))
+$str_gate_type:=Substring($atMsgParam{4};6;1)
+$vlfind:=Find in array(Gate_Types;$str_gate_type)
+If ($vlfind>0)
+[Facility]GateSysType:=$vlfind
+//Else 
+//ALERT("GateSysType not found!")
+End if 
+
+
+If (Date($atMsgParam{19})<(Current date-1)) | (Date($atMsgParam{19})>(Current date))
+If ([Facility]UpgradesPaidTo>=Current date)
+//AddEvent("Storman Update Date Mismatch - Facility "+String(Num($atMsgParam{2});"00000")+" - Current date = "+String(Current date)+", Reported date = "+String(Date($atMsgParam{19}));"A";"StormanUpdate";Num($atMsgParam{2});[Staff]ID;False)
+End if 
+$Message:="Your computer's date appears to be incorrect, please check."
+$Error:=1
+End if 
+
+If ($Error=0)
+$PaidUpTo:=GetDateString ([Facility]UpgradesPaidTo)
+
+//Get the latest version of the storman model that they have
+//Calculate the details for the downloaded update file
+
+//Determine the product name   Message fields need to be inserted
+Case of 
+: ([Facility]ProductCode="SP") & ([Facility]Max4DClients=1)
+//$p:=->[System]LatestStormanVersion
+//$Product:="Storman"
+//$UpdateMessage:=->[System]StormanMessage
+//: ([Facility]ProductCode="MV") | ([Facility]Max4DClients>1)
+//$p:=->[System]LatestStormanCentralVersion
+//$Product:="Server"
+//$UpdateMessage:=->[System]StormanCentralMessage
+//: ([Facility]ProductCode="SL")
+//$p:=->[System]LatestStormanLiteVersion
+//$Product:="Storman"
+//$UpdateMessage:=->[System]StormanLiteMessage
+Else //If StormanModel not defined then default to Storman (SP)
+//$p:=->[System]LatestStormanVersion
+$Product:="Storman"
+//$UpdateMessage:=->[System]StormanMessage
+End case 
+
+//Determin the Version that they currently have
+$Version:=$p->//Which is automatically calculated on which version of Storman they have
+$Upgrade:=""
+
+If (True)//([Facility]UpdateMessage>"")
+//$Message:=[Facility]UpdateMessage
+If (True)//([Facility]UpdateFilename>"  ")
+$Message:="Filename:"//+[Facility]UpdateFilename+","+$Message
+End if 
+Else 
+//Mac or Win    
+$Platform:=Num(Substring($atMsgParam{18};1;1))
+$System:=0
+$Machine:=0
+
+$vtPlatform:=""
+$vtSystem:=""
+$vtMachine:=""
+
+$TempPlatform:=$atMsgParam{18}
+$Timeout:=Tickcount+600//10 Seconds
+Repeat 
+$Pos:=Position(",";$TempPlatform)
+If ($Pos#0)
+$Var:=Substring($TempPlatform;1;$Pos-1)
+Else 
+$Var:=$TempPlatform
+$TempPlatform:=""
+End if 
+Case of 
+: ($vtPlatform="")
+$vtPlatform:=$Var
+: ($vtPlatform#"") & ($vtSystem="")
+$vtSystem:=$Var
+: ($vtPlatform#"") & ($vtSystem#"") & ($vtMachine="")
+$vtMachine:=$Var
+Else 
+//Do nothing
+End case 
+$TempPlatform:=Substring($TempPlatform;$Pos+1)
+Until ((Position(",";$TempPlatform)=0) & (Length($TempPlatform)=0)) | (Tickcount>$Timeout)
+
+//This method to maintain compatibility with old versions of Storman
+//Old versions only passed two paramters, #1 and #3
+If ($vtMachine="") & ($vtSystem#"")
+$vtMachine:=$vtSystem
+$vtSystem:=""
+End if 
+
+$Platform:=Num($vtPlatform)
+$System:=Num($vtSystem)
+$Machine:=Num($vtMachine)
+
+If (($Platform<1) | (3<$Platform))
+$vsPlatformOS:=0
+Else 
+If ($Platform=3)//3 = windows
+$vsPlatformOS:=0
+If ($System<0)
+$winMajVers:=((2^31)+$System)%256
+$winMinVers:=(((2^31)+$System)\256)%256
+If ($winMinVers=0)
+$vsPlatformOS:=3
+$vsPlatformVersion:="95"
+Else 
+$vsPlatformOS:=3
+$vsPlatformVersion:="98"
+End if 
+Else 
+$winMajVers:=$System%256
+$winMinVers:=($System\256)%256
+If ($winMajVers=4)
+$vsPlatformOS:=3
+$vsPlatformVersion:="NT4"
+Else 
+$vsPlatformOS:=3
+$vsPlatformVersion:="2000"
+End if 
+End if 
+If ($winMajVers#0) & ($winMinVers#0)
+$vsPlatformVersion:=String($winMajVers)+"."+String($winMinVers)
+End if 
+Else //1 & 2 = Macintosh
+$vsPlatformOS:=1
+$vsPlatformVersion:=String($System\256)+"."+String(($System\16)%16)+(("."+String($System%16))*Num(($System%16)#0))
+End if 
+End if 
+
+If (True)//([Facility]AuthorisedVersion#0)
+$Version:=0//[Facility]AuthorisedVersion  //Get latest authorised version
+End if 
+
+If ($Platform<3)//If Macintosh
+If ($Version>=330)
+If ($Version>=700)
+$Extension:=".dmg"
+Else 
+$Extension:=".sit"
+End if 
+$Upgrade:=""
+Else 
+$Extension:=".bin"
+End if 
+If (True)//([Facility]OperatingSystem#$vsPlatformOS)  //Update [facility]Operatingsystem
+//[Facility]OperatingSystem:=$vsPlatformOS
+End if 
+Else //If Windows
+$Extension:=".exe"
+//If ([Facility]OperatingSystem#$vsPlatformOS)
+//[Facility]OperatingSystem:=$vsPlatformOS
+//End if 
+End if 
+
+$Filename:=$Product+$Upgrade+String($Version)+$Extension
+//If (Num($atMsgParam{3})>=350) & (Length([Facility]FacilityCode)<5)
+//[Facility]FacilityCode:=[Facility]CompanySpecificCode+[Facility]FacilityCode
+//[Facility]CompanySpecificCode:=""
+//End if 
+SAVE RECORD([Facility])
+$Location:=""//Replace string(Substring([Facility]UpdatePath;2);"updates/";"")
+If (Substring($Location;Length($Location))#"/")
+$Location:=$Location+"/"
+End if 
+$Message:="Latest:"+String($Version)+":"+$PaidUpTo+":"+$Filename+":"+[Facility]FacilityCode+":"+$UpdateMessage->+$Location+":"//+BooleanToString ([Facility]UsePhoto;"Y";"N")+String([Facility]AutoBackupFrequency)+String([Facility]AutoBackupDay;"00")+String([Facility]AutoBackupHour;"00")+":"+String([Facility]AutoBackupNextDate;7)+":"
+End if 
+End if 
+If ([Facility]UpgradesPaidTo>=Current date)
+//AddEvent("Facility "+String([Facility]usercode;"00000")+" Storman Update Checked!"+$cr+$Message;"I";"StormanUpdate";[Facility]usercode;[Staff]ID;False)
+End if 
+End if 
+Else 
+//Do nothing
+End case 
+End if 
+WEB SEND TEXT(EncodeIt ($Message;True))
+READ ONLY([Facility])
+LOAD RECORD([Facility])

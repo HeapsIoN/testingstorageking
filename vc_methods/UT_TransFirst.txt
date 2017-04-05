@@ -1,0 +1,191 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 21/07/14, 08:51:52
+// ----------------------------------------------------
+// Method: UT_TransFirst
+// Description
+// Testing the DD & CC processing for TransFirst USA.
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($8;$1)
+C_TEXT($2;$4;$5;$7)
+C_REAL($3;$6)
+C_LONGINT($CardPresent)
+C_TEXT($0)
+
+//$AcctNo:="7777778222"
+//$RegKey:="BESSX9EHX5WP9K75"
+
+//Test Cards  
+//Visa  4111-1111-1111-1111
+//MasterCard  5499-7400-0-57
+//ACH  Use Routing  123456780
+//Use Checking(make up 10 digits)
+
+Case of 
+: (abselected{6}=True)//TransFirst CC Swipe
+AlertMessage ("UT_CC Swipe - This will process using a Swipe Reader, and will change the strip data to our test Credit Card details: '4111-1111-1111-1111' Expiry: '08/15'")
+
+ALL RECORDS([Customer])
+QUERY([Customer];[Customer]NoActiveAgreemts>0)
+QUERY([Customer];[Customer]CustomerCode#"@miscl")
+FIRST RECORD([Customer])
+$CardY:=Request("Please swipe your Card")
+$CardY:=""
+vWords:="%B4111111111111111^JOHN TEST SMITH/^1508226115880000000000700000000?;4111111111111111=15082261158800009700?+7?"
+If (vWords[[1]]="%")
+$Pos:=Position("^";vWords)
+If ($Pos>2)
+vCCNo:=Substring(vWords;3;$Pos-3)
+$PosQ:=Position("?";vWords)
+If ($PosQ>1)
+vTrack:=Substring(vWords;2;$PosQ-2)
+End if 
+vWords:=Substring(vWords;$Pos+1)
+$Pos:=Position("^";vWords)
+End if 
+End if 
+$ID:="7777778222"//TransFirst ID [Facility]MerchantDetails
+$regkey:="BESSX9EHX5WP9K75"//RegKey
+$amount:=1//This amount will be multiplied by 100
+$ccno:=""//CCNo
+$foo:=""//
+$code:=1//Transaction Code
+$profile:=""//Payment ProfileID
+$DD:=False//Direct Debit?
+
+$Result:=TrxExpressProcessTrx ($ID;$RegKey;$amount;$ccno;$foo;$code;$profile;$DD)
+
+If ($Result>"") & ($Result#"@ERR@")
+AlertMessage ("UT_TransFirst Swipe Card - was Successful")
+Else 
+AlertMessage ("UT_TransFirst Swipe Card - something went wrong.")
+End if 
+
+: (abselected{7}=True)//TransFirst CC Manually Entered
+AlertMessage ("UT_CC Manual - This will process using our test Credit Card details: '4111-1111-1111-1111' Expiry: '08/16'")
+
+ALL RECORDS([Customer])
+QUERY([Customer];[Customer]NoActiveAgreemts>0)
+QUERY([Customer];[Customer]CustomerCode#"@miscl")
+FIRST RECORD([Customer])
+
+$ID:="7777778222"//TransFirst ID [Facility]MerchantDetails
+$Regkey:="BESSX9EHX5WP9K75"//RegKey
+$Amount:=1//Amount will be multiplied by 100
+$CCNo:="4111111111111111"//CCNo
+$CCExpiry:="0816"//CCExpiry
+$Code:=1//Transaction Code
+$Profile:=""//Payment ProfileID
+$DD:=False//Direct Debit?
+
+$Result:=TrxExpressProcessTrx ($ID;$RegKey;$Amount;$CCNo;$CCExpiry;$Code;$Profile;$DD)
+
+If ($Result>"") & ($Result#"@ERR@")
+AlertMessage ("UT_TransFirst CC Manual - was Successful")
+
+Else 
+AlertMessage ("UT_TransFirst CC Manual - something went wrong.")
+
+End if 
+
+: (abselected{8}=True)//TransFirst CC Wallet
+AlertMessage ("UT_CC Wallet - This will create a TransFirst CC Wallet.")
+
+ALL RECORDS([Customer])
+QUERY([Customer];[Customer]NoActiveAgreemts>0)
+QUERY([Customer];[Customer]CustomerCode#"@miscl")
+FIRST RECORD([Customer])
+
+[Customer]MobilePhone:=""
+[Customer]MailAddress:="Cargo Central"
+[Customer]MailPostZIPCode:=""
+[Customer]EmailAddress:="support@storman.com"
+[Customer]CustomerName:="Unit Test"
+
+$ID:="7777778222"//TransFirst ID - [Facility]MerchantDetails
+$Regkey:="BESSX9EHX5WP9K75"//RegKey
+$Amount:=1//Amount will be multiplied by 100
+$CCNo:="4111111111111111"//CCNo
+$CCExpiry:="1608"//CCExpiry
+$Code:=14//Transaction Code
+$Profile:=""//Payment ProfileID
+$DD:=False//Direct Debit?
+$ProdType:="5"
+$Type:="0"
+$Active:="1"
+
+$Result:=TrxEpressAddCustWallet ($ID;$RegKey;$ProdType;$Type;$CCNo;$CCExpiry;$Active)
+
+If ($Result="")
+AlertMessage ("UT_TransFirst CC Wallet - Wallet was created Successfully")
+Else 
+AlertMessage ("UT_TransFirst CC Wallet - something went wrong.")
+End if 
+
+AlertMessage ("UT_CC Wallet Processing - This will now process using the previously created Wallet.")
+
+$ID:="7777778222"//TransFirst ID - [Facility]MerchantDetails
+$Regkey:="BESSX9EHX5WP9K75"//RegKey
+$Amount:=1//Amount will be multiplied by 100
+$CCNo:="4111111111111111"//CCNo
+$CCExpiry:="1608"//CCExpiry
+$CardPresent:=14
+$DD:=False
+QUERY([Customer];[Customer]CustomerName="Unit Test")
+$PaymentProID:=[Customer]custPaymentProfID
+
+
+$Result:=TrxExpressProcessTrx ($ID;$RegKey;$Amount;$CCNo;$CCExpiry;$CardPresent;$PaymentProID;$DD)
+
+If ($Result="")
+AlertMessage ("UT_TransFirst CC Wallet - was processed Successfully!")
+Else 
+AlertMessage ("UT_TransFirst CC Wallet - something went wrong.")
+End if 
+
+: (abselected{9}=True)//TransFirst DD Wallet
+AlertMessage ("DD Wallet")
+ALL RECORDS([Customer])
+QUERY([Customer];[Customer]NoActiveAgreemts>0)
+QUERY([Customer];[Customer]CustomerCode#"@miscl")
+FIRST RECORD([Customer])
+
+[Customer]MobilePhone:=""
+[Customer]MailAddress:="Cargo Central"
+[Customer]MailPostZIPCode:=""
+[Customer]EmailAddress:="support@storman.com"
+
+$ID:="7777778222"//TransFirst ID - [Facility]MerchantDetails
+$Regkey:="BESSX9EHX5WP9K75"//RegKey
+$Amount:=1//Amount will be multiplied by 100
+$CCNo:="4111111111111111"//CCNo
+$CCExpiry:="1608"//CCExpiry
+$Code:=14//Transaction Code
+$Profile:=""//Payment ProfileID
+$DD:=False//Direct Debit?
+$ProdType:="5"
+$Type:="4"
+$Active:="1"
+
+
+$Result:=TrxEpressAddCustWallet ($ID;$RegKey;$ProdType;$Type;$CCNo;$CCExpiry;$Active)
+
+//$Result:=TrxEpressAddCustWallet ($ID;$RegKey;$Amount;$CCNo;$CCExpiry;$Code;$Profile;$DD)
+
+If ($Result>"") & ($Result#"@ERR@")
+AlertMessage ("UT_TransFirst CC Wallet - was Successful")
+
+Else 
+AlertMessage ("UT_TransFirst CC Wallet - something went wrong.")
+
+End if 
+
+: (abselected{10}=True)
+
+End case 
+

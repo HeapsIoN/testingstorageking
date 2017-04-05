@@ -1,0 +1,134 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$2;$3;$4;$5;$6)//Storman Central WILL NOT support multiple site data files
+//$1=URL Extra Data after the web address e.g. 192.168.1.7/Users returns /Users
+//$2=HTTP Header
+//$3=Client machine IP Address - will use this over internet connections to avoid 
+//$4=Server machine IP Address - 0.0.0.0?
+//$5=Username - Appears not to be supplied also
+//$6=Password - Not supplied with 4D passwords
+C_LONGINT($Pos)
+C_BOOLEAN($Valid)
+
+
+If (Undefined(<>iTrafficSent))
+<>iTrafficSent:=0
+End if 
+
+If (Undefined(<>iTrafficRecv))
+<>iTrafficRecv:=0
+End if 
+
+Case of 
+: ($1="/4DCGI/reserve@")// /index.html")
+OR_OnlineReservation ($1;$2;$3;$4)//;$5;$6)
+
+: (<>tLoggingOn=False)
+//Do nothing so it stops accepting connections
+: ($1="/4DCGI/SyncToMaster")
+<>iTrafficRecv:=<>iTrafficRecv+BLOB size(vbEventContent)
+SyncFromSite ($3)
+: ($1="/4DCGI/SyncFromMaster")
+<>iTrafficRecv:=<>iTrafficRecv+BLOB size(vbEventContent)
+SyncToSite ($3)
+: (Position("updatestorman";$1)#0)//Storman Update
+StormanUpdate ($2;$3)//The message and the IP address
+: ($1="/4DCGI/stats@")//http://203.213.77.154:19812/4DCGI/stats.shtml?week/facility
+$4DLink:=""//Login with Admin / S
+//ALL RECORDS([Facility])
+//If (True)  `Was [System]FourDLink
+//$4DLink:="/4DLink"
+//End if 
+$RequestString:=Substring($2;Position("/4DCGI/stats";$2)+7)
+$RequestString:=Substring($RequestString;1;Position(" ";$RequestString)-1)
+If (Position("?";$RequestString)<2)
+$RequestString:="stats.shtml?month/facility"
+End if 
+DisplayWebStats ($RequestString;$4DLink)
+: ($1="/4DCGI/style@") | ($1="/4DCGI/image@")
+WEB SEND FILE(Substring($1;7))
+
+: ($1="/4DCGI/Account@")
+WWW_Account ($1)//;$2;$3;$4;$5;$6)
+
+: ($1="/help/@")
+WEB SEND FILE($1)
+
+: ($1="/4DCGI/emailcust/unsubscribe@")
+Unsubscribe ($1)
+
+: ($1="/4DCGI/4dwsdl@")
+
+: ($1="/4DCGI/bpoint@")
+: ($1="/4DCGI/gocardless@")
+
+C_BLOB($request)
+C_TEXT($requestText)
+WEB GET HTTP BODY($request)
+$requestText:=BLOB to text($request;Mac text without length)
+
+GoCardless_ConfirmAuth ($1;$requestText)
+Else 
+READ ONLY(*)
+ALL RECORDS([Facility])
+<>aText:=$3+$4+$5+$6
+$Valid:=True
+If ([Facility]CentralAddress>"")
+$Valid:=False
+Repeat 
+$Pos:=Position(Char(13);[Facility]CentralAddress;0;*)
+If ($Pos>0)
+$OKIPAddr:=Substring([Facility]CentralAddress;1;$Pos-1)
+[Facility]CentralAddress:=Substring([Facility]CentralAddress;$Pos+1)
+Else 
+$OKIPAddr:=[Facility]CentralAddress
+[Facility]CentralAddress:=""
+End if 
+If ($3=$OKIPAddr)
+$Valid:=True
+End if 
+Until (Length([Facility]CentralAddress)<2)
+End if 
+If ($Valid)
+vReturn:="4"//where to go to
+//vReturnB contains record number to go to
+While (Not(Process aborted))
+Case of 
+: (vReturn="1")
+WWW_CustAgreet (vReturnB)
+: (vReturn="2")
+WWW_CustAgreet_AgreeNo (vReturnB)
+: (vReturn="3")
+WWW_Find 
+: (vReturn="4")
+WEB SEND FILE("index.shtm")
+: (vReturn="5")
+WWW_CustAgreet_CustInfo (vReturnB)
+: (vReturn="6")
+WWW_CustAgreet_Tranx (vReturnB)
+: (vReturn="7")
+WWW_CustAgreet_MoveOut (vReturnB)
+: (vReturn="8")
+WWW_CustAgreet_Notes (vReturnB)//WWW_CustAgreet_Update
+: (vReturn="9")
+WWW_Bookings //(vReturnB)
+: (vReturn="10")
+WWW_Bookings_BookingNo (vReturnB)
+: (vReturn="11")
+WWW_SalesInquiry (vReturnB)
+: (vReturn="12")
+WWW_Bookings_CustInfo (vReturnB)
+: (vReturn="13")
+WWW_SalesInquiry_AddNew 
+: (vReturn="14")
+WWW_SalesInquiry_Show (vReturnB)
+: (vReturn="15")
+WWW_SalesInquiry_Delete (vReturnB)
+Else 
+AlertMessage (Get localized string("An Error has Occured: vReturn is:")+(vReturn)+" "+Get localized string("vReturnB is:")+(vReturnB))
+End case 
+End while 
+End if 
+While (Not(Process aborted))
+AlertMessage (Get localized string("Unauthorised access to database!"))
+End while 
+End case 

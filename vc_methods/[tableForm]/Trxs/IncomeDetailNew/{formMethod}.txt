@@ -1,0 +1,153 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-3)
+End for 
+forCompleted:=True
+End if 
+End if 
+C_TEXT(vAgreeNo)
+C_TEXT(vUnits;vAnalysisCode;vGLCode)
+vLeg1:=Get localized string("Unit No")
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+
+//Landscape printing
+GET PRINT OPTION(Orientation option;$Orientation)
+
+If ($Orientation=2)
+OBJECT SET VISIBLE(*;"@Landscape";True)
+OBJECT SET VISIBLE(*;"@Portrait";False)
+Else 
+OBJECT SET VISIBLE(*;"@Landscape";False)
+OBJECT SET VISIBLE(*;"@Portrait";True)
+End if 
+
+
+End if 
+If (Form event=On Printing Detail)
+vUnits:=""
+vAnalysisCode:=""
+vGLCode:=""
+
+If (Length([Trxs]AgreeNo)=14)
+QUERY([Agreement];[Agreement]RAgreeNo=[Trxs]AgreeNo)
+vAgreeNo:=[Agreement]AgreeNo
+If ([Agreement]UnitsOccup="")
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Trxs]AgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=[Trxs]TrxDate)
+QUERY SELECTION([UnitHistory];[UnitHistory]MoveOut>=[Trxs]TrxDate;*)
+QUERY SELECTION([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>)
+vUnits:=Substring([UnitHistory]UnitNo;6)
+End if 
+Else 
+vUnits:=[Agreement]UnitsOccup
+End if 
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+vAgreeNo:=[Reservation]ReserveNo
+vUnits:=[Reservation]UnitsReserved
+End if 
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+
+//08/07/16
+//Billed in Advance
+//Calculate using whole months basis
+If (bAdjIncomePre)
+$Amount:=0
+$MthsAdv:=0
+$Month:=0
+$Tax:=0
+$MthsAdv:=Round(([Trxs]DateTo-[Trxs]DateFrom)/30.42;0)
+If ($MthsAdv>=1)
+$Month:=Trunc(((vMthDate)-[Trxs]DateFrom)/30.42;0)+1//THIS DOESN'T SEEM RIGHT 31days=2 30days=1?
+If ($Month<0)
+$Month:=0
+End if 
+
+$Amount:=Round([Trxs]TotAmt/$MthsAdv;2)
+$Tax:=Round([Trxs]TaxAmt/$MthsAdv;2)
+
+Else 
+$Amount:=[Trxs]TotAmt
+$Tax:=[Trxs]TaxAmt
+End if 
+If ($Amount#[Trxs]TotAmt)
+vAmt3:=$Amount
+vAmt1:=$Tax
+vAmt2:=vAmt3-vAmt1
+Else 
+vAmt1:=[Trxs]TaxAmt
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+vAmt3:=[Trxs]TotAmt
+End if 
+Else 
+vAmt1:=[Trxs]TaxAmt
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+vAmt3:=[Trxs]TotAmt
+End if 
+
+
+//Landscape printing
+GET PRINT OPTION(Orientation option;$Orientation)
+If ($Orientation=2)
+If ([Facility]InvStatement>0)
+vAmt3InvNo:=[Trxs]InvNo
+Else 
+vAmt3InvNo:=[Trxs]SeqNo
+End if 
+
+If (vAmt3InvNo<0)
+vAmt3InvNo:=Abs(vAmt3InvNo)+1000000
+End if 
+
+vAnalysisCode:=[Trxs]AnalysisCode
+vGLCode:=[Analysis]GLCode
+End if 
+End if 
+
+If (Form event=On Printing Detail)
+If ([Trxs]CustomerCode=(<>sFacility+"MISCL"))
+[Customer]CustomerName:=Get localized string("Cash Sale")//can't print the customer's name as this is saved to the MiscDetls receipt side of the cash sale!
+vUnits:=""
+vAgreeNo:=""
+End if 
+End if 
+
+If (Form event=On Printing Break)
+vAmt1:=Subtotal(vAmt1)
+vAmt2:=Subtotal(vAmt2)
+vAmt3:=Subtotal(vAmt3)
+vAmt4:=Round(vAmt1+vAmt2;2)
+vAmt5:=0
+[Analysis]Description:=Get localized string("Total for")+" "+[Analysis]Description
+[Trxs]AnalysisCode:=Substring([Trxs]AnalysisCode;6)
+
+
+If (bAdjIncomePre)
+OBJECT SET VISIBLE(*;"Text9";True)//10782
+Else 
+OBJECT SET VISIBLE(*;"Text9";False)//10782
+End if 
+
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+SetFormats 

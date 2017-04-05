@@ -1,0 +1,94 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 28/02/13 MirrorServer - This method loops on the mirror machine to integrate log files each hour
+//LogMonServer
+//Run backup when necessary
+C_LONGINT($i;<>iVerifyStatus)
+C_BOOLEAN($Integrate)
+C_TEXT(<>sVerifyLog)
+<>tLoggingOn:=True
+READ ONLY(*)
+PLATFORM PROPERTIES(<>iPlatform;$i)
+$MirrorPath:=GetPath (Data file)+"StormanFiles"+GetFolderDelimiter 
+$MirrorFile:=$MirrorPath+"Preferences"+GetFolderDelimiter +"Mirror.txt"
+<>sSeparator:=GetFolderDelimiter 
+<>sLogsPath:=$MirrorPath+"Logs"+<>sSeparator
+$BackupPath:=$MirrorPath+"Backups"+<>sSeparator
+$MirrorPath:=$MirrorPath+"Mirror"+<>sSeparator
+If (Test path name($MirrorPath)#Is a folder)
+CREATE FOLDER($MirrorPath)
+End if 
+If (Test path name(<>sLogsPath)#Is a folder)
+CREATE FOLDER(<>sLogsPath)
+End if 
+If (Test path name($BackupPath)#Is a folder)
+CREATE FOLDER($BackupPath)
+End if 
+SyncRecordLog ("Mirror Server Launched")
+Repeat 
+//Integrate New Log Files Arriving
+$Integrate:=False
+//Check existing Mirror folder first in case there are files to bring in
+If (Test path name($MirrorPath)=Is a folder)//Scan directory for journal file
+ARRAY TEXT($aFileNames;0)
+DOCUMENT LIST($MirrorPath;$aFileNames)
+SORT ARRAY($aFileNames;>)
+$JournalFile:=""
+For ($i;1;Size of array($aFileNames))
+If ($aFileNames{$i}="@.journal")
+$JournalFile:=$aFileNames{$i}
+$i:=Size of array($aFileNames)+1
+End if 
+End for 
+$Integrate:=True
+End if 
+//Look for new journal from Live Storman Server
+If ($Integrate=False) & (Test path name($MirrorFile)=Is a document)//Look for Live Storman Server
+$Doc:=Open document($MirrorFile)
+RECEIVE PACKET($Doc;$ReceivePath;Char(13))
+CLOSE DOCUMENT($Doc)
+$ReceivePath:=Replace string($ReceivePath;Char(13);"")//Remove CR if there
+End if 
+If (Test path name($ReceivePath)=Is a folder)//Scan directory for journal file
+ARRAY TEXT($aFileNames;0)
+DOCUMENT LIST($ReceivePath;$aFileNames)
+SORT ARRAY($aFileNames;>)
+$JournalFile:=""
+For ($i;1;Size of array($aFileNames))
+If ($aFileNames{$i}="@.journal")
+$JournalFile:=$aFileNames{$i}
+$i:=Size of array($aFileNames)+1
+End if 
+End for 
+If ($JournalFile>"")
+COPY DOCUMENT($ReceivePath+$JournalFile;$MirrorPath+$JournalFile)
+//Must wait until above command is complete - test if asyncronise
+$Integrate:=True
+End if 
+End if 
+If ($Integrate)
+ON ERR CALL("ErrorLog")
+INTEGRATE LOG FILE($MirrorPath+$JournalFile)
+ON ERR CALL("ErrorLog")
+If (OK=1)
+SyncRecordLog ("Journal Log "+$JournalFile+" successfully integrated")
+MOVE DOCUMENT($MirrorPath+$JournalFile;$BackupPath+$JournalFile)
+DELETE DOCUMENT($ReceivePath+$JournalFile)//Dont delete until it has integrated correctly
+Else 
+SyncRecordLog ("Journal Log "+$JournalFile+" could not be integrated because of the above error!")
+//Should email someone here!
+End if 
+End if 
+
+//Verify Datafile Each Day and Send Report
+If ((Current time>?01:00:00?) & (Current time<?01:01:00?)) | (Shift down)
+<>iVerifyStatus:=0
+<>sVerifyLog:=""
+VERIFY CURRENT DATA FILE(Verify all;0;"VerifyDatafileProgress")
+If (<>sVerifyLog>"")
+SyncRecordLog (<>sVerifyLog)
+End if 
+End if 
+
+DELAY PROCESS(Current process;600)//10 seconds between each running
+Until (<>tLoggingOn=False)
+SyncRecordLog ("Mirror Server Shutdown")

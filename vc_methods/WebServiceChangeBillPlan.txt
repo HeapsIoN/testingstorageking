@@ -1,0 +1,163 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 09/06/10, 16:48:07
+// ----------------------------------------------------
+// Method: WebServiceChangeBillPlan
+// Description
+// Called by WS_AddVoucher to set Billing Plan
+//
+// Parameters
+// ----------------------------------------------------
+
+
+
+C_BOOLEAN($WasWeekly)
+C_LONGINT($i)
+
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+$WasWeekly:=([BillPlan]PlanPeriod="Week")
+$WasCasual:=[BillPlan]CasualBilling
+viMthsAdv:=[Agreement]MthsAdv+[BillPlan]FreePeriods
+
+[Agreement]BillingPlanCode:=$1
+RELATE ONE([Agreement]BillingPlanCode)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+FIRST RECORD([Unit])
+vTotal:=0
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([Unit])
+End for 
+Case of 
+: ($WasCasual=True) & ([BillPlan]CasualBilling=False)
+[Agreement]RegularRent:=0
+If ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month")
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+If ([BillPlan]PlanPeriod="Week")
+[Unit]WeeklyRentedValue:=Round(([Unit]DailyRentedValue*7);2)
+[Unit]ExtraDisc:=CalculateBaseRate (2;0)-[Unit]WeeklyRentedValue
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]WeeklyRentedValue
+Else 
+[Unit]RentedValue:=Round((([Unit]DailyRentedValue*7)/0.2308);2)
+[Unit]ExtraDisc:=CalculateBaseRate (2;0)-[Unit]RentedValue
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]RentedValue
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: ($WasCasual=False) & ([BillPlan]CasualBilling=True)
+[Agreement]RegularRent:=0
+If ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month")
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+If ($WasWeekly=True)
+[Unit]DailyRentedValue:=Round(([Unit]WeeklyRentedValue/7);2)
+Else 
+[Unit]DailyRentedValue:=Round((([Unit]RentedValue*0.2308)/7);2)
+End if 
+[Unit]ExtraDisc:=CalculateBaseRate (2;0)-[Unit]DailyRentedValue
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]DailyRentedValue
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month") & ([BillPlan]CasualBilling=False)
+[Agreement]RegularRent:=0
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+[Unit]RentedValue:=Round(([Unit]WeeklyRentedValue/0.2308);2)
+[Unit]ExtraDisc:=CalculateBaseRate (2;0)-[Unit]RentedValue
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]RentedValue
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: ($WasWeekly=False) & ([BillPlan]PlanPeriod="Week") & ([BillPlan]CasualBilling=False)
+[Agreement]RegularRent:=0
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+[Unit]WeeklyRentedValue:=Round(([Unit]RentedValue*0.2308);2)
+[Unit]ExtraDisc:=CalculateBaseRate (2;0)-[Unit]WeeklyRentedValue
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]RentedValue
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End case 
+
+[Agreement]AgreedDisc:=Round(vTotal-[Agreement]RegularRent;2)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+[Agreement]NewBillingPlan:=""
+If ([BillPlan]DefltNoticePlan#[Agreement]NoticePlanNo)
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+End if 
+If ([Agreement]RegularRent#Old([Agreement]RegularRent))
+vPrevRegRent:=Old([Agreement]RegularRent)
+Else 
+vPrevRegRent:=0
+End if 
+WebServiceChangeMthsAdv (($WasWeekly=True) & ([BillPlan]PlanPeriod="Month");($WasWeekly=False) & ([BillPlan]PlanPeriod="Week"))

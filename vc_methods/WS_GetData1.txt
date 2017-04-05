@@ -1,0 +1,169 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 00/00/00, 00:00:00 (old)
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_GetData
+// Description
+// 
+// 
+// Parameters
+// ----------------------------------------------------
+//24/07/13 DAM Added method to pull data from [Customer] [Agreement] [Reservation] [Contacts] tables
+// If you do any changes - Make sure table 1 is blocked
+
+
+SOAP DECLARATION(WS_vSearchParameter;Is string var;SOAP input)// Agreement number or Customer Code 
+SOAP DECLARATION(WS_arFieldsNames;Text array;SOAP input)
+SOAP DECLARATION(WS_Table;Is Boolean;SOAP input)// Export fields for whole table
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_arFields;Text array;SOAP output)
+SOAP DECLARATION(WS_arValues;Text array;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_GetData1"+Char(13)
+$String:=$String+"WS_vSearchParameter: "+WS_vSearchParameter+Char(13)
+$sizeofarray:=Size of array(WS_arFieldsNames)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arFieldsNames("+String($vlElem)+"):"+WS_arFieldsNames{$vlElem}+Char(13)
+End for 
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+C_TEXT($xml)
+C_TEXT($Table)
+ARRAY TEXT($fieltitles;0)
+ARRAY LONGINT($fieldno;0)
+C_LONGINT(z)
+z:=0
+$Table:=""
+TRACE
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_vSearchParameter;1;5))
+
+If (Records in selection([Facility])=1) & ([Facility]ODBCPassword=WS_WebServicePassword)
+
+Case of 
+: (Length(WS_vSearchParameter)=14)// Agreement table
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vSearchParameter)
+$Table:="[Agreement]"
+GET FIELD TITLES([Agreement];$fieltitles;$fieldno)
+: (Length(WS_vSearchParameter)=13)// Reservation table
+QUERY([Reservation];[Reservation]RReserveNo=WS_vSearchParameter)
+$Table:="[Reservation]"
+GET FIELD TITLES([Reservation];$fieltitles;$fieldno)
+: (Length(WS_vSearchParameter)=15)// Contact table
+QUERY([Contacts];[Contacts]ContactNo=WS_vSearchParameter)
+$Table:="[Contacts]"
+GET FIELD TITLES([Contacts];$fieltitles;$fieldno)
+//: (Length(WS_vSearchParameter)=10)  // Customer table
+: (Length(WS_vSearchParameter)>5) & (Length(WS_vSearchParameter)<=10)// Customer table
+QUERY([Customer];[Customer]CustomerCode=WS_vSearchParameter)
+$Table:="[Customer]"
+GET FIELD TITLES([Customer];$fieltitles;$fieldno)
+End case 
+
+If (Records in selection([Agreement])#0) | (Records in selection([Customer])#0) | (Records in selection([Reservation])#0) | (Records in selection([Contacts])#0)
+If (WS_Table)
+ARRAY TEXT(WS_arValues;Size of array($fieltitles))
+ARRAY TEXT(WS_arFields;Size of array($fieltitles))
+
+For (z;1;Size of array($fieltitles)-1)
+
+WS_arFields{z}:=$fieltitles{z}
+
+If ($fieltitles{z}="Email") | ($fieltitles{z}="Email_") | ($fieltitles{z}="Letter") | ($fieltitles{z}="Letter_")
+WS_arValues{z}:="BLOB or Picture"
+Else 
+$Statement:="WS_arValues{z}:=String("+$Table+WS_arFields{z}+")"
+EXECUTE FORMULA($Statement)
+End if 
+
+End for 
+
+If (Size of array(WS_arFields)>115)
+DELETE FROM ARRAY(WS_arFields;115;Size of array(WS_arFields)-115)
+DELETE FROM ARRAY(WS_arValues;115;Size of array(WS_arValues)-115)
+End if 
+
+Else 
+
+ARRAY TEXT(WS_arValues;Size of array(WS_arFieldsNames))
+ARRAY TEXT(WS_arFields;Size of array(WS_arFieldsNames))
+If (Size of array(WS_arFieldsNames)#0)
+For (z;1;Size of array(WS_arFieldsNames))
+
+$Pos:=Find in array($fieltitles;WS_arFieldsNames{z})
+If ($Pos>0)
+WS_arFields{z}:=WS_arFieldsNames{z}
+$Statement:="WS_arValues{z}:=String("+$Table+WS_arFieldsNames{z}+")"
+EXECUTE FORMULA($Statement)
+Else 
+WS_arValues{z}:=WS_arFieldsNames{z}+" - Field is not found"
+End if 
+End for 
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Table and Record data retrieved successfully."
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1038
+WS_ORErrorDescription:="There are no elements in the retrieved Array."
+End if 
+End if 
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:="Table and Record data retrieved successfully."
+Else 
+ARRAY TEXT(WS_arValues;0)
+ARRAY TEXT(WS_arFields;0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1037
+WS_ORErrorDescription:="No records found in database Storman."
+End if 
+Else 
+ARRAY TEXT(WS_arValues;0)
+ARRAY TEXT(WS_arFields;0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([Customer])
+READ ONLY([Reservation])
+READ ONLY([Contacts])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Contacts])
+
+$String:="End WS_GetData1"+Char(13)
+//$vlElem:=1
+//$sizeofarray:=Size of array(WS_arFields)
+//For ($vlElem;1;$sizeofarray)
+//$String:=$String+"WS_arFields("+String($vlElem)+"):"+WS_arFields{$vlElem}+Char(13)
+//End for 
+//$vlElem:=1
+//$sizeofarray:=Size of array(WS_arValues)
+//For ($vlElem;1;$sizeofarray)
+//$String:=$String+"WS_arValues("+String($vlElem)+"):"+WS_arValues{$vlElem}+Char(13)
+//End for 
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

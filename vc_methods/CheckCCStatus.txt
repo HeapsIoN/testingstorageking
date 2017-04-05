@@ -1,0 +1,270 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 4/12/12 Fixed invalid character reference bug on line #149
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 21/09/11, 14:10:02
+// ----------------------------------------------------
+// Method: CheckCCStatus
+// Description
+// This method is to check the status of unconfirmed Credit Card transactions
+//
+// Parameters
+// $1 - Calling method
+// ----------------------------------------------------
+C_TEXT($1;$Logging)
+ARRAY TEXT($aAnalysisCode;0)
+ARRAY TEXT($aDescription;0)
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+
+$Logging:=GetTextNo ([Facility]MerchantDetails;7;",")
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)//If EziDebit CC, check for unconfirmed transactions
+QUERY([Analysis]; & ;[Analysis]SpecialOptions>53;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions<61;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions#57)
+
+SELECTION TO ARRAY([Analysis]Code;$aAnalysisCode;[Analysis]Description;$aDescription)
+
+//11/11/14 DAM Added for loop
+For ($j;1;Records in selection([Analysis]))
+QUERY([Trxs];[Trxs]AnalysisCode=$aAnalysisCode{$j};*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]Confirmed=False)
+//QUERY([Transaction]; & ;[Transaction]TrxDate<([Facility]LastDaily-4))
+If (Records in selection([Trxs])>0)
+//ConfirmTwo ("There are unconfirmed Credit Card charges, for the Analysis Code: "+$aDescription{$j}+". Would you like to check their status now?";Get localized string("Yes");Get localized string("No"))
+//ConfirmTwo (Get localized string("There are unconfirmed Credit Card charges. Check their status now?")+" for Analysis Code: "+$aDescription{$j};Get localized string("Yes");Get localized string("No"))
+OK:=1
+If (OK=1)
+CREATE SET([Trxs];"$CCAutopay")
+CREATE EMPTY SET([Trxs];"$ToReverse")
+If ($1="Banking")
+READ WRITE([Trxs])
+End if 
+FIRST RECORD([Trxs])
+
+//10/07/15 DAM Added to have analysis record in selection
+QUERY([Analysis];[Analysis]Code=$aAnalysisCode{$j})
+
+$DigiKey:=GetTextNo ([Facility]MerchantDetails;2;",")+"-"+GetTextNo ([Facility]MerchantDetails;3;",")+"-"+GetTextNo ([Facility]MerchantDetails;4;",")+"-"+GetTextNo ([Facility]MerchantDetails;5;",")+"-"+GetTextNo ([Facility]MerchantDetails;6;",")
+For ($i;1;Records in selection([Trxs]))
+//
+If ([Trxs]CCTransID#"")
+//02/06/15 DAM Added [Trxs]InvAdjReason to use it for cash sales.
+If ([Trxs]CustomerCode=(<>sFacility+"MISCL"))
+[Trxs]InvAdjReason:=""
+Else 
+[Trxs]Narration:=""
+End if 
+
+If (Length([Trxs]CCAuthNo)=1)
+$Success:=WSC_EziGetPaymentDetail ($DigiKey;[Trxs]CCTransID)
+Else 
+$Success:=WSC_EziGetPayments ($DigiKey;[Trxs]CCTransID)
+End if 
+
+//02/06/15 DAM Added code below for MISCL transactions
+
+If ([Trxs]CustomerCode=(<>sFacility+"MISCL"))// For Cash Sale Transactions ONLY
+
+If ([Trxs]InvAdjReason="")
+Case of 
+: ($Success="S")
+//Successful
+[Trxs]Confirmed:=True
+If (([Trxs]CCAuthNo="") | ([Trxs]CCAuthNo="S") | ([Trxs]CCAuthNo="W") | ([Trxs]CCAuthNo="P") | ([Trxs]CCAuthNo="D") | ([Trxs]CCAuthNo="F"))
+[Trxs]CCAuthNo:="S"
+End if 
+//[Transaction]DateBanked:=Current date
+[Trxs]InvAdjReason:=Get localized string("Successful")
+: ($Success="W")
+//Queued
+[Trxs]CCAuthNo:="W"
+[Trxs]InvAdjReason:=Get localized string("Queued")
+: ($Success="P")
+//Pending
+[Trxs]InvAdjReason:=Get localized string("Pending")
+: ($Success="D")
+//Dishonour
+[Trxs]InvAdjReason:=Get localized string("Dishonoured")
+ADD TO SET([Trxs];"$ToReverse")
+: ($Success="F")
+//Fatal Dishonour/Failed
+If ($Logging="3") & (WEB SERVICE Get info(1)#"")
+AlertMessage (WEB SERVICE Get info(1))
+End if 
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Trxs]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:="Check Credit Card for Amount: "+String([Trxs]TotAmt;"###,###.00")+", Result="+$Success+", Message="+gError
+SAVE RECORD([NotesHistory])
+[Trxs]InvAdjReason:=Get localized string("Failed")
+ADD TO SET([Trxs];"$ToReverse")
+Else 
+//Error
+[Trxs]InvAdjReason:=Get localized string("Error")
+If ($Logging="3") & (WEB SERVICE Get info(1)#"")
+AlertMessage (WEB SERVICE Get info(1))
+End if 
+End case 
+End if 
+
+Else // For ALL transactions
+
+If ([Trxs]Narration="")
+Case of 
+: ($Success="S")
+//Successful
+[Trxs]Confirmed:=True
+If (([Trxs]CCAuthNo="") | ([Trxs]CCAuthNo="S") | ([Trxs]CCAuthNo="W") | ([Trxs]CCAuthNo="P") | ([Trxs]CCAuthNo="D") | ([Trxs]CCAuthNo="F"))
+[Trxs]CCAuthNo:="S"
+End if 
+//[Transaction]DateBanked:=Current date
+[Trxs]Narration:=Get localized string("Successful")
+: ($Success="W")
+//Queued
+[Trxs]CCAuthNo:="W"
+[Trxs]Narration:=Get localized string("Queued")
+: ($Success="P")
+//Pending
+[Trxs]Narration:=Get localized string("Pending")
+: ($Success="D")
+//Dishonour
+[Trxs]Narration:=Get localized string("Dishonoured")
+ADD TO SET([Trxs];"$ToReverse")
+: ($Success="F")
+//Fatal Dishonour/Failed
+If ($Logging="3") & (WEB SERVICE Get info(1)#"")
+AlertMessage (WEB SERVICE Get info(1))
+End if 
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Trxs]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:="Check Credit Card for Amount: "+String([Trxs]TotAmt;"###,###.00")+", Result="+$Success+", Message="+gError
+SAVE RECORD([NotesHistory])
+[Trxs]Narration:=Get localized string("Failed")
+ADD TO SET([Trxs];"$ToReverse")
+Else 
+//Error
+[Trxs]Narration:=Get localized string("Error")
+If ($Logging="3") & (WEB SERVICE Get info(1)#"")
+AlertMessage (WEB SERVICE Get info(1))
+End if 
+End case 
+End if 
+End if 
+
+Else 
+AlertMessage ("Agreement No: "+Substring([Trxs]AgreeNo;6;9)+" doesn't have reference.")
+End if 
+
+
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+//
+End for 
+
+USE SET("$CCAutopay")
+CLEAR SET("$CCAutopay")
+If ($1="Daily")
+DEFAULT TABLE([Trxs])
+End if 
+BREAK LEVEL(0)
+FORM SET OUTPUT([Trxs];"TransPrintUncon")
+vTitle:=Get localized string("Unconfirmed Receipts")
+vLegend:=Get localized string("Unconfirmed Credit Card charges prior to")+" "+String([Facility]LastDaily;6)
+PrintSelection ("P")
+USE SET("$ToReverse")
+If (Records in selection([Trxs])>0)
+//ConfirmTwo ("Create reversal transactions for "+String(Records in selection([Transaction]))+" dishonoured/failed Direct Debits?";"Yes";"No")
+OK:=1
+If (OK=1)
+While (Records in selection([Trxs])>0)
+FIRST RECORD([Trxs])
+REMOVE FROM SET([Trxs];"$ToReverse")
+$RevAnalysis:=[Trxs]AnalysisCode
+$RevAmount:=[Trxs]TotAmt
+$RevDesc:=[Trxs]Description
+$RevAgree:=[Trxs]AgreeNo
+$RevCust:=[Trxs]CustomerCode
+[Trxs]Confirmed:=True
+SAVE RECORD([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=$RevAgree
+[Trxs]CustomerCode:=$RevCust
+[Trxs]AnalysisCode:=$RevAnalysis
+[Trxs]Charge:=False
+[Trxs]Confirmed:=True
+[Trxs]DateBanked:=!00-00-00!
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+[Trxs]Description:=Substring("Reversal "+$RevDesc;1;80)
+[Trxs]TotAmt:=$RevAmount*-1
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+SAVE RECORD([Trxs])
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])>0)
+If ($1="Banking")
+READ WRITE([Agreement])
+READ WRITE([Customer])
+End if 
+
+vNewReceipt:=False
+UpdateReceipt ("Web")
+
+SAVE RECORD([Agreement])
+Else 
+If ($1="Banking")
+READ WRITE([Reservation])
+READ WRITE([Customer])
+End if 
+
+vNewReceipt:=False
+UpdateReceipt ("Web")
+
+SAVE RECORD([Reservation])
+End if 
+READ WRITE([Trxs])
+If (Records in selection([Customer])#0)
+$custStatus:=WSC_EziGetCustomerDetails ($DigiKey;"";[Customer]customerProfileID)
+If (Substring($custStatus;1;1)="H") | (Substring($custStatus;1;1)="C")
+$read:=Read only state([Customer])
+READ WRITE([Customer])
+[Customer]custPaymentProfID:=""
+SAVE RECORD([Customer])
+If ($read)
+READ ONLY([Customer])
+End if 
+End if 
+End if 
+If ($Logging="3") & (WEB SERVICE Get info(1)#"")
+AlertMessage (WEB SERVICE Get info(1))
+End if 
+
+SAVE RECORD([Customer])
+USE SET("$ToReverse")
+End while 
+End if 
+End if 
+If ($1="Banking")
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+End if 
+
+End if 
+NEXT RECORD([Analysis])
+End for 
+End if 

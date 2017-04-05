@@ -1,0 +1,155 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$2;$3;$4;$5;$6)
+C_TEXT($Message;$Header;$Response;$Buffer)
+C_LONGINT($TCPID;$Error;$Pos;$TCP_ReceiveError)
+C_TIME($vhDocRef;$WaitTime)
+C_TEXT($t)
+C_LONGINT($Status)
+
+$AA:=$1
+$OID:=$2
+$OPW:=$3
+$AC:=$4
+$t:=Char(9)
+$Batch:=""
+$Content:=""
+$Hash:=""
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+
+//Server Details
+$PrimaryServer:="ftp.advam.com"
+$TestServer:="demo-ftp.advam.com"
+$RequestURL:="/batch/post.php"
+$ServerPort:="443"
+
+If (Substring($AA;1;4)="test")
+$ServerAddress:=$TestServer
+$AA:=Substring($AA;5)
+Else 
+$ServerAddress:=$PrimaryServer
+End if 
+
+If (Count parameters>4)
+$Batch:=$5
+End if 
+If (Count parameters=6)
+Case of 
+: ($AC="S")
+$Content:=$6
+: ($AC="C")
+$Hash:=$6
+Else 
+//Do nothing
+End case 
+End if 
+
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+
+SetFacility 
+
+//Build the transaction message
+$Message:="AA="+$AA
+$Message:=$Message+"&OID="+$OID
+$Message:=$Message+"&OPW="+$OPW
+$Message:=$Message+"&AC="+$AC
+
+If (Count parameters>4)
+$Message:=$Message+"&BATCH="+$BATCH
+End if 
+If (Count parameters=6)
+Case of 
+: ($AC="S")
+$Message:=$Message+"&CONTENT="+$CONTENT
+: ($AC="C")
+$Message:=$Message+"&MD5="+c
+Else 
+//Do nothing
+End case 
+End if 
+
+$Header:=$Header+"POST "+$RequestURL+" HTTP/1.0"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr//+":"+$ServerPort+$cr
+$Header:=$Header+"Accept: "+"*/*"+$cr
+$Header:=$Header+"Content-type: application/x-www-form-urlencoded"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr
+
+$Error:=IT_SetTimeOut (30)
+$TCP_OpenError:=TCP_Open ($ServerAddress;Num($ServerPort);$TCPID;3)
+
+If ($TCP_OpenError=0)
+$TCP_SendError:=TCP_Send ($TCPID;$Header+$cr+$Message+$cr+$cr)
+
+ON ERR CALL("ErrorNone")
+If (Test path name("Request.txt"+$4)=Is a document)
+DELETE DOCUMENT("Request.txt"+$4)
+End if 
+$vhDocRef:=Create document("Request.txt"+$4)
+SEND PACKET($vhDocRef;$Header+$cr+$Message+$cr+$cr)
+CLOSE DOCUMENT($vhDocRef)
+ON ERR CALL("ErrorLog")
+
+If ($TCP_SendError=0)
+$Message:=""
+$WaitTime:=Current time+30
+Repeat //While a HTTP response is being received
+$TCP_ReceiveError:=TCP_Receive ($TCPID;$Buffer)
+$Error:=TCP_State ($TCPID;$Status)//0=closed, 2=listening, 8=Established
+$Message:=$Message+$Buffer
+Until ($Status=0) | ($TCP_ReceiveError#0) | (Current time>$WaitTime)
+End if 
+
+$TCP_CloseError:=TCP_Close ($TCPID)
+
+ON ERR CALL("ErrorNone")
+If (Test path name("Response.txt"+$4)=Is a document)
+DELETE DOCUMENT("Response.txt"+$4)
+End if 
+$vhDocRef:=Create document("Response.txt"+$4)
+SEND PACKET($vhDocRef;$Message)
+CLOSE DOCUMENT($vhDocRef)
+ON ERR CALL("ErrorLog")
+
+If ($TCP_SendError#0) | ($TCP_ReceiveError#0) | ($TCP_CloseError#0)//There is a TCP problem
+Case of 
+: ($TCP_SendError#0)
+$0:="N"+$t+"SM200"+$t+"Could Not Send Transaction Request - "+String($TCP_SendError)+$t
+: ($TCP_ReceiveError#0)
+$0:="N"+$t+"SM300"+$t+"Could Not Recieve Transaction Response - "+String($TCP_ReceiveError)+$t
+: ($TCP_CloseError#0)
+$0:="N"+$t+"SM600"+$t+"Could Not Close Connection - "+String($TCP_CloseError)+$t
+Else 
+//Do nothing
+End case 
+Else //There is no TCP Error, process the response
+$Pos:=Tickcount
+$HTTPResponseCode:=""
+Repeat 
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)//Get the string after the 'HTTP' code line
+If ($HTTPResponse#"") | (Position("HTTP";$HTTPResponse)#0)//Checks to see if the response is invalid, if not the exits loop
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//Gets the HTTP code number
+If ($HTTPResponseCode="100") | ($HTTPResponseCode="200")//Only two valid codes allowed - 100 (Continue / Wait) and 200 (OK), otherwise it exits
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else 
+$Message:=""//Invalid Response Code - Exit
+End if 
+Else 
+$Message:=""//Invalid Response String/Message Format - Exit
+End if 
+Until (Num($HTTPResponseCode)=200) | (Num($HTTPResponseCode)#100) | ($Message="") | (Tickcount>($Pos+120))//Only stays in loop if response code = 100 and $Message is not empty
+
+If ($Message="")//Problem with the response
+$0:="N"+$t+"SM400"+$t+"Invalid HTTP Response"+$t
+Else 
+$0:=GetXMLResults ($Message;$AC)
+End if 
+End if 
+Else 
+$0:="N"+$t+"SM500"+$t+"TCP Connection Could Not Be Opened"+$t
+End if 
+$Error:=IT_SetTimeOut (30)

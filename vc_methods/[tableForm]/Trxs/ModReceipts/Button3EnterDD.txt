@@ -1,0 +1,75 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ((GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")))
+If ([Trxs]TotAmt=0)
+AlertMessage (Get localized string("Cannot process a direct debit  for")+" "+<>sCurrency+"0!")
+Else 
+gError:=""
+If (bAddRefund=1)//10780
+C_REAL($Amount)
+C_TEXT($MerchantEzi;$EziResponse)
+$Amount:=Abs(Round(vMinus;2))
+$MerchantEzi:=String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+If ((vAuthcode#"") & (vAuthcode#"W") & (vAuthcode#"P") & (vAuthcode#"D") & (vAuthcode#"F"))
+$Success:=WSC_EziGetPaymentDetail ($MerchantEzi;vTransID)
+If ($Success="S")//10869
+[Trxs]DateBanked:=!00-00-00!
+End if 
+$EziResponse:=WSC_EziProcessRefund ($MerchantEzi;"";vTransID;$Amount;True)
+If (($EziResponse="ERR@") | ($EziResponse="DEC@"))// & (Substring([Agreement]CustomerCode;1;5)=<>sFacility)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode//[Agreement]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:="Attempted Direct Debit Transaction for : Amt:"+String($Amount;"###,###.00")+", Result="+$EziResponse+", Message="+vCCText
+SAVE RECORD([NotesHistory])
+gError:="ERROR"
+Else 
+gError:="OK"
+[Trxs]Confirmed:=False//10863
+//10864 & 10867
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt;2)
+SAVE RECORD([Reservation])
+Else 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+SAVE RECORD([Agreement])
+End if 
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Customer])
+End if 
+Else 
+AlertMessage ("Only settled payments can be refunded")
+gError:="ERROR"
+End if 
+Else 
+ManualDD 
+End if 
+
+
+
+
+
+If (ok=1)
+If (gError#"OK")
+OBJECT SET VISIBLE(bAccept;False)
+OBJECT SET VISIBLE(bBoth;False)
+OBJECT SET VISIBLE(bDelete;False)
+
+If (gError="OKFCCS")//- 9529
+gError:="OK"
+End if 
+Else 
+bAccept:=1
+ACCEPT
+End if 
+Else 
+If (gError="Cancel")
+gError:=""
+End if 
+End if 
+End if 
+End if 

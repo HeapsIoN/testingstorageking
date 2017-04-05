@@ -1,0 +1,204 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If ([Contacts]EmailAddress>"")
+C_POINTER($p)
+//$CustCode:=[Customer]CustomerCode
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode#"")
+[Contacts]Quote_UnitType:=""
+For ($i;1;Records in selection([Quote]))
+[Contacts]Quote_UnitType:=[Contacts]Quote_UnitType+[Quote]Size+Char(9)+<>sCurrency+String([Quote]Price;"###,##0.00")+Char(9)+[Quote]Note+Char(13)
+NEXT RECORD([Quote])
+End for 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode="")
+[Contacts]Quote_Other:=""
+For ($i;1;Records in selection([Quote]))
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+[Contacts]Quote_Other:=[Contacts]Quote_Other+[Analysis]Description+" x "+[Quote]Size+Char(9)+<>sCurrency+String([Quote]Price;"###,##0.00")+Char(9)+[Quote]Note+Char(13)
+NEXT RECORD([Quote])
+End for 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=0;*)
+//QUERY([Notices]; & ;[Notices]RefDateField>10;*)  `Added 4.1.0 to avoid getting movein or moveout letters
+//QUERY([Notices]; & ;[Notices]DaysAfter<0;*)
+QUERY([Notices]; & ;[Notices]EmailSubject>"  ";*)
+QUERY([Notices]; & ;[Notices]EmailBlank=False)
+$Print:=True
+If (Records in selection([Notices])>1)
+ORDER BY([Notices];[Notices]RefDateField;>;[Notices]DaysAfter;>)//NextBillDate to come first
+$Print:=False
+ORDER BY([Notices];[Notices]Description;>)
+ARRAY TEXT(asNoticeDesc;0)
+SELECTION TO ARRAY([Notices]Description;asNoticeDesc)
+vTitle:=Get localized string("Select Email")
+Open window((Screen width/2)-199;(Screen height/2)-180;(Screen width/2)+199;(Screen height/2)+180;5;Get localized string("Select Email"))
+DIALOG([Notices];"SelectNotice")
+CLOSE WINDOW
+If (OK=1)
+If (asNoticeDesc>=1)
+QUERY SELECTION([Notices];[Notices]Description=asNoticeDesc{asNoticeDesc})
+$Print:=True
+End if 
+End if 
+End if 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+Case of 
+: (Records in selection([Notices])=0)
+AlertMessage (Get localized string("There are no email notices set up for reminders. Please select Notice Plans from the Maintenance menu, locate your reminder notice and ensure you configure the email options for this notice."))
+: ([Contacts]EmailAddress="") | (Position(Char(64);[Contacts]EmailAddress;0;*)=0)
+AlertMessage (Get localized string("The customer's email address is not valid. Ensure your customer's email address contains an @ sign, and only letters, numbers, hyphens or underscores. Other symbols are not supported."))
+: ([Notices]EmailBlank)
+AlertMessage (Get localized string("The email text for the reminder notice has not been setup. Please select Notice Plans from the Maintenance menu, locate your reminder notice and configure the email text for this notice."))
+Else 
+If ($Print=True)
+CREATE RECORD([Letters])
+[Letters]ContactNo:=[Contacts]ContactNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]DateSent:=Current date
+//$p:=->[Notices]Email
+[Letters]SentViaEmail:=True
+[Letters]Custom1:=[Notices]EmailSubject
+[Letters]SentwithInv:=True
+//BLOB PROPERTIES($p->;$Compressed)
+//If ($Compressed#Is not compressed)
+//EXPAND BLOB($p->)
+//End if 
+//[Letters]LetterBLOB:=FreezeLetter ($p;True;1)
+
+BLOB PROPERTIES([Notices]Email;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+
+$Blobtext74:=Convert to text([Notices]Email;"UTF-8")
+
+$Blobtext74:=ProcessStormanHTMLTags ($Blobtext74)
+
+CONVERT FROM TEXT($Blobtext74;"UTF-8";[Letters]LetterBLOB)
+[Letters]Custom1:=ProcessStormanHTMLTags ([Letters]Custom1)
+
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+QUERY([Letters];[Letters]ContactNo=[Contacts]ContactNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+CREATE RECORD([Message])
+[Message]Subject:=[Notices]EmailSubject
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]Address:=[Contacts]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+/////[Message]EmailMsg:=[Letters]LetterBLOB
+[Message]Facility:=[Contacts]Facility
+
+
+//fb9730 by Eugene
+BLOB PROPERTIES([Letters]LetterBLOB;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Letters]LetterBLOB)
+End if 
+[Message]EmailMsg:=[Letters]LetterBLOB
+COMPRESS BLOB([Letters]LetterBLOB)
+
+
+
+//$Document:=<>sTutPath+"Email"+[Letters]ContactNo
+//If ((Test path name($Document)=Is a document))
+//$vhDocRef:=Open document($Document)  // Select the document of your choice
+//DOCUMENT TO BLOB(Document;$Blob74)
+//CLOSE DOCUMENT($vhDocRef)
+//$Blobtext74:=BLOB to text($Blob74;Mac text without length)
+//$Blobtext74:=Replace string($Blobtext74;"./images/";<>sTutPath+"images\\")  //◊sResourcesPath+"PictureResources")  `
+//$Blobtext74:=Replace string($Blobtext74;"<p>";"<br>")
+//$Blobtext74:=Replace string($Blobtext74;"</p>";"<br>")
+//TEXT TO BLOB($Blobtext74;[Message]EmailMsg;Mac text without length)
+//DELETE DOCUMENT($Document)
+//Else 
+//[Message]MsgBody:=vLeg
+//End if 
+If ([Facility]UsePDFWriter) | (<>iPlatform=2)
+[Message]Attachments:=<>sPDFDocsPath+"Quote"+[Contacts]ContactNo+".pdf"
+
+[Letters]Attachments:=<>sPDFDocsPath+[Message]Attachments//fb11178
+
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+If ($Name="Failed")
+ABORT
+End if 
+SelectPDFDoc (2;[Message]Attachments)
+SET PRINT PREVIEW(False)
+FORM SET OUTPUT([Quote];"PrintQuote")
+PrintSelection ("P*";->[Quote])
+FORM SET OUTPUT([Quote];"Output")
+SelectPDFDoc (3;$Name)
+SelectPDFDoc (4;[Message]Attachments)
+<>tPrintPDF:=False
+[Message]Attachments:="Quote"+[Contacts]ContactNo+".pdf"
+$Document:=<>sPDFDocsPath+"Quote"+[Contacts]ContactNo+".pdf"
+DOCUMENT TO BLOB($Document;[Message]AttachmentBlob)
+COMPRESS BLOB([Message]AttachmentBlob)
+Else 
+AlertMessage (Get localized string("The PDF Writer is not available or not set up correctly!"))
+End if 
+SAVE RECORD([Message])
+ConfirmTwo (Get localized string("Do you wish to edit the contents of this email?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+FORM SET INPUT([Message];"MessageEdit")
+//Open HTML Email Editor
+READ WRITE([Message])
+
+BLOB PROPERTIES([Message]EmailMsg;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Message]EmailMsg)
+End if 
+
+Test_TextBlob:=Convert to text([Message]EmailMsg;"UTF-8")
+Test_TheID:=Record number([Message])
+Test_Mailpath:=""
+$Window:=Open window((Screen width/2)-408;(Screen height/2)-338;(Screen width/2)+408;(Screen height/2)+338;4096;Get localized string("Email Message"))
+MODIFY RECORD([Message];*)
+//wrMessage:=WR New offscreen area 
+
+//BLOB TO DOCUMENT(<>sTutPath+"Email"+[Letters]ContactNo+".htm";[Message]EmailMsg)
+
+//WR OPEN DOCUMENT (wrMessage;<>sTutPath+"Email"+[Letters]ContactNo+".htm";"HTM3")
+//[Letters]LetterBLOB:=WR Area to blob (wrMessage;1)
+[Letters]LetterDesc:=[Message]Subject
+//WR DELETE OFFSCREEN AREA (wrMessage)
+[Letters]LetterBLOB:=[Message]EmailMsg
+//BLOB PROPERTIES([Letters]LetterBLOB;$Compressed)
+//If ($Compressed#Is not compressed)
+//EXPAND BLOB([Letters]LetterBLOB)
+//End if 
+COMPRESS BLOB([Letters]LetterBLOB)
+COMPRESS BLOB([Message]EmailMsg)
+//SAVE RECORD([Letters])
+CLOSE WINDOW($Window)
+UNLOAD RECORD([Message])
+End if 
+SAVE RECORD([Letters])//11178
+QUERY([Message];[Message]OutIn=True;*)
+QUERY([Message]; & ;[Message]SentRead=False;*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+If (Records in selection([Message])>0)
+READ WRITE([Message])
+CheckMail 
+READ ONLY([Message])
+UNLOAD RECORD([Message])
+End if 
+OBJECT SET ENABLED(bCancel;False)
+
+If (In transaction)
+SAVE RECORD([Contacts])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+End case 
+Else 
+AlertMessage (Get localized string("You need to enter the contacts email address"))
+End if 

@@ -1,0 +1,309 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP input)
+SOAP DECLARATION(WS_Promotioion;Is text;SOAP input)
+SOAP DECLARATION(WS_InsuranceID;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_MoveInCost"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+$String:=$String+"WS_Promotioion: "+WS_Promotioion+Char(13)
+$String:=$String+"WS_InsuranceID: "+WS_InsuranceID+Char(13)
+
+WSRECORDLOG ($String)
+
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ItemDescription;Text array;SOAP output)
+SOAP DECLARATION(WS_ItemAmount;Real array;SOAP output)
+SOAP DECLARATION(WS_ItemTaxAmountt;Real array;SOAP output)
+SOAP DECLARATION(WS_StartDateStr;Text array;SOAP output)
+SOAP DECLARATION(WS_EndDateStr;Text array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_ItemDescription;0)
+ARRAY REAL(WS_ItemAmount;0)
+ARRAY REAL(WS_ItemTaxAmountt;0)
+ARRAY TEXT(WS_StartDateStr;0)
+ARRAY TEXT(WS_EndDateStr;0)
+C_BOOLEAN($bDiscount)
+C_REAL($DiscAmt)
+$DiscAmt:=0
+$bDiscount:=False
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+If (Records in selection([Facility])#0)
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitID;*)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+
+If (Records in selection([Unit])#0)
+WS_RET_CODE:=True
+// Rental Fee
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+If ([Unit]MoveIn=Date("00/00/00"))
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String(WS_MoveInDate)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date(WS_MoveInDate;0;1;0))
+Else 
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Unit]MoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date([Unit]MoveIn;0;1;0))
+End if 
+If ([UnitType]RentAnalysis#"")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"RF")
+End if 
+
+QUERY([Promotions];[Promotions]VoucherCode=WS_Promotioion)
+If (Records in selection([Promotions])#0)
+If ([Promotions]PromoType=True)
+QUERY([BillPlan];[BillPlan]Code=[Promotions]BillingPlanCode;*)
+QUERY([BillPlan]; & ;[BillPlan]KioskInactive=False)
+If (Records in selection([BillPlan])#0)
+If ([BillPlan]PlanPeriod="Week")
+
+If ([BillPlan]DiscPercentage#0)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=(([UnitType]WeeklyRate*(100-[BillPlan]DiscPercentage)/100)*[BillPlan]PeriodstoPay)*0.2308
+Else 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=(([UnitType]WeeklyRate-[BillPlan]DiscFixedAmt)*[BillPlan]PeriodstoPay)*0.2308
+End if 
+
+If ([BillPlan]ShowIncentonInv)
+$bDiscount:=True
+$DiscAmt:=[UnitType]WeeklyRate-WS_ItemAmount{Size of array(WS_ItemAmount)}
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]WeeklyRate
+End if 
+
+Else 
+If ([BillPlan]DiscPercentage#0)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=([UnitType]MonthlyRate*(100-[BillPlan]DiscPercentage)/100)*[BillPlan]PeriodstoPay
+Else 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=([UnitType]MonthlyRate-[BillPlan]DiscFixedAmt)*[BillPlan]PeriodstoPay
+End if 
+
+If ([BillPlan]ShowIncentonInv)
+$bDiscount:=True
+$DiscAmt:=[UnitType]MonthlyRate-WS_ItemAmount{Size of array(WS_ItemAmount)}
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]MonthlyRate
+End if 
+
+End if 
+Else 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]MonthlyRate
+End if 
+
+Else 
+If ([Promotions]ShowDiscount=True)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]MonthlyRate
+Else 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]MonthlyRate-[Promotions]DiscountAmount
+End if 
+End if 
+Else 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]MonthlyRate
+End if 
+
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[Analysis]Description
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=CalcTaxAmt (WS_ItemAmount{Size of array(WS_ItemAmount)})
+
+
+If ([Facility]TaxAddtoAmt=False)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=WS_ItemAmount{Size of array(WS_ItemAmount)}-WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}
+End if 
+
+
+//Billing Plan Discount
+
+If ($bDiscount) & ($DiscAmt#0)
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1;1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1;1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1;1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1;1)
+If ([Unit]MoveIn=Date("00/00/00"))
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String(WS_MoveInDate)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date(WS_MoveInDate;0;1;0))
+Else 
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Unit]MoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date([Unit]MoveIn;0;1;0))
+End if 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=$DiscAmt
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[BillPlan]AnalysisDesc
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=CalcTaxAmt (WS_ItemAmount{Size of array(WS_ItemAmount)})
+If ([Facility]TaxAddtoAmt=False)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=WS_ItemAmount{Size of array(WS_ItemAmount)}-WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}
+End if 
+End if 
+
+//Promotion Discount
+
+If (Records in selection([Promotions])#0) & ([Promotions]ShowDiscount) & ([Promotions]PromoType=False)
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1;1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1;1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1;1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1;1)
+If ([Unit]MoveIn=Date("00/00/00"))
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String(WS_MoveInDate)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date(WS_MoveInDate;0;1;0))
+Else 
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Unit]MoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date([Unit]MoveIn;0;1;0))
+End if 
+
+QUERY([Analysis];[Analysis]Code=[Promotions]AnalysisCode)
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[Analysis]Description
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[Promotions]DiscountAmount*(-1)
+
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=CalcTaxAmt (WS_ItemAmount{Size of array(WS_ItemAmount)})
+
+If ([Facility]TaxAddtoAmt=False)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=WS_ItemAmount{Size of array(WS_ItemAmount)}-WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}
+End if 
+
+End if 
+
+
+// Deposit
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])#0)
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1;1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1;1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1;1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1;1)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]DepositAmt+[Analysis]DfltSellAmt
+If ([Unit]MoveIn=Date("00/00/00"))
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String(WS_MoveInDate)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date(WS_MoveInDate;0;1;0))
+Else 
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Unit]MoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date([Unit]MoveIn;0;1;0))
+End if 
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[Analysis]Description
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=0
+End if 
+
+//Insurance
+If (WS_InsuranceID#"")
+QUERY([InsuranceRates];[InsuranceRates]Facility=WS_FacilityID;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]PrimaryKey=WS_InsuranceID)
+If (Records in selection([InsuranceRates])#0)
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"IN";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])#0)
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1;1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1;1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1;1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1;1)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[InsuranceRates]Premium
+If ([Unit]MoveIn=Date("00/00/00"))
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String(WS_MoveInDate)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date(WS_MoveInDate;0;1;0))
+Else 
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Unit]MoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String(Add to date([Unit]MoveIn;0;1;0))
+End if 
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[Analysis]Description
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=CalcTaxAmt ([InsuranceRates]Premium)
+If ([Facility]TaxAddtoAmt=False)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=WS_ItemAmount{Size of array(WS_ItemAmount)}-WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}
+End if 
+End if 
+End if 
+End if 
+
+// Other analysis codes
+QUERY([Analysis];[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"DP";*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"RF";*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"IN";*)
+QUERY([Analysis]; & ;[Analysis]Code=WS_FacilityID+"@")
+$size:=Size of array(WS_ItemDescription)
+If (Records in selection([Analysis])#0)
+FIRST RECORD([Analysis])
+For ($i;$size+1;$size+Records in selection([Analysis]))
+INSERT IN ARRAY(WS_ItemDescription;$i;1)
+INSERT IN ARRAY(WS_StartDateStr;$i;1)
+INSERT IN ARRAY(WS_EndDateStr;$i;1)
+INSERT IN ARRAY(WS_ItemAmount;$i;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;$i;1)
+WS_ItemAmount{$i}:=[Analysis]DfltSellAmt
+WS_StartDateStr{$i}:=String([Unit]MoveIn)
+WS_EndDateStr{$i}:=String(Add to date([Unit]MoveIn;0;1;0))
+WS_ItemDescription{$i}:=[Analysis]Description
+
+If ([Analysis]Taxable)
+
+If ([Analysis]TaxRate#0)
+WS_ItemTaxAmountt{$i}:=(WS_ItemAmount{$i}*[Analysis]TaxRate)/100
+Else 
+WS_ItemTaxAmountt{$i}:=(WS_ItemAmount{$i}*[Facility]TaxRate)/100
+End if 
+Else 
+WS_ItemTaxAmountt{$i}:=0
+End if 
+
+If ([Facility]TaxAddtoAmt=False)
+WS_ItemAmount{$i}:=WS_ItemAmount{$i}-WS_ItemTaxAmountt{$i}
+End if 
+
+NEXT RECORD([Analysis])
+End for 
+End if 
+
+Else 
+WS_ERROR:="Unit Not Found or Unavailable"
+WS_RET_CODE:=False
+End if 
+Else 
+WS_ERROR:="Facility Not Found"
+WS_RET_CODE:=False
+End if 
+
+$String:="End WS_Insomniac_MoveInCost"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+
+$sizeofarray:=Size of array(WS_ItemDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemDescription("+String($vlElem)+"):"+WS_ItemDescription{$vlElem}+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ItemAmount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemAmount("+String($vlElem)+"):"+String(WS_ItemAmount{$vlElem})+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ItemTaxAmountt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemTaxAmountt("+String($vlElem)+"):"+String(WS_ItemTaxAmountt{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_StartDateStr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_StartDateStr("+String($vlElem)+"):"+WS_StartDateStr{$vlElem}+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_EndDateStr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_EndDateStr("+String($vlElem)+"):"+WS_EndDateStr{$vlElem}+Char(13)
+End for 
+
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

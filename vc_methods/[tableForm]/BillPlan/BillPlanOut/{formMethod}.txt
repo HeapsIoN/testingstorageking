@@ -1,0 +1,95 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+If (Size of array(<>asFacilities)>1)
+OBJECT SET VISIBLE(bMod;True)
+Else 
+OBJECT SET VISIBLE(bMod;False)
+End if 
+//This variable to hold column separator whenever a record is in the list.   Hiding text object on demand produced undesired results
+C_TEXT(vtColumnSeparator)
+vtColumnSeparator:=""
+
+QUERY SELECTION([BillPlan];[BillPlan]CasualBilling=False)
+
+SELECTION TO ARRAY([BillPlan]Code;asRevertCode)
+LOAD RECORD([BillPlan])
+SELECTION TO ARRAY([BillPlan]Description;asBillingPlanRevert)
+LOAD RECORD([BillPlan])
+INSERT IN ARRAY(asRevertCode;1;1)
+INSERT IN ARRAY(asBillingPlanRevert;1;1)
+asRevertCode{1}:=<>sFacility
+asBillingPlanRevert{1}:="<"+Get localized string("Do not change")+">"
+
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>;[BillPlan]Code;>)
+
+QUERY SELECTION([BillPlan];[BillPlan]CasualBilling=True)
+
+SELECTION TO ARRAY([BillPlan]Code;asDailyRevertCode)
+LOAD RECORD([BillPlan])
+SELECTION TO ARRAY([BillPlan]Description;asDailyBillingPlanRevert)
+LOAD RECORD([BillPlan])
+INSERT IN ARRAY(asDailyRevertCode;1;1)
+INSERT IN ARRAY(asDailyBillingPlanRevert;1;1)
+asDailyRevertCode{1}:=<>sFacility
+asDailyBillingPlanRevert{1}:="<"+Get localized string("Do not change")+">"
+
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>;[BillPlan]Code;>)
+
+SetFormats 
+LoadGradients 
+End if 
+If (Form event=On Display Detail)
+//Display / Hide Column Separators
+If ([BillPlan]Code#"")
+vtColumnSeparator:="/"
+Else 
+vtColumnSeparator:=""
+End if 
+If ([BillPlan]PeriodstoPay=1)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vPlanPeriod:=Get localized string("Day")
+: ([BillPlan]PlanPeriod="Week")
+vPlanPeriod:=Get localized string("Week")
+: ([BillPlan]PlanPeriod="Year")
+vPlanPeriod:=Get localized string("Year")
+Else 
+vPlanPeriod:=Get localized string("Month")
+End case 
+Else 
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vPlanPeriod:=Get localized string("Day")//Needs Days1
+: ([BillPlan]PlanPeriod="Week")
+vPlanPeriod:=Get localized string("Weeks1")
+: ([BillPlan]PlanPeriod="Year")
+vPlanPeriod:=Get localized string("Year")//Needs Years1
+Else 
+vPlanPeriod:=Get localized string("Months1")
+End case 
+End if 
+End if 
+If (Form event=On Clicked)
+If (bAdd=1)
+bAdd:=0
+$WinRef:=Open window((Screen width/2)-379;(Screen height/2)-325;(Screen width/2)+379;(Screen height/2)+325;5;"Billing Plan")
+ADD RECORD(*)
+CLOSE WINDOW($WinRef)
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>;[BillPlan]Code;>)
+End if 
+End if 
+If (Form event=On Outside Call) | (bMod=1)
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>;[BillPlan]Code;>)
+End if 
+If (Form event=On Double Clicked)
+If (Records in set("UserSet")>0)
+$WinRef:=Open window((Screen width/2)-379;(Screen height/2)-325;(Screen width/2)+379;(Screen height/2)+325;5;"Billing Plan")
+MODIFY RECORD(*)
+CLOSE WINDOW($WinRef)
+End if 
+FILTER EVENT
+End if 

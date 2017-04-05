@@ -1,0 +1,1379 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 30/01/11 Add Payment Express as Credit Card provider
+C_LONGINT(rRefund1;rRefund2;rRefund3;$i;bSwipe;$vl_devices;$vl_error;CCAccDetails)
+C_TEXT(vAutoBackupNote;$vt_text;vDDOptionCode)
+C_BOOLEAN(vbBackupActive;vbInitialBackup;chkDDEnable)
+C_TEXT(vtOResDepositPayTime;vKSSSQLDSN;vKSSSQLUser;vKSSSQLPass)
+C_TEXT(vsAutoPayAccountNo;vsAutoPayBankName)
+C_TEXT(vsAutoPayAccountName)
+C_TEXT(vsAutoPayBankBranch)
+C_TEXT(vDDKey1;vDDKey2;vDDKey3;vDDKey4;vDDKey5;vCCKey1;vCCKey2;vCCKey3;vCCKey4;vCCKey5;vLeg1;vLeg2;vLeg3;vLeg3Mask;vLeg4;vLeg5)
+C_TEXT(vDDKeyP1;vDDKeyP2;vDDKeyP3;vDDKeyP4;vDDKeyP5;vCCKeyP1;vCCKeyP2;vCCKeyP3;vCCKeyP4;vCCKeyP5;EziKey11;EziKey12;EziKey13;EziKey14;EziKey15)
+C_TEXT(vDDLeg1;vDDLeg2;vDDLeg3;vDDLeg3Mask;vDDLeg4;vDDLegGoCardless;vDDLeg2GoCardless;$titleVal;vBPayKey1;vBPayKey2;vBPayKey3;vBPayKey4;vBPayKey5)
+
+If (Form event=On Load)
+vPassword:=""
+vWipeCCInfo:=False
+vLeg1:=""
+vLeg2Auth:=""
+vLeg3Auth:=""
+vLeg4:=""
+vLeg5:=""
+SetFacility 
+vtOResDepositPayTime:=String([Facility]OResDepositPayTime)
+//SetColours 
+LoadBackground 
+
+If (<>sProduct="@R")
+OBJECT SET VISIBLE(*;"@GateStuff";False)
+End if 
+
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Field86";Get localized string("Set vacant Berths to Clean every:"))
+OBJECT SET TITLE(*;"Field82";Get localized string("Only allow one Berth per Agreement"))
+OBJECT SET TITLE(*;"Field36";Get localized string("On Move Out change Berth Status to ToClean"))
+OBJECT SET TITLE(*;"Text107";Get localized string("Max berths:"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Field86";Get localized string("Set vacant Appliances to Clean every:"))
+OBJECT SET TITLE(*;"Field82";Get localized string("Only allow one Appliance per Agreement"))
+OBJECT SET TITLE(*;"Field36";Get localized string("On Move Out change Appliance Status to ToClean"))
+OBJECT SET TITLE(*;"Text107";Get localized string("Max appliances:"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Field86";Get localized string("Set vacant Spaces to Clean every:"))
+OBJECT SET TITLE(*;"Field82";Get localized string("Only allow one Space per Agreement"))
+OBJECT SET TITLE(*;"Field36";Get localized string("On Move Out change Space Status to ToClean"))
+OBJECT SET TITLE(*;"Text107";Get localized string("Max spaces:"))
+Else 
+OBJECT SET TITLE(*;"Field86";Get localized string("Set vacant Units to Clean every:"))
+OBJECT SET TITLE(*;"Field82";Get localized string("Only allow one Unit per Agreement"))
+OBJECT SET TITLE(*;"Field36";Get localized string("On Move Out change Unit Status to ToClean"))
+OBJECT SET TITLE(*;"Text107";Get localized string("Max units:"))
+End case 
+
+//OBJECT SET TITLE(*;"Field86";"Set vacant "+<>vtUnitsCap+"'s to Clean every:")
+//OBJECT SET TITLE(*;"Field82";"Only allow one "+<>vtUnitsCap+" per Agreement")
+//OBJECT SET TITLE(*;"Field36";"On Move Out change "+<>vtUnitsCap+" Status to ToClean")
+vCents:=<>tCurrencyCents
+vPostCode:=<>tPostCode
+OBJECT SET TITLE(*;"Text25";Get localized string("Round rents to nearest")+" "+vCents)
+OBJECT SET TITLE(*;"Text92";Get localized string("Address")+":")
+OBJECT SET TITLE(*;"Text81";Get localized string("Phone")+":")
+OBJECT SET TITLE(*;"Text82";Get localized string("Fax")+":")
+OBJECT SET TITLE(*;"Text85";Get localized string("Phone format")+":")
+OBJECT SET TITLE(*;"Text101Rep";Get localized string("Reports")+" & "+Get localized string("Refunds"))
+OBJECT SET TITLE(*;"Text68";Get localized string("Custom data field")+"#1")
+OBJECT SET TITLE(*;"Text69";Get localized string("Custom data field")+"#2")
+OBJECT SET TITLE(*;"Text91";Get localized string("Custom data field")+"#3")
+OBJECT SET TITLE(*;"Text126";Get localized string("Custom data field")+"#4")
+OBJECT SET TITLE(*;"Text16";Get localized string("Marketing Type")+":")
+OBJECT SET TITLE(*;"Text34";Get localized string("Customer Type")+":")
+OBJECT SET TITLE(*;"Text71";Get localized string("Business Type")+":")
+OBJECT SET TITLE(*;"Text139";Get localized string("Method")+":")
+OBJECT SET TITLE(*;"vKSSSQLUserText";Get localized string("User Name")+":")
+OBJECT SET TITLE(*;"Text189";Get localized string("IP Address")+":")
+
+
+If (PermissionsControl (223;False)=False)
+OBJECT SET ENABLED(Button1;False)
+End if 
+
+If ([Facility]FacilityCode="SK@")
+OBJECT SET VISIBLE(*;"UTExcludeSK";True)
+End if 
+
+vCountyState:=<>tCountyState
+
+If ([Facility]FacilityCode="KE@")
+ARRAY TEXT(atInvStatement;3)
+atInvStatement{1}:=Get localized string("Combined invoice/receipt system")
+atInvStatement{2}:=Get localized string("Separate invoice & statement system")
+atInvStatement{3}:=Get localized string("Combined invoice & statement system")
+Else 
+ARRAY TEXT(atInvStatement;2)
+atInvStatement{1}:=Get localized string("Combined invoice/receipt system")
+atInvStatement{2}:=Get localized string("Separate invoice & statement system")
+End if 
+atInvStatement:=[Facility]InvStatement+1
+
+//15/07/14 DAM Added for setting the correct details for Facility Table
+
+//10285
+
+If (Application type=4D Remote mode)
+
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+GET PROCESS VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}
+[Facility]NextCreditSaleNo:=<>aiNextCreditSaleNo{$arraypos}
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$arraypos}
+[Facility]NextReserveNo:=<>aiNextResNo{$arraypos}
+[Facility]NextContactNo:=<>aiNextSalesInqNo{$arraypos}
+
+
+//17/11/14 DAM Added code to hide next inv no for syncying sites
+If ([Facility]CentralAddress#"") & (<>sProduct#"M@")
+OBJECT SET VISIBLE(*;"Text72";False)
+OBJECT SET VISIBLE(*;"Text123";False)
+OBJECT SET ENTERABLE([Facility]NextInvNo;False)
+OBJECT SET ENABLED([Facility]NextInvNo;False)
+OBJECT SET VISIBLE([Facility]NextInvNo;False)
+End if 
+
+ARRAY TEXT(atConvertPeriod;3)
+atConvertPeriod{1}:=Get localized string("Reset rates when changing period")
+atConvertPeriod{2}:=Get localized string("Do not reset rates when changing period")
+atConvertPeriod{3}:=Get localized string("Ask to reset rates when changing period")
+atConvertPeriod:=[Facility]ChangePeriod+1
+
+ARRAY TEXT(asLCPP;4)
+asLCPP{1}:=Get localized string("Ask")
+asLCPP{2}:=Get localized string("Yes")
+asLCPP{3}:=Get localized string("No")
+asLCPP{4}:=Get localized string("Disable")
+asLCPP:=[Facility]LCPartPayReset+1
+ARRAY TEXT(asDSP;3)
+asDSP{1}:=Get localized string("Always Allow")
+asDSP{2}:=Get localized string("Always Deny")
+asDSP{3}:=Get localized string("Prompt User")
+asDSP:=[Facility]DelinquentSystemPrompt
+If (asDSP=0)
+[Facility]DelinquentSystemPrompt:=1
+asDSP:=1
+End if 
+ARRAY TEXT(asShowHistory;4)
+asShowHistory{1}:=Get localized string("Unmatched + Most Recent Match")
+asShowHistory{2}:=Get localized string("Last Month")
+asShowHistory{3}:=Get localized string("Last 6 Months")
+asShowHistory{4}:=Get localized string("All Transactions")
+asShowHistory:=[Facility]ShowHistoryDefault
+ARRAY TEXT(asAgreeSortDef;5)
+asAgreeSortDef{1}:=Get localized string("Agreement Number")
+asAgreeSortDef{2}:=Get localized string("Customer Name")
+asAgreeSortDef{3}:=Get localized string("Move In Date")
+Case of 
+: (<>sProduct="@B")
+asAgreeSortDef{4}:=Get localized string("Berth No")
+: (<>sProduct="@R")
+asAgreeSortDef{4}:=Get localized string("Appl No")
+: (<>sProduct="@C")
+asAgreeSortDef{4}:=Get localized string("Space No")
+Else 
+asAgreeSortDef{4}:=Get localized string("Unit No")
+End case 
+
+asAgreeSortDef{5}:=Get localized string("Move Out Date")
+asAgreeSortDef:=[Facility]AgreemtSortDefault
+ARRAY TEXT(asCreditSortDef;2)
+asCreditSortDef{1}:=Get localized string("Alpha Order")
+asCreditSortDef{2}:=Get localized string("Start Date")
+asCreditSortDef:=[Facility]CreditSort
+ARRAY TEXT(asRentIncreaseAPDef;4)
+asRentIncreaseAPDef{1}:=Get localized string("Ask")
+asRentIncreaseAPDef{2}:=Get localized string("All Customers1")
+asRentIncreaseAPDef{3}:=Get localized string("Autopay Only")
+asRentIncreaseAPDef{4}:=Get localized string("No Customers")
+asRentIncreaseAPDef:=[Facility]RentIncreaseAP
+If ([Facility]Country#"AU") & ([Facility]Country#"NZ")
+OBJECT SET VISIBLE(asRentIncreaseAPDef;False)
+OBJECT SET VISIBLE(*;"@RIAP";False)
+OBJECT SET VISIBLE(*;"APBank@";False)
+Else 
+OBJECT SET VISIBLE(*;"APBank@";True)
+End if 
+ARRAY TEXT(asAutoFirstName;3)
+asAutoFirstName{1}:=Get localized string("Disabled")
+asAutoFirstName{2}:=Get localized string("First Name")
+asAutoFirstName{3}:=Get localized string("Title + Last Name")
+asAutoFirstName:=[Facility]AutoFirstName
+ARRAY TEXT(aAnlys;3)
+aAnlys{1}:=Get localized string("Daily")
+aAnlys{2}:=Get localized string("Weekly")
+aAnlys{3}:=Get localized string("Monthly")
+aAnlys:=3
+bCont:=Num(Substring([Facility]BackupInfo;1;1))
+bCode:=Num(Substring([Facility]BackupInfo;2;1))
+bLoad:=Num(Substring([Facility]BackupInfo;3;1))
+$i:=Num(Substring([Facility]BackupInfo;4;1))
+If ($i>=1) & ($i<=3)
+aAnlys:=$i
+End if 
+bImport:=Num(Substring([Facility]BackupInfo;5;2))
+bIndex:=Num(Substring([Facility]BackupInfo;7;2))
+If (bLoad=1)
+Case of 
+: ($i=1)
+If (bIndex>=0) & (bIndex<=9)
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Daily at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on the night of")+" "+String(Add to date([Facility]BackupNextDate;0;0;-1))+"."
+Else 
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Daily at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on that night")+"."
+End if 
+: ($i=2)
+Case of 
+: (bImport=1)
+$BackupDay:=Get localized string("Sunday")
+$PriorDay:=Get localized string("Saturday")
+: (bImport=2)
+$BackupDay:=Get localized string("Monday")
+$PriorDay:=Get localized string("Sunday")
+: (bImport=3)
+$BackupDay:=Get localized string("Tuesday")
+$PriorDay:=Get localized string("Monday")
+: (bImport=4)
+$BackupDay:=Get localized string("Wednesday")
+$PriorDay:=Get localized string("Tuesday")
+: (bImport=5)
+$BackupDay:=Get localized string("Thursday")
+$PriorDay:=Get localized string("Wednesday")
+: (bImport=6)
+$BackupDay:=Get localized string("Friday")
+$PriorDay:=Get localized string("Thursday")
+: (bImport=7)
+$BackupDay:=Get localized string("Saturday")
+$PriorDay:=Get localized string("Friday")
+Else 
+//Do Nothing
+End case 
+If (bIndex>=0) & (bIndex<=9)
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Weekly on a")+" "+$BackupDay+" "+Get localized string("at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on the night of")+" "+$PriorDay+" "+Get localized string("The")+" "+String(Add to date([Facility]BackupNextDate;0;0;-1))+"."
+Else 
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Weekly on a")+" "+$BackupDay+" "+Get localized string("at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on that night")+"."
+End if 
+: ($i=2)
+If (bIndex>=0) & (bIndex<=9)
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Monthly on the")+" "+String(bImport)+" "+Get localized string("of each Month at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on the night of")+" "+String(Add to date([Facility]BackupNextDate;0;0;-1))+"."
+Else 
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Monthly on the")+" "+String(bImport)+" "+Get localized string("of each Month at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on that night")+"."
+End if 
+Else 
+//Do Nothing
+End case 
+//Backups are In Use
+OBJECT SET VISIBLE(*;"AutoBackupNote";True)
+OBJECT SET VISIBLE(*;"@BAuto1";True)
+OBJECT SET VISIBLE(*;"AutoBackupRep";True)
+OBJECT SET VISIBLE(*;"AutoBackupLearnMore";False)
+OBJECT SET VISIBLE(*;"AutoBackupLMIcon";False)
+OBJECT SET VISIBLE(*;"AutoBackupLMButton";False)
+OBJECT SET VISIBLE(*;"@BFail1";False)
+OBJECT SET ENABLED(vBackupURL;False)
+Else 
+//Backups Disabled
+OBJECT SET VISIBLE(*;"AutoBackupNote";False)
+OBJECT SET VISIBLE(*;"@BAuto1";False)
+OBJECT SET VISIBLE(*;"AutoBackupRep";False)
+OBJECT SET VISIBLE(*;"AutoBackupLearnMore";True)
+OBJECT SET VISIBLE(*;"AutoBackupLMIcon";True)
+OBJECT SET VISIBLE(*;"AutoBackupLMButton";True)
+OBJECT SET VISIBLE(*;"@BFail1";True)
+OBJECT SET ENABLED(vBackupURL;True)
+End if 
+
+
+If ([Facility]DirectDebitOption#"")
+$ddEnabled:=GetTextNo ([Facility]DirectDebitOption;1;",")
+If ($ddEnabled="1")
+chkDDEnable:=True
+Else 
+chkDDEnable:=False
+End if 
+vDDOptionCode:=GetTextNo ([Facility]DirectDebitOption;2;",")
+End if 
+
+ARRAY TEXT(aDescriptions;10)
+//ARRAY TEXT(aDescriptions;16)
+aDescriptions{1}:="None"
+//aDescriptions{2}:="Advam"
+aDescriptions{2}:="Advam StoredPAN"
+//aDescriptions{4}:="AuthorizeNet"
+aDescriptions{3}:="AuthorizeNet CIM"
+//aDescriptions{6}:="Cheq"
+//aDescriptions{7}:="CTel"
+aDescriptions{4}:="EziDebit"
+//aDescriptions{5}:="Payment Express"
+//aDescriptions{10}:="NAB"
+//aDescriptions{11}:="Verisign"
+aDescriptions{5}:="NAB CM"
+aDescriptions{6}:="BPOINT"
+aDescriptions{7}:="CardSave"
+aDescriptions{8}:="Transaction Express"
+aDescriptions{9}:="eMatters"
+aDescriptions{10}:="Realex"
+
+
+aDescriptions:=1
+$i:=Find in array(aDescriptions;GetTextNo ([Facility]MerchantDetails;1;","))
+If ($i>1)
+aDescriptions:=$i
+Else 
+aDescriptions:=1
+End if 
+CCAccDetails:=aDescriptions
+
+If ([Facility]RoundDefault<1)
+[Facility]RoundDefault:=10
+End if 
+If ($i=8)
+If (GetTextNo ([Facility]MerchantDetails;2;",")#"")
+vCCKeyStatus:=Get localized string("Active")
+OBJECT SET RGB COLORS(*;"vCCKeyStatus";0xCC33;-16)
+Else 
+OBJECT SET RGB COLORS(*;"vCCKeyStatus";0x00CC0000;-16)
+vCCKeyStatus:=Get localized string("Inactive")
+End if 
+
+If (GetTextNo ([Facility]MerchantDetails2;1;",")#"")
+vccPBKeyStatus:=Get localized string("Active")
+OBJECT SET RGB COLORS(*;"vccPBKeyStatus";0xCC33;-16)
+Else 
+OBJECT SET RGB COLORS(*;"vccPBKeyStatus";0x00CC0000;-16)
+vccPBKeyStatus:=Get localized string("Inactive")
+End if 
+End if 
+ARRAY TEXT(aSMSProvider;3)
+aSMSProvider{1}:="None"
+aSMSProvider{2}:="Advam"
+aSMSProvider{3}:="Storman SMS"
+aSMSProvider:=1
+If ([Facility]SMSAcctDetails#"") & (GetTextNo ([Facility]SMSAcctDetails;5;",")="")
+aSMSProvider:=2
+Else 
+$i:=Find in array(aSMSProvider;GetTextNo ([Facility]SMSAcctDetails;5;","))
+If ($i>1)
+aSMSProvider:=$i
+End if 
+End if 
+If (aSMSProvider{aSMSProvider}="Storman SMS")
+OBJECT SET VISIBLE(*;"@NSMS";False)
+OBJECT SET VISIBLE(SMSBalance;True)
+Else 
+OBJECT SET VISIBLE(*;"@NSMS";True)
+OBJECT SET VISIBLE(SMSBalance;False)
+End if 
+ARRAY TEXT(aDDProvider;11)
+aDDProvider{1}:="None"
+aDDProvider{2}:="Advam"
+aDDProvider{3}:="AuthorizeNet"
+aDDProvider{4}:="Cheq"
+aDDProvider{5}:="EziDebit"
+aDDProvider{6}:="NAB CM"
+aDDProvider{7}:="BPOINT"
+aDDProvider{8}:="ASB"
+aDDProvider{9}:="Transaction Express"
+aDDProvider{10}:="GoCardless"
+//aDDProvider{11}:="eMatters"  //-- Commented by Hamid - 9156 - 28/5/2015
+aDDProvider{11}:="Fundtech"
+
+If (<>sCurrentUser="AdminSupport")//PermissionsControl (189)- By Hamid 25/11/2014 - 8286
+OBJECT SET VISIBLE(*;"ODBCPass";True)
+OBJECT SET VISIBLE(*;"WebServicePass";True)
+OBJECT SET VISIBLE(*;"ODBCText";True)
+OBJECT SET VISIBLE(*;"WebServiceText";True)
+
+OBJECT SET VISIBLE(aDescriptions;True)
+OBJECT SET VISIBLE(*;"Text94";True)
+OBJECT SET VISIBLE(aDDProvider;True)
+OBJECT SET VISIBLE(*;"Text151";True)
+Else 
+
+OBJECT SET VISIBLE(*;"ODBCPass";False)
+OBJECT SET VISIBLE(*;"WebServicePass";False)
+OBJECT SET VISIBLE(*;"ODBCText";False)
+OBJECT SET VISIBLE(*;"WebServiceText";False)
+
+//22-12-16 DM Hidden the variable BUPLOAD if not adminsupport
+OBJECT SET VISIBLE(BUPLOAD;False)
+
+
+If ([Facility]FacilityCode="KE@")
+OBJECT SET VISIBLE(aDescriptions;True)
+OBJECT SET VISIBLE(*;"Text94";True)
+OBJECT SET VISIBLE(*;"Text151";True)
+OBJECT SET VISIBLE(aDDProvider;True)
+//22-12-16 DM allowed the CCUpload button for KSS
+OBJECT SET VISIBLE(BUPLOAD;True)
+
+Else 
+OBJECT SET VISIBLE(aDescriptions;False)
+OBJECT SET VISIBLE(*;"Text94";False)
+OBJECT SET VISIBLE(*;"Text151";False)
+OBJECT SET VISIBLE(aDDProvider;False)
+End if 
+
+End if 
+aDDProvider:=1
+$i:=0
+$pos:=0
+While ($pos<Length([Facility]DDAccountDetails))
+$pos:=Position(",";[Facility]DDAccountDetails;$pos+1)
+If ($pos#0)
+$i:=$i+1
+End if 
+End while 
+$i:=Find in array(aDDProvider;GetTextNo ([Facility]DDAccountDetails;$i;","))
+If ($i>1)
+aDDProvider:=$i
+End if 
+If (aDescriptions#4)
+vLeg1:=GetTextNo ([Facility]MerchantDetails;2;",")
+vLeg2:=GetTextNo ([Facility]MerchantDetails;3;",")
+vLeg3:=GetTextNo ([Facility]MerchantDetails;4;",")
+//vLeg3Mask:=GetTextNo ([Facility]MerchantDetails;4;",")
+//If (vLeg3Mask#"")
+//vLeg3:="******"
+//Else 
+//vLeg3:=""
+//End if 
+vLeg4:=GetTextNo ([Facility]MerchantDetails;5;",")
+vLeg5:=GetTextNo ([Facility]MerchantDetails;6;",")
+bSwipe:=Num(GetTextNo ([Facility]MerchantDetails;7;","))
+
+If (aDescriptions=3)
+vLeg2Auth:=GetTextNo ([Facility]MerchantDetails2;3;",")
+vLeg3Auth:=GetTextNo ([Facility]MerchantDetails2;4;",")
+End if 
+chkEziDebit:=False
+OBJECT SET VISIBLE(ShowTrx;False)
+ShowTrx:=False
+
+
+Else 
+vCCKey1:=GetTextNo ([Facility]MerchantDetails;2;",")
+vCCKey2:=GetTextNo ([Facility]MerchantDetails;3;",")
+vCCKey3:=GetTextNo ([Facility]MerchantDetails;4;",")
+vCCKey4:=GetTextNo ([Facility]MerchantDetails;5;",")
+vCCKey5:=GetTextNo ([Facility]MerchantDetails;6;",")
+
+vCCKeyp1:=GetTextNo ([Facility]MerchantDetails2;1;",")
+vCCKeyp2:=GetTextNo ([Facility]MerchantDetails2;2;",")
+vCCKeyp3:=GetTextNo ([Facility]MerchantDetails2;3;",")
+vCCKeyp4:=GetTextNo ([Facility]MerchantDetails2;4;",")
+vCCKeyp5:=GetTextNo ([Facility]MerchantDetails2;5;",")
+
+vLeg4:=GetTextNo ([Facility]MerchantDetails;7;",")
+vLeg5:=GetTextNo ([Facility]MerchantDetails;8;",")
+bSwipe:=Num(GetTextNo ([Facility]MerchantDetails;9;","))
+
+If (GetTextNo ([Facility]MerchantDetails;10;",")="True")
+chkEziDebit:=True
+Else 
+chkEziDebit:=False
+End if 
+
+OBJECT SET VISIBLE(ShowTrx;True)
+If (GetTextNo ([Facility]MerchantDetails;11;",")="True")
+ShowTrx:=True
+Else 
+ShowTrx:=False
+End if 
+
+If (<>sCurrentUser="AdminSupport")
+OBJECT SET VISIBLE([Facility]Highlander;True)
+[Facility]Highlander:=True
+OBJECT SET ENABLED([Facility]Highlander;False)
+End if 
+
+End if 
+If (aDescriptions#10)
+If (Num(vLeg5)<65)
+vLeg5:="65"
+End if 
+End if 
+If (<>sCurrentUser="AdminSupport")
+If (aDescriptions{aDescriptions}="AuthorizeNet@")
+OBJECT SET VISIBLE([Facility]Highlander;False)
+End if 
+End if 
+Case of 
+: (aDDProvider=5)
+vDDKey1:=GetTextNo ([Facility]DDAccountDetails;1;",")
+vDDKey2:=GetTextNo ([Facility]DDAccountDetails;2;",")
+vDDKey3:=GetTextNo ([Facility]DDAccountDetails;3;",")
+vDDKey4:=GetTextNo ([Facility]DDAccountDetails;4;",")
+vDDKey5:=GetTextNo ([Facility]DDAccountDetails;5;",")
+
+vDDKeyp1:=GetTextNo ([Facility]MerchantDetails2;6;",")
+vDDKeyp2:=GetTextNo ([Facility]MerchantDetails2;7;",")
+vDDKeyp3:=GetTextNo ([Facility]MerchantDetails2;8;",")
+vDDKeyp4:=GetTextNo ([Facility]MerchantDetails2;9;",")
+vDDKeyp5:=GetTextNo ([Facility]MerchantDetails2;10;",")
+//?If (GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")
+If (GetTextNo ([Facility]DDAccountDetails;1;",")#"")
+vDDKeyStatus:=Get localized string("Active")
+OBJECT SET RGB COLORS(*;"vDDKeyStatus";0xCC33;-16)
+Else 
+vDDKeyStatus:=Get localized string("Inactive")
+OBJECT SET RGB COLORS(*;"vDDKeyStatus";0x00CC0000;-16)
+End if 
+
+If (GetTextNo ([Facility]MerchantDetails2;6;",")#"")
+vPBKeyStatus:=Get localized string("Active")
+OBJECT SET RGB COLORS(*;"vPBKeyStatus";0xCC33;-16)
+Else 
+vPBKeyStatus:=Get localized string("Inactive")
+OBJECT SET RGB COLORS(*;"vPBKeyStatus";0x00CC0000;-16)
+End if 
+
+: (aDDProvider=10)
+vDDLeg1:=GetTextNo ([Facility]DDAccountDetails;1;",")
+vDDLeg2:=GetTextNo ([Facility]DDAccountDetails;2;",")
+vDDLeg3:=GetTextNo ([Facility]DDAccountDetails;3;",")
+//vDDLeg3Mask:=GetTextNo ([Facility]DDAccountDetails;3;",")
+//If (vDDLeg3Mask#"")
+//vDDLeg3:="******"
+//Else 
+//vDDLeg3:=""
+//End if 
+vDDLeg4:=GetTextNo ([Facility]DDAccountDetails;4;",")
+vDDLegGoCardless:=GetTextNo ([Facility]DDAccountDetails;5;",")
+vDDLeg2GoCardless:=GetTextNo ([Facility]DDAccountDetails;6;",")
+Else 
+vDDLeg1:=GetTextNo ([Facility]DDAccountDetails;1;",")
+vDDLeg2:=GetTextNo ([Facility]DDAccountDetails;2;",")
+vDDLeg3:=GetTextNo ([Facility]DDAccountDetails;3;",")
+//vDDLeg3Mask:=GetTextNo ([Facility]DDAccountDetails;3;",")
+//If (vDDLeg3Mask#"")
+//vDDLeg3:="******"
+//Else 
+//vDDLeg3:=""
+//End if 
+End case 
+vSMSLeg1:=GetTextNo ([Facility]SMSAcctDetails;1;",")
+vSMSLeg4:=GetTextNo ([Facility]SMSAcctDetails;2;",")
+vSMSLeg2:=GetTextNo ([Facility]SMSAcctDetails;3;",")
+VSMSLEG3:=GetTextNo ([Facility]SMSAcctDetails;4;",")
+//VSMSLEG3Mask:=GetTextNo ([Facility]SMSAcctDetails;4;",")
+//If (VSMSLEG3Mask#"")
+//VSMSLEG3:="******"
+//Else 
+//VSMSLEG3:=""
+//End if 
+vSCLeg1:=GetTextNo ([Facility]SCAccountDetails;1;",")
+vSCLeg2:=GetTextNo ([Facility]SCAccountDetails;2;",")
+vSCLeg3:=GetTextNo ([Facility]SCAccountDetails;3;",")
+If (vSCLeg3#"") & (Num(vSCLeg3)<15)
+vSCLeg3:="15"
+End if 
+If (vSCLeg3#"") & (Num(vSCLeg3)>65)
+vSCLeg3:="65"
+End if 
+
+
+
+If (aDescriptions=4)
+OBJECT SET VISIBLE(*;"Text57";False)
+OBJECT SET VISIBLE(*;"Text5";False)
+OBJECT SET VISIBLE(*;"Text93";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(vLeg2;False)
+OBJECT SET VISIBLE(vLeg3;False)
+OBJECT SET VISIBLE(*;"vCCKey@";True)
+OBJECT SET TITLE(*;"Group Box8";Get localized string("Credit Card Account Details"))
+Else 
+OBJECT SET VISIBLE(*;"Text57";False)
+OBJECT SET VISIBLE(*;"Text5";True)
+OBJECT SET VISIBLE(*;"Text93";True)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(vLeg2;True)
+OBJECT SET VISIBLE(vLeg3;True)
+OBJECT SET VISIBLE(*;"vCCKey@";False)
+OBJECT SET VISIBLE(*;"vccPBKeyStatus";False)
+
+OBJECT SET TITLE(*;"Group Box8";Get localized string("Credit Card Account Details"))
+Case of 
+: (aDescriptions=3)//the two authnet options
+vUserName:=Get localized string("Login ID")+":"
+vPassword:=Get localized string("Transaction Key:")
+vUsernameAuth:=Get localized string("Login ID")+":"
+vPasswordAuth:=Get localized string("Transaction Key:")
+OBJECT SET VISIBLE(vLeg2Auth;True)
+OBJECT SET VISIBLE(vLeg3Auth;True)
+OBJECT SET VISIBLE(vUsernameAuth;True)
+OBJECT SET VISIBLE(vPasswordAuth;True)
+OBJECT SET VISIBLE(*;"AuthnonPresent";True)
+OBJECT SET TITLE(*;"Group Box8";"Present Credit Card Account Details")
+//: (aDescriptions=6)  //cheq services
+//vUserName:=Get localized string("Sign On ID")+":"
+//vPassword:=Get localized string("Password:")
+: (aDescriptions=5) | (aDescriptions=7)//Thinc or Thinc CM10245
+vUserName:=Get localized string("Merchant ID")+":"
+vPassword:=Get localized string("Password:")
+OBJECT SET VISIBLE(*;"Text57";False)
+OBJECT SET VISIBLE(vLeg1;False)
+
+: (aDescriptions=8)// Transaction Express
+vUserName:=Get localized string("Merchant ID")+":"
+vPassword:=Get localized string("Password")+":"
+OBJECT SET VISIBLE(*;"Text57";False)
+OBJECT SET VISIBLE(*;"Text95";False)
+OBJECT SET VISIBLE(*;"Text96";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(vLeg2;True)
+OBJECT SET VISIBLE(vLeg3;True)
+OBJECT SET VISIBLE(vLeg4;False)
+OBJECT SET VISIBLE(vLeg5;False)
+OBJECT SET VISIBLE(BUPLOAD;True)
+OBJECT SET VISIBLE(vUserName;True)
+
+: (aDescriptions=2)//| (aDescriptions=13)  //Delete button
+OBJECT SET VISIBLE(bDelProf;True)
+vPassword:=Get localized string("Password:")
+//: (aDescriptions=7)  //fb8932 by eugene 21-04-2015    //-10245
+//OBJECT SET VISIBLE(*;"Text57";True)
+//OBJECT SET VISIBLE(bDelProf;True)
+//OBJECT SET VISIBLE(vLeg1;True)
+//vUserName:=Get localized string("Username:")
+//vPassword:=Get localized string("Password:")
+
+: (aDescriptions=9)//eMatters
+//vUserName:=Get localized string("Username:")
+//vPassword:=Get localized string("Password:")
+//  //vUsernameAuth:=Get localized string("Login ID")+":"
+//  //vPasswordAuth:=Get localized string("Transaction Key:")
+//OBJECT SET VISIBLE(vLeg2Auth;False)
+//OBJECT SET VISIBLE(vLeg3Auth;False)
+//OBJECT SET VISIBLE(vUsernameAuth;False)
+//OBJECT SET VISIBLE(vPasswordAuth;False)
+//OBJECT SET VISIBLE(BUPLOAD;False)
+//OBJECT SET VISIBLE(*;"Text95";False)
+//OBJECT SET VISIBLE(*;"Text96";False)
+//OBJECT SET VISIBLE(*;"Text57";False)
+//  //OBJECT SET VISIBLE(vCCKeyText;False)
+//OBJECT SET VISIBLE(vLeg4;False)
+//OBJECT SET VISIBLE(vLeg5;False)
+//OBJECT SET VISIBLE(*;"AuthnonPresent";False)
+//  //OBJECT SET TITLE(*;"Group Box8";"Present Credit Card Account Details")
+//OBJECT SET VISIBLE(vCCKeyStatus;False)
+//OBJECT SET VISIBLE(vLeg1;False)
+vUserName:=Get localized string("Username:")
+vPassword:=Get localized string("Password:")
+//vUsernameAuth:=Get localized string("Login ID")+":"
+//vPasswordAuth:=Get localized string("Transaction Key:")
+OBJECT SET VISIBLE(vLeg2Auth;False)
+OBJECT SET VISIBLE(vLeg3Auth;False)
+OBJECT SET VISIBLE(vUsernameAuth;False)
+OBJECT SET VISIBLE(vPasswordAuth;False)
+OBJECT SET VISIBLE(BUPLOAD;True)
+OBJECT SET VISIBLE(*;"Text95";True)
+OBJECT SET TITLE(*;"Text95";Get localized string("PIN Code:"))
+OBJECT SET VISIBLE(*;"Text96";False)
+OBJECT SET VISIBLE(*;"Text57";False)
+
+OBJECT SET VISIBLE(vLeg4;True)
+OBJECT SET VISIBLE(vLeg5;False)
+OBJECT SET VISIBLE(*;"AuthnonPresent";False)
+//OBJECT SET TITLE(*;"Group Box8";"Present Credit Card Account Details")
+OBJECT SET VISIBLE(*;"vCCKeyStatus";False)
+OBJECT SET VISIBLE(*;"vCCKeyText";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(*;"vCCKeyB";False)
+: (aDescriptions=10)//Realex
+vUserName:=Get localized string("MerchantID")+":"
+vPassword:=Get localized string("Shared Secret")+":"
+OBJECT SET VISIBLE(vLeg2Auth;False)
+OBJECT SET VISIBLE(vLeg3Auth;False)
+OBJECT SET VISIBLE(vUsernameAuth;False)
+OBJECT SET VISIBLE(vPasswordAuth;False)
+OBJECT SET VISIBLE(BUPLOAD;True)
+OBJECT SET VISIBLE(*;"Text95";False)
+//$titleVal:=Get localized string("Rebate Password")+":"
+//OBJECT SET TITLE(*;"Text95";$titleVal)
+$titleVal:=Get localized string("Refund Password")+":"
+OBJECT SET VISIBLE(*;"Text96";True)
+OBJECT SET TITLE(*;"Text96";$titleVal)
+OBJECT SET VISIBLE(*;"Text57";False)
+
+OBJECT SET VISIBLE(vLeg4;False)
+OBJECT SET VISIBLE(vLeg5;True)
+OBJECT SET VISIBLE(*;"AuthnonPresent";False)
+
+OBJECT SET VISIBLE(*;"vCCKeyStatus";False)
+OBJECT SET VISIBLE(*;"vCCKeyText";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(*;"vCCKeyB";False)
+Else 
+OBJECT SET VISIBLE(*;"Text57";True)
+OBJECT SET VISIBLE(vLeg1;True)
+vUserName:=Get localized string("Username:")
+vPassword:=Get localized string("Password:")
+End case 
+If (aDescriptions=2)//Advan StorePAN
+OBJECT SET VISIBLE(*;"Text57";True)
+OBJECT SET VISIBLE(*;"Text93";True)
+OBJECT SET VISIBLE(vLeg1;True)
+vUserName:=Get localized string("Username:")
+vPassword:=Get localized string("Password:")
+End if 
+End if 
+
+Case of 
+: (aDDProvider=1)//None
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";False)
+OBJECT SET VISIBLE(vDDLeg1;False)
+OBJECT SET VISIBLE(vDDLeg2;False)
+OBJECT SET VISIBLE(vDDLeg3;False)
+OBJECT SET VISIBLE(vDDLeg4;False)
+OBJECT SET VISIBLE(*;"vDDKeyB";False)
+OBJECT SET VISIBLE(vDDUsername;False)
+OBJECT SET VISIBLE(vDDAppToken;False)
+OBJECT SET VISIBLE(vDDKeyStatus;False)
+OBJECT SET VISIBLE(vPBKeyStatus;False)
+OBJECT SET VISIBLE(vDDPassword;False)
+OBJECT SET VISIBLE(*;"vDDKeyText1";False)
+OBJECT SET VISIBLE(*;"vDDKeyB1";False)
+OBJECT SET VISIBLE(*;"vDDKeyText2";False)
+: (aDDProvider=3)//Authnet
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";False)
+OBJECT SET VISIBLE(*;"Text83";True)
+OBJECT SET VISIBLE(*;"Text60";True)
+OBJECT SET VISIBLE(vDDLeg1;False)
+OBJECT SET VISIBLE(vDDLeg2;True)
+OBJECT SET VISIBLE(vDDLeg3;True)
+OBJECT SET VISIBLE(vDDLeg4;False)
+OBJECT SET VISIBLE(vDDAppToken;False)
+OBJECT SET VISIBLE(*;"vDDKey@";False)
+OBJECT SET VISIBLE(*;"vPBKey@";False)
+OBJECT SET VISIBLE(*;"vPBKey@";False)
+vDDUserName:=Get localized string("Login ID")+":"
+vDDPassword:=Get localized string("Transaction Key:")
+: (aDDProvider=4)//Cheq
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";False)
+OBJECT SET VISIBLE(*;"Text83";True)
+OBJECT SET VISIBLE(*;"Text60";True)
+OBJECT SET VISIBLE(vDDLeg1;False)
+OBJECT SET VISIBLE(vDDLeg2;True)
+OBJECT SET VISIBLE(vDDLeg3;True)
+OBJECT SET VISIBLE(vDDLeg4;False)
+OBJECT SET VISIBLE(vDDAppToken;False)
+OBJECT SET VISIBLE(*;"vDDKey@";False)
+OBJECT SET VISIBLE(*;"vPBKey@";False)
+vDDUserName:=Get localized string("Merchant ID")+":"
+vDDPassword:=Get localized string("Password:")
+: (aDDProvider=5)//Ezi
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";False)
+OBJECT SET VISIBLE(*;"Text83";False)
+OBJECT SET VISIBLE(*;"Text60";False)
+OBJECT SET VISIBLE(vDDLeg1;False)
+OBJECT SET VISIBLE(vDDLeg2;False)
+OBJECT SET VISIBLE(vDDLeg3;False)
+OBJECT SET VISIBLE(vDDLeg4;False)
+OBJECT SET VISIBLE(vDDAppToken;False)
+OBJECT SET VISIBLE(*;"vDDKey@";True)
+OBJECT SET VISIBLE(*;"vPBKey@";True)
+: (aDDProvider=9)
+OBJECT SET VISIBLE(*;"Text83";True)
+OBJECT SET VISIBLE(*;"Text60";True)
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";False)
+OBJECT SET VISIBLE(vDDLeg1;False)
+OBJECT SET VISIBLE(vDDLeg2;True)
+OBJECT SET VISIBLE(vDDLeg3;True)
+OBJECT SET VISIBLE(vDDLeg4;False)
+OBJECT SET VISIBLE(vDDAppToken;False)
+OBJECT SET VISIBLE(*;"vDDKey@";False)
+OBJECT SET VISIBLE(*;"vPBKey@";False)
+vDDUserName:=Get localized string("Merchant ID")+":"
+vDDPassword:="Registration Key:"
+: (aDDProvider=10)//GoCardless
+OBJECT SET VISIBLE(*;"Text83";True)
+OBJECT SET VISIBLE(*;"Text60";True)
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";True)
+OBJECT SET VISIBLE(vDDLeg1;True)
+OBJECT SET VISIBLE(vDDLeg2;True)
+OBJECT SET VISIBLE(vDDLeg3;True)
+OBJECT SET VISIBLE(vDDLeg4;True)
+OBJECT SET VISIBLE(vDDAppToken;True)
+OBJECT SET VISIBLE(*;"vDDKey@";False)
+OBJECT SET VISIBLE(*;"vPBKey@";False)
+OBJECT SET TITLE(*;"StorerCheckUserTxt1";"Merchant ID:")
+OBJECT SET VISIBLE(*;"GoCardless@";True)
+vDDUserName:="App Identifier:"
+vDDPassword:="App secret:"
+vDDAppToken:="Access Token:"
+//: (aDDProvider=11)  //eMatters        //-- Commented by Hamid - 9156 - 28/5/2015
+//OBJECT SET VISIBLE(*;"Text83";False)
+//OBJECT SET VISIBLE(*;"Text60";False)
+//OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";True)
+//OBJECT SET VISIBLE(vDDLeg1;True)
+//OBJECT SET VISIBLE(vDDLeg2;False)
+//OBJECT SET VISIBLE(vDDLeg3;False)
+//OBJECT SET VISIBLE(vDDLeg4;False)
+//OBJECT SET VISIBLE(vDDAppToken;False)
+//OBJECT SET VISIBLE(*;"vDDKey@";False)
+//OBJECT SET TITLE(*;"StorerCheckUserTxt1";"Readers :")
+//
+//OBJECT SET VISIBLE(*;"eMatters@";True)
+: (aDDProvider=11)//Fundtech
+OBJECT SET VISIBLE(*;"Text83";False)
+OBJECT SET VISIBLE(*;"Text60";False)
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";False)
+OBJECT SET VISIBLE(vDDLeg1;False)
+OBJECT SET VISIBLE(vDDLeg2;False)
+OBJECT SET VISIBLE(vDDLeg3;False)
+OBJECT SET VISIBLE(vDDLeg4;False)
+OBJECT SET VISIBLE(vDDAppToken;False)
+OBJECT SET VISIBLE(*;"vDDKey@";False)
+OBJECT SET VISIBLE(*;"vPBKey@";False)
+//OBJECT SET TITLE(*;"StorerCheckUserTxt1";"Readers :")
+OBJECT SET VISIBLE(*;"GoCardless@";False)
+
+
+Else 
+OBJECT SET VISIBLE(*;"Text83";True)
+OBJECT SET VISIBLE(*;"Text60";True)
+
+/////////////////fb8939, by eugene, 28.04.2015/////////
+If (aDDProvider=6)
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";False)
+OBJECT SET VISIBLE(vDDLeg1;False)
+Else 
+OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";True)
+OBJECT SET VISIBLE(vDDLeg1;True)
+End if 
+///////---------------------------------/////
+//OBJECT SET VISIBLE(*;"StorerCheckUserTxt1";True)
+//OBJECT SET VISIBLE(vDDLeg1;True)
+OBJECT SET VISIBLE(vDDLeg2;True)
+OBJECT SET VISIBLE(vDDLeg3;True)
+OBJECT SET VISIBLE(vDDLeg4;False)
+OBJECT SET VISIBLE(vDDAppToken;False)
+OBJECT SET VISIBLE(*;"vDDKey@";False)
+OBJECT SET VISIBLE(*;"vPBKey@";False)
+vDDUserName:=Get localized string("Username:")
+vDDPassword:=Get localized string("Password:")
+End case 
+
+If (<>tStorerCheck="")//AU, NZ, UK
+OBJECT SET VISIBLE(*;"StorerCheck@";False)
+OBJECT SET VISIBLE(*;"SCheck@";False)
+OBJECT SET VISIBLE(*;"@SCFail";False)
+OBJECT SET VISIBLE(vStorerCheckURL;False)
+[Facility]SCAccountDetails:=""+","+""+","+""+","
+End if 
+
+//If ([Facility]UseStorerCheck)
+OBJECT SET VISIBLE(*;"@SCFail";False)
+OBJECT SET VISIBLE(vStorerCheckURL;False)
+//Else 
+//OBJECT SET VISIBLE(*;"StorerCheck@";False)
+//End if 
+
+//If ([Facility]Max4DClients<2)
+//OBJECT SET VISIBLE(*;"ClientQuit@";False)
+//Else 
+//OBJECT SET VISIBLE(*;"ClientQuit@";True)
+//End if 
+
+ARRAY TEXT(asCurrencySigns;63)
+asCurrencySigns{0}:=<>sCurrency
+asCurrencySigns{1}:="$"//Dollar
+asCurrencySigns{2}:="£"//Pound Option 3
+asCurrencySigns{3}:="€"//Euro Shift Option 2
+asCurrencySigns{4}:="¥"//Yen Option Y
+asCurrencySigns{5}:="R"//Rand
+asCurrencySigns{6}:=Char(3647)//Baht
+asCurrencySigns{7}:="Lek"//Leke
+asCurrencySigns{8}:=Char(1547)//Afganis
+asCurrencySigns{9}:="ƒ"//Guilders
+asCurrencySigns{10}:=Char(1084)+Char(1072)+Char(1085)//New Manats
+asCurrencySigns{11}:="p."//Rubles
+asCurrencySigns{12}:="BZ$"//Belize Dollars
+asCurrencySigns{13}:="$b"//Bolivianos
+asCurrencySigns{14}:="KM"//Convertible Marka
+asCurrencySigns{15}:="P"//Pulas
+asCurrencySigns{16}:=Char(1083)+Char(1074)//Leva
+asCurrencySigns{17}:="R$"//Reais
+asCurrencySigns{18}:=Char(6107)//Riels
+asCurrencySigns{19}:=Char(8353)//Colón
+asCurrencySigns{20}:="kn"//Kuna
+asCurrencySigns{21}:=Char(8369)//Chile Pesos
+asCurrencySigns{22}:="K"+Char(269)//Koruny
+asCurrencySigns{23}:="kr"//Kroner
+asCurrencySigns{24}:="RD$"//Dominican Republic Pesos
+asCurrencySigns{25}:="¢"//Cedis
+asCurrencySigns{26}:="Q"//Quetzales
+asCurrencySigns{27}:="L"//Lempiras
+asCurrencySigns{28}:="Ft"//Forint
+asCurrencySigns{29}:="Rp"//Rupiahs
+asCurrencySigns{30}:=Char(65020)//Rials
+asCurrencySigns{31}:=Char(8362)//New Shekels
+asCurrencySigns{32}:="J$"//Jamaican Dollars
+asCurrencySigns{33}:=Char(8361)//Won
+asCurrencySigns{34}:=Char(8365)//Kips
+asCurrencySigns{35}:="Ls"//Lati
+asCurrencySigns{36}:="CHF"//Francs
+asCurrencySigns{37}:="Lt"//Litai
+asCurrencySigns{38}:=Char(1076)+Char(1077)+Char(1085)//Denars
+asCurrencySigns{39}:="RM"//Ringgits
+asCurrencySigns{40}:=Char(8360)//Rupees
+asCurrencySigns{41}:=Char(8366)//Tugriks
+asCurrencySigns{42}:="MT"//Meticais
+asCurrencySigns{43}:="C$"//Cordobas
+asCurrencySigns{44}:=Char(8358)//Nairas
+asCurrencySigns{45}:="B/."//Balboa
+asCurrencySigns{46}:="Gs"//Guarani
+asCurrencySigns{47}:="S/."//Nuevos Soles
+asCurrencySigns{48}:="Php"//Philippines Pesos
+asCurrencySigns{49}:="z"+Char(322)//Zlotych
+asCurrencySigns{50}:="lei"//New Lei
+asCurrencySigns{51}:=Char(1088)+Char(1091)+Char(1073)//Russian Rubles
+asCurrencySigns{52}:=Char(1044)+Char(1080)+Char(1085)+"."//Dinars
+asCurrencySigns{53}:="S"//Shillings
+asCurrencySigns{54}:="NT$"//New Taiwan Dollars
+asCurrencySigns{55}:="TT$"//Trinidad & Tobago Dollars
+asCurrencySigns{56}:="TL"//Lira
+asCurrencySigns{57}:=Char(8356)//Liras
+asCurrencySigns{58}:=Char(8372)//Hryvnia
+asCurrencySigns{59}:="$U"//Uruguay Pesos
+asCurrencySigns{60}:="Bs"//Bolivares Fuertes
+asCurrencySigns{61}:=Char(8363)//Dong
+asCurrencySigns{62}:="Z$"//Zimbabwe Dollars
+asCurrencySigns{63}:=""
+
+$x:=Find in array(asCurrencySigns;GetTextNo ([Facility]CurrencyFormat;1;";"))
+If ($x>0)
+asCurrencySigns:=$x
+Else 
+asCurrencySigns:=1
+End if 
+ARRAY TEXT(asAcctgSys;8)//xero
+asAcctgSys{1}:="<None>"
+asAcctgSys{2}:="Cost Con"
+asAcctgSys{3}:="Great Plains"
+asAcctgSys{4}:="MYOB 2005-2013"
+asAcctgSys{5}:="MYOB 2014"
+asAcctgSys{6}:="Quickbooks"
+asAcctgSys{7}:="Sage"
+asAcctgSys{8}:="Xero"//xero
+Case of 
+: ([Facility]AcctgSystem="CC")
+asAcctgSys:=2
+: ([Facility]AcctgSystem="GP")
+asAcctgSys:=3
+: ([Facility]AcctgSystem="MY")
+asAcctgSys:=4
+: ([Facility]AcctgSystem="MN")
+asAcctgSys:=5
+: ([Facility]AcctgSystem="QB")
+asAcctgSys:=6
+: ([Facility]AcctgSystem="SG")
+asAcctgSys:=7
+: ([Facility]AcctgSystem="XE")
+asAcctgSys:=8
+Else 
+asAcctgSys:=1
+End case 
+If ([Facility]UseCashBook)
+bTiered:=1
+Else 
+bSimple:=1
+End if 
+asAcctgSys{0}:=asAcctgSys{asAcctgSys}
+If (<>sProduct#"M@")
+OBJECT SET VISIBLE(*;"GLExt@";False)
+Else 
+OBJECT SET VISIBLE(*;"GLExt@";True)
+End if 
+If ([Facility]Country="US")
+If ([Facility]State="KS") | ([Facility]State="LA") | ([Facility]State="MT") | ([Facility]State="NE") | ([Facility]State="NY") | ([Facility]State="TX") | ([Facility]State="WA")
+ARRAY TEXT(atInsuranceAgents;2)
+atInsuranceAgents{1}:="MiniCo, Inc. Tenant One Direct"
+atInsuranceAgents{2}:=Get localized string("Other1")
+Else 
+ARRAY TEXT(atInsuranceAgents;3)
+atInsuranceAgents{1}:="MiniCo, Inc. Pay-With-Rent"
+atInsuranceAgents{2}:="MiniCo, Inc. Tenant One Direct"
+atInsuranceAgents{3}:=Get localized string("Other1")
+End if 
+Else 
+ARRAY TEXT(atInsuranceAgents;1)
+atInsuranceAgents{1}:=Get localized string("Other1")
+End if 
+If ([Facility]Country="US")
+If ([Facility]State="KS") | ([Facility]State="LA") | ([Facility]State="MT") | ([Facility]State="NE") | ([Facility]State="NY") | ([Facility]State="TX") | ([Facility]State="WA")
+Case of 
+: ([Facility]InsuranceAgentType=2)
+atInsuranceAgents:=1
+OBJECT SET ENTERABLE([Facility]InsuranceAgent;False)
+Else 
+atInsuranceAgents:=2
+OBJECT SET ENTERABLE([Facility]InsuranceAgent;True)
+End case 
+Else 
+Case of 
+: ([Facility]InsuranceAgentType=1)
+atInsuranceAgents:=1
+OBJECT SET ENTERABLE([Facility]InsuranceAgent;False)
+: ([Facility]InsuranceAgentType=2)
+atInsuranceAgents:=2
+OBJECT SET ENTERABLE([Facility]InsuranceAgent;False)
+Else 
+atInsuranceAgents:=3
+OBJECT SET ENTERABLE([Facility]InsuranceAgent;True)
+End case 
+End if 
+Else 
+atInsuranceAgents:=1
+OBJECT SET ENTERABLE([Facility]InsuranceAgent;True)
+End if 
+[Facility]TriggerUpdate:=True
+vMthDate:=<>dYearStart
+OBJECT SET ENTERABLE(vMthDate;Not(<>tCashBook))
+//If ([Facility]FacilityCode=<>sHOFacility) & ((Current user="Designer") | (<>sCurrentUser="AdminSupport"))
+//SET VISIBLE(*;"Field75";True)  `Debug Mode for Central
+//Else 
+//SET VISIBLE(*;"Field75";False)
+//End if 
+If (Current user#"Designer")
+OBJECT SET ENTERABLE([Facility]UseGateSys;[Facility]UseGateSys)
+End if 
+If (PermissionsControl (15;False)=False)
+OBJECT SET ENTERABLE([Facility]CantModPrior;False)
+End if 
+OBJECT SET ENTERABLE([Facility]UseGateSys;False)
+If (Current user="Designer") | (<>sCurrentUser="AdminSupport")
+OBJECT SET ENTERABLE([Facility]ProductCode;True)
+OBJECT SET ENTERABLE([Facility]UseGateSys;True)
+OBJECT SET ENTERABLE([Facility]SyncingOn;True)
+OBJECT SET ENTERABLE([Facility]FacilityCode;True)
+OBJECT SET ENTERABLE([Facility]UserCode;True)
+OBJECT SET ENTERABLE([Facility]UpgradesPaidTo;True)
+OBJECT SET ENTERABLE([Facility]GateSysType;True)
+//OBJECT SET ENTERABLE([Facility]Homepage;True)
+OBJECT SET ENTERABLE([Facility]UseOnlineReservations;True)
+OBJECT SET ENTERABLE([Facility]UseStorerCheck;True)
+OBJECT SET ENTERABLE([Facility]NonSyncingSiteMV;True)
+OBJECT SET ENTERABLE([Facility]Commissions;True)
+OBJECT SET VISIBLE(*;"ProductCodeIcon@";True)
+End if 
+
+If ([Facility]GateSysType=12)
+OBJECT SET ENABLED(*;"Field53";False)
+End if 
+
+If ([Facility]TutorialData=True)
+OBJECT SET ENTERABLE([Facility]UseGateSys;True)
+OBJECT SET ENTERABLE([Facility]SyncingOn;True)
+OBJECT SET ENTERABLE([Facility]GateSysType;True)
+End if 
+If (Current user="Designer")
+OBJECT SET ENTERABLE([Facility]Max4DClients;True)
+OBJECT SET ENTERABLE([Facility]MaxSites;True)
+OBJECT SET ENTERABLE([Facility]MaxUnits;True)
+End if 
+If ([Facility]MaxSites<2)
+OBJECT SET VISIBLE(*;"@Multi";False)
+End if 
+ARRAY TEXT($aPrinters;0)
+ARRAY TEXT(atPDFPrinters;0)
+ARRAY TEXT(atReceiptPrinters;0)
+PRINTERS LIST($aPrinters)
+For ($i;1;Size of array($aPrinters))
+If ($aPrinters{$i}="PDFCreator") | ($aPrinters{$i}="Microsoft Print to PDF")
+INSERT IN ARRAY(atPDFPrinters;0)
+atPDFPrinters{1}:=$aPrinters{$i}
+Else 
+INSERT IN ARRAY(atReceiptPrinters;0)
+atReceiptPrinters{1}:=$aPrinters{$i}
+End if 
+End for 
+SORT ARRAY(atPDFPrinters;>)
+SORT ARRAY(atReceiptPrinters;>)
+$i:=Find in array(atPDFPrinters;[Facility]PDFName)
+If ($i>0)
+atPDFPrinters:=$i
+End if 
+$i:=Find in array(atReceiptPrinters;[Facility]ReceiptName)
+If ($i>0)
+atReceiptPrinters:=$i
+End if 
+bClone:=0
+If ([Facility]PhotoCompression>0)
+bClone:=1
+OBJECT SET VISIBLE(*;"PhotoComp@";True)
+Else 
+[Facility]PhotoCompression:=[Facility]PhotoCompression*-1
+End if 
+Case of 
+: ([Facility]PhotoCompression<=1000) & ([Facility]PhotoCompression>804)
+vPhotoSettings:=0
+: ([Facility]PhotoCompression<=804) & ([Facility]PhotoCompression>608)
+vPhotoSettings:=25
+: ([Facility]PhotoCompression<=608) & ([Facility]PhotoCompression>412)
+vPhotoSettings:=50
+: ([Facility]PhotoCompression<=412) & ([Facility]PhotoCompression>216)
+vPhotoSettings:=75
+: ([Facility]PhotoCompression<=216) & ([Facility]PhotoCompression>=0)
+vPhotoSettings:=100
+Else 
+//Do Nothing
+End case 
+rRefund1:=0
+rRefund2:=0
+rRefund3:=0
+bButton4:=1//To display passwords
+Case of 
+: ([Facility]RefundPolicy=2)
+rRefund2:=1
+: ([Facility]RefundPolicy=3)
+rRefund3:=1
+Else 
+rRefund1:=1
+[Facility]RefundPolicy:=1
+End case 
+vCents:=<>tCurrencyCents
+OBJECT SET FORMAT([Facility]BankAcNo;<>tBankAccount)
+vTaxNumber:=<>tTaxFull
+OBJECT SET FORMAT([Facility]Phone;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Facility]Fax;[Facility]PhoneFormat)
+OBJECT SET FILTER([Facility]BankAcNo;"!0&"+Char(Double quote)+"0-9; "+Char(Double quote)+"")
+Case of 
+: ([Facility]Country="AU")//Australia
+OBJECT SET FILTER([Facility]BankAcNo;"!0&"+Char(Double quote)+"0-9; "+Char(Double quote)+"###-###  ##############")
+: ([Facility]Country="NZ")//New Zealand
+OBJECT SET FILTER([Facility]BankAcNo;"!0&"+Char(Double quote)+"0-9; "+Char(Double quote)+"##-####  ########-###")
+Else 
+//Do Nothing
+End case 
+
+OBJECT SET VISIBLE(*;"DaysToTrail@";[Facility]AutoUpdateCantMod)
+OBJECT SET VISIBLE(*;"HideFacilityMap";Not([Facility]NoSplash))
+OBJECT SET VISIBLE(*;"HideKeyRent";Not([Facility]NoSplash))
+//SET VISIBLE(*;"UsePDFWriter@";[Facility]UsePDFWriter) SDD This is not helpful as you can't select the checkbox without first having chosen a pdf printer
+//OBJECT SET VISIBLE(*;"ComplexPassword@";[Facility]ComplexPassword)
+//OBJECT SET VISIBLE(*;"Group10@"+"Complex";[Facility]ComplexPassword)
+If (<>sCurrentUser="AdminSupport") | (Current user="Designer")
+OBJECT SET ENTERABLE([Facility]Version;True)
+End if 
+
+//Populate the AutoPay Banking fields
+vsAutoPayAccountNo:=GetTextNo ([Facility]APBankDetails;1;Char(Carriage return))
+vsAutoPayAccountName:=GetTextNo ([Facility]APBankDetails;2;Char(Carriage return))
+vsAutoPayBankName:=GetTextNo ([Facility]APBankDetails;3;Char(Carriage return))
+vsAutoPayBankBranch:=GetTextNo ([Facility]APBankDetails;4;Char(Carriage return))
+
+
+ARRAY TEXT(asWeekDaySelection;7)
+asWeekDaySelection{1}:=Get localized string("Sunday")
+asWeekDaySelection{2}:=Get localized string("Monday")
+asWeekDaySelection{3}:=Get localized string("Tuesday")
+asWeekDaySelection{4}:=Get localized string("Wednesday")
+asWeekDaySelection{5}:=Get localized string("Thursday")
+asWeekDaySelection{6}:=Get localized string("Friday")
+asWeekDaySelection{7}:=Get localized string("Saturday")
+asWeekDaySelection:=[Facility]WeekEndDay
+
+//Load the Backup Preferences
+C_BOOLEAN(vbBackupPrefsLoaded)
+vbBackupPrefsLoaded:=LoadBackupPrefs 
+If (vbBackupPrefsLoaded=True)
+OBJECT SET ENABLED(vbPerformBackup;True)
+Else 
+OBJECT SET ENABLED(vbPerformBackup;False)
+End if 
+
+ARRAY TEXT(atSchedulerFrequency;5)
+atSchedulerFrequency{1}:=Get localized string("Never")
+atSchedulerFrequency{2}:=Get localized string("Hourly")
+atSchedulerFrequency{3}:=Get localized string("Daily1")
+atSchedulerFrequency{4}:=Get localized string("Weekly1")
+atSchedulerFrequency{5}:=Get localized string("Monthly1")
+
+OBJECT SET VISIBLE(*;"@NoBacks";True)
+OBJECT SET VISIBLE(*;"@NoWeeks";True)
+OBJECT SET VISIBLE(*;"@Weekly";False)
+OBJECT SET VISIBLE(*;"@Monthly";False)
+Case of 
+: (vtSchedulerFrequency=Get localized string("Hourly"))
+OBJECT SET ENABLED(*;"Variable10NoBacks";True)
+atSchedulerFrequency:=2
+vtHourDays:=Get localized string("hours")
+vtEvery:=vtSchedulerHourlyEvery
+vtmBackupTime:=vtmHourlyBackupTime
+: (vtSchedulerFrequency=Get localized string("Daily1"))
+OBJECT SET ENABLED(*;"Variable10NoBacks";True)
+atSchedulerFrequency:=3
+vtHourDays:=Lowercase(Get localized string("Days"))
+vtEvery:=vtSchedulerDailyEvery
+vtmBackupTime:=vtmDailyBackupTime
+: (vtSchedulerFrequency=Get localized string("Weekly1"))
+OBJECT SET ENABLED(*;"Variable10NoBacks";True)
+atSchedulerFrequency:=4
+vtHourDays:=Lowercase(Get localized string("weeks"))
+vtEvery:=vtSchedulerWeeklyEvery
+vtmBackupTime:=?00:00:00?
+OBJECT SET VISIBLE(*;"@NoWeeks";False)
+OBJECT SET VISIBLE(*;"@Weekly";True)
+: (vtSchedulerFrequency=Get localized string("Monthly1"))
+OBJECT SET ENABLED(*;"Variable10NoBacks";False)
+atSchedulerFrequency:=5
+vtHourDays:=Get localized string("months, on the")+" "
+vtEvery:="1"//vtSchedulerMonthlyEvery
+vtmBackupTime:=vtmMonthlyBackupTime
+OBJECT SET VISIBLE(*;"@Monthly";True)
+Else 
+OBJECT SET ENABLED(*;"Variable10NoBacks";True)
+atSchedulerFrequency:=1
+vtHourDays:=""
+vtEvery:="0"
+vtmBackupTime:=?00:00:00?
+OBJECT SET VISIBLE(*;"@NoBacks";False)
+OBJECT SET VISIBLE(*;"@NoWeeks";False)
+End case 
+
+If (vtBackupDataFilename="")
+OBJECT SET VISIBLE(*;"cbInitBack";True)
+Else 
+OBJECT SET VISIBLE(*;"cbInitBack";False)
+End if 
+
+//Show Kennards SQL Connection Info if HOF
+
+If (<>sFacility="KE@")
+OBJECT SET VISIBLE(*;"vKSSSQL@";True)
+OBJECT SET VISIBLE(*;"Field154";False)
+
+If ([Facility]SQLConnection#"")
+vKSSSQLDSN:=GetTextNo ([Facility]SQLConnection;1;",")
+vKSSSQLUser:=GetTextNo ([Facility]SQLConnection;2;",")
+vKSSSQLPass:=GetTextNo ([Facility]SQLConnection;3;",")
+End if 
+
+OBJECT SET VISIBLE(*;"@CustRentKSS";True)
+OBJECT SET VISIBLE(*;"Text201";True)
+OBJECT SET VISIBLE(*;"Field169";True)
+Else 
+OBJECT SET VISIBLE(*;"Text201";False)
+OBJECT SET VISIBLE(*;"Field169";False)
+OBJECT SET VISIBLE(*;"KSSSQL@";False)
+OBJECT SET VISIBLE(*;"@CustRentKSS";False)
+End if 
+
+//Primary Key fields - set to unenterable if MV
+OBJECT SET VISIBLE(*;"PrimaryKeys@";False)
+OBJECT SET VISIBLE(*;"EditPrimaryKeys@";True)
+
+//If ([Facility]TAPIKey>"")
+//$vl_devices:=hmTAPI_CountDevices 
+//
+//ARRAY TEXT(tt_devices;$vl_devices)
+//
+//For ($i;1;$vl_devices)
+//$vt_text:=""
+//$vl_error:=hmTAPI_GetDeviceName ($i;$vt_text)
+//tt_devices{$i}:=$vt_text
+//End for 
+//
+//tt_devices:=[Facility]TAPIDeviceID
+//Else 
+ARRAY TEXT(tt_devices;0)
+//
+//End if 
+If ([Facility]UnlimitedWaived=True)
+
+OBJECT SET VISIBLE(*;"Rectangle_Hide1";True)
+OBJECT SET VISIBLE(*;"Field57";False)
+Else 
+OBJECT SET VISIBLE(*;"Field57";True)
+OBJECT SET VISIBLE(*;"Rectangle_Hide1";False)
+End if 
+OBJECT SET FONT(VSMSLEG3;"%password")
+OBJECT SET FONT(vLeg3;"%password")
+OBJECT SET FONT(vDDLeg3;"%password")
+OBJECT SET FONT([Facility]ODBCPassword;"%password")//johnno
+OBJECT SET FONT(vKSSSQLPass;"%password")//johnno
+OBJECT SET FONT(vSCLeg2;"%password")//johnno
+If (aDescriptions=11)//Realex
+OBJECT SET FONT(vLeg5;"%password")
+Else 
+OBJECT SET FONT(vLeg5;"Segoe UI")
+End if 
+If ([Facility]Country="AU")//10781
+OBJECT SET VISIBLE(*;"Text198";True)
+OBJECT SET VISIBLE(*;"aBPayProvider";True)
+OBJECT SET VISIBLE(*;"Popup Drop down List12";True)
+OBJECT SET VISIBLE(*;"Field166";True)
+OBJECT SET VISIBLE(*;"Text199";True)
+OBJECT SET VISIBLE(*;"Field167";True)
+OBJECT SET VISIBLE(*;"BPAYGroupBox";True)
+OBJECT SET VISIBLE(*;"aBPayProvider";True)
+
+ARRAY TEXT(aBPayProvider;2)
+aBPayProvider{1}:="None"
+aBPayProvider{2}:="EziDebit"
+Case of 
+: (([Facility]BPay=0) | ([Facility]BPay=1))
+aBPayProvider:=1
+vBPayKey1:=""
+vBPayKey2:=""
+vBPayKey3:=""
+vBPayKey4:=""
+vBPayKey5:=""
+[Facility]BillerCode :=0
+[Facility]SubBillerCode :=0
+OBJECT SET VISIBLE(*;"vBPayKeyB";False)
+OBJECT SET VISIBLE(*;"BPayKeyText3";False)
+: ([Facility]BPay=2)
+OBJECT SET VISIBLE(*;"vBPayKeyB";True)
+OBJECT SET VISIBLE(*;"BPayKeyText3";True)
+aBPayProvider:=2
+If (GetTextNo ([Facility]BPayDigitalKey;1;",")#"")
+BPayKeyText3:=Get localized string("Active")
+OBJECT SET RGB COLORS(*;"BPayKeyText3";0xCC33;-16)
+vBPayKey1:=GetTextNo ([Facility]BPayDigitalKey;1;",")
+vBPayKey2:=GetTextNo ([Facility]BPayDigitalKey;2;",")
+vBPayKey3:=GetTextNo ([Facility]BPayDigitalKey;3;",")
+vBPayKey4:=GetTextNo ([Facility]BPayDigitalKey;4;",")
+vBPayKey5:=GetTextNo ([Facility]BPayDigitalKey;5;",")
+OBJECT SET VISIBLE(*;"Variable43";True)
+Else 
+BPayKeyText3:=Get localized string("Inactive")
+OBJECT SET RGB COLORS(*;"BPayKeyText3";0x00CC0000;-16)
+OBJECT SET VISIBLE(*;"Variable43";False)
+vBPayKey1:=""
+vBPayKey2:=""
+vBPayKey3:=""
+vBPayKey4:=""
+vBPayKey5:=""
+End if 
+
+End case 
+Else 
+
+OBJECT SET VISIBLE(*;"aBPayProvider";False)
+OBJECT SET VISIBLE(*;"Popup Drop down List12";False)
+OBJECT SET VISIBLE(*;"Text200";False)
+OBJECT SET VISIBLE(*;"Text198";False)
+OBJECT SET VISIBLE(*;"Field166";False)
+OBJECT SET VISIBLE(*;"Text199";False)
+OBJECT SET VISIBLE(*;"Field167";False)
+OBJECT SET VISIBLE(*;"BPAYGroupBox";False)
+OBJECT SET VISIBLE(*;"aBPayProvider";False)
+OBJECT SET VISIBLE(*;"vBPayKeyB";False)
+OBJECT SET VISIBLE(*;"BPayKeyText3";False)
+End if 
+End if 
+If (Form event=On Data Change)
+If (Modified([Facility]WeekEndDay))
+If ([Facility]WeekEndDay>7) | ([Facility]WeekEndDay<1)
+AlertMessage (Get localized string("The week-end day must be in the range of 1=Sunday to 7=Saturday"))
+[Facility]WeekEndDay:=Old([Facility]WeekEndDay)
+End if 
+End if 
+If (Modified([Facility]CantModPrior))
+If ([Facility]CantModPrior>Current date)
+AlertMessage (Get localized string("The Cant Modify Prior To Date cannot be set past todays date. Please correct and try again. For more info please click the Learn More button");Get localized string("OK");"http://my.storman.com/support/knowledgebase/systemsetup/tab3.php?src=lm")
+[Facility]CantModPrior:=Old([Facility]CantModPrior)
+Else 
+[Facility]CantModUpdated:=Current date
+End if 
+End if 
+
+End if 

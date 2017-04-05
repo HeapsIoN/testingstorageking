@@ -1,0 +1,104 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header)
+vTitle:=Get localized string("General Ledger Journals")+" "+String(vSDate)+Get localized string("to")+String(vEDate)
+vLegend:=""
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+If ([CashBookTrxs]Amount>0)
+vAmt1:=[CashBookTrxs]Amount
+vAmt2:=0
+Else 
+vAmt1:=0
+vAmt2:=[CashBookTrxs]Amount*(-1)
+End if 
+End if 
+If (Form event=On Printing Break)// (In break)
+If (Level=0)
+QUERY([ChartAccts];[ChartAccts]AcctType="B@")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+vBankAcc:=[ChartAccts]Description
+vAccBank:=[ChartAccts]AcctNo
+QUERY([CashBookTrxs];[CashBookTrxs]AcctNo=[ChartAccts]AcctNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]TrxDate>=vSDate;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]TrxDate<=vEDate)
+vDebitBank:=0
+vCreditBank:=0
+vPriorPrepaid:=""
+vPriorInc:=""
+For ($x;1;Records in selection([CashBookTrxs]))
+If ([CashBookTrxs]Amount<0)
+vCreditBank:=vCreditBank+[CashBookTrxs]Amount
+Else 
+vDebitBank:=vDebitBank+[CashBookTrxs]Amount
+End if 
+NEXT RECORD([CashBookTrxs])
+End for 
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+vCreditBank:=vCreditBank*(-1)
+vDebtors:=[ChartAccts]Description
+vAccDebtors:=[ChartAccts]AcctNo
+vDebitDebtors:=vCreditBank
+vCreditDebtors:=vDebitBank
+QUERY([Journal];[Journal]JrnlType="PRE";*)
+QUERY([Journal]; & ;[Journal]JrnlDate=vEDate)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position(<>sFacility;[CashBookTrxs]Description)>0)
+For ($i;1;Records in selection([CashBookTrxs]))
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+If ([ChartAccts]AcctType="A")
+vPrepaid:=[ChartAccts]Description
+vAccPrepd:=[ChartAccts]AcctNo
+If ([CashBookTrxs]Amount>0)
+vDebitPrepaid:=0
+vCreditPrepaid:=[CashBookTrxs]Amount
+Else 
+vCreditPrepaid:=0
+vDebitPrepaid:=[CashBookTrxs]Amount*(-1)
+End if 
+Else 
+vIncome:=[ChartAccts]Description
+vAccInc:=[ChartAccts]AcctNo
+If ([CashBookTrxs]Amount>0)
+vCreditIncome:=0
+vDebitIncome:=[CashBookTrxs]Amount
+Else 
+vCreditIncome:=[CashBookTrxs]Amount*(-1)
+vDebitIncome:=0
+End if 
+End if 
+NEXT RECORD([CashBookTrxs])
+End for 
+$Date:=GetDate (1;Month of(vEDate);Year of(vEDate))-1//End Last Month
+QUERY([Activity];[Activity]ActivityDate=$Date;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=<>sFacility)
+If ([Activity]AdvBillRntValue>0)
+vDrPriorInc:=0
+vCrPriorPrepaid:=0
+vCrPriorInc:=[Activity]AdvBillRntValue*vPPTax
+vDrPriorPrepaid:=[Activity]AdvBillRntValue*vPPTax
+Else 
+vDrPriorInc:=[Activity]AdvBillRntValue*(-1)*vPPTax
+vCrPriorPrepaid:=[Activity]AdvBillRntValue*(-1)*vPPTax
+vCrPriorInc:=0
+vDrPriorPrepaid:=0
+End if 
+vPriorPrepaid:=Get localized string("Previous Month")+" "+vPrepaid
+vPriorIncome:=Get localized string("Previous Month")+" "+vIncome
+End if 
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

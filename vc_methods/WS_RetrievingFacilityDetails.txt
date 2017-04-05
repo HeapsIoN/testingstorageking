@@ -1,0 +1,105 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): Hamid.Zarei
+// Date and time: 11/08/2015
+// ----------------------------------------------------
+// Method: WS_RetrievingFacilityDetails
+// Description
+// We need to make sure we can retrieve the details from the web service that we currently retrieve via the nightly exports. 
+//This includes the full list of facilities and the total number of units for each unit type. 
+// 
+// Parameters
+//Input: Web Services Password and HOF facility code
+//Output: 
+//1-Facility code
+//2-Facility name
+//3-ORErrorCode
+//4-ORErrorDescription
+//5-ORSuccess
+// ----------------------------------------------------
+
+
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is string var;SOAP input)
+
+SOAP DECLARATION(WS_UserCode;String array;SOAP output)//User Code
+SOAP DECLARATION(WS_asFacilityCode;String array;SOAP output)// Facility Code
+SOAP DECLARATION(WS_Facility;String array;SOAP output)// Facility Name
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+ARRAY TEXT(WS_Facility;0)
+ARRAY TEXT(WS_asFacilityCode;0)
+ARRAY TEXT(WS_UserCode;0)
+C_TEXT($String)
+
+$String:="Start WS_RetrievingFacilityDetails"+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+" "+Char(13)
+WSRecordLog ($String)
+
+
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+If (<>sHOFacility#"@HUB")
+ALL RECORDS([Facility])
+End if 
+
+FIRST RECORD([Facility])
+
+For ($i;1;Records in selection([Facility]))
+
+APPEND TO ARRAY(WS_asFacilityCode;[Facility]FacilityCode)
+APPEND TO ARRAY(WS_Facility;[Facility]FacilityName)
+APPEND TO ARRAY(WS_UserCode;[Facility]UserCode)
+
+NEXT RECORD([Facility])
+End for 
+
+Else 
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+WS_ORSuccess:=False
+End if 
+Else 
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+WS_ORSuccess:=False
+End if 
+
+$String:="End WS_RetrievingFacilityDetails"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+
+$sizeofarray:=Size of array(WS_asFacilityCode)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asFacilityCode("+String($vlElem)+"):"+WS_asFacilityCode{$vlElem}+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_Facility)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_Facility("+String($vlElem)+"):"+WS_Facility{$vlElem}+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_UserCode)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_UserCode("+String($vlElem)+"):"+WS_UserCode{$vlElem}+Char(13)
+End for 
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

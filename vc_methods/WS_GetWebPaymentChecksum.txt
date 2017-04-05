@@ -1,0 +1,84 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+C_REAL($WS_vtWPCKSumTransactionSum)
+
+//Incoming Information
+//These Vars defined in the Compiler_Web method
+//C_TEXT(WS_vtWPCKSumFacilityCode)
+//C_DATE(WS_vdWPCKSumTransactionDate)
+//C_TEXT(WS_vtWPCKSUMTransactionDescr)
+//C_BOOLEAN(WS_vbWPCKSUMChargeReceipt)
+
+//Outgoing information
+C_TEXT(WS_vtWPCKSumChecksum;WS_vtWPCKSumError;WS_vtWPCKSumTransactionCount)
+C_LONGINT(WS_viCountry)
+
+QUERY([Facility];[Facility]FacilityCode=WS_VtWPCKSumFacilityCode)
+Case of 
+: (<>tDateFormat="US")
+WS_viCountry:=2
+: (<>tDateFormat="ISO")
+WS_viCountry:=7
+Else 
+WS_viCountry:=1
+End case 
+$WS_vtWPCKSumTransactionSum:=0
+QUERY([Trxs]; & ;[Trxs]AgreeNo=WS_VtWPCKSumFacilityCode+"@")
+If (WS_vbWPCKSUMChargeReceipt)//Is a Charge
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+Else 
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+End if 
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate=WS_vdWPCKSumTransactionDate;*)
+If (WS_vtWPCKSUMTransactionDescr="")
+QUERY SELECTION([Trxs]; & ;[Trxs]Description="Web Payment@")
+Else 
+QUERY SELECTION([Trxs]; & ;[Trxs]Description="@"+WS_vtWPCKSUMTransactionDescr+"@")//"Web Payment@")
+End if 
+
+ARRAY TEXT(WS_vtaWPCKSumTransactions;Records in selection([Trxs]))
+ORDER BY([Trxs];[Trxs]TotAmt;>)
+FIRST RECORD([Trxs])
+For ($Counter;1;Records in selection([Trxs]))
+WS_VtaWPCKSumTransactions{$Counter}:=EncryptIt2 ([Trxs]AgreeNo+","+String([Trxs]TrxDate)+","+String([Trxs]TotAmt);True)
+$WS_vtWPCKSumTransactionSum:=$WS_vtWPCKSumTransactionSum+[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+
+WS_vtWPCKSumChecksum:=String($WS_vtWPCKSumTransactionSum)
+WS_vtWPCKSumTransactionCount:=String(Records in selection([Trxs]))
+
+//Receive variables from StormanUsers
+SOAP DECLARATION(WS_vtWPCKSumFacilityCode;Is text;SOAP input)
+SOAP DECLARATION(WS_vdWPCKSumTransactionDate;Is date;SOAP input)
+SOAP DECLARATION(WS_vtWPCKSUMTransactionDescr;Is text;SOAP input)
+SOAP DECLARATION(WS_vbWPCKSUMChargeReceipt;Is Boolean;SOAP input)
+
+$String:="Start WS_GetWebPaymentChecksum"+Char(13)
+$String:=$String+"WS_vtWPCKSumFacilityCode: "+WS_vtWPCKSumFacilityCode+Char(13)
+$String:=$String+"WS_vdWPCKSumTransactionDate: "+String(WS_vdWPCKSumTransactionDate)+Char(13)
+$String:=$String+"WS_vtWPCKSUMTransactionDescr: "+WS_vtWPCKSUMTransactionDescr+Char(13)
+$String:=$String+"WS_vbWPCKSUMChargeReceipt: "+String(WS_vbWPCKSUMChargeReceipt)+Char(13)
+
+WSRecordLog ($String)
+
+//Send them back to the client
+SOAP DECLARATION(WS_vtWPCKSumChecksum;Is text;SOAP output)
+SOAP DECLARATION(WS_vtWPCKSumError;Is text;SOAP output)
+SOAP DECLARATION(WS_vtWPCKSumTransactionCount;Is text;SOAP output)
+SOAP DECLARATION(WS_vtaWPCKSumTransactions;Text array;SOAP output)
+SOAP DECLARATION(WS_viCountry;Is integer;SOAP output)
+
+
+$String:="End WS_GetWebPaymentChecksum"+Char(13)
+$String:=$String+"WS_vtWPCKSumChecksum: "+WS_vtWPCKSumChecksum+Char(13)
+$String:=$String+"WS_vtWPCKSumError: "+WS_vtWPCKSumError+Char(13)
+$String:=$String+"WS_vtWPCKSumTransactionCount: "+WS_vtWPCKSumTransactionCount+Char(13)
+$sizeofarray:=Size of array(WS_vtaWPCKSumTransactions)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_vtaWPCKSumTransactions("+String($vlElem)+"):"+WS_vtaWPCKSumTransactions{$vlElem}+Char(13)
+End for 
+$String:=$String+"WS_viCountry: "+String(WS_viCountry)+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

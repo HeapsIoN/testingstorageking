@@ -1,0 +1,147 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 04/06/15, 16:13:17
+// ----------------------------------------------------
+// Method: WS_EditCreditAgreementInfo
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP input;"WS_MoveInDate")
+SOAP DECLARATION(WS_NextBillDte;Is text;SOAP input;"WS_NextBillDate")
+SOAP DECLARATION(WS_NoticePlanNo;Is integer;SOAP input;"WS_NoticePlanNo")
+SOAP DECLARATION(WS_DaytoBill;Is integer;SOAP input;"WS_DaytoBill")
+SOAP DECLARATION(WS_LateFeeAmt;Is real;SOAP input;"WS_LateFeeAmt")
+SOAP DECLARATION(WS_Password;Is text;SOAP input;"WS_Password")
+SOAP DECLARATION(WS_PriorLastBill;Is date;SOAP input;"WS_PriorLastBill")
+SOAP DECLARATION(WS_LastBillDate;Is date;SOAP input;"WS_LastBillDate")
+SOAP DECLARATION(WS_LastBillAmt;Is real;SOAP input;"WS_LastBillAmt")
+SOAP DECLARATION(WS_LastBillPlan;Is text;SOAP input;"WS_LastBillPlan")
+SOAP DECLARATION(WS_LastDiscAmt;Is real;SOAP input;"WS_LastDiscAmt")
+SOAP DECLARATION(WS_CallTakenBy;Is text;SOAP input;"WS_CallTakenBy")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+
+$String:="Start WS_EditCreditAgreementFull"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRecordLog ($String)
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+READ WRITE([Agreement])
+READ WRITE([Customer])
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+Case of 
+: (Records in selection([Agreement])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+: (Records in selection([Agreement])=1)
+
+RELATE ONE([Agreement]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+
+If (Records in selection([Customer])=1) & (Locked([Customer])=False)
+If (Records in selection([Agreement])=1) & (Locked([Agreement])=False)
+[Agreement]MoveIn:=WS_MoveInDate
+[Agreement]NextBillDate:=WS_NextBillDte
+[Agreement]NoticePlanNo:=WS_NoticePlanNo
+[Agreement]DaytoBill:=WS_DaytoBill
+[Agreement]LateFeeAmt:=WS_LateFeeAmt
+[Customer]Password:=WS_Password
+[Agreement]PriorLastBill:=WS_PriorLastBill
+[Agreement]LastBillDate:=WS_LastBillDate
+[Agreement]LastBillAmt:=WS_LastBillAmt
+[Agreement]LastBillPlan:=WS_LastBillPlan
+[Agreement]LastDiscAmt:=WS_LastDiscAmt
+[Agreement]CallTakenBy:=WS_CallTakenBy
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:="Agreement record successfully edited."
+
+Else 
+If (Locked([Agreement]))
+LOCKED BY([Agreement];$Process;$User;$Machine;$ProcName)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1018
+WS_ORErrorDescription:="Agreeemnt record/s locked in database Storman. Please try again later. "+String(Records in selection([Customer]))+" Read/Write= "+String(Read only state([Customer]))+" Locked= "+String(Locked([Customer]))+"Details: "+String($Process)+" "+String($User)+" "+String($Machine)+" "+String($ProcName)
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+End if 
+Else 
+If (Locked([Customer]))
+LOCKED BY([Customer];$Process;$User;$Machine;$ProcName)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1019
+WS_ORErrorDescription:="Customer record/s locked in database Storman. Please try again later. "+String(Records in selection([Customer]))+" Read/Write= "+String(Read only state([Customer]))+" Locked= "+String(Locked([Customer]))+"Details: "+String($Process)+" "+String($User)+" "+String($Machine)+" "+String($ProcName)
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1012
+WS_ORErrorDescription:="Customer record not found in database Storman."
+End if 
+End if 
+
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1029
+WS_ORErrorDescription:="Invalid Customer password."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1033
+WS_ORErrorDescription:="Requested Agreement number is not unique in database Storman."
+End case 
+End if 
+
+$String:="End WS_GetAgreementInfoFull"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+String(WS_vtAgreementNumber)+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+$String:=$String+"WS_NextBillDte: "+String(WS_NextBillDate)+Char(13)
+$String:=$String+"WS_NoticePlanNo: "+String(WS_NoticePlanNo)+Char(13)
+$String:=$String+"WS_DaytoBill: "+String(WS_DaytoBill)+Char(13)
+$String:=$String+"WS_LateFeeAmt: "+String(WS_LateFeeAmt)+Char(13)
+$String:=$String+"WS_Password: "+WS_Password+Char(13)
+$String:=$String+"WS_PriorLastBill: "+String(WS_PriorLastBill)+Char(13)
+$String:=$String+"WS_LastBillDate: "+String(WS_LastBillDate)+Char(13)
+$String:=$String+"WS_LastBillAmt: "+String(WS_LastBillAmt)+Char(13)
+$String:=$String+"WS_LastDiscAmt: "+String(WS_LastDiscAmt)+Char(13)
+$String:=$String+"WS_CallTakenBy: "+WS_CallTakenBy+Char(13)
+$String:=$String+"WS_OthTotal: "+String(WS_OthTotal)+Char(13)
+$String:=$String+"WS_NewOthTotal: "+String(WS_NewOthTotal)+Char(13)
+$String:=$String+"WS_BalanceOwing: "+String(WS_BalanceOwing)+Char(13)
+
+
+WSRecordLog ($String)
+
+READ ONLY([Agreement])
+READ ONLY([Customer])
+
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+
+ReadOnlyAll 
+UnloadAll 

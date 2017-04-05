@@ -1,0 +1,51 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL(vQtyPlus)
+
+
+//QUERY([MerchPlan];[MerchPlan]AnalysisCodes="@"+[Analysis]Code+",@";*)
+//QUERY([MerchPlan]; & ;[MerchPlan]ItemQuantity<=vQtyPlus)
+//ORDER BY([MerchPlan]Priority;>)
+//If (Records in selection([MerchPlan])>0)
+//If ([MerchPlan]PercDiscount>0)
+//If ([MerchPlan]RepeatMP=True)
+//$Percent:=[MerchPlan]PercDiscount*(Int(vQtyPlus/[MerchPlan]ItemQuantity))
+//[Transaction]TotAmt:=-([Transaction]TotAmt)*((100-$Percent)/100)
+//Else 
+//[Transaction]TotAmt:=([Transaction]TotAmt)*((100-[MerchPlan]PercDiscount)/100)
+//End if 
+//Else 
+//If ([MerchPlan]RepeatMP=True)
+//$Percent:=[MerchPlan]FixedDiscount*(Int(vQtyPlus/[MerchPlan]ItemQuantity))
+//[Transaction]TotAmt:=[Transaction]TotAmt-$Percent
+//Else 
+//[Transaction]TotAmt:=[Transaction]TotAmt-[MerchPlan]FixedDiscount
+//End if 
+//End if 
+//End if 
+QUERY([Analysis];[Analysis]Code=vAnalysisCode)
+
+If ([Analysis]Code="")
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring(vAnalysisCode;1;8))
+If (Records in selection([MerchPlan])=1)
+vPlus:=Round([MerchPlan]FixedDiscount*vQtyPlus;2)
+If (vQtyPlus>1)
+vDescr:=[MerchPlan]DiscountDescription+" x "+String(vQtyPlus)
+Else 
+vDescr:=[MerchPlan]DiscountDescription
+End if 
+End if 
+Else 
+vPlus:=Round([Analysis]DfltSellAmt*vQtyPlus;2)
+If (vQtyPlus>1)
+vDescr:=[Analysis]Description+" x "+String(vQtyPlus)
+Else 
+vDescr:=[Analysis]Description
+End if 
+End if 
+
+
+
+vTax:=CalcTaxAmt (vPlus;vAnalysisCode;vDateFrom;vDateTo;4)
+If (vPlus=0) & (PermissionsControl (165;False)=False)
+AlertMessage (Get localized string("You cannot set the transaction to $0"))
+End if 

@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 23/07/13 Method to remove apostrophe from customer code
+
+C_TEXT($1;$NewCode)//Character to be replaced
+C_BOOLEAN($2)//Silent
+C_LONGINT($i)
+
+If (Count parameters>1)
+$Silent:=$2
+Else 
+$Silent:=False
+End if 
+
+If (Length($1)=1)
+QUERY([Customer];[Customer]CustomerCode="@"+$1+"@")
+If (Records in selection([Customer])>0)
+READ WRITE([Customer])
+READ WRITE([Agreement])
+READ WRITE([Reservation])
+READ WRITE([Trxs])
+READ WRITE([PhotosCards])
+READ WRITE([NotesHistory])
+READ WRITE([GateLog])
+
+FIRST RECORD([Customer])
+For ($i;1;Records in selection([Customer]))
+$NewCode:=Replace string([Customer]CustomerCode;$1;"1";*)
+$Ascii:=Character code("Z")//SDD 02/10/13 Start at 'Z' and work backwards through alphabet to "A"
+While (Find in field([Customer]CustomerCode;$NewCode)>=0) & ($Ascii>65)
+$NewCode:=Replace string([Customer]CustomerCode;$1;Char($Ascii);*)
+$Ascii:=$Ascii-1
+End while 
+QUERY([GateLog];[GateLog]CustCode=[Customer]CustomerCode)
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$NewCode)
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$NewCode)
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=$NewCode)
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([Trxs];[Trxs]CustomerCode:=$NewCode)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([Reservation];[Reservation]CustomerCode:=$NewCode)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([Agreement];[Agreement]CustomerCode:=$NewCode)
+[Customer]CustomerCode:=$NewCode
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+READ ONLY([Customer])
+READ ONLY([Agreement])
+READ ONLY([Reservation])
+READ ONLY([Trxs])
+READ ONLY([PhotosCards])
+READ ONLY([NotesHistory])
+READ ONLY([GateLog])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([PhotosCards])
+UNLOAD RECORD([NotesHistory])
+UNLOAD RECORD([GateLog])
+Else 
+If ($Silent=False)
+AlertMessage ("No CustomerCodes were found with the character "+$1+" !")
+End if 
+End if 
+Else 
+If ($Silent=False)
+AlertMessage ("The character passed to this method must be only 1 character in length!")
+End if 
+End if 

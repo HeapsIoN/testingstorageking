@@ -1,0 +1,705 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($XMLText;$Result)
+C_LONGINT($k;$SortOrd)
+ARRAY TEXT($MarkType;0)
+$Doc:=Open document("")
+If (OK=1)
+RECEIVE PACKET($Doc;$XMLText;32000)
+CLOSE DOCUMENT($Doc)
+SetFacility 
+
+// Need to do a string replacing for &;<;>;";'
+$XMLText:=Replace string($XMLText;"&amp;";"and")
+$XMLText:=Replace string($XMLText;"&";"and")
+
+
+$XMLRef:=DOM Parse XML variable($XMLText)
+
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+
+// Step 1
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step01/datafilecountry/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]Country:=$value
+
+If ([Facility]Country="GB")
+[Facility]CurrencyFormat:="£"+";"+GetTextNo ([Facility]CurrencyFormat;2;";")
+<>sCurrency:=GetTextNo ([Facility]CurrencyFormat;1;";")
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step01/globaltaxrate/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]TaxRate:=Num($value)
+
+// Step 3
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/companyname")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]CompanyName:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/businessname/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]BusinessName:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/facilityname/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]FacilityName:=$value
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/postaladdress/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value#"")
+[Facility]Address:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/postalstate/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]State:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/postalpostcode/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]PostZIPCode:=$value
+Else 
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/physicaladdress/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]Address:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/physicalstate/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]State:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/physicalpostcode/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]PostZIPCode:=$value
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/postalsuburb/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]City:=$value
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/facilityemail/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]EmailAddress:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/facilityphone/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]Phone:=$value
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step03/facilityfax/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]Fax:=$value
+
+//Step 4 SMTP Address
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step04/ispsmtp/")
+If ($resultRef#"0000000000000000")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]SmtpHostName:=$value
+End if 
+
+// Step 7
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step07/zerobalance/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="Yes")
+[Facility]RequireZeroBal:=True
+Else 
+[Facility]RequireZeroBal:=False
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step07/billingtype/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="Anniversary date")
+[Facility]BillonFirst:=False
+Else 
+[Facility]BillonFirst:=True
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step07/sendinvoices/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="yes")
+[Facility]PrintInvsDP:=True
+Else 
+[Facility]PrintInvsDP:=False
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step07/proratarefunds_basis/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+Case of 
+: ($value="Daily Rate Basis")
+[Facility]RefundPolicy:=1
+: ($value="Weekly Basis")
+[Facility]RefundPolicy:=2
+: ($value="") | ($value="No Refunds")
+[Facility]RefundPolicy:=3
+End case 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step07/proratarefunds_daysnotice/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]NoticeDaysReqd:=Num($value)
+
+
+//Step 8
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step08/bankaccountname/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]BankAcName:=$value
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step08/bankaccountnumber/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]BankAcNo:=$value
+<>tBankAccount:="#"*Length($value)
+OBJECT SET FORMAT([Facility]BankAcNo;<>tBankAccount)
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step08/bankbranchname/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]BankBranch:=$value
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step08/bankbranchcode/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]BankAcNo:=$value+" "+[Facility]BankAcNo
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step08/companynumber/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+$value:=Replace string($value;"-";"")
+[Facility]TaxNumber:=$value
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step08/bankname/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Facility]BankName:=$value
+
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+
+//Step 9
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step09/marketingtypes/marketingtype/";$MarkType)
+
+For ($i;1;Size of array($MarkType))
+DOM GET XML ELEMENT VALUE($MarkType{$i};$value)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=$value
+[MarketingTypes]ListCode:="MS"
+[MarketingTypes]Facility:=<>sFacility
+SAVE RECORD([MarketingTypes])
+End for 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step09/customertypes/customertype/";$MarkType)
+
+For ($i;1;Size of array($MarkType))
+DOM GET XML ELEMENT VALUE($MarkType{$i};$value)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=$value
+[MarketingTypes]ListCode:="CT"
+[MarketingTypes]Facility:=<>sFacility
+SAVE RECORD([MarketingTypes])
+End for 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step09/businesstypes/businesstype/";$MarkType)
+
+For ($i;1;Size of array($MarkType))
+DOM GET XML ELEMENT VALUE($MarkType{$i};$value)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=$value
+[MarketingTypes]ListCode:="BT"
+[MarketingTypes]Facility:=<>sFacility
+SAVE RECORD([MarketingTypes])
+End for 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step09/reasonsin/reasonin/";$MarkType)
+
+For ($i;1;Size of array($MarkType))
+DOM GET XML ELEMENT VALUE($MarkType{$i};$value)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=$value
+[MarketingTypes]ListCode:="MW"
+[MarketingTypes]Facility:=<>sFacility
+SAVE RECORD([MarketingTypes])
+End for 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step09/reasonsout/reasonout/";$MarkType)
+
+For ($i;1;Size of array($MarkType))
+DOM GET XML ELEMENT VALUE($MarkType{$i};$value)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=$value
+[MarketingTypes]ListCode:="RM"
+[MarketingTypes]Facility:=<>sFacility
+SAVE RECORD([MarketingTypes])
+End for 
+
+//Step 10
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step10/analysiscategories/analysiscategory/";$MarkType)
+
+For ($i;1;Size of array($MarkType))
+DOM GET XML ELEMENT VALUE($MarkType{$i};$value)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=$value
+[MarketingTypes]ListCode:="AC"
+[MarketingTypes]Facility:=<>sFacility
+SAVE RECORD([MarketingTypes])
+End for 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step10/notecategories/notecategory/";$MarkType)
+
+For ($i;1;Size of array($MarkType))
+DOM GET XML ELEMENT VALUE($MarkType{$i};$value)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=$value
+[MarketingTypes]ListCode:="NC"
+[MarketingTypes]Facility:=<>sFacility
+SAVE RECORD([MarketingTypes])
+End for 
+
+
+//Step 11
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step11/billingplan_basic_weekly/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+
+If ($value="True")
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"WK"
+[BillPlan]Description:=Get localized string("Weekly")
+[BillPlan]PeriodstoPay:=1
+[BillPlan]SortOrder:=2
+[BillPlan]PlanPeriod:="Week"
+SAVE RECORD([BillPlan])
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step11/billingplan_basic_fortnightly/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="True")
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"2WK"
+[BillPlan]Description:=Get localized string("Fortnightly")
+[BillPlan]PeriodstoPay:=2
+[BillPlan]PlanPeriod:="Week"
+[BillPlan]SortOrder:=3
+SAVE RECORD([BillPlan])
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step11/billingplan_basic_monthly/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="True")
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"MO")
+If (Records in selection([BillPlan])=0)
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"MO"
+[BillPlan]Description:=Get localized string("Monthly")
+[BillPlan]PeriodstoPay:=1
+[BillPlan]SortOrder:=1
+[BillPlan]PlanPeriod:="Month"
+SAVE RECORD([BillPlan])
+End if 
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step11/billingplan_basic_quarterly/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="True")
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"3M"
+[BillPlan]Description:=Get localized string("Three Months")
+[BillPlan]PeriodstoPay:=3
+[BillPlan]SortOrder:=4
+[BillPlan]PlanPeriod:="Month"
+SAVE RECORD([BillPlan])
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step11/billingplan_basic_sixmonthly/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="True")
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"6M"
+[BillPlan]Description:=Get localized string("Six Monthly")
+[BillPlan]PeriodstoPay:=6
+[BillPlan]SortOrder:=5
+[BillPlan]PlanPeriod:="Month"
+SAVE RECORD([BillPlan])
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step11/billingplan_basic_yearly/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="True")
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"12M"
+[BillPlan]Description:=Get localized string("Yearly")
+[BillPlan]PeriodstoPay:=12
+[BillPlan]SortOrder:=6
+[BillPlan]PlanPeriod:="Month"
+SAVE RECORD([BillPlan])
+End if 
+
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step11/custom-billing-plans/custom-billing-plan/")
+$SortOrd:=5
+While (OK=1)
+$xml_Child_Ref:=DOM Get first child XML element($resultRef)
+DOM GET XML ELEMENT VALUE($xml_Child_Ref;$value)
+If (Length($value)>3)
+$BillCode:=Substring($value;1;3)
+Else 
+$BillCode:=$value
+End if 
+
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+$BillCode)
+$k:=0
+While (Records in selection([BillPlan])#0)
+If (Length(String($k))=1)
+If (Length($BillCode)=3)
+$BillCode:=Replace string($BillCode;Substring($BillCode;3;1);String($k))
+Else 
+$BillCode:=$BillCode+String($k)
+End if 
+Else 
+If (Length($BillCode)=3)
+$BillCode:=Replace string($BillCode;Substring($BillCode;2;2);String($k))
+Else 
+$BillCode:=Substring($BillCode;1;1)+String($k)
+End if 
+End if 
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+$BillCode)
+$k:=$k+1
+End while 
+
+CREATE RECORD([BillPlan])
+[BillPlan]SortOrder:=$SortOrd
+$SortOrd:=$SortOrd+1
+[BillPlan]Description:=$value
+[BillPlan]Code:=<>sFacility+$BillCode
+$next_XML_Ref:=DOM Get next sibling XML element($xml_Child_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[BillPlan]PeriodstoPay:=Num($value)
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+If ($value="weeks")
+[BillPlan]PlanPeriod:="Week"
+Else 
+[BillPlan]PlanPeriod:="Month"
+End if 
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+$temp:=$value
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+
+Case of 
+: ($value="percent off")
+[BillPlan]DiscPercentage:=Num($temp)
+: ($value="dinars off")
+[BillPlan]DiscFixedAmt:=Num($temp)
+: ($value="month(s) free") | ($value="week(s) free")
+[BillPlan]FreePeriods:=Num($temp)
+End case 
+SAVE RECORD([BillPlan])
+$resultRef:=DOM Get next sibling XML element($resultRef)
+End while 
+
+// Step 12
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step12/merchandise_items/merchandise_item/")
+$SortOrd:=7//Changed Sort Order to start from 7 to avoid overlapping with default analysis codes
+READ WRITE([Analysis])
+While (OK=1)
+$xml_Child_Ref:=DOM Get first child XML element($resultRef)
+DOM GET XML ELEMENT VALUE($xml_Child_Ref;$value)
+If (Length($value)>3)
+$BillCode:=Substring($value;1;3)
+Else 
+$BillCode:=$value
+End if 
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+$BillCode)
+$k:=0
+While (Records in selection([Analysis])#0)
+If (Length(String($k))=1)
+If (Length($BillCode)=3)
+$BillCode:=Replace string($BillCode;Substring($BillCode;3;1);String($k))
+Else 
+$BillCode:=$BillCode+String($k)
+End if 
+Else 
+If (Length($BillCode)=3)
+$BillCode:=Replace string($BillCode;Substring($BillCode;2;2);String($k))
+Else 
+$BillCode:=Substring($BillCode;1;1)+String($k)
+End if 
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+$BillCode)
+$k:=$k+1
+End while 
+
+CREATE RECORD([Analysis])
+[Analysis]Code:=<>sFacility+$BillCode
+[Analysis]Description:=$value
+[Analysis]SortOrder:=$SortOrd
+[Analysis]AnalysisCategory:=Get localized string("Merchandise")
+[Analysis]Groups:="ALL"
+$SortOrd:=$SortOrd+1
+$next_XML_Ref:=DOM Get next sibling XML element($xml_Child_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[Analysis]CostPrice:=Num($value)
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[Analysis]DfltSellAmt:=Num($value)
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[Analysis]GLCode:=$value
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[Analysis]InvQtyonHand:=Num($value)
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+
+
+If ($value#"")
+[Analysis]Taxable:=True
+[Analysis]TaxRate:=Num($value)
+End if 
+
+
+If ([Analysis]Code#"") & ([Analysis]Description#"")
+SAVE RECORD([Analysis])
+End if 
+$resultRef:=DOM Get next sibling XML element($resultRef)
+End while 
+
+//Step 13
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step13/itemtypes/item_type")
+$SortOrd:=0
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+While (OK=1)
+$xml_Child_Ref:=DOM Get first child XML element($resultRef)
+DOM GET XML ELEMENT VALUE($xml_Child_Ref;$value)
+$BillCode:=$value
+
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+$BillCode)
+$k:=0
+While (Records in selection([UnitType])#0)
+If (Length(String($k))=1)
+$BillCode:=Replace string($BillCode;Substring($BillCode;Length($BillCode);1);String($k))
+Else 
+$BillCode:=Replace string($BillCode;Substring($BillCode;Length($BillCode)-1;2);String($k))
+End if 
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+$BillCode)
+$k:=$k+1
+End while 
+
+CREATE RECORD([UnitType])
+[UnitType]UnitTypeCode:=$BillCode
+[UnitType]RUnitType:=<>sFacility+$BillCode
+[UnitType]Description:=$value
+[UnitType]SortOrder:=$SortOrd
+$SortOrd:=$SortOrd+1
+$next_XML_Ref:=DOM Get next sibling XML element($xml_Child_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[UnitType]UnitTypeLength:=Num($value)
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[UnitType]UnitTypeWidth:=Num($value)
+
+[UnitType]Area:=[UnitType]UnitTypeLength*[UnitType]UnitTypeWidth
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+$Pos1:=Position(",";$value)
+If ($Pos1>0)
+$SubText:=Substring($value;$Pos1+1)
+Pos2:=Position(",";$SubText)
+If (Pos2>0)
+$SubText:=Replace string($SubText;",";".")
+$Result:=Substring($value;0;$Pos1)+$SubText
+Else 
+Pos3:=Position(".";$SubText)
+If (Pos3>0)
+$Result:=$value
+Else 
+$Result:=Replace string($value;",";".")
+End if 
+End if 
+Else 
+$Result:=$value
+End if 
+[UnitType]DepositAmt:=Num($Result)
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+$Pos1:=Position(",";$value)
+If ($Pos1>0)
+$SubText:=Substring($value;$Pos1+1)
+Pos2:=Position(",";$SubText)
+If (Pos2>0)
+$SubText:=Replace string($SubText;",";".")
+$Result:=Substring($value;0;$Pos1)+$SubText
+Else 
+Pos3:=Position(".";$SubText)
+If (Pos3>0)
+$Result:=$value
+Else 
+$Result:=Replace string($value;",";".")
+End if 
+End if 
+Else 
+$Result:=$value
+End if 
+
+[UnitType]MonthlyRate:=Num($Result)
+[UnitType]WeeklyRate:=Round([UnitType]MonthlyRate*[Facility]RentWeeklyMthly;2)
+
+SAVE RECORD([UnitType])
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+$k:=0
+vName:=$value
+vName:=Replace string(vName;" ";"")
+$Pos:=1
+READ WRITE([Unit])
+READ WRITE([UnitStatusTrx])
+While (vName>"")
+$i:=Position(",";vName)
+If ($i>0)
+vHex:=Substring(vName;1;$i-1)
+vName:=Substring(vName;$i+1)
+Else 
+vHex:=vName
+vName:=""
+End if 
+$j:=Position("-";vHex)
+If ($j>0)
+While ($Pos<Length(Substring(vHex;1;$j-1))) & (Character code(vHex[[$Pos]])>57)
+$Pos:=$Pos+1
+End while 
+$String:=Substring(vHex;1;$Pos-1)
+$Num:=Num(Substring(vHex;$Pos;$j-1))
+For ($i;Num(Substring(vHex;1;$j-1));Num(Substring(vHex;$j+1)))
+CREATE RECORD([Unit])
+[Unit]UnitTypeCode:=[UnitType]RUnitType
+[Unit]UnitSize:=String([UnitType]UnitTypeLength)+" x "+String([UnitType]UnitTypeWidth)
+[Unit]PrimaryKey:=0
+[Unit]UnitNo:=$String+String($Num)
+[Unit]RUnitNo:=<>sFacility+$String+String($Num)
+$Num:=$Num+1
+[Unit]Vacant:=True
+[Unit]AgreeNo:=""
+[Unit]MoveIn:=!00-00-00!
+[Unit]MoveOut:=!00-00-00!
+[Unit]Status:="Vacant"
+[Unit]BillPlanDisc:=0
+[Unit]ExtraDisc:=0
+[Unit]ReservedTo:=""
+[Unit]ReservedDate:=!00-00-00!
+[Unit]ObjectID:=0
+[Unit]TextID:=0
+[Unit]RectID:=0
+[Unit]XCoordinate:=0
+[Unit]YCoordinate:=0
+[Unit]Rotation:=0
+[Unit]Comments:=""
+[Unit]OccupRentedVal:=0
+[Unit]RentedValue:=0
+[Unit]StartDate:=Current date
+[Unit]ListPrice:=CalculateBaseRate (2;0)
+CalcUnitNumeric 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD([Unit])
+End for 
+Else 
+CREATE RECORD([Unit])
+[Unit]PrimaryKey:=0
+[Unit]UnitSize:=String([UnitType]UnitTypeLength)+" x "+String([UnitType]UnitTypeWidth)
+[Unit]UnitTypeCode:=[UnitType]RUnitType
+[Unit]UnitNo:=vHex
+[Unit]RUnitNo:=<>sFacility+vHex
+[Unit]Vacant:=True
+[Unit]AgreeNo:=""
+[Unit]MoveIn:=!00-00-00!
+[Unit]MoveOut:=!00-00-00!
+[Unit]Status:="Vacant"
+[Unit]BillPlanDisc:=0
+[Unit]ExtraDisc:=0
+[Unit]ReservedTo:=""
+[Unit]ReservedDate:=!00-00-00!
+[Unit]ObjectID:=0
+[Unit]TextID:=0
+[Unit]RectID:=0
+[Unit]XCoordinate:=0
+[Unit]YCoordinate:=0
+[Unit]Rotation:=0
+[Unit]Comments:=""
+[Unit]OccupRentedVal:=0
+[Unit]RentedValue:=0
+[Unit]StartDate:=Current date
+[Unit]ListPrice:=CalculateBaseRate (2;0)
+CalcUnitNumeric 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD([Unit])
+End if 
+End while 
+
+$resultRef:=DOM Get next sibling XML element($resultRef)
+End while 
+
+// Step 14
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step14/holdingdepositres/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value="Yes")
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step14/holdingdepositres_amount/")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP")
+READ WRITE([Analysis])
+[Analysis]DfltSellAmt:=Num($value)
+SAVE RECORD([Analysis])
+End if 
+
+//Step 15
+$resultRef:=DOM Find XML element($XMLRef;"application/new-site-application/step15/users/user/")
+READ WRITE([UserGroup])
+READ WRITE([Groups])
+READ WRITE([UserLogins])
+While (OK=1)
+CREATE RECORD([UserLogins])
+$xml_Child_Ref:=DOM Get first child XML element($resultRef)
+DOM GET XML ELEMENT VALUE($xml_Child_Ref;$value)
+[UserLogins]ActualName:=$value
+
+$next_XML_Ref:=DOM Get next sibling XML element($xml_Child_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+
+If ($value#"")
+[UserLogins]Name:=$value
+Else 
+[UserLogins]Name:=Substring([UserLogins]ActualName;1;4)
+End if 
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+[UserLogins]Password:=$value
+[UserLogins]PasswordChangeDate:=Current date
+[UserLogins]Facility:=<>sFacility
+CreateUserID 
+
+$next_XML_Ref:=DOM Get next sibling XML element($next_XML_Ref)
+DOM GET XML ELEMENT VALUE($next_XML_Ref;$value)
+Case of 
+: ($value="user")
+QUERY([Groups];[Groups]Name="Users")
+: ($value="admin")
+QUERY([Groups];[Groups]Name="Admin/Owner")
+Else 
+QUERY([Groups];[Groups]Name="Mangers")
+End case 
+CREATE RECORD([UserGroup])
+[UserGroup]GroupID:=[Groups]GroupID
+[UserGroup]UserID:=[UserLogins]UserID
+SAVE RECORD([UserGroup])
+SAVE RECORD([UserLogins])
+$resultRef:=DOM Get next sibling XML element($resultRef)
+End while 
+
+End if 

@@ -1,0 +1,45 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($Date;$TrxDate)
+C_TEXT($AgreeNo)
+C_TEXT($Description)
+C_TEXT($Analysis)
+C_REAL($TotAmt)
+C_LONGINT($SeqNo)
+$Date:=RequestDate (Get localized string("Please enter start date");!2008-01-01!)
+If (OK=1)
+DEFAULT TABLE([Trxs])
+CREATE EMPTY SET([Trxs];"Duplicates")
+$Doc:=Create document("Duplicates.txt")
+$AgreeNo:=""
+$TrxDate:=!00-00-00!
+$TotAmt:=0
+$Analysis:=""
+$Description:=""
+$SeqNo:=0
+QUERY([Trxs];[Trxs]TrxDate>=$Date)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]TotAmt;>;[Trxs]AnalysisCode;>;[Trxs]Description;>;[Trxs]SeqNo;>)
+For ($i;1;Records in selection([Trxs]))
+If ([Trxs]AgreeNo=$AgreeNo) & ([Trxs]TrxDate=$TrxDate) & ([Trxs]TotAmt=$TotAmt) & ([Trxs]AnalysisCode=$Analysis) & ([Trxs]Description=$Description)
+ADD TO SET([Trxs];"Duplicates")
+SEND PACKET($Doc;"Original SeqNo: "+String($SeqNo)+" Duplicate Seq No: "+String([Trxs]SeqNo)+" AgreeNo: "+[Trxs]AgreeNo+" TrxDate: "+String([Trxs]TrxDate)+" TotAmt: "+String([Trxs]TotAmt)+" Analysis: "+[Trxs]AnalysisCode+" Description: "+[Trxs]Description+Char(13))
+End if 
+$AgreeNo:=[Trxs]AgreeNo
+$TrxDate:=[Trxs]TrxDate
+$TotAmt:=[Trxs]TotAmt
+$Analysis:=[Trxs]AnalysisCode
+$Description:=[Trxs]Description
+$SeqNo:=[Trxs]SeqNo
+NEXT RECORD([Trxs])
+End for 
+CLOSE DOCUMENT($Doc)
+USE SET("Duplicates")
+CLEAR SET("Duplicates")
+If (Records in selection([Trxs])>0)
+ConfirmTwo (Get localized string("Do you wish to delete the")+" "+String(Records in selection([Trxs]))+" "+Get localized string("suspected duplicate transactions?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+DELETE SELECTION([Trxs])
+End if 
+Else 
+AlertMessage (Get localized string("No duplicates found."))
+End if 
+End if 

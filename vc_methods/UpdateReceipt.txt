@@ -1,0 +1,337 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//This method to update LCSD and other balances after entering a receipt
+//SDD 19/09/12 Added second parameter to control what vLateResetCycle is set to
+//SDD 29/9/11 When updating LCSD based on RentUnpaid instead of BalanceOwing it needed to be decreased by the Receipt TotAmt
+
+C_TEXT($1)
+C_BOOLEAN($2)//vLateResetCycle
+C_BOOLEAN($FromWeb;$ReadState;vLateResetCycle;bFromMoveIn;vAutoNotice)//Do not remove vLateResetCycle or bFromMoveIn declarations here - required for AddReceipt WebService - SG
+C_LONGINT($i)
+$FromWeb:=False
+If (Count parameters>=1)
+If ($1="Web")
+$FromWeb:=True
+vLateResetCycle:=False
+bFromMoveIn:=False
+End if 
+End if 
+If (Count parameters>=2)
+vLateResetCycle:=$2
+End if 
+If (bFromMoveIn=False) & ([Trxs]AgreeNo#[Agreement]RAgreeNo) & ([Reservation]RReserveNo="")//second condition added 22/2/11 as relate one caused bug in balance update in standalone only
+RELATE ONE([Trxs]AgreeNo)
+End if 
+If (bFromMoveIn=False) & ([Trxs]AgreeNo#[Reservation]RReserveNo) & ([Agreement]RAgreeNo="")//second condition added 22/2/11 as relate one caused bug in balance update in standalone only
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+End if 
+If ([Reservation]RReserveNo>"")
+If ($FromWeb) | (vAutoNotice)
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt;2)
+Else 
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt+vOldAmount;2)
+End if 
+Else 
+If ($FromWeb) | (vAutoNotice)
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+Else 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt+vOldAmount;2)
+End if 
+End if 
+If (bFromMoveIn=False) & ([Trxs]CustomerCode#[Customer]CustomerCode)
+RELATE ONE([Trxs]CustomerCode)
+End if 
+If ($FromWeb) | (vAutoNotice)
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+Else 
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt+vOldAmount;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+End if 
+
+CREATE SET([Trxs];"UpdateRestore")
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If ([Facility]LateFeeReset)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Rent";*)
+$Balance:=[Agreement]TotRentUnpaid
+Else 
+$Balance:=[Agreement]BalanceOwing
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+For ($i;1;Records in selection([Trxs]))//SDD 23/03/14 Changed to For loop in case Sum function not working in compiled mode which has been a problem in some 4D versions
+$Balance:=$Balance-[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+
+USE SET("UpdateRestore")
+CLEAR SET("UpdateRestore")
+
+SetFacility 
+If ([Facility]LateFeeReset)
+If ($FromWeb)
+$Balance:=Round($Balance-[Trxs]TotAmt;2)
+Else 
+$Balance:=Round($Balance-[Trxs]TotAmt+vOldAmount;2)//SDD RentUnpaid has not been adjusted for Receipt TotAmt yet
+End if 
+Else 
+$Balance:=$Balance//SDD BalOwing has been adjusted above
+End if 
+
+//If ([Agreement]LastBillDate>Current date)  //If customer has been billed into future then
+//$Balance:=$Balance-[Agreement]LastBillAmt  //get current balance for purpose of allowing access
+//End if 
+
+/////8925////
+If (Count parameters=0)
+C_BOOLEAN($resetLC)
+If ([Facility]ResetLateCyclePaid)
+If ($Balance<=[Facility]MinBalArrears)// Need to reset late cylce as it is not part payment.
+If (vLateResetCycle=True)
+[Agreement]LastNotice:=0
+[Agreement]LateCycleStDate:=[Agreement]LastBillDate//This line added to reset late notice cycle 22/2/00
+End if 
+Else 
+If ($Balance<=[Facility]MinBalArrears) | ([Trxs]TotAmt>=[Agreement]LastBillAmt) | ([Facility]StopEndLateCycle)
+If (vLateResetCycle=True)
+
+//24/08/16 DAM Added code for Payment transaction
+If ($Balance>0)
+Case of 
+: ([Facility]LCPartPayReset=0)///ask
+//ConfirmTwo ("Would you like to reset late-cycle on part payment?";"Yes";"No")
+ConfirmTwo (Get localized string("You are entering a receipt of")+" "+String([Trxs]TotAmt;"###,###.00")+" "+Get localized string("with balance owing of")+" "+String([Agreement]BalanceOwing;"###,###.00")+" "+Get localized string("while on Late Notice")+" "+String([Agreement]LastNotice)+" "+Get localized string("Do you wish to reset the Late Cycle?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$resetLC:=True
+Else 
+$resetLC:=False
+vLateResetCycle:=False
+End if 
+: ([Facility]LCPartPayReset=1)//yes
+$resetLC:=True
+: ([Facility]LCPartPayReset=2)//no
+$resetLC:=False
+vLateResetCycle:=False
+: ([Facility]LCPartPayReset=3)//disbl
+AlertMessage (Get localized string("Part Payments while on the late cycle are not allowed! Transaction amount has been changed to the full balance owing!"))
+[Trxs]TotAmt:=[Agreement]BalanceOwing
+$resetLC:=False
+End case 
+
+Else // Full Payment
+$resetLC:=True
+End if 
+
+If ($resetLC=True)
+[Agreement]LastNotice:=0
+[Agreement]LateCycleStDate:=[Agreement]LastBillDate
+SAVE RECORD([Agreement])
+End if 
+
+End if 
+End if 
+End if 
+Else 
+If ($Balance<=[Facility]MinBalArrears) | ([Trxs]TotAmt>=[Agreement]LastBillAmt) | ([Facility]StopEndLateCycle)
+If (vLateResetCycle=True)
+[Agreement]LastNotice:=0
+[Agreement]LateCycleStDate:=[Agreement]LastBillDate//This line added to reset late notice cycle 22/2/00
+End if 
+End if 
+End if 
+
+Else 
+If ([Facility]ResetLateCyclePaid)
+If ($Balance<=[Facility]MinBalArrears)
+If (vLateResetCycle=True)
+[Agreement]LastNotice:=0
+[Agreement]LateCycleStDate:=[Agreement]LastBillDate//This line added to reset late notice cycle 22/2/00
+End if 
+End if 
+Else 
+If ($Balance<=[Facility]MinBalArrears) | ([Trxs]TotAmt>=[Agreement]LastBillAmt) | ([Facility]StopEndLateCycle)
+If (vLateResetCycle=True)
+[Agreement]LastNotice:=0
+[Agreement]LateCycleStDate:=[Agreement]LastBillDate//This line added to reset late notice cycle 22/2/00
+End if 
+End if 
+End if 
+End if 
+////////////////////////////////////////////////////
+
+//If ([Facility]ResetLateCyclePaid)
+//If ($Balance<=[Facility]MinBalArrears)
+//If (vLateResetCycle=True)
+//[Agreement]LastNotice:=0
+//[Agreement]LateCycleStDate:=[Agreement]LastBillDate  //This line added to reset late notice cycle 22/2/00
+//End if 
+//End if 
+//Else 
+//If ($Balance<=[Facility]MinBalArrears) | ([Trxs]TotAmt>=[Agreement]LastBillAmt) | ([Facility]StopEndLateCycle)
+//If (vLateResetCycle=True)
+//[Agreement]LastNotice:=0
+//[Agreement]LateCycleStDate:=[Agreement]LastBillDate  //This line added to reset late notice cycle 22/2/00
+//End if 
+//End if 
+//End if 
+
+If ([Trxs]TotAmt>1)
+[Agreement]LastPmtDate:=[Trxs]TrxDate
+End if 
+[Customer]LastDrawer:=[Trxs]Drawer
+[Customer]LastBankBranch:=[Trxs]BankBranch
+[Customer]LastAnalysis:=Substring([Trxs]AnalysisCode;6)
+
+RELATE ONE([Trxs]AnalysisCode)
+// DO NOT Add  ([Trxs]CustomerCode#"@MISCL") as it breaks surcharges for miscl
+If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)) & ([Trxs]TotAmt>0) & (vNewReceipt=True)// &   //& ([Trxs]CCAuthNo="") 05/06/15 DAM Commneted it for use card on file and enter card
+$ReceiptAmount:=[Trxs]TotAmt
+$Date:=[Trxs]TrxDate
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Agree:=[Trxs]AgreeNo
+$Cust:=[Trxs]CustomerCode
+$Fixed:=[Analysis]ReceiptFeeFixed
+$Percent:=[Analysis]ReceiptFeePerc
+QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]ReceiptFeeAnalysis)
+If (Records in selection([Analysis])>=1)
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]AgreeNo:=$Agree
+[Trxs]CustomerCode:=$Cust
+[Trxs]Charge:=True
+
+$PercCalc:=$ReceiptAmount-$Fixed
+$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))//$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+SAVE RECORD([Trxs])
+
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+
+End if 
+
+End if 
+
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+
+If (Records in selection([Trxs])>0)//If customer has been billed into future then
+$Total:=Sum([Trxs]TotAmt)
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+$Total:=$Total-(2*Sum([Trxs]TotAmt))
+
+$Balance:=[Customer]Balance-$Total//get current balance for purpose of allowing access
+Else 
+$Balance:=[Customer]Balance
+End if 
+
+If ($Balance<=[Facility]MinBalArrears) | ($Balance<=0)// & (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5))
+Case of 
+: ([Customer]Overdue=1) | ([Customer]Overdue=0)
+[Customer]Overdue:=0
+Else 
+[Customer]Overdue:=6
+End case 
+$ReadState:=Read only state([Unit])
+If ($ReadState)
+READ WRITE([Unit])
+End if 
+SET AUTOMATIC RELATIONS(True;True)
+QUERY([Unit];[Agreement]CustomerCode=[Customer]CustomerCode)
+SET AUTOMATIC RELATIONS(False;False)
+FIRST RECORD([Unit])//Added 3.0.2
+While (End selection([Unit])=False)
+[Unit]LockStatus:=[Customer]Overdue
+[Unit]Status:=<>asUnitStatus{1}//Rented
+
+//04/09/15 [Unit]StatusChange Moved inside the IF statement as it should only trigger when status changed
+If ([Unit]Status#Old([Unit]Status))
+If ([Facility]HideGateLockList=False) | ((Old([Unit]LockStatus)>2) & (Old([Unit]LockStatus)<6))
+[Unit]StatusChange:=True
+End if 
+[Unit]LastStatusDate:=Current date
+[Unit]UpdatePULS:=<>tUtilities
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End while 
+If ($ReadState)
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+//14/07/16 DAM Commented the code below as when receipt is added 
+//If ([Customer]AllowAccessArrs=True)
+//[Customer]AllowAccessArrs:=False
+//End if 
+If (<>tGateSys=True)
+If (bFromMoveIn)
+vbUpdateGate:=True
+Else 
+UpdateGateUnits (True)
+End if 
+End if 
+End if 
+
+SAVE RECORD([Customer])
+If (bFromMoveIn=False)
+READ WRITE([QueueLog])//Process automatic matching
+CREATE RECORD([QueueLog])
+[QueueLog]Order:=-1
+[QueueLog]GateActionText:=[Trxs]AgreeNo
+[QueueLog]GateUnit:=[Trxs]Match
+
+SAVE RECORD([QueueLog])
+READ ONLY([QueueLog])
+UNLOAD RECORD([QueueLog])
+End if 
+//If ([Agreement]BalanceOwing<=0)
+//[Agreement]TotRentUnpaid:=0
+//[Agreement]TotLateUnpaid:=0
+//[Agreement]TotOthrUnpaid:=0
+//[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+//Else 
+[Agreement]TotOthrUnpaid:=999999
+If ($FromWeb=True)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match#0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+$Charge:=Sum([Trxs]TotAmt)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match#0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+$Receipt:=Sum([Trxs]TotAmt)
+
+If ($Charge#$Receipt)
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ReCalcUnpaid 
+Else 
+vRecalc:=True//ReCalc
+End if 
+//End if 
+If ([Reservation]RReserveNo>"")
+SAVE RECORD([Reservation])
+Else 
+SAVE RECORD([Agreement])
+End if 

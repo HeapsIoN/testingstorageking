@@ -1,0 +1,73 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// Created by Robert Richardson on the 4 November 2009
+//
+// The purpose of this method is to generate the Threat Level Report and request from the user what options they wish to run the report with
+//
+C_LONGINT(vThreatLevelNum;sAll;sInactive;sActive)
+C_BOOLEAN(vRestrictDate)
+C_DATE(vDate)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Threat Level Report started.")// records the report being started in the eventlog
+SetFacility 
+DEFAULT TABLE([Customer])
+OK:=1
+If (<>tBatch=False)
+Open window((Screen width/2)-203;(Screen height/2)-155;(Screen width/2)+203;(Screen height/2)+155;5;Get localized string("MenuReportthreatLevelReport"))
+DIALOG([Customer];"ThreatLevelDialog")
+CLOSE WINDOW
+Else 
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+vDate:=vDate-1
+vThreatLevelNum:=[Facility]ThreatLevelAlert
+vRestrictDate:=True
+sAll:=0
+sInactive:=0
+sActive:=1
+End if 
+
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#<>sFacility+"PETTY";*)
+If (vRestrictDate=True)
+QUERY([Customer]; & ;[Customer]ThreatLevelDate>vDate;*)
+If (<>tBatch)
+QUERY([Customer]; & ;[Customer]ThreatLevelDate<=vMthDate;*)
+End if 
+End if 
+Case of 
+: (sActive=1)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts#0;*)
+: (sInactive=1)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts=0;*)
+Else 
+//Do Nothing
+End case 
+QUERY([Customer]; & ;[Customer]ThreatLevel>=vThreatLevelNum)
+ORDER BY([Customer];[Customer]CustomerName;>;[Customer]CustomerCode;>)
+FORM SET OUTPUT([Customer];"ThreatLevelReport")
+PrintSelection ("P")
+FORM SET OUTPUT([Customer];"Output")
+
+DEFAULT TABLE([Contacts])
+
+QUERY([Contacts];[Contacts]ContactNo=<>sFacility+"@";*)
+If (vRestrictDate=True)
+QUERY([Contacts]; & ;[Contacts]ThreatLevelDate>vDate;*)
+End if 
+Case of 
+: (sActive=1)
+QUERY([Contacts]; & ;[Contacts]OutComeDate=!00-00-00!;*)
+: (sInactive=1)
+QUERY([Contacts]; & ;[Contacts]OutComeDate#!00-00-00!;*)
+Else 
+//Do Nothing
+End case 
+QUERY([Contacts]; & ;[Contacts]ThreatLevel>=vThreatLevelNum)
+ORDER BY([Contacts];[Contacts]ContactName;>;[Contacts]ContactNo;>)
+FORM SET OUTPUT([Contacts];"ThreatLevelReport")
+PrintSelection ("P")
+FORM SET OUTPUT([Contacts];"Output")
+
+End if 
+LogAction (True;"Threat Level Report ended.")

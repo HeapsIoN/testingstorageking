@@ -1,0 +1,46 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$Bank)
+If (PermissionsControl (105))
+DEFAULT TABLE([ChartAccts])
+ALL RECORDS
+If (Records in selection([ChartAccts])>0)
+READ WRITE([ChartAccts])
+ORDER BY([ChartAccts];[ChartAccts]AcctNo;>)
+ARRAY TEXT(<>asGLAccounts;Records in selection([ChartAccts]))
+ARRAY LONGINT(<>aiRecNum;Records in selection([ChartAccts]))
+$Bank:=1
+For ($i;1;Records in selection([ChartAccts]))
+<>asGLAccounts{$i}:=[ChartAccts]AcctNo+"  "+[ChartAccts]Description
+If ([ChartAccts]AcctType="B1")//First Bank Account Documentation
+$Bank:=$i
+End if 
+<>aiRecNum{$i}:=Record number([ChartAccts])
+NEXT RECORD([ChartAccts])
+End for 
+<>asGLAccounts:=$Bank
+GOTO RECORD([ChartAccts];<>aiRecNum{<>asGLAccounts})
+RELATE MANY([ChartAccts]AcctNo)
+READ WRITE([CashBookTrxs])
+ORDER BY([CashBookTrxs];[CashBookTrxs]TrxDate;>;[CashBookTrxs]SeqNo;>)
+$Bal:=0
+For ($i;1;Records in selection([CashBookTrxs]))
+$Bal:=$Bal+[CashBookTrxs]Amount
+[CashBookTrxs]Balance:=Round($Bal;2)
+SAVE RECORD([CashBookTrxs])
+NEXT RECORD([CashBookTrxs])
+End for 
+READ ONLY([CashBookTrxs])
+QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate>=<>dYearStart)
+ORDER BY([CashBookTrxs];[CashBookTrxs]TrxDate;>;[CashBookTrxs]SeqNo;>)
+bPrevious:=0
+LastRefr:=0
+$Window:=Open window((Screen width/2)-366;(Screen height/2)-271;(Screen width/2)+366;(Screen height/2)+271;Movable dialog box;Get localized string("Account Inquiry"))
+DIALOG([ChartAccts];"AccountInquiry")
+//MODIFY RECORD
+CLOSE WINDOW($Window)
+READ ONLY([ChartAccts])
+UNLOAD RECORD([ChartAccts])
+Else 
+AlertMessage (Get localized string("There are no accounts setup in the Cash Book accounts. For more info please click the Learn More button"))
+End if 
+End if 

@@ -1,0 +1,74 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$Period;$Year)
+SetFacility 
+//Obtain Date Range - Must be in the same month - CostCon Manux Solutions
+$DateTo:=GetDate (1;Month of(Current date);Year of(Current date))-1
+$DateFrom:=GetDate (1;Month of($DateTo);Year of($DateTo))
+$DateFrom:=RequestDate (Get localized string("Export GL Revenue from :");$DateFrom)
+$DateTo:=RequestDate (Get localized string("Export GL Revenue up to :");$DateTo)
+If (OK=1)
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$DateFrom;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$DateTo)
+If (Records in selection([Trxs])>0)
+QUERY([ChartAccts];[ChartAccts]AcctType="T")
+$TaxAc:=[ChartAccts]AcctNo
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+$ARAc:=[ChartAccts]AcctNo
+$SubAc:=Substring([Facility]FacilityCode;3)
+$SubAc:=""//CostCon now don't want this
+$Period:=Month of($DateFrom)-Month of([Facility]YearStartDate)+1
+$Year:=Year of($DateFrom)+1
+If ($Period<1)
+$Period:=$Period+12
+$Year:=$Year-1
+End if 
+$t:=Char(9)
+$First:=True
+$Filename:="CostConRevenue.txt"
+$Doc:=Create document(<>sExportPath+$Filename;"TEXT")
+SEND PACKET($Doc;"Type"+$t+"Period"+$t+"Fin Year"+$t+"Date"+$t)
+SEND PACKET($Doc;"Ref"+$t+"Memo"+$t+"Blank"+$t+"Import Ref"+$t+"Blank"+$t+"Sub Acct"+$t+"Blank"+$t+"GL Code"+$t)
+SEND PACKET($Doc;"Amount"+$t+"Blank"+$t+"Blank"+$t+"Line Memo"+Char(13))
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>)
+$LastAnalysis:=[Trxs]AnalysisCode
+RELATE ONE([Trxs]AnalysisCode)
+$Total:=0
+$TaxAmt:=0
+$GrsAmt:=0
+For ($i;1;Records in selection([Trxs]))
+$Total:=$Total+[Trxs]TotAmt-[Trxs]TaxAmt
+$TaxAmt:=$TaxAmt+[Trxs]TaxAmt
+$GrsAmt:=$GrsAmt+[Trxs]TotAmt
+NEXT RECORD([Trxs])
+If ([Trxs]AnalysisCode#$LastAnalysis)
+If ($First)
+SEND PACKET($Doc;"GJH"+$t+String($Period)+$t+String($Year)+$t+String($DateTo)+$t)
+SEND PACKET($Doc;"Storman v"+String([Facility]Version)+$t+$t+$t+String(Year of($DateTo)-2000)+String(Month of($DateTo);"00")+$t+$t+$SubAc+$t+$t)
+SEND PACKET($Doc;[Analysis]GLCode+$t+String(Round($Total*(-1);2);"###,###.00")+$t+$t+$t+[Analysis]Description+Char(13))
+$First:=False
+Else 
+SEND PACKET($Doc;"GJL"+$t+$t+$t+$t)
+SEND PACKET($Doc;$t+$t+$t+$t+$t+$SubAc+$t+$t)
+SEND PACKET($Doc;[Analysis]GLCode+$t+String(Round($Total*(-1);2);"###,###.00")+$t+$t+$t+[Analysis]Description+Char(13))
+End if 
+$Total:=0
+RELATE ONE([Trxs]AnalysisCode)
+$LastAnalysis:=[Trxs]AnalysisCode
+End if 
+End for 
+SEND PACKET($Doc;"GJL"+$t+$t+$t+$t)
+SEND PACKET($Doc;$t+$t+$t+$t+$t+$SubAc+$t+$t)
+SEND PACKET($Doc;$TaxAc+$t+String(Round($TaxAmt*(-1);2);"###,###.00")+$t+$t+$t+"Tax Amount"+Char(13))
+SEND PACKET($Doc;"GJL"+$t+$t+$t+$t)
+SEND PACKET($Doc;$t+$t+$t+$t+$t+$SubAc+$t+$t)
+SEND PACKET($Doc;$ARAc+$t+String(Round($GrsAmt;2);"###,###.00")+$t+$t+$t+"Gross Revenue Amount"+Char(13))
+SEND PACKET($Doc;"%END"+Char(13))
+CLOSE DOCUMENT($Doc)
+AlertMessage (Get localized string("The export document '")+<>sExportPath+$Filename+Get localized string("' has been successfully created!"))
+Else 
+AlertMessage (Get localized string("There are no Transactions to be exported for that Date range!"))
+End if 
+End if 

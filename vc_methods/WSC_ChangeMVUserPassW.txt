@@ -1,0 +1,57 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 25/01/16, 11:44:38
+// ----------------------------------------------------
+// Method: WSC_ChangeMVUserPassW
+// Description
+//
+// This method calls Storman Central to change a 
+// user's password.
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($Password)//Checks Password from HOFacility
+C_TEXT($FacilityCode)
+C_TEXT($User)
+C_BOOLEAN($0;$Pass)
+C_LONGINT($TCPID;$Error)
+
+$Password:=[UserLogins]Password//FB10247 password encrypted from previous method
+$FacilityCode:=[Facility]FacilityCode
+$User:=<>sCurrentUser
+$Pass:=False
+$TCPID:=0
+
+WEB SERVICE SET PARAMETER("WS_FacilityCode";$FacilityCode)
+WEB SERVICE SET PARAMETER("WS_Username";$User)
+WEB SERVICE SET PARAMETER("WS_Password";$Password)
+
+
+$Error:=IT_SetTimeOut (1)
+$PortPos:=Position(":";[Facility]CentralAddress)
+If ($PortPos>0)
+$PortString:=Substring([Facility]CentralAddress;$PortPos+1)
+Else 
+$PortString:="19812"
+End if 
+$Port:=Num($PortString)
+$Error:=TCP_Open (GetDNS ("MV");$Port;$TCPID;0)
+
+
+If ($Error=0)
+
+$Error:=TCP_Close ($TCPID)
+WEB SERVICE CALL("https://"+GetDNS ("MV")+":"+$PortString+"/4DSOAP/";"Storman#WS_ChangeMVUserPassW";"WS_ChangeMVUserPassW";"Storman";Web Service dynamic)
+WEB SERVICE GET RESULT($Pass;"WS_ORSuccess";*)// Memory clean-up on the final return value.
+
+Else 
+AlertMessage (Get localized string("Could not contact Head Office, try again later."))
+End if 
+
+
+$Error:=IT_SetTimeOut (30)
+$0:=$Pass
+

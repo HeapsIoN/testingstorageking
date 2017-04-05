@@ -1,0 +1,234 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 28/10/13 Modified to send Inactive Customers, Use AgreeNo for Receipts, Change SC to SP for Receipts and fix email addresses with commas
+//This is the method Chris reckons most sage customers will use, not the journal export.  
+
+C_DATE($StartDate;$EndDate)
+C_TEXT(vLoc;$OldLoc)
+C_LONGINT($i;$j;$k)
+CONFIRM(Get localized string("Create one file for all facilities, or create one file for each facility?");Get localized string("One file only");Get localized string("Separate files"))
+If (OK=1)
+vSeparateFiles:=False
+$EndCounter:=1
+Else 
+vSeparateFiles:=True
+$EndCounter:=Size of array(<>asSiteCodes)
+End if 
+$t:=","
+$cr:=Char(13)//Char(10)+
+If (<>iPlatform<3)
+$Ext:="CSV"
+Else 
+$Ext:="csv"
+End if 
+
+If (vLoc#"")
+$OldLoc:=vLoc
+End if 
+vLoc:=""
+
+CREATE EMPTY SET([Customer];"ToExport")
+$StartDate:=RequestDate (Get localized string("Please enter date range to export invoices & receipts. Start Date:");Current date)
+If (OK=1)
+$EndDate:=RequestDate (Get localized string("End Date")+":";Current date)
+If (OK=1)
+For ($k;1;$EndCounter)
+//If (<>asSiteCodes{$k}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+If (vLoc="")
+vLoc:=Select folder("Save Export";<>sExportPath)
+End if 
+
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+If (True)//SDD was([Facility]Country="GB") but this code should alsways be used
+
+// Charges are based on INV date 
+QUERY([Trxs];[Trxs]InvDate>=$StartDate;*)
+QUERY([Trxs]; & ;[Trxs]InvDate<=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+//QUERY([Trxs]; & ;[Trxs]Match>=0)  SDD Taken out this line as we want all trxs not just matched
+If (vSeparateFiles=True)
+QUERY SELECTION([Trxs];[Trxs]AgreeNo=<>asSiteCodes{$k}+"@")
+$DocRef:=Create document(vLoc+"SageTrx"+Replace string(String($EndDate);"/";"")+<>asSiteCodes{$k};$Ext)
+Else 
+$DocRef:=Create document(vLoc+"SageTrx"+Replace string(String($EndDate);"/";"");$Ext)
+End if 
+RELATE ONE SELECTION([Trxs];[Customer])
+CREATE SET([Customer];"Temp")
+UNION("ToExport";"Temp";"ToExport")
+ORDER BY([Trxs];[Trxs]CustomerCode;>)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>asSiteCodes{$k})
+End if 
+SEND PACKET($DocRef;"Type"+$t+"Account Reference"+$t+"Nominal A/C Ref"+$t+"Department Code"+$t+"Date"+$t+"Reference"+$t+"Details"+$t+"Net Amount"+$t+"Tax Code"+$t+"Tax Amount"+$t+"Extra Reference"+$t+"User Name"+$cr)
+For ($i;1;Records in selection([Trxs]))
+
+If ([Trxs]TotAmt>0)
+$Type:="SI"
+$Mult:=1
+Else 
+$Type:="SC"
+$Mult:=-1
+End if 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+$NominalAc:=[Analysis]GLCode
+$NetAmt:=String(Abs(([Trxs]TotAmt-[Trxs]TaxAmt)*$Mult))
+
+If ([Analysis]Taxable=True)
+$TaxCode:="T1"
+Else 
+$TaxCode:="T0"
+End if 
+
+$TaxAmt:=String(Abs([Trxs]TaxAmt))
+$DeptCode:=""//not used currently maybe it can be used to split out Central facilities if needed in future (same as classes in Quickbooks?  - would need to find out) 
+$StrDate:=String([Trxs]InvDate;7)// Sage export uses Inv date for charges
+$ExtraRef:=""//not used for now
+SEND PACKET($DocRef;$Type+$t+Substring([Trxs]CustomerCode;3)+$t+$NominalAc+$t+$DeptCode+$t+$StrDate+$t+String([Trxs]InvNo)+$t+Replace string([Trxs]Description;",";"")+$t+$NetAmt+$t+$TaxCode+$t+$TaxAmt+$t+$ExtraRef+$t+[Trxs]UserLogin+$cr)
+NEXT RECORD([Trxs])
+End for 
+
+//Receipts
+QUERY([Trxs];[Trxs]TrxDate>=$StartDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+//QUERY([Trxs]; & ;[Trxs]Match>=0)
+
+If (vSeparateFiles=True)
+QUERY SELECTION([Trxs];[Trxs]AgreeNo=<>asSiteCodes{$k}+"@")
+End if 
+RELATE ONE SELECTION([Trxs];[Customer])
+CREATE SET([Customer];"Temp")
+UNION("ToExport";"Temp";"ToExport")
+ORDER BY([Trxs];[Trxs]CustomerCode;>)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>asSiteCodes{$k})
+End if 
+For ($i;1;Records in selection([Trxs]))
+
+// DAM Added this condition as when exporting to Sage it sums up all receipts, but negative receipts should be subscribed. only for UK for testing
+If ([Trxs]TotAmt>0)
+$Type:="SA"
+Else 
+$Type:="SP"//SDD 28/10/13 Changed from SC which is incorrect as SC is used above
+End if 
+
+$NominalAc:=[ChartAccts]AcctNo
+$NetAmt:=String(Abs([Trxs]TotAmt))
+$TaxCode:="T9"
+$TaxAmt:="0"
+$DeptCode:=""//not used currently maybe it can be used to split out Central facilities if needed in future (same as classes in Quickbooks?  - would need to find out) 
+$StrDate:=String([Trxs]TrxDate;7)
+$ExtraRef:=""//not used for now
+SEND PACKET($DocRef;$Type+$t+Substring([Trxs]CustomerCode;3)+$t+$NominalAc+$t+$DeptCode+$t+$StrDate+$t+String(Num(Substring([Trxs]AgreeNo;6)))+$t+Replace string([Trxs]Description;",";"")+$t+$NetAmt+$t+$TaxCode+$t+$TaxAmt+$t+$ExtraRef+$t+[Trxs]UserLogin+$cr)
+//SDD 28/10/13 Changed to AgreeNo instead of InvNo in line above as InvNo is always 0 for Receipts
+NEXT RECORD([Trxs])
+End for 
+CLOSE DOCUMENT($DocRef)
+
+Else //SDD Not sure why we do this for other countries - only the GB code looks ok to me!  Have changed so that it always uses GB code in the If statement but left this in case
+QUERY([Trxs];[Trxs]TrxDate>=$StartDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EndDate)
+//QUERY([Trxs]; & ;[Trxs]Match>=0)
+If (vSeparateFiles=True)
+QUERY SELECTION([Trxs];[Trxs]AgreeNo=<>asSiteCodes{$k}+"@")
+$DocRef:=Create document(vLoc+"SageTrx"+Replace string(String($EndDate);"/";"")+<>asSiteCodes{$k};$Ext)
+Else 
+$DocRef:=Create document(vLoc+"SageTrx"+Replace string(String($EndDate);"/";"");$Ext)
+End if 
+RELATE ONE SELECTION([Trxs];[Customer])
+CREATE SET([Customer];"Temp")
+UNION("ToExport";"Temp";"ToExport")
+ORDER BY([Trxs];[Trxs]CustomerCode;>)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>asSiteCodes{$k})
+End if 
+SEND PACKET($DocRef;"Type"+$t+"Account Reference"+$t+"Nominal A/C Ref"+$t+"Department Code"+$t+"Date"+$t+"Reference"+$t+"Details"+$t+"Net Amount"+$t+"Tax Code"+$t+"Tax Amount"+$t+"Extra Reference"+$t+"User Name"+$cr)
+For ($i;1;Records in selection([Trxs]))
+If ([Trxs]Charge=True)
+If ([Trxs]TotAmt>0)
+$Type:="SI"
+$Mult:=1
+Else 
+$Type:="SC"
+$Mult:=-1
+End if 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+$NominalAc:=[Analysis]GLCode
+$NetAmt:=String(Abs(([Trxs]TotAmt-[Trxs]TaxAmt)*$Mult))
+$TaxCode:="T1"
+$TaxAmt:=String(Abs([Trxs]TaxAmt))
+Else 
+
+$Type:="SA"
+$NominalAc:=[ChartAccts]AcctNo
+$NetAmt:=String(Abs([Trxs]TotAmt))
+$TaxCode:="T9"
+$TaxAmt:="0"
+End if 
+$DeptCode:=""//not used currently maybe it can be used to split out Central facilities if needed in future (same as classes in Quickbooks?  - would need to find out) 
+$StrDate:=String([Trxs]TrxDate;7)
+$ExtraRef:=""//not used for now
+SEND PACKET($DocRef;$Type+$t+Substring([Trxs]CustomerCode;3)+$t+$NominalAc+$t+$DeptCode+$t+$StrDate+$t+String([Trxs]InvNo)+$t+Replace string([Trxs]Description;",";"")+$t+$NetAmt+$t+$TaxCode+$t+$TaxAmt+$t+$ExtraRef+$t+[Trxs]UserLogin+$cr)
+NEXT RECORD([Trxs])
+End for 
+CLOSE DOCUMENT($DocRef)
+End if 
+
+//End if 
+End for 
+CLEAR SET("Temp")
+End if 
+End if 
+
+//SDD 28/10/13 This needs to be a Relate One Selection so that it gets all the customers from the selection of Transactions
+If (vLoc>"")
+ConfirmTwo (Get localized string("Update customer records in Sage?"))
+If (OK=1)
+For ($k;1;$EndCounter)
+//If (<>asSiteCodes{$k}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+If (vLoc="")
+If ($OldLoc="")
+vLoc:=Select folder("Save Export";<>sExportPath)
+Else 
+vLoc:=Select folder("Save Export";$OldLoc)
+End if 
+End if 
+USE SET("ToExport")
+//QUERY([Customer];[Customer]NoActiveAgreemts>0;*)
+//QUERY([Customer]; | ;[Customer]LatestTrxDate>Add to date(Current date;0;0;-90))
+If (vSeparateFiles=True)
+QUERY SELECTION([Customer];[Customer]CustomerCode=<>asSiteCodes{$k}+"@")
+$DocRef:=Create document(vLoc+"SageCustomer"+<>asSiteCodes{$k};$Ext)
+Else 
+$DocRef:=Create document(vLoc+"SageCustomer";$Ext)
+End if 
+ORDER BY([Customer];[Customer]CustomerCode;>)
+QUERY([Analysis];[Analysis]Code=<>asSiteCodes{$k}+"RF")
+$DefaultNominal:=[Analysis]GLCode
+SEND PACKET($DocRef;"Account Reference"+$t+"Account Name"+$t+"Street 1"+$t+"Street 2"+$t+"Town"+$t+"County"+$t+"Postcode"+$t+"Contact Name"+$t+"Telephone Number"+$t+"Telephone 2"+$t+"Email"+$t+"Default Nominal"+$cr)
+For ($i;1;Records in selection([Customer]))
+
+$MailAddress:=Replace string(Replace string(Replace string([Customer]MailAddress;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$MailCity:=Replace string(Replace string(Replace string([Customer]MailCity;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$MailSuburb:=Replace string(Replace string(Replace string([Customer]MailSuburb;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$MailState:=Replace string(Replace string(Replace string([Customer]MailState;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$j:=Position(",";[Customer]EmailAddress)
+If ($j>2)
+$EmailAddr:=Substring([Customer]EmailAddress;1;$j-1)//Only export the first email address if multiples
+Else 
+$EmailAddr:=[Customer]EmailAddress
+End if 
+
+SEND PACKET($DocRef;Substring([Customer]CustomerCode;3)+$t+Replace string(Reverse ([Customer]CustomerName);",";"")+$t+$MailAddress+$t+$MailSuburb+$t+$MailCity+$t+$MailState+$t+[Customer]MailPostZIPCode+$t+Replace string([Customer]UserName;",";"")+$t+[Customer]PhonePrivate+$t)
+SEND PACKET($DocRef;[Customer]MobilePhone+$t+[Customer]EmailAddress+$t+$DefaultNominal+$cr)
+NEXT RECORD([Customer])
+End for 
+CLOSE DOCUMENT($DocRef)
+//End if 
+End for 
+End if 
+AlertMessage (Get localized string("Export Complete!"))
+End if 
+CLEAR SET("ToExport")

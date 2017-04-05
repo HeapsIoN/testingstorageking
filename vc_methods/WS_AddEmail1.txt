@@ -1,0 +1,137 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 08/04/11, 14:21:06
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_AddEmail
+// Description
+// Adds a record of an email
+//
+// Parameters
+// ----------------------------------------------------
+// 
+
+SOAP DECLARATION(WS_EmailID;Is text;SOAP input)
+SOAP DECLARATION(WS_EmailDate;Is date;SOAP input)
+SOAP DECLARATION(WS_EmailSubject;Is text;SOAP input)
+SOAP DECLARATION(WS_EmailBody;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_AddEmail"+Char(13)
+$String:=$String+"WS_EmailID: "+WS_EmailID+Char(13)
+$String:=$String+"WS_EmailDate: "+String(WS_EmailDate)+Char(13)
+$String:=$String+"WS_EmailSubject: "+WS_EmailSubject+Char(13)
+$String:=$String+"WS_EmailBody: "+WS_EmailBody+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+$Found:=False
+READ WRITE([Letters])
+
+Case of 
+: (Length(WS_EmailID)=15)
+QUERY([Contacts];[Contacts]ContactNo=WS_EmailID)
+If (Records in selection([Contacts])=1)
+$Found:=True
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1016
+WS_ORErrorDescription:="Contact record not found in database Storman."
+End if 
+: (Length(WS_EmailID)=13)
+QUERY([Reservation];[Reservation]RReserveNo=WS_EmailID)
+If (Records in selection([Reservation])=1)
+$Found:=True
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1014
+WS_ORErrorDescription:="Reservation record not found in database Storman."
+End if 
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=WS_EmailID)
+If (Records in selection([Agreement])=1)
+$Found:=True
+Else 
+//WS_OLD=WS_ErrorText:="Agreement record not found"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+End case 
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_EmailID;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+If ($Found=True)
+CREATE RECORD([Letters])
+[Letters]DateSent:=WS_EmailDate
+[Letters]LetterDesc:=WS_EmailSubject
+If (Length(WS_EmailID)<15)
+[Letters]AgreeNo:=WS_EmailID
+Else 
+[Letters]ContactNo:=WS_EmailID
+End if 
+[Letters]EmailBody:=WS_EmailBody
+[Letters]SentViaEmail:=True
+[Letters]Custom1:=WS_EmailSubject
+[Letters]Custom2:="#SENTVIAWEB"
+
+//wrMessage:=WR New offscreen area 
+//$DocRef:=Create document(<>sTutPath+"EmailContent"+[Letters]AgreeNo+".htm")
+//SEND PACKET($DocRef;WS_EmailBody)
+//CLOSE DOCUMENT($DocRef)
+//WR OPEN DOCUMENT (wrMessage;<>sTutPath+"EmailContent"+[Letters]AgreeNo+".htm";"HTM3")
+//WR INSERT HYPERLINK (wrMessage;wr URL type link;wr default link appearance;WS_EmailBody;WS_EmailBody)
+//[Letters]LetterBLOB:=WR Area to blob (wrMessage;1)
+
+//WR DELETE OFFSCREEN AREA (wrMessage)
+CONVERT FROM TEXT(WS_EmailBody;"UTF-8";[Letters]LetterBLOB)
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+//WS_OLD=WS_Edit:=True
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Email record successfully added in database Storman."
+
+//12/05/13 DAM added to release the records.
+READ ONLY([Contacts])
+READ ONLY([Agreement])
+READ ONLY([Reservation])
+READ ONLY([Letters])
+UNLOAD RECORD([Contacts])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Letters])
+End if 
+Else 
+//WS_OLD=WS_ErrorText:="Incorrect password"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+$String:="End WS_AddEmail"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

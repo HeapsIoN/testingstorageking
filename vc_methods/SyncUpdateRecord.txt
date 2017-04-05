@@ -1,0 +1,357 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: SyncUpdateRecord
+// Description
+// 
+// This method updates sync events and puts then in the 
+// eventlog to be written.
+//
+// Parameters
+// ----------------------------------------------------
+
+//SDD 25/7/11 Added new section at line 38-46 to check AD+ events belong to correct facility
+//SDD 09/03/11 If Blob damaged write to document so we can look at it
+//SDD 17/11/11 Changes to allow 'undo'ing of MOD event - see line 6,12-15,179-183
+//SDD 12/09/13 Stop SyncStatus of 8 if there are more fields than exist in table
+//SDD 19/9/13 Changed so that DEL events always Delete the record regardless of whether the LogDetail matches the previous state of the fields
+
+C_BOOLEAN($1;$Same)//True=Master, False=Site
+C_TEXT($2)
+C_BOOLEAN($3;$Reverse)//This is true if called from the Reverse button on the EventLog and will undo the MOD change
+C_LONGINT($j;$k;$NoKeys;$FieldNo;viBlobNo;$ProcessNo)
+C_LONGINT(viPos)
+C_TEXT(vsOffsets)
+C_TEXT($4DUser;$SessionUser;$ProcessName;$ErrorMethod)
+C_POINTER($pField;$pTable)
+
+viError:=0
+$Reverse:=False
+If (Count parameters>=3)
+$Reverse:=$3
+End if 
+bConfirm:=True
+viBlobNo:=0
+viPos:=0
+If (BLOB size([EventLog]LogBlob)>5)//SDD Was 0 but maybe in unicode it could contain 1 or 2 bytes
+vbEventContent:=[EventLog]LogBlob
+BLOB PROPERTIES(vbEventContent;$j)
+If ($j#Is not compressed)
+$ErrorMethod:=Method called on error
+ON ERR CALL("ErrorBlob")
+EXPAND BLOB(vbEventContent)
+ON ERR CALL($ErrorMethod)
+End if 
+End if 
+If (bConfirm)
+vsOffsets:="0"*21
+If (BLOB size([EventLog]LogBlob)>20)
+vsOffsets:=BLOB to text(vbEventContent;Mac text without length;viPos;21)
+End if 
+$NoKeys:=Length([EventLog]KeyFields)/3
+$pTable:=Table([EventLog]EventTable)
+READ WRITE($pTable->)
+$Array:=Get pointer("<>asFlags"+Table name([EventLog]EventTable))
+
+If ([EventLog]EventTable#1) & ([EventLog]EventTable#26)\
+ & ([EventLog]EventTable#30) & ([EventLog]EventTable#31)\
+ & ([EventLog]EventTable#10) & (Length([EventLog]KeyFields)<=3)
+//All except these tables are primary key - last condition to prevent error - JCW Added 26 30 & 31 for Storman Hub
+
+If ($2="ADD")//Don't query on Add's for speed but will query for AD+
+REDUCE SELECTION($pTable->;0)
+Else 
+$pField:=Field([EventLog]EventTable;Num([EventLog]KeyFields))
+QUERY($pTable->;$pField->=Num([EventLog]KeyValue))
+//SDD 25/7/11 New section to check it belongs to the right facility
+If ($2="AD+") & (Records in selection($pTable->)>0) & ([EventLog]EventTable>0) & ([EventLog]EventTable<=Size of array(<>aiFacilityField))
+If (<>aiFacilityField{[EventLog]EventTable}>0)
+$pFacilityField:=Field([EventLog]EventTable;<>aiFacilityField{[EventLog]EventTable})
+If ([EventLog]FacilityCode#Substring($pFacilityField->;1;5))
+REDUCE SELECTION($pTable->;0)//This will cause a create record on a existing primary key so will error
+End if 
+End if 
+End if 
+End if 
+Else 
+For ($j;1;$NoKeys)
+$pField:=Field([EventLog]EventTable;Num(Substring([EventLog]KeyFields;(($j-1)*3)+1;3)))
+$Type:=Type($pField->)
+Case of 
+: ($Type=Is date)
+QUERY($pTable->;$pField->=Date(GetKeyNo ([EventLog]KeyValue;$j;True));*)
+: ($Type=Is time)
+QUERY($pTable->;$pField->=Time(GetKeyNo ([EventLog]KeyValue;$j));*)
+: ($Type=Is integer) | ($Type=Is longint) | ($Type=Is real) | ($Type=Is float) | ($Type=Is integer 64 bits)
+QUERY($pTable->;$pField->=Num(GetKeyNo ([EventLog]KeyValue;$j));*)
+: ($Type=Is Boolean)
+QUERY($pTable->;$pField->=GetBooleanfromString (GetKeyNo ([EventLog]KeyValue;$j));*)
+Else 
+QUERY($pTable->;$pField->=GetKeyNo ([EventLog]KeyValue;$j);*)
+End case 
+End for 
+QUERY($pTable->)
+End if 
+If ((Records in selection($pTable->)=0) & ($2#"DEL"))
+CREATE RECORD($pTable->)
+For ($j;1;$NoKeys)
+$pField:=Field([EventLog]EventTable;Num(Substring([EventLog]KeyFields;(($j-1)*3)+1;3)))
+$Type:=Type($pField->)
+Case of 
+: ($Type=Is date)
+$pField->:=Date(GetKeyNo ([EventLog]KeyValue;$j;True))
+: ($Type=Is time)
+$pField->:=Time(GetKeyNo ([EventLog]KeyValue;$j))
+: ($Type=Is integer) | ($Type=Is longint) | ($Type=Is real) | ($Type=Is float) | ($Type=Is integer 64 bits)
+$pField->:=Num(GetKeyNo ([EventLog]KeyValue;$j))
+: ($Type=Is Boolean)
+$pField->:=GetBooleanfromString (GetKeyNo ([EventLog]KeyValue;$j))
+Else 
+$pField->:=GetKeyNo ([EventLog]KeyValue;$j)
+End case 
+End for 
+End if 
+If ($2="AD@")
+$LogDetail:=[EventLog]LogDetail
+While ($LogDetail>"")
+$j:=Position(Char(19);$LogDetail;0;*)
+$FieldNo:=Num(Substring($LogDetail;1;3))
+$LogDetail:=Substring($LogDetail;$j+1)
+$k:=Position(Char(20);$LogDetail;0;*)
+$Value:=Substring($LogDetail;1;$k-1)
+$LogDetail:=Substring($LogDetail;$k+1)
+If ($FieldNo>0) & ($FieldNo<=Get last field number($pTable)) & ($j#0) & ($k#0)
+$p:=Field([EventLog]EventTable;$FieldNo)
+SyncUpdateField ($p;$Value)
+Else 
+If ($FieldNo<1)//| ($FieldNo>Get last field number($pTable))  //SDD 12/09/13 If it is greater then means new fields have been added but don't stop the record syncing with what it has
+[EventLog]SyncStatus:=8//ERROR - Field number expected
+SyncRecordLog (Get localized string("Error in SyncUpdateRecord (Add), LogDetail")+" = "+$LogDetail+Char(13)+Get localized string("Date")+" = "+String([EventLog]EventDate)+", "+Get localized string("Time")+" = "+String([EventLog]EventTime)+", "+Get localized string("Facility Code")+" = "+[EventLog]FacilityCode)
+End if 
+End if 
+End while 
+If ([EventLog]SyncStatus=102) & ([EventLog]EventTable=1)
+If (Old([Facility]BusinessName)#"") & (Old([Facility]BusinessName)#[Facility]BusinessName)//Facility mismatch - don't overwrite
+[EventLog]SyncStatus:=106
+End if 
+End if 
+//If ($2="AD+")
+//[Transaction]SeqNo:=0
+//End if 
+If ([EventLog]SyncStatus#8) & ([EventLog]SyncStatus#106)
+vError:=False
+ON ERR CALL("ErrorGotoRec")
+SAVE RECORD($pTable->)
+ON ERR CALL("ErrorLog")
+If (vError)
+If (viError>10) | (viError<0)
+[EventLog]SyncStatus:=viError
+Else 
+[EventLog]SyncStatus:=9//Prob duplicate record key
+End if 
+Else 
+[EventLog]SyncStatus:=3
+SET BLOB SIZE([EventLog]LogBlob;0)
+If ([EventLog]EventTable=6)
+$j:=Find in array(<>asSiteCodes;[EventLog]FacilityCode)//was <>asFacilities
+If ($j>0)
+If (([Trxs]SeqNo><>aiTrxSeqNo{$j}) & (<>sProduct#"M@")) | (([Trxs]SeqNo<<>aiTrxSeqNo{$j}) & (<>sProduct="M@"))//SDD 18/5/08
+<>aiTrxSeqNo{$j}:=[Trxs]SeqNo
+End if 
+End if 
+End if 
+If ([EventLog]EventTable=33)
+$j:=Find in array(<>asSiteCodes;[EventLog]FacilityCode)//was <>asFacilities
+If ($j>0)
+If ([Quote]SeqNo><>aiQuoteSeqNo{$j})
+<>aiQuoteSeqNo{$j}:=[Quote]SeqNo
+End if 
+End if 
+End if 
+If ([EventLog]EventTable=32)
+$j:=Find in array(<>asSiteCodes;[EventLog]FacilityCode)//was <>asFacilities
+If ($j>0)
+If ([UnitStatusTrx]SeqNo><>aiUnitStatusTrxSeqNo{$j})
+<>aiUnitStatusTrxSeqNo{$j}:=[UnitStatusTrx]SeqNo
+End if 
+End if 
+End if 
+End if 
+End if 
+Else 
+//If (Records in selection($pTable->)=1)
+If (Locked($pTable->)=False)
+$LogDetail:=[EventLog]LogDetail
+While ($LogDetail>"")
+$Value:=""
+If ($2="DEL")
+$j:=Position(Char(19);$LogDetail;0;*)
+Else 
+$j:=Position(Char(18);$LogDetail;0;*)
+End if 
+$FieldNo:=Num(Substring($LogDetail;1;3))
+$LogDetail:=Substring($LogDetail;$j+1)
+If ($2="MOD")
+$j:=Position(Char(19);$LogDetail;0;*)
+$OldValue:=Substring($LogDetail;1;$j-1)
+$LogDetail:=Substring($LogDetail;$j+1)
+End if 
+$j:=Position(Char(20);$LogDetail;0;*)
+If ($2="DEL")
+$OldValue:=Substring($LogDetail;1;$j-1)
+Else 
+$Value:=Substring($LogDetail;1;$j-1)
+End if 
+$LogDetail:=Substring($LogDetail;$j+1)
+If ($Reverse)//Do the opposite of the MOD
+$TempValue:=$Value
+$Value:=$OldValue
+$OldValue:=$TempValue
+End if 
+If ($FieldNo>0) & ($FieldNo<=Get last field number($pTable))
+$p:=Field([EventLog]EventTable;$FieldNo)
+$Same:=False
+If (($1) & (Substring($Array->{$FieldNo};3;1)="M")) | (($1=False) & (Substring($Array->{$FieldNo};3;1)="S")) | (Substring($Array->{$FieldNo};3;1)="X") | ($2="DEL")//SDD 19/03/13 Added last condition so that Deletes will always get actioned even if they don't match
+$Same:=True
+Else 
+Case of 
+: (Type($p->)=Is date)
+Case of 
+: ((($OldValue="@US") & (DateFormat =0)) | (($OldValue#"@US") & (DateFormat =1))) & ($OldValue#"@ISO")
+$OldValue:=Substring($OldValue;4;2)+Substring($OldValue;3;1)+Substring($OldValue;1;2)+Substring($OldValue;6)
+: ($OldValue="@ISO") & (DateFormat =0)
+$OldValue:=Substring($OldValue;9;2)+Substring($OldValue;5;4)+Substring($OldValue;1;4)
+: (($OldValue#"@ISO") & (DateFormat =2)) & ($OldValue#"@US")
+$OldValue:=Substring($OldValue;7)+Substring($OldValue;3;4)+Substring($OldValue;1;2)
+: ($OldValue="@ISO") & (DateFormat =1)
+$OldValue:=Substring($OldValue;6;2)+Substring($OldValue;8;3)+Substring($OldValue;5;1)+Substring($OldValue;1;4)
+: ($OldValue="@US") & (DateFormat =2)
+$OldValue:=Substring($OldValue;7)+Substring($OldValue;6;1)+Substring($OldValue;1;2)+Substring($OldValue;3;3)
+Else 
+//Do Nothing
+End case 
+If ($OldValue="@US")
+$OldValue:=Replace string($OldValue;"US";"")
+End if 
+If ($OldValue="@ISO")
+$OldValue:=Replace string($OldValue;"ISO";"")
+End if 
+$Same:=(Date($OldValue)=$p->)
+: (Type($p->)=Is time)
+$Same:=(Time($OldValue)=$p->)
+: (Type($p->)=Is integer) | (Type($p->)=Is longint) | (Type($p->)=Is real)
+$Same:=(Num($OldValue)=$p->)
+: (Type($p->)=Is Boolean)
+$Same:=(($OldValue="True")=$p->)
+: (Type($p->)=Is subtable) | (Type($p->)=Is picture) | (Type($p->)=Is BLOB) | (Type($p->)=Is text)
+$Same:=True
+Else 
+$Same:=($p->=$OldValue)
+End case 
+End if 
+If ($Same) | ([EventLog]EventTable=10)
+If ($2="MOD")
+SyncUpdateField ($p;$Value)
+End if 
+Else 
+ADD TO SET([EventLog];"Received")
+[EventLog]SyncStatus:=7//ERROR - Fields did not match
+SyncRecordLog (Get localized string("Error in SyncUpdateRecord (Delete/Modify), LogDetail")+" = "+$LogDetail+Char(13)+Get localized string("Date")+" = "+String([EventLog]EventDate)+", "+Get localized string("Time")+" = "+String([EventLog]EventTime)+", "+Get localized string("Facility Code")+" = "+[EventLog]FacilityCode)
+End if 
+End if 
+End while 
+If ([EventLog]SyncStatus#8) & ([EventLog]SyncStatus#7)
+If ($2="DEL")
+DELETE RECORD($pTable->)
+If ($pTable=Table(4)) & (<>sProduct#"M@") & (<>tGateSys=True)
+UpdateGateUnits (True;True)
+End if 
+If ($pTable=Table(14)) & (<>sProduct#"M@") & (<>tGateSys=True)
+UpdateGateUnits (True;True)
+End if 
+[EventLog]SyncStatus:=3
+SET BLOB SIZE([EventLog]LogBlob;0)
+//if take payment at other site, and deleted trx received at HOF, need to recalc bals:
+If ($pTable=Table(6)) & (<>sProduct="M@")
+If (Substring([EventLog]KeyValue;1;5))#([EventLog]FacilityCode)
+$CSV:=Position(",";[EventLog]KeyValue)
+$ID:=Substring([EventLog]KeyValue;1;$CSV-1)
+If (Length($ID)=9)
+QUERY([Reservation];[Reservation]ReserveNo=$ID)
+READ WRITE([Reservation])
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=$ID)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+End if 
+bAll:=0
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bHistory:=1
+ReCalc 
+If (Length($ID)=9)
+SAVE RECORD([Reservation])
+Else 
+SAVE RECORD([Agreement])
+End if 
+End if 
+End if 
+Else 
+vError:=False
+ON ERR CALL("ErrorGotoRec")
+SAVE RECORD($pTable->)
+ON ERR CALL("ErrorLog")
+If ($pTable=Table(3)) & (<>sProduct#"M@") & (<>tGateSys=True)
+If ([EventLog]LogDetail="@Vacant@")
+UpdateGateUnits (True;True;True)
+End if 
+End if 
+If ($pTable=Table(4)) & (<>sProduct#"M@") & (<>tGateSys=True)
+If ([EventLog]LogDetail="@ActiveAgreemt@") | ([EventLog]LogDetail="@BalanceOwing@") | ([EventLog]LogDetail="@Customer@") | ([EventLog]LogDetail="@MoveIn@") | ([EventLog]LogDetail="@MoveOut@") | ([EventLog]LogDetail="@UnitsOccup@")
+UpdateGateUnits (True;True)
+End if 
+End if 
+If ($pTable=Table(5)) & (<>sProduct#"M@") & (<>tGateSys=True)
+If ([EventLog]LogDetail="@GatePIN@") | ([EventLog]LogDetail="@AllowAccessArrs@") | ([EventLog]LogDetail="@GateTimeZone@") | ([EventLog]LogDetail="@Balance@") | ([EventLog]LogDetail="@Overdue@")
+UpdateGateUnits (True;True)
+End if 
+End if 
+If ($pTable=Table(14)) & (<>sProduct#"M@") & (<>tGateSys=True)
+If ([EventLog]LogDetail="@Code@") | ([EventLog]LogDetail="@PINCardNo@") | ([EventLog]LogDetail="@TimeZone@") | ([EventLog]LogDetail="@UnitSuffix@")
+UpdateGateUnits (True;True)
+End if 
+End if 
+If (vError)
+If (viError>10) | (viError<0)
+[EventLog]SyncStatus:=viError
+Else 
+[EventLog]SyncStatus:=9//Prob record incomplete & cannot save it
+End if 
+Else 
+[EventLog]SyncStatus:=3
+SET BLOB SIZE([EventLog]LogBlob;0)
+End if 
+End if 
+End if 
+Else 
+//RECORD IS LOCKED
+//SDD 3/11/10 Following two lines added to debug where is locked records
+LOCKED BY($pTable->;$ProcessNo;$4DUser;$SessionUser;$ProcessName)
+SyncRecordLog (Get localized string("Record Locked - Sync Event Table")+" "+String([EventLog]EventTable)+" "+Get localized string("Key")+" "+[EventLog]KeyValue+" "+Get localized string("Date/Time")+" "+String([EventLog]EventDate)+String([EventLog]EventTime)+" "+Get localized string("Locked")+":"+String($ProcessNo)+":"+$4DUser+":"+$SessionUser+":"+$ProcessName)
+
+ADD TO SET([EventLog];"Received")
+[EventLog]SyncStatus:=4
+//Set SyncStatus at 4 - must be retried every 10 secs
+End if 
+End if 
+READ ONLY($pTable->)
+UNLOAD RECORD($pTable->)
+Else 
+ADD TO SET([EventLog];"Received")
+[EventLog]SyncStatus:=6//ERROR - Damaged Blob couldn't be expanded
+//DOCUMENT TO BLOB("DamagedBlob";vbEventContent) - this document doesn't appear to be created anywhere?
+End if 

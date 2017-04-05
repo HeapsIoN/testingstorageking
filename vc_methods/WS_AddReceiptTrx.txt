@@ -1,0 +1,470 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 00/00/00, 00:00:00 (old)
+// ----------------------------------------------------
+// Method: WS_AddReceiptTrx
+// Description
+// 
+// *I am used by Storpay.
+//
+// Parameters
+// ----------------------------------------------------
+
+//SDD Changed WS_Analysis to correctly locate the right Analysis code if coming from StormanUsers
+//These variables defined in Compiler_Web method
+//C_TEXT(WS_AgreeNo2;WS_Analysis;WS_BankBranch;WS_CCAuthNo;WS_Customer)
+//C_TEXT(WS_CCTransID)
+//C_TEXT(WS_Description;WS_Drawer;WS_UserLogin)
+//C_DATE(WS_TrxDate;WS_DateBanked)
+//C_LONGINT(WS_SeqNo)
+//C_REAL(WS_TotAmt)
+
+SOAP DECLARATION(WS_SeqNo;Is longint;SOAP input)//If 0 then new transaction else find existing.
+SOAP DECLARATION(WS_AgreeNo2;Is string var;SOAP input)
+SOAP DECLARATION(WS_Analysis;Is string var;SOAP input)//V=Visa, M=Mastercard, A=Amex, D=Diners from StormanUsers, Reg Code from Storman
+SOAP DECLARATION(WS_BankBranch;Is string var;SOAP input)
+SOAP DECLARATION(WS_CCAuthNo;Is string var;SOAP input)
+SOAP DECLARATION(WS_CCTransID;Is string var;SOAP input)
+SOAP DECLARATION(WS_Customer;Is string var;SOAP input)
+SOAP DECLARATION(WS_Description;Is string var;SOAP input)
+SOAP DECLARATION(WS_Drawer;Is string var;SOAP input)
+SOAP DECLARATION(WS_TotAmt;Is real;SOAP input)
+SOAP DECLARATION(WS_TrxDate;Is date;SOAP input)
+SOAP DECLARATION(WS_UserLogin;Is string var;SOAP input)
+SOAP DECLARATION(WS_DateBanked;Is date;SOAP input)
+SOAP DECLARATION(WS_OriginalReceipt;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+C_LONGINT(WS_SeqNoOut)
+C_BOOLEAN(WS_Success)
+C_BOOLEAN(vbIsReservation)
+TRACE
+SOAP DECLARATION(WS_SeqNoOut;Is longint;SOAP output)
+SOAP DECLARATION(WS_PrimKeyOut;Is longint;SOAP output)
+//WS_OLD=SOAP DECLARATION(WS_Success;Is Boolean;SOAP Output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_AddReceiptTrx"+Char(13)
+$String:=$String+"WS_SeqNo: "+String(WS_SeqNo)+Char(13)
+$String:=$String+"WS_AgreeNo2: "+WS_AgreeNo2+Char(13)
+$String:=$String+"WS_Analysis: "+WS_Analysis+Char(13)
+$String:=$String+"WS_BankBranch: "+WS_BankBranch+Char(13)
+$String:=$String+"WS_CCAuthNo: "+WS_CCAuthNo+Char(13)
+$String:=$String+"WS_CCTransID: "+WS_CCTransID+Char(13)
+$String:=$String+"WS_Customer: "+WS_Customer+Char(13)
+$String:=$String+"WS_Description: "+WS_Description+Char(13)
+$String:=$String+"WS_Drawer: "+WS_Drawer+Char(13)
+$String:=$String+"WS_TotAmt: "+String(WS_TotAmt)+Char(13)
+$String:=$String+"WS_TrxDate: "+String(WS_TrxDate)+Char(13)
+$String:=$String+"WS_UserLogin: "+WS_UserLogin+Char(13)
+$String:=$String+"WS_DateBanked: "+String(WS_DateBanked)+Char(13)
+$String:=$String+"WS_OriginalReceipt: "+WS_OriginalReceipt+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+WS_SeqNoOut:=0
+WS_PrimKeyOut:=0
+WS_Success:=False
+C_TEXT($Analysis)
+
+If (Length(WS_AgreeNo2)=13)//It's a reservation
+vbIsReservation:=True
+Else 
+vbIsReservation:=False
+End if 
+
+$Analysis:=WS_Analysis
+
+QUERY([Analysis];[Analysis]Code=$Analysis;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+
+If (Records in selection([Analysis])=0)
+If (Length($Analysis)<6)
+QUERY([Analysis];[Analysis]Code=Substring(WS_AgreeNo2;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+Case of 
+: ($Analysis="A")
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=59)// Amex Web Payment 
+: ($Analysis="D")
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=60)// Diners Web Payment
+Else 
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=58)//Default Web Paymnt
+End case 
+
+If (Records in selection([Analysis])=0)//Use Default if not selected
+QUERY([Analysis];[Analysis]Code=Substring(WS_AgreeNo2;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+Case of 
+: ($Analysis="A")
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=55)// Amex Default
+: ($Analysis="D")
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=56)// Diners Default
+Else 
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=54)//Other Default
+End case 
+End if 
+If (Records in selection([Analysis])=0)//Use Default web payment if not selected
+QUERY([Analysis];[Analysis]Code=Substring(WS_AgreeNo2;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=58)
+End if 
+If (Records in selection([Analysis])=0)//Use Default auto credit card if not selected
+QUERY([Analysis];[Analysis]Code=Substring(WS_AgreeNo2;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=54)
+End if 
+If (Records in selection([Analysis])=0)//Use Default if not selected
+//QUERY([Analysis];[Analysis]Code=Substring(WS_AgreeNo2;1;5)+"@";*)
+//QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+//ORDER BY([Analysis];[Analysis]SortOrder;>)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1013
+WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+Else 
+$Analysis:=[Analysis]Code
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1013
+WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+End if 
+Else 
+$Analysis:=[Analysis]Code
+End if 
+
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Reservation])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+READ WRITE([Authenticate])
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+If (vbIsReservation)
+QUERY([Reservation];[Reservation]RReserveNo=WS_AgreeNo2)
+RELATE ONE([Reservation]CustomerCode)
+REDUCE SELECTION([Agreement];0)
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=WS_AgreeNo2)
+RELATE ONE([Agreement]CustomerCode)
+REDUCE SELECTION([Reservation];0)
+End if 
+TRACE
+If (WS_ORSuccess)
+Case of 
+: (Records in selection([Facility])#1)
+WSRecordLog (Get localized string("Unable to AddReceipt in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Facility"))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+: (WS_WebServicePassword#[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+: (Records in selection([Agreement])#1) & (Records in selection([Reservation])#1)
+If (vbIsReservation)
+WSRecordLog (Get localized string("Unable to AddReceipt in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Reservation"))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1014
+WS_ORErrorDescription:="Reservation record not found in database Storman."
+Else 
+WSRecordLog (Get localized string("Unable to AddReceipt in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Agreement"))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+: (Records in selection([Customer])#1)
+WSRecordLog (Get localized string("Unable to AddReceipt in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Customer"))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1012
+WS_ORErrorDescription:="Customer record not found in database Storman."
+: (Locked([Customer]))
+WSRecordLog (Get localized string("Unable to AddReceipt in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+"Locked Customer")
+WS_ORSuccess:=False
+WS_ORErrorCode:=1019
+WS_ORErrorDescription:="Customer record locked in database Storman. Please try again later."
+: (Length($Analysis)<6)
+WSRecordLog (Get localized string("Unable to AddReceipt in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Analysis Code"))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1013
+WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+Else 
+If (WS_SeqNo=0)
+CREATE RECORD([Trxs])
+If (vbIsReservation)
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+Else 
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+End if 
+Else 
+If (vbIsReservation)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]SeqNo=WS_SeqNo)
+End if 
+If (Records in selection([Trxs])=1) | (WS_SeqNo=0)
+[Trxs]TrxDate:=GetValidDate (WS_TrxDate)
+[Trxs]Charge:=False
+[Trxs]Confirmed:=True
+
+//DAM Fixed issue for MV and Ezidebit confirmed transactions
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))// Need to reselect facility after GetValidDate
+
+If ([Analysis]SetBankedDate=True) & (Records in selection([Analysis])=1) & ([Trxs]DateBanked=!00-00-00!)
+[Trxs]DateBanked:=Current date
+Else 
+[Trxs]DateBanked:=WS_DateBanked
+//21/05/15 DAM Added code below for setting transactions as NOT Confirmed for Ezidebit
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+
+//30/12/15 DAM Added option to set the transaction not to be checked for Ezi
+If ([Analysis]OnlineSale)
+[Trxs]Confirmed:=True
+[Trxs]DateBanked:=!00-00-00!
+Else 
+[Trxs]Confirmed:=False
+End if 
+
+End if 
+End if 
+[Trxs]AnalysisCode:=$Analysis
+
+If (WS_Description#"")
+[Trxs]Description:=WS_Description
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+
+//HRZ + DAM Added for fixing update receipt at other site
+If (WS_SeqNo#0)
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Trxs]TotAmt:=WS_TotAmt
+[Trxs]Drawer:=WS_Drawer
+[Trxs]BankBranch:=WS_BankBranch
+[Trxs]CCAuthNo:=WS_CCAuthNo
+[Trxs]CCTransID:=WS_CCTransID
+[Trxs]OriginalReceipt:=WS_OriginalReceipt
+//20/10/15 DAM Modified for Ezidebit refunds
+If (WS_OriginalReceipt="") & (WS_CCAuthNo#"") & (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+[Trxs]OriginalReceipt:=WS_CCAuthNo
+End if 
+[Trxs]UserLogin:=WS_UserLogin
+bFromMoveIn:=True
+SAVE RECORD([Trxs])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Receipt successfully added in database Storman."
+//WS_OLD=WS_Success:=True
+WS_SeqNoOut:=[Trxs]SeqNo
+WS_PrimKeyOut:=[Trxs]PrimaryKey
+vNewReceipt:=True
+
+If (Not(vbIsReservation))
+UpdateReceipt ("Web";True)
+/////////////////////////////////////////////////////////////////////////////////////////////////johnno 18/09/2015 to complete online oredrs after payment//////
+If ([Agreement]OrderID>"") & ([Agreement]OrderComplete=False) & ([Agreement]BalanceOwing<=0)
+[Agreement]OrderComplete:=True
+SAVE RECORD([Agreement])
+//EMAIL FACILITY HERE ABOUT ORDER COMPLETE?
+End if 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+Else 
+
+//18/07/13 DAM Added as web payments do not change reservation balance
+[Reservation]Balance:=[Reservation]Balance-[Trxs]TotAmt
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+
+//05/08/15 DAM Added for Reservations Surcharges
+If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)) & ([Trxs]TotAmt>0) & (WS_SeqNo=0)
+$ReceiptAmount:=[Trxs]TotAmt
+//$TrxDate:=[Trxs]TrxDate
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Agree:=[Trxs]AgreeNo
+$Cust:=[Trxs]CustomerCode
+$Fixed:=[Analysis]FailedFeeFixed
+$Percent:=[Analysis]FailedFeePerc
+QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]FailedFeeAnalysis)
+If (Records in selection([Analysis])>=1)
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ($TrxDate)
+[Trxs]DateFrom:=$TrxDate
+[Trxs]DateTo:=$TrxDate
+[Trxs]AgreeNo:=$Agree
+[Trxs]CustomerCode:=$Cust
+[Trxs]Charge:=True
+
+[Trxs]Narration:="Failed Surcharge for Receipt Amt: "+String($ReceiptAmount)+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"Fixed Surcharge Amount: "+String($Fixed)+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"% Surcharge Amount: "+String($Percent)+"%"+Char(Line feed)
+
+$PercCalc:=$ReceiptAmount-$Fixed
+$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))//$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+[Trxs]Narration:=[Trxs]Narration+"Calculated % surchage: "+String(Round($PercCalc;2))+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"Total Amount: "+String(Round($Fixed;2))+"+"+String(Round($PercCalc;2))+"="+String(Round($Fixed+$PercCalc;2))
+
+[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+SAVE RECORD([Trxs])
+gError:="OKFCCS"//- 9529
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+End if 
+End if 
+
+SAVE RECORD([Customer])
+SAVE RECORD([Reservation])
+End if 
+
+//21/08/13 DAM Added to remove [Authenticate] record if the payment is made
+If ([Agreement]BnS#"")
+QUERY([Authenticate];[Authenticate]RAgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress="BnS")
+If (Records in selection([Authenticate])#0)
+
+//Get Unit numbers or agreement number from [Authenticate] to do Post call
+QUERY([BarCode];[BarCode]AgreeNo=[Agreement]RAgreeNo)
+C_LONGINT($Pos)
+ARRAY TEXT($Units;0)
+$Pos:=0
+$Pos:=Position("unit(s):";[Authenticate]SessionID)
+If ($Pos>0)
+APPEND TO ARRAY($Units;GetTextNo ([Authenticate]SessionID;3;","))
+$k:=0
+While (GetTextNo ([Authenticate]SessionID;4+$k;",")#(" agreement "+[Agreement]RAgreeNo))
+APPEND TO ARRAY($Units;GetTextNo ([Authenticate]SessionID;4+$k;","))
+$k:=$k+1
+End while 
+If (Size of array($Units)>0)
+QUERY SELECTION WITH ARRAY([BarCode]UnitNo;$Units)
+End if 
+End if 
+
+//Send Email to facility letting know the units/agreement to move out
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+If ([Facility]OResFacNotifEmail#"")
+$MessageBody:=""
+$MessageBody:="Customer: "+[Customer]CustomerName+" Agreement: "+[Agreement]AgreeNo+Char(Carriage return)+Char(Line feed)
+$MessageBody:=$MessageBody+"Is ready to move out, from : "+GetTextNo ([Authenticate]SessionID;2;",")+Char(Carriage return)+Char(Line feed)
+If (Size of array($Units)>0)
+For ($z;1;Size of array($Units))
+$MessageBody:=$MessageBody+$Units{$z}+", "+Char(Carriage return)+Char(Line feed)
+End for 
+End if 
+$MessageBody:=$MessageBody+Char(Carriage return)
+$MessageBody:=$MessageBody+"Plesae check the payment is received"+Char(Carriage return)
+$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Move Out. Please Check.";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")//Notification Email to Facility
+End if 
+
+DELETE SELECTION([Authenticate])
+//05/06/14 DAM added for AU post call.
+WSRecordLog ("AU Post call for Agreement: "+WS_AgreeNo2)
+
+If (Records in selection([BarCode])#0)
+CallAUPost (True;"";True)
+Else 
+WSRecordLog ("AU Post call for agreement: "+WS_AgreeNo2+" "+GetTextNo ([Reservation]BoxnStore;4;",")+"  records in Selection for barcode: "+String(Records in selection([BarCode])))
+End if 
+End if 
+End if 
+
+//04/06/14 DAM Added for AU post call
+If (GetTextNo ([Reservation]BoxnStore;4;",")#"")
+WSRecordLog ("AU Post call for reservation: "+WS_AgreeNo2+" "+[Reservation]BoxnStore)
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+Case of 
+: (GetTextNo ([Reservation]BoxnStore;4;",")="Remaining")
+QUERY([BarCode];[BarCode]ReserveNo=[Reservation]RReserveNo;*)
+QUERY([BarCode]; & ;[BarCode]Billed=True)
+If (Records in selection([BarCode])#0)
+//31/03/15 DAM Added sending emails to depot
+If ([Facility]OResFacNotifEmail#"")
+$cr:=Char(13)+Char(10)
+$MessageBody:="Send Receive Step has been completed for reservation:"+$cr
+$MessageBody:=$MessageBody+"Reservation Number: "+[Facility]FacilityCode+[Reservation]ReserveNo+$cr
+$MessageBody:=$MessageBody+"Date: "+String(Current date;5)+$cr
+$MessageBody:=$MessageBody+"Time: "+String(Current time)+$cr
+$MessageBody:=$MessageBody+"Customer Name: "+[Customer]CustomerName+$cr
+$MessageBody:=$MessageBody+"Email Address: "+[Customer]EmailAddress+$cr
+$MessageBody:=$MessageBody+"Facility: "+[Facility]FacilityName+$cr
+If ([Reservation]Weekly=True)
+$WeeklyMonthly:="Weekly"
+Else 
+$WeeklyMonthly:="Monthly"
+End if 
+$MessageBody:=$MessageBody+"Weekly / Monthly: "+$WeeklyMonthly+$cr
+$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Send Receive Step has been completed";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")//Notification Email to Facility
+End if 
+
+CallAUPost (False;"Remaining")
+Else 
+WSRecordLog ("AU Post call for reservation: "+WS_AgreeNo2+" "+GetTextNo ([Reservation]BoxnStore;4;",")+"  records in Selection for barcode: "+String(Records in selection([BarCode])))
+End if 
+: (GetTextNo ([Reservation]BoxnStore;4;",")="Deposit")
+QUERY([BarCode];[BarCode]ReserveNo=[Reservation]RReserveNo)
+If (Records in selection([BarCode])#0)
+CallAUPost (True;"Deposit")
+Else 
+WSRecordLog ("AU Post call for reservation: "+WS_AgreeNo2+" "+GetTextNo ([Reservation]BoxnStore;4;",")+"  records in Selection for barcode: "+String(Records in selection([BarCode])))
+End if 
+End case 
+End if 
+End if 
+End case 
+End if 
+
+//18/03/15 DAM added to release records.
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+
+$String:="End WS_AddReceiptTrx"+Char(13)
+$String:=$String+"WS_SeqNoOut: "+String(WS_SeqNoOut)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

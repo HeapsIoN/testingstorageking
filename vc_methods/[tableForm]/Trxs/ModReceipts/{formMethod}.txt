@@ -1,0 +1,1433 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($CustCharge)
+If (Form event=On Load)
+
+//04/08/15 DAM Added for auto email CC to work
+//If ([Facility]Country="PA")
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=False)
+//ARRAY LONGINT(arMatchNo;0)
+//ARRAY TEXT(arAnalysisCode;0)
+//ARRAY REAL(arTotalAmt;0)
+//SELECTION TO ARRAY([Trxs]Match;arMatchNo;[Trxs]AnalysisCode;arAnalysisCode;[Trxs]TotAmt;arTotalAmt)
+//
+//If ([Facility]InvUseAgrBalFwd)
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+//Else 
+//QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+//End if 
+//End if 
+
+
+SetFacility 
+C_BOOLEAN(vAutoNotice;ReservationAgreement)
+C_DATE(vdTrxDate)
+C_REAL(vOldAmount;TrxOldAmt;BalanceOwingOriginal)
+C_TEXT(OldValue;TrxOldAc;vCustNametmp;$flag_RO)
+C_TEXT(vKSSInactiveRefund)
+TrxOldAmt:=0
+TrxOldAc:=""
+OldValue:=""
+FieldAgNo:=""
+bModReceipt:=True
+vAutoNotice:=False
+BalanceOwingOriginal:=0
+ReservationAgreement:=False
+bAbortArray:=0
+
+vCustNametmp:=""//fb9653 by eugene
+$flag_RO:=""//fb9963
+
+
+If ([Agreement]CustomerCode=(<>sFacility+"MISCL")) & ([Agreement]RAgreeNo=(<>sFacility+"MISCL"))
+vCustNametmp:=vCustomerName
+Else 
+vCustNametmp:=[Customer]CustomerName
+End if 
+
+//fb 9305 by eugene
+If ([Agreement]CustomerCode=(<>sFacility+"MISCL")) & ([Agreement]RAgreeNo=(<>sFacility+"MISCL")) & (PermissionsControl (186;False)=False)
+OBJECT SET ENABLED(asReceiptDesc;False)
+Else 
+OBJECT SET ENABLED(asReceiptDesc;True)
+End if 
+
+
+
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+
+If ([Trxs]SeqNo=0)
+vNewReceipt:=True
+Else 
+vNewReceipt:=False
+End if 
+
+If ([Facility]InvStatement>0)
+OBJECT SET VISIBLE(*;"Text24";False)
+OBJECT SET VISIBLE([Trxs]SeqNo;False)
+End if 
+
+//InitArrays   //fb8802 by eugene 14.04.15
+
+OBJECT SET TITLE(*;"Text17";Get localized string("Customer Name")+":")
+OBJECT SET TITLE(*;"Text2";Get localized string("Customer balance")+":")
+OBJECT SET TITLE(*;"Text9";Get localized string("Drawer")+":")
+OBJECT SET TITLE(*;"Text22";Get localized string("Date of transaction")+":")
+OBJECT SET TITLE(*;"Text25";Get localized string("User Login")+":")
+OBJECT SET TITLE(*;"Text40";Get localized string("Date Banked")+":")
+OBJECT SET TITLE(*;"Text17Neg";Get localized string("Refund amount")+":")
+OBJECT SET TITLE(*;"Text4Pos";Get localized string("Receipt amount")+":")
+OBJECT SET TITLE(*;"Text4";Get localized string("Description")+":")
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text19";Get localized string("Berth No"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text19";Get localized string("Appl No"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text19";Get localized string("Space No"))
+Else 
+OBJECT SET TITLE(*;"Text19";Get localized string("Unit No"))
+End case 
+
+//SetColours 
+vLateResetCycle:=True
+bSwipe:=Num(GetTextNo ([Facility]MerchantDetails;7;","))
+If (bSwipe=1)
+OBJECT SET VISIBLE(*;"@Enter@";False)
+OBJECT SET VISIBLE(*;"@Swipe@";True)
+Else 
+OBJECT SET VISIBLE(*;"@Enter@";True)
+OBJECT SET VISIBLE(*;"@Swipe@";False)
+End if 
+If (GetTextNo ([Facility]MerchantDetails;1;",")="") | (GetTextNo ([Facility]MerchantDetails;1;",")="None")
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bCCInst;False)
+OBJECT SET VISIBLE(bEnter;False)
+OBJECT SET VISIBLE(*;"Text1";False)
+End if 
+
+If (GetTextNo ([Facility]DDAccountDetails;6;",")#"EziDebit")
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";False)
+OBJECT SET VISIBLE(*;"Text10_DD";False)
+End if 
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+OBJECT SET VISIBLE(*;"bCCInst";True)
+OBJECT SET VISIBLE(*;"Button3Enter";False)
+//OBJECT SET TITLE(*;"Button2";"Batch")
+
+If (bAddRefund=1)
+OBJECT SET VISIBLE(*;"bCCInst";False)
+OBJECT SET TITLE(bLoad;"Process Refund")
+
+//10/08/15 DAM Disbaled refunds for Ezidebit
+//OBJECT SET VISIBLE(bLoad;False)
+//OBJECT SET VISIBLE(*;"Text1";False)
+End if 
+End if 
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="NAB CM")
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+OBJECT SET VISIBLE(*;"bCCInst";False)
+OBJECT SET VISIBLE(*;"Button3Enter";False)
+End if 
+If (GetTextNo ([Facility]MerchantDetails;1;",")="AuthorizeNet CIM")// | (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") | (GetTextNo ([Facility]MerchantDetails;1;",")="Advam StoredPAN")
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+OBJECT SET VISIBLE(*;"Button3Enter";True)
+End if 
+
+//**
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="eMatters")
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+OBJECT SET VISIBLE(*;"Button2";True)
+OBJECT SET VISIBLE(bCCInst;False)
+OBJECT SET VISIBLE(bEnter;True)
+
+
+End if 
+If (bAddRefund=1)
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+OBJECT SET VISIBLE(*;"Button2";True)
+OBJECT SET VISIBLE(bCCInst;False)
+OBJECT SET VISIBLE(bEnter;True)
+End if 
+End if 
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") | (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+OBJECT SET VISIBLE(bLoad;False)
+End if 
+
+//**
+If ([Trxs]TotAmt>=0)
+OBJECT SET VISIBLE(*;"Text17Neg";False)
+OBJECT SET VISIBLE(*;"Text4Pos";True)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+Else 
+OBJECT SET VISIBLE(*;"Text17Neg";True)
+OBJECT SET VISIBLE(*;"Text4Pos";False)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";True)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";False)
+End if 
+OBJECT SET VISIBLE(bNone;False)//To not catch Enter Key
+vCCNo:=""
+vCCName:=""
+vCCExpiry:=""
+vTrack:=""
+
+If (Undefined(vMisc))//by eugene 07/04
+vMisc:=False
+End if 
+
+If ([Agreement]AgreeNo>"") & (vMisc=False) & ([Agreement]ActiveAgreemt=False) & ([Agreement]BalanceOwing=0) & ([Reservation]ReserveNo="") & ([Agreement]AgreeNo#"#@") & ([Agreement]CustomerCode#"@PETTY")
+AlertMessage (Get localized string("WARNING - This is an inactive agreement.  Are you sure you wish to Add/Modify a Receipt?"))
+End if 
+
+OBJECT SET FORMAT([Trxs]BankBranch;<>tBankBranch)
+Case of 
+: ([Facility]Country="NZ")
+OBJECT SET FILTER([Trxs]BankBranch;"!0&9##-####")
+: ([Facility]Country="AU")
+OBJECT SET FILTER([Trxs]BankBranch;"!0&9###-###")
+Else 
+//do nothing
+End case 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+OBJECT SET VISIBLE(bPrtRec;[Facility]UseReceiptPrinter)
+If (bFromMoveIn=True)
+Case of 
+: ([Agreement]RAgreeNo>"")
+vCol1:=Substring([Agreement]RAgreeNo;1;5)+[Customer]LastAnalysis
+: ([Reservation]RReserveNo>"")
+vCol1:=Substring([Reservation]RReserveNo;1;5)+[Customer]LastAnalysis
+Else 
+vCol1:=<>sFacility+[Customer]LastAnalysis
+End case 
+aDesc:=1
+OBJECT SET VISIBLE(*;"field23";True)
+OBJECT SET VISIBLE(*;"fieldAgNo";False)
+OBJECT SET VISIBLE(*;"fieldUNo";False)
+OBJECT SET ENTERABLE([Trxs]CustomerCode;False)
+OldValue:=""
+fieldAgNo:=""
+
+//If (Position("PETTY";[Agreement]RAgreeNo)>0)  // by eugene 24/04/2015
+//OBJECT SET ENABLED(*;"bLoad";False)
+//Else 
+//OBJECT SET ENABLED(*;"bLoad";True)
+//End if 
+
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Agreement]RAgreeNo>"")//this condition added so as not to stuff up reservation 9/99 SDD
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+Else 
+OBJECT SET VISIBLE(bBoth;False)
+End if 
+If ([Trxs]AgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Agreement]BalanceOwing
+If ([Trxs]TotAmt<0)
+If ([Agreement]ActiveAgreemt) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+Else 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+If (vAmount>0) & (vTransID>"")//This for voiding CC transactions
+[Trxs]TotAmt:=Round(vAmount*(-1);2)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Code=vSpecialAnalysis)
+If (Records in selection([Analysis])=1)
+vCol1:=[Analysis]Code
+[Trxs]AnalysisCode:=vCol1
+End if 
+End if 
+//10780 & 10852
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ([Trxs]CCTransID="") & ((vOriginalReceipt#"") | (vTransID#"")) & ([Analysis]SpecialOptions=57) & (bAddRefund=1) & ([Customer]DDProfileID#"") & ((GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")))
+[Trxs]TotAmt:=Round(vAmount*(-1);2)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Code=vSpecialAnalysis)
+If (Records in selection([Analysis])=1)
+vCol1:=[Analysis]Code
+[Trxs]AnalysisCode:=vCol1
+End if 
+End if 
+End if 
+End if 
+If ([Reservation]RReserveNo>"")
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+OBJECT SET VISIBLE(bBoth;False)
+End if 
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Reservation]Balance
+If ([Trxs]TotAmt<0)
+If ([Reservation]ActiveReserve) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+End if 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+If (vAmount>0) & (vTransID>"")//This for voiding CC transactions
+[Trxs]TotAmt:=Round(vAmount*(-1);2)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Code=vSpecialAnalysis)
+If (Records in selection([Analysis])=1)
+vCol1:=[Analysis]Code
+[Trxs]AnalysisCode:=vCol1
+End if 
+End if 
+
+
+End if 
+End if 
+OBJECT SET VISIBLE(bPrev;False)
+bRepDate:=0
+vLastDate:=!00-00-00!
+Else 
+If ([Trxs]AgreeNo="")
+If (Records in selection([Agreement])=1)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+End if 
+If (Records in selection([Reservation])=1)
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+End if 
+End if 
+[Trxs]TotAmt:=vAmount
+
+OBJECT SET ENTERABLE([Trxs]CustomerCode;True)
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])>0)
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+End if 
+OBJECT SET VISIBLE(bPrev;True)
+End if 
+bPrev:=bRepDate
+If ([Trxs]TrxDate=!00-00-00!)
+If (bRepDate=1) & (vLastDate#!00-00-00!)
+[Trxs]TrxDate:=vLastDate
+Else 
+[Trxs]TrxDate:=Current date
+End if 
+End if 
+vDatePick1:=[Trxs]TrxDate
+vDatePick:=[Trxs]DateBanked
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+If ([Trxs]AnalysisCode="")
+If (vtReverse)
+If (PermissionsControl (174;False)=False)
+OBJECT SET VISIBLE(bDelete;False)
+End if 
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+If (vOriginalReceipt>"") | (vTransID>"")
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=61)
+If (Records in selection([Analysis])=0)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=53)
+End if 
+Else 
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=53)
+End if 
+
+If (Records in selection([Analysis])>0)
+vCol1:=[Analysis]Code
+End if 
+End if 
+[Trxs]AnalysisCode:=vCol1
+RELATE ONE([Trxs]AnalysisCode)
+
+vAllowed:=True
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+vAllowed:=False
+For ($m;1;Records in selection([UserGroup]))
+If ([Analysis]Groups=("@"+[UserGroup]GroupID+",@")) | ([Analysis]Groups="ALL")
+vAllowed:=True
+End if 
+NEXT RECORD([UserGroup])
+End for 
+End if 
+
+If (vtReverse=True)
+If ([Analysis]ReceiptShow=1)
+vAllowed:=False
+End if 
+Else 
+If ([Analysis]ReceiptShow=2)
+vAllowed:=False
+End if 
+End if 
+
+If (Records in selection([Analysis])=0) | ([Analysis]Inactive) | ([Analysis]SortOrder<50) | (Substring([Trxs]AgreeNo;1;5)#Substring([Analysis]Code;1;5)) | (vAllowed=False)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+If (vtReverse=True)
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#1)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+End if 
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Trxs]Description="")
+If (vtReverse)
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Refund")
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+End if 
+End if 
+End if 
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+RELATE ONE([Trxs]AnalysisCode)
+
+LoadAnlsArrays (False;True)
+
+If (Undefined(vKSSInactiveRefund))
+vKSSInactiveRefund:=""
+End if 
+
+If (vKSSInactiveRefund#"")
+If (PermissionsControl (222;False)=False)//10598 - fixing Permission alert when adding receipt - Hamid 15/4/2016
+asReceipts:=Find in array(asReceipts;vKSSInactiveRefund)
+
+If (asReceipts>0)
+OBJECT SET ENABLED(asReceiptDesc;False)
+asReceiptDesc:=asReceipts
+End if 
+End if 
+End if 
+
+If ([Trxs]Description="")
+If (vtReverse)
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Refund")
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+[Trxs]Confirmed:=True
+End if 
+vLeg:=""
+OBJECT SET ENTERABLE([Trxs]TaxAmt;False)
+OBJECT SET ENTERABLE([Trxs]CCAuthNo;False)
+Case of 
+: (TestValidDate ([Trxs]TrxDate)=False) | (TestValidDate ([Trxs]DateBanked;True)=False)//DAM Moved the case to the first place
+vLeg:=Get localized string("Receipt can't be changed as the transaction date or the date banked is earlier than the can't modify prior to date!")
+: ([Trxs]CCAuthNo>"") & ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+If (((Length([Trxs]CCAuthNo)=8) & ([Trxs]CCAuthNo="20@")) | ([Trxs]CCAuthNo="BadAc@")) & ([Trxs]TotAmt<0)//is batch refund transaction
+If (PermissionsControl (181;False)=False)
+vLeg:=Get localized string("You cannot modify a transaction that has been processed through batch refunds")
+Else 
+OBJECT SET ENTERABLE([Trxs]CCAuthNo;True)
+End if 
+
+//08/06/15 DAM Added code for Date Rec - 9328
+If ([Trxs]DateReconciled>!00-00-00!)
+If (<>sCurrentUser#"AdminSupport")
+vLeg:=Get localized string("Receipt cannot be modified as it has been reconciled")+"! ("+String([Trxs]DateReconciled)+")"
+OBJECT SET ENTERABLE([Trxs]CCAuthNo;False)
+Else 
+AlertMessage (Get localized string("Receipt has been reconciled - do not modify amounts!"))
+End if 
+End if 
+
+//08/06/15 DAM Added code to fix refunds given for other site
+If ([Trxs]AgreeNo>"  ") & (Substring([Trxs]AgreeNo;1;5)#Substring([Trxs]AnalysisCode;1;5))
+vLeg:=Get localized string("Receipt cannot be modified as it was created at another site!")
+OBJECT SET ENTERABLE([Trxs]CCAuthNo;False)
+End if 
+
+Else 
+vLeg:=Get localized string("Receipt can't be changed as this credit card trx has been authorized!")
+$flag_RO:="1"
+End if 
+: ([Trxs]AgreeNo>"  ") & (Substring([Trxs]AgreeNo;1;5)#Substring([Trxs]AnalysisCode;1;5))
+vLeg:=Get localized string("Receipt cannot be modified as it was created at another site!")
+: ([Trxs]DateReconciled>!00-00-00!)
+If ([Trxs]DateReconciled>!00-00-00!)
+If (<>sCurrentUser#"AdminSupport")
+vLeg:=Get localized string("Receipt cannot be modified as it has been reconciled")+"! ("+String([Trxs]DateReconciled)+")"
+Else 
+AlertMessage (Get localized string("Receipt has been reconciled - do not modify amounts!"))
+End if 
+End if 
+Else 
+//do nothing
+End case 
+
+//02/06/15 DAM Added Code below to trigger cash sale permissons
+If ([Trxs]CustomerCode#"@MISCL@")// Receipt permissions
+If (PermissionsControl (43;False)=False)
+OBJECT SET VISIBLE(bDelete;False)
+Else 
+OBJECT SET VISIBLE(bDelete;True)
+End if 
+If (PermissionsControl (44;False)=False)
+OBJECT SET ENTERABLE([Trxs]DateBanked;False)
+OBJECT SET VISIBLE(vDatePick;False)
+End if 
+Else // Cash Sale permissions
+
+If (PermissionsControl (45;False)=False)// Delete Cash Sale Permissions
+OBJECT SET VISIBLE(bDelete;False)
+Else 
+OBJECT SET VISIBLE(bDelete;True)
+End if 
+If (PermissionsControl (46;False)=False)// Cash Sale permission for DateBanked
+OBJECT SET ENTERABLE([Trxs]DateBanked;False)
+OBJECT SET VISIBLE(vDatePick;False)
+End if 
+End if 
+
+//If ([Trxs]CustomerCode#"@MISCL@")  //fb9337 by Eugene
+If (vLeg>"") | ((PermissionsControl (149;False)=False) & (bMod=1))
+OBJECT SET VISIBLE(bAccept;False)
+OBJECT SET VISIBLE(bBoth;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bEnter;False)
+OBJECT SET VISIBLE(bNone;True)//To catch Enter Key
+OBJECT SET ENTERABLE([Trxs]DateFrom;False)
+OBJECT SET ENTERABLE([Trxs]DateTo;False)
+OBJECT SET ENTERABLE([Trxs]TrxDate;False)
+OBJECT SET VISIBLE(vDatePick1;False)
+OBJECT SET ENTERABLE([Trxs]DateBanked;False)
+OBJECT SET VISIBLE(vDatePick;False)
+OBJECT SET ENTERABLE([Trxs]AnalysisCode;False)
+OBJECT SET VISIBLE(asReceiptDesc;False)
+OBJECT SET ENTERABLE([Trxs]Description;False)
+OBJECT SET ENTERABLE([Trxs]Drawer;False)
+OBJECT SET ENTERABLE([Trxs]BankBranch;False)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;False)
+OBJECT SET ENTERABLE([Trxs]Confirmed;False)
+OBJECT SET ENTERABLE([Analysis]Description;False)
+
+
+End if 
+//End if 
+
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & ([Customer]customerProfileID#""))
+vCCName:=[Customer]CCName
+//vCCNo:=Tokenizer ([Customer]CCNo;False)
+vCCNo:=Decode256 
+vCCExpiry:=[Customer]CCExpiry
+OBJECT SET VISIBLE(*;"vCCName";True)
+OBJECT SET VISIBLE(*;"vCCNo";True)
+OBJECT SET VISIBLE(*;"vCCExpiry";True)
+
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;True)
+End if 
+
+If (bAddRefund=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";True)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";False)
+OBJECT SET ENTERABLE(vMinus;True)
+OBJECT SET ENTERABLE(vPlus;False)
+End if 
+End if 
+
+If ([Trxs]CustomerCode#"@MISCL@")//fb9337 by Eugene
+//Allow deletion of W status EziDebit Direct Debits
+If (GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & (PermissionsControl (149;False)) & ([Trxs]CCAuthNo="W")
+OBJECT SET VISIBLE(bDelete;True)
+End if 
+End if 
+
+If (vLeg=Get localized string("Receipt can't be changed as this credit card trx has been authorized!")) | (vLeg=Get localized string("Receipt cannot be modified as it has been reconciled"))
+
+If ([Trxs]CustomerCode#"@MISCL@")//fb9337 by Eugene
+If (bMod=0) | (PermissionsControl (149;False))
+If (vLeg=Get localized string("Receipt can't be changed as this credit card trx has been authorized!"))
+OBJECT SET ENTERABLE([Trxs]DateBanked;True)
+End if 
+OBJECT SET ENTERABLE([Trxs]Description;True)
+OBJECT SET ENTERABLE([Trxs]BankBranch;True)
+OBJECT SET ENTERABLE([Trxs]Drawer;True)
+OBJECT SET VISIBLE(bAccept;True)
+End if 
+End if 
+
+End if 
+
+
+If ([Trxs]CustomerCode#"@MISCL@")//fb9337 by Eugene
+If (PermissionsControl (204;False)=False)
+OBJECT SET ENTERABLE([Trxs]TrxDate;False)
+OBJECT SET ENTERABLE(vDatePick1;False)
+End if 
+End if 
+
+If ([Trxs]CustomerCode#"@MISCL@")//fb9337 by Eugene
+If (vLeg="") & (PermissionsControl (204;False))
+OBJECT SET ENTERABLE([Trxs]TrxDate;True)
+OBJECT SET VISIBLE(vDatePick1;True)
+OBJECT SET VISIBLE(bAccept;True)
+End if 
+End if 
+
+
+Case of 
+: (aDesc=1)
+SET AUTOMATIC RELATIONS(True;False)
+: (aDesc=2)
+SET AUTOMATIC RELATIONS(False;False)
+: (aDesc=3)
+SET AUTOMATIC RELATIONS(False;False)
+Else 
+//do nothing
+End case 
+If (vtReverse)
+vTitle:=Get localized string("Refunds")+"..."
+vLeg1:=Get localized string("Refund amount")
+//If (vAmount>0)  Removed by SDD on 30/11/05 as is replaced by code below - vPlus / vMinus
+//vLeg1:="Void Amt"
+//Else 
+//[Transaction]TotAmt:=[Transaction]TotAmt*(-1)
+//End if 
+Else 
+vTitle:=Get localized string("Receipts1")+"..."
+vLeg1:=Get localized string("Receipt amount")
+End if 
+vPlus:=0
+
+If ([Trxs]TotAmt#0)
+vMinus:=Abs([Trxs]TotAmt)
+Else 
+vMinus:=0
+End if 
+
+If ([Trxs]TotAmt>=0)
+vPlus:=[Trxs]TotAmt
+//04/06/15 DAM Added new condition to show the message only when new receipt is added and amount is > 0
+If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))) & (bAddRec=1) & (vPlus>0)
+C_REAL($Surcharge)
+$Surcharge:=0
+If ([Trxs]CustomerCode="@MISCL@")// 10/06/15 DAM Cash sale)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=vPlus-[Trxs]TotAmt
+AlertMessage ("This analysis code has a surcharge. The receipt amount of "+String([Trxs]TotAmt)+", will incur a surcharge of "+String($Surcharge)+", The total amount including the surcharge will be "+String(vPlus))
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+Else 
+ConfirmTwo ("Do you want the receipt amount to be "+String(vPlus)+" including or excluding the surcharge?";"Excluding";"Including")
+If (OK=1)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+End if 
+End if 
+End if 
+//vMinus:=0
+OBJECT SET VISIBLE(*;"@Pos";True)
+OBJECT SET VISIBLE(*;"@Neg";False)
+End if 
+If (bAddRefund=1)
+If ([Agreement]BalanceOwing<0)
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")#"eMatters") & (GetTextNo ([Facility]MerchantDetails;1;",")#"Realex")//Added by Hamid - 14/5/2015 - 9099
+vMinus:=[Agreement]BalanceOwing
+End if 
+[Trxs]TotAmt:=vMinus
+Else 
+If (GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & (bAddRefund=1) & (vAmount>0)//Added by Hamid - 14/5/2015 - 9101
+vMinus:=vAmount
+Else 
+If ([Trxs]TotAmt#0)
+vMinus:=Abs([Trxs]TotAmt)
+Else 
+vMinus:=0
+End if 
+End if 
+
+[Trxs]TotAmt:=vMinus
+End if 
+
+End if 
+
+If (bAddRefund=1)
+If ([Trxs]CCAuthNo="S") | ([Trxs]CCAuthNo="P")
+AlertMessage ("Refunds cannot be carried out with not settled EziDebit transactions")
+End if 
+End if 
+
+If (vtReverse) & ([Trxs]TotAmt>0)//if  a refund or credit - changed from >0
+[Trxs]TotAmt:=[Trxs]TotAmt*(-1)
+vMinus:=Abs([Trxs]TotAmt)
+//vPlus:=0
+OBJECT SET VISIBLE(*;"@Pos";False)
+OBJECT SET VISIBLE(*;"@Neg";True)
+End if 
+If (([Trxs]TotAmt<=0) & (vtReverse))//| ([Transaction]TotAmt<0)
+vMinus:=Abs([Trxs]TotAmt)
+//vPlus:=0
+OBJECT SET VISIBLE(*;"@Pos";False)
+OBJECT SET VISIBLE(*;"@Neg";True)
+End if 
+If ([Trxs]AnalysisCode=(<>sFacility+"CA")) & (vtReverse=False) & ([Facility]DisableTender=False)
+If ([Trxs]SeqNo=0)
+[Trxs]CashReceived:=0
+End if 
+OBJECT SET VISIBLE(*;"@Change";True)
+Else 
+[Trxs]CashReceived:=Abs([Trxs]TotAmt)
+OBJECT SET VISIBLE(*;"@Change";False)
+End if 
+
+If ([Reservation]RReserveNo>"")
+vtTransNo:=[Reservation]ReserveNo
+vrTransBal:=[Reservation]Balance
+OBJECT SET TITLE(*;"Text18";Get localized string("Reservation Number")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Reservation balance")+":")
+Else 
+vtTransNo:=[Agreement]AgreeNo
+vrTransBal:=[Agreement]BalanceOwing
+OBJECT SET TITLE(*;"Text18";Get localized string("Agreement Number")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Agreement balance")+":")
+If (GetTextNo ([Facility]MerchantDetails;1;",")="eMatters")
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+If ([Customer]customerProfileID#"")
+OBJECT SET ENABLED(*;"Button2";True)
+Else 
+OBJECT SET ENABLED(*;"Button2";False)
+End if 
+
+OBJECT SET VISIBLE(bCCInst;False)
+If (bAddRec=1) | (bAddRefund=1)
+OBJECT SET VISIBLE(bEnter;True)
+Else 
+OBJECT SET VISIBLE(bEnter;False)
+End if 
+
+End if 
+End if 
+
+If (Undefined(NoSaveOnCard))
+NoSaveOnCard:=False
+End if 
+
+If (bMod=1)
+OBJECT SET VISIBLE(*;"bLoad";False)
+OBJECT SET VISIBLE(*;"bCCInst";False)
+OBJECT SET VISIBLE(*;"bEnter";False)
+//OBJECT SET TITLE(*;"Text1";"")
+OBJECT SET VISIBLE(*;"Text1";False)
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";False)
+OBJECT SET VISIBLE(*;"Text10_DD";False)
+OBJECT SET VISIBLE(*;"Button3Enter";False)
+Else 
+If (((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & (((vTransID="") & (bAddRefund=1)) & ([Customer]customerProfileID=""))) | ((GetTextNo ([Facility]MerchantDetails;1;",")="Realex") & (bAddRefund=1) & ([Customer]customerProfileID="")))// Added by Hamid - 14/5/2015 - 9098
+OBJECT SET VISIBLE(*;"bLoad";False)
+OBJECT SET VISIBLE(*;"Variable6";False)
+OBJECT SET VISIBLE(*;"Variable5";False)
+OBJECT SET VISIBLE(*;"Variable14";False)
+Else 
+If (NoSaveOnCard)
+OBJECT SET VISIBLE(*;"bLoad";False)
+Else 
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & ([Customer]customerProfileID="")) | ((GetTextNo ([Facility]MerchantDetails;1;",")="Realex") & ([Customer]customerProfileID="")) | ((GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & ([Customer]customerProfileID="") & (bAddRefund#1))//|((bAddRefund=1) & (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit"))  // Added by Hamid - 14/5/2015 - 9098
+OBJECT SET VISIBLE(*;"bLoad";False)
+Else 
+OBJECT SET VISIBLE(*;"bLoad";True)
+End if 
+End if 
+End if 
+End if 
+
+If (bFromMoveIn=False)
+aDesc:=1
+OBJECT SET VISIBLE(*;"field23";True)
+OBJECT SET VISIBLE(*;"fieldAgNo";False)
+OBJECT SET VISIBLE(*;"fieldUNo";False)
+OldValue:=""
+fieldAgNo:=""
+End if 
+
+//30/06/15 DAM Added Code to hide buttons if AgreeNo or Customer code is blank for trx
+If ([Trxs]AgreeNo="") | ([Trxs]CustomerCode="")
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bCCInst;False)
+OBJECT SET VISIBLE(bEnter;False)
+OBJECT SET VISIBLE(*;"Text1";False)
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";False)
+OBJECT SET VISIBLE(*;"Text10_DD";False)
+End if 
+
+//****
+
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ([Trxs]CCAuthNo="") & (bMod#1) & (bAddRefund#1) & ([Customer]DDProfileID#"") & ((GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")))
+OBJECT SET VISIBLE(*;"Button3EnterDD";True)
+OBJECT SET ENABLED(*;"Button3EnterDD";True)
+OBJECT SET VISIBLE(*;"Text8";True)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";True)
+OBJECT SET VISIBLE(*;"Text10_DD";True)
+Else 
+OBJECT SET VISIBLE(*;"Button3EnterDD";False)
+OBJECT SET ENABLED(*;"Button3EnterDD";False)
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";False)
+OBJECT SET VISIBLE(*;"Text10_DD";False)
+End if 
+
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ([Trxs]CCAuthNo#"") & (bMod#1) & (bAddRefund#1) & ([Customer]DDProfileID#"") & ((GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")))
+OBJECT SET VISIBLE(*;"Button3EnterDD";False)
+OBJECT SET VISIBLE(*;"bCCInst";False)
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+OBJECT SET VISIBLE(*;"Button3Enter";False)
+OBJECT SET VISIBLE(*;"bLoad";False)
+OBJECT SET VISIBLE(*;"vCCName";False)
+OBJECT SET VISIBLE(*;"vCCNo";False)
+OBJECT SET VISIBLE(*;"Variable14";False)
+OBJECT SET VISIBLE(*;"vTransID";False)
+OBJECT SET VISIBLE(*;"Variable16";False)
+OBJECT SET ENABLED(*;"Variable2";False)
+OBJECT SET VISIBLE(*;"Text1";False)
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";False)
+OBJECT SET VISIBLE(*;"Text10_DD";False)
+End if 
+//10780 & 10852
+
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ([Trxs]CCTransID="") & ((vOriginalReceipt#"") | (vTransID#"")) & ([Analysis]SpecialOptions=57) & (bAddRefund=1) & ([Customer]DDProfileID#"") & ((GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")))
+OBJECT SET VISIBLE(*;"Button3EnterDD";True)
+OBJECT SET ENABLED(*;"Button3EnterDD";True)
+OBJECT SET TITLE(*;"Button3EnterDD";"Process Refund")
+OBJECT SET VISIBLE(*;"Text8";True)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";True)
+OBJECT SET VISIBLE(*;"Text10_DD";True)
+OBJECT SET VISIBLE(*;"bCCInst";False)
+OBJECT SET VISIBLE(*;"Button1Swipe";False)
+OBJECT SET VISIBLE(*;"Button3Enter";False)
+OBJECT SET VISIBLE(*;"bLoad";False)
+OBJECT SET VISIBLE(*;"vCCName";False)
+OBJECT SET VISIBLE(*;"vCCNo";False)
+OBJECT SET VISIBLE(*;"Variable14";False)
+OBJECT SET VISIBLE(*;"vTransID";False)
+OBJECT SET VISIBLE(*;"Variable16";False)
+OBJECT SET ENABLED(*;"Variable2";False)
+OBJECT SET VISIBLE(*;"Text1";False)
+End if 
+
+//**
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="Realex") & ([Customer]customerProfileID#""))
+vCCName:=[Customer]CCName
+//vCCNo:=Tokenizer ([Customer]CCNo;False)
+vCCNo:=Decode256 
+vCCExpiry:=[Customer]CCExpiry
+OBJECT SET VISIBLE(*;"vCCName";True)
+OBJECT SET VISIBLE(*;"vCCNo";True)
+OBJECT SET VISIBLE(*;"vCCExpiry";True)
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;True)
+OBJECT SET VISIBLE(*;"bLoad";True)
+OBJECT SET VISIBLE(*;"Text1";True)
+End if 
+Else 
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="Realex") & ([Customer]customerProfileID=""))
+If (vTransID="")
+vCCName:=""
+vCCNo:=""
+vCCExpiry:=""
+OBJECT SET VISIBLE(*;"vCCName";False)
+OBJECT SET VISIBLE(*;"vCCNo";False)
+OBJECT SET VISIBLE(*;"vCCExpiry";False)
+OBJECT SET VISIBLE(*;"vTransID";False)
+OBJECT SET VISIBLE(*;"Variable16";False)
+End if 
+
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;True)
+OBJECT SET VISIBLE(*;"bLoad";False)
+OBJECT SET VISIBLE(*;"Text1";True)// By Hamid -- 9960
+End if 
+End if 
+End if 
+If (((bAddRefund=1) | (bReturnPayment=1)) & (GetTextNo ([Facility]MerchantDetails;1;",")="Realex"))
+OBJECT SET VISIBLE(*;"bCCInst";False)
+OBJECT SET ENTERABLE(vMinus;True)
+OBJECT SET TITLE(bLoad;"Process Refund")
+OBJECT SET VISIBLE(*;"bLoad";True)
+OBJECT SET VISIBLE(*;"Button3Enter";False)
+End if 
+//**
+//11/11/16 RNE1 Set format 
+OBJECT SET FORMAT(*;"NumberNeg1Neg";<>sFormat)
+OBJECT SET FORMAT(*;"NumberNeg2Pos";<>sFormat)
+OBJECT SET FORMAT(*;"vChange";<>sFormat)
+OBJECT SET FORMAT(*;"Field20Change";<>sFormat)
+End if 
+If (Form event=On Data Change) | (Form event=On Clicked)
+If ((MoveInCall=False) & ((Modified([Trxs]CustomerCode)) & ([Trxs]CustomerCode#"")) | ((OldValue#FieldAgNo) & (FieldAgNo#"")) | ((Modified([Trxs]UnitNo)) & ([Trxs]UnitNo#"")))
+Case of 
+: (aDesc=1)
+OldValue:=""
+If (Length([Trxs]CustomerCode)<=5)
+[Trxs]CustomerCode:=<>sFacility+[Trxs]CustomerCode
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Trxs]CustomerCode)
+If (Records in selection([Customer])#1)
+AlertMessage (Get localized string("Customer not on file"))
+REJECT([Trxs]CustomerCode)
+OldValue:=""
+fieldAgNo:=""
+Else 
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+ReservationAgreement:=False
+SAVE RECORD([Agreement])
+QUERY([Agreement];[Agreement]CustomerCode=[Trxs]CustomerCode)
+Case of 
+: (Records in selection([Agreement])=0)
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+SAVE RECORD([Reservation])
+QUERY([Reservation];[Reservation]CustomerCode=[Trxs]CustomerCode)
+If (Records in selection([Reservation])<1)
+AlertMessage (Get localized string("Agreement Number not on file"))
+REJECT([Trxs]CustomerCode)
+OldValue:=""
+fieldAgNo:=""
+Else 
+[Reservation]Balance:=[Reservation]Balance-[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+FieldAgNo:=[Reservation]RReserveNo
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+End if 
+: (Records in selection([Agreement])>1)
+FORM SET OUTPUT([Agreement];"DisplayAgreemt")
+DISPLAY SELECTION([Agreement];Single selection)
+LOAD RECORD([Agreement])
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+FieldAgNo:=[Agreement]RAgreeNo
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+End if 
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+FieldAgNo:=[Agreement]RAgreeNo
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+
+End case 
+
+End if 
+: (aDesc=2)
+If (Length(FieldAgNo)<=9)//[Trxs]CustomerCode  --- [Trxs]AgreeNo
+[Trxs]AgreeNo:=<>sFacility+FieldAgNo//[Trxs]CustomerCode
+//Else 
+//[Trxs]AgreeNo:=[Trxs]AgreeNo  //[Trxs]CustomerCode
+End if 
+//If (Length([Trxs]AgreeNo)<=9)  //[Trxs]CustomerCode
+//[Trxs]AgreeNo:=<>sFacility+[Trxs]AgreeNo  //[Trxs]CustomerCode
+//Else 
+//[Trxs]AgreeNo:=[Trxs]AgreeNo  //[Trxs]CustomerCode
+//End if 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+SAVE RECORD([Agreement])
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+SAVE RECORD([Reservation])
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])=0)
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+End if 
+If (Records in selection([Agreement])#1) & (Records in selection([Reservation])#1)
+AlertMessage (Get localized string("Agreement Number not on file"))
+OldValue:=[Trxs]AgreeNo
+REJECT([Trxs]AgreeNo)//[Trxs]CustomerCode
+Else 
+OldValue:=[Trxs]AgreeNo
+FieldAgNo:=[Trxs]AgreeNo
+If (Records in selection([Reservation])=1) & (Records in selection([Agreement])#1)
+[Reservation]Balance:=[Reservation]Balance-[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Reservation]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Agreement]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+End if 
+aDesc:=2
+OBJECT SET VISIBLE(*;"field23";False)
+OBJECT SET VISIBLE(*;"fieldAgNo";True)
+OBJECT SET VISIBLE(*;"fieldUNo";False)
+End if 
+: (aDesc=3)
+OldValue:=""
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+[Trxs]UnitNo)//[Trxs]CustomerCode
+If (Records in selection([Unit])#1)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("Berth number not on file"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("Appliance number not on file"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("Space number not on file"))
+Else 
+AlertMessage (Get localized string("Unit number not on file"))
+End case 
+REJECT([Trxs]CustomerCode)//[Trxs]UnitNo
+OldValue:=""
+fieldAgNo:=""
+Else 
+If ([Unit]Vacant=True) & ([Unit]ReservedTo="")
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("This berth is vacant"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("This appliance is vacant"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("This space is vacant"))
+Else 
+AlertMessage (Get localized string("This unit is vacant"))
+End case 
+[Trxs]CustomerCode:=Old([Trxs]CustomerCode)
+
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+SAVE RECORD([Agreement])
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+SAVE RECORD([Reservation])
+RELATE ONE([Unit]AgreeNo)
+If ([Agreement]RAgreeNo>"")
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+FieldAgNo:=[Agreement]RAgreeNo
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Agreement]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Unit]ReservedTo)
+[Reservation]Balance:=[Reservation]Balance-[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+FieldAgNo:=[Reservation]RReserveNo
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Reservation]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+End if 
+[Trxs]CustomerCode:=[Customer]CustomerCode
+aDesc:=3
+OBJECT SET VISIBLE(*;"field23";False)
+OBJECT SET VISIBLE(*;"fieldAgNo";False)
+OBJECT SET VISIBLE(*;"fieldUNo";True)
+End if 
+End if 
+Else 
+//do nothing
+End case 
+SET AUTOMATIC RELATIONS(True;False)
+
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ([Trxs]CCAuthNo="") & (bMod#1) & (bAddRefund#1) & ([Customer]DDProfileID#"") & ((GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")))
+OBJECT SET VISIBLE(*;"Button3EnterDD";True)
+OBJECT SET ENABLED(*;"Button3EnterDD";True)
+OBJECT SET VISIBLE(*;"Text8";True)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";True)
+OBJECT SET VISIBLE(*;"Text10_DD";True)
+Else 
+OBJECT SET VISIBLE(*;"Button3EnterDD";False)
+OBJECT SET ENABLED(*;"Button3EnterDD";False)
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE(*;"MoveOut32_DD";False)
+OBJECT SET VISIBLE(*;"Text10_DD";False)
+End if 
+
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & ([Customer]customerProfileID#""))//9401
+vCCName:=[Customer]CCName
+//vCCNo:=Tokenizer ([Customer]CCNo;False)
+vCCNo:=Decode256 
+vCCExpiry:=[Customer]CCExpiry
+OBJECT SET VISIBLE(*;"vCCName";True)
+OBJECT SET VISIBLE(*;"vCCNo";True)
+OBJECT SET VISIBLE(*;"vCCExpiry";True)
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;True)
+OBJECT SET VISIBLE(*;"bLoad";True)
+OBJECT SET VISIBLE(*;"Text1";True)
+End if 
+Else 
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & ([Customer]customerProfileID=""))
+vCCName:=""
+vCCNo:=""
+vCCExpiry:=""
+OBJECT SET VISIBLE(*;"vCCName";False)
+OBJECT SET VISIBLE(*;"vCCNo";False)
+OBJECT SET VISIBLE(*;"vCCExpiry";False)
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;True)
+OBJECT SET VISIBLE(*;"bLoad";False)
+OBJECT SET VISIBLE(*;"Text1";False)
+End if 
+End if 
+End if 
+//**
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="Realex") & ([Customer]customerProfileID#""))
+vCCName:=[Customer]CCName
+//vCCNo:=Tokenizer ([Customer]CCNo;False)
+vCCNo:=Decode256 
+vCCExpiry:=[Customer]CCExpiry
+OBJECT SET VISIBLE(*;"vCCName";True)
+OBJECT SET VISIBLE(*;"vCCNo";True)
+OBJECT SET VISIBLE(*;"vCCExpiry";True)
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;True)
+OBJECT SET VISIBLE(*;"bLoad";True)
+OBJECT SET VISIBLE(*;"Text1";True)
+End if 
+Else 
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="Realex") & ([Customer]customerProfileID=""))
+vCCName:=""
+vCCNo:=""
+vCCExpiry:=""
+OBJECT SET VISIBLE(*;"vCCName";False)
+OBJECT SET VISIBLE(*;"vCCNo";False)
+OBJECT SET VISIBLE(*;"vCCExpiry";False)
+If (bAddRec=1)
+OBJECT SET VISIBLE(*;"NumberNeg1Neg";False)
+OBJECT SET VISIBLE(*;"NumberNeg2Pos";True)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET ENTERABLE(vPlus;True)
+OBJECT SET VISIBLE(*;"bLoad";False)
+OBJECT SET VISIBLE(*;"Text1";False)
+End if 
+End if 
+End if 
+//**
+
+If ([Trxs]TotAmt=0)
+If ([Agreement]BalanceOwing>0) | ([Agreement]ActiveAgreemt=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=Round([Agreement]BalanceOwing;2)
+End if 
+End if 
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & (bAddRefund=1) & ((GetTextNo ([Facility]DDAccountDetails;1;",")#"") | (GetTextNo ([Facility]DDAccountDetails;7;",")#"")))
+// Do nothing - 10869
+Else 
+If (Modified([Trxs]DateBanked))
+[Trxs]DateBanked:=GetValidDate ([Trxs]DateBanked;Old([Trxs]DateBanked))
+If ([Trxs]DateBanked<[Trxs]TrxDate)
+AlertMessage (Get localized string("The date banked cannot be less than the date of this transaction. Please re-enter & try again..."))
+[Trxs]DateBanked:=Old([Trxs]DateBanked)
+End if 
+If ([Trxs]DateBanked>Current date) & ([Trxs]DateBanked>Old([Trxs]DateBanked)) & ([Trxs]CCAuthNo="")
+AlertMessage (Get localized string("Date Banked cannot be past today!"))
+[Trxs]DateBanked:=Old([Trxs]DateBanked)
+End if 
+If ([Trxs]DateBanked<[Facility]CantModPrior) & ([Trxs]DateBanked#!00-00-00!)
+AlertMessage (Get localized string("You cannot enter a DateBanked prior to last accounting reports! DateBanked has been reset!"))
+[Trxs]DateBanked:=Old([Trxs]DateBanked)
+End if 
+vDatePick:=[Trxs]DateBanked
+End if 
+End if 
+If (Modified([Trxs]TrxDate))
+If ([Trxs]TrxDate>Current date)
+AlertMessage (Get localized string("Warning - The transaction date is past today."))
+End if 
+[Trxs]TrxDate:=GetValidDate ([Trxs]TrxDate;Old([Trxs]TrxDate))
+vDatePick1:=[Trxs]TrxDate
+If ([Trxs]DateFrom=[Trxs]DateTo)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Trxs]TrxDate
+End if 
+
+End if 
+If (bSet=1)
+UpdateSystem (64;->aDesc;Get localized string("The default could not be saved as the system record is locked!");True)//[Facility]PullDownDefault:=aDesc
+End if 
+bRepDate:=bPrev
+If ([Agreement]RAgreeNo>"")
+vtTransNo:=[Agreement]AgreeNo
+vrTransBal:=[Agreement]BalanceOwing
+OBJECT SET TITLE(*;"Text18";Get localized string("Agreement Number")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Agreement balance")+":")
+Else 
+vtTransNo:=[Reservation]ReserveNo
+vrTransBal:=[Reservation]Balance
+OBJECT SET TITLE(*;"Text18";Get localized string("Reservation Number")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Reservation balance")+":")
+End if 
+End if 
+If (Form event=On Validate)
+SET AUTOMATIC RELATIONS(False;False)
+vCol1:=[Trxs]AnalysisCode
+[Trxs]Charge:=False
+//If (vtReverse)  Removed by SDD on 30/11/05 when adding vPlus & vMinus fields
+//[Transaction]TotAmt:=Round([Transaction]TotAmt*(-1);2)
+//Else 
+//[Transaction]TotAmt:=Round([Transaction]TotAmt;2)
+//End if 
+[Trxs]TaxAmt:=0
+vLastDate:=[Trxs]TrxDate
+//UpdateReceipt 
+If ([Trxs]TrxTime=?00:00:00?)
+[Trxs]TrxTime:=Current time
+End if 
+vOldAmount:=Old([Trxs]TotAmt)
+End if 
+If (Form event=On Unload)
+
+vCCNo:=""
+vTrack:=""
+vCCName:=""
+vCCExpiry:=""
+vCCV:=""
+
+If (bAccept=1) & ((bAddRec=1) | (bAddRefund=1))//14/10/14 DAM Added bAddRec=1 to avoid calculation if an existing receipt is opened //17/04/15 DAM Added refund
+
+//18/04/2016 JCW added [Trxs]OriginalReceipt#"MDD" to not restore balances if coming from ManualDD, breaking Agree and Cust balances.
+If ([Trxs]CCAuthNo>"") & ([Trxs]OriginalReceipt#"MDD")//FB10215
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+End if 
+CREATE SET([Trxs];"RestoreTrxf")
+UpdateReceipt 
+USE SET("RestoreTrxf")
+CLEAR SET("RestoreTrxf")
+
+//Lossing record for new agreement or new reservation
+If ([Agreement]RAgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+Else 
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+
+End if 
+If (bAccept=1)
+
+//18/06/15 DAM Added Surcharge code for modifying existing receipt amount or analysis code
+If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)) & ([Trxs]TotAmt>0) & ((TrxOldAmt>0) | (TrxOldAc#""))
+If (bMod=1) & (([Trxs]TotAmt#TrxOldAmt) | ([Trxs]AnalysisCode#TrxOldAc))//Cannot use Old([Trxs]TotAmt
+CREATE SET([Trxs];"TrxReceipAccept")
+$ReceiptAmount:=[Trxs]TotAmt
+$Date:=[Trxs]TrxDate
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Agree:=[Trxs]AgreeNo
+
+If ([Trxs]AgreeNo="@MISCL")
+$Match:=[Trxs]Match
+End if 
+
+$Cust:=[Trxs]CustomerCode
+$Fixed:=[Analysis]ReceiptFeeFixed
+$Percent:=[Analysis]ReceiptFeePerc
+QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]ReceiptFeeAnalysis)
+If (Records in selection([Analysis])>=1)
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]AgreeNo:=$Agree
+[Trxs]CustomerCode:=$Cust
+[Trxs]Charge:=True
+
+If ([Trxs]AgreeNo="@MISCL")
+[Trxs]Match:=$Match
+End if 
+
+$PercCalc:=$ReceiptAmount-$Fixed
+$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))//$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+SAVE RECORD([Trxs])
+ADD TO SET([Trxs];"TrxReceipAccept")
+
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+
+End if 
+USE SET("TrxReceipAccept")
+CLEAR SET("TrxReceipAccept")
+End if 
+End if 
+
+
+SAVE RECORD([Customer])
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+
+End if 
+
+//01/07/15 DAM Added for Surcharges when "Ok & Next" button is clicked
+If (bBoth=1)
+If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)) & ([Trxs]TotAmt>0) & (vNewReceipt=True)//& ([Trxs]CCAuthNo="") 05/06/15 DAM Commneted it for use card on file and enter card
+$ReceiptAmount:=[Trxs]TotAmt
+$Date:=[Trxs]TrxDate
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Agree:=[Trxs]AgreeNo
+$Cust:=[Trxs]CustomerCode
+$Fixed:=[Analysis]ReceiptFeeFixed
+$Percent:=[Analysis]ReceiptFeePerc
+QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]ReceiptFeeAnalysis)
+If (Records in selection([Analysis])>=1)
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]AgreeNo:=$Agree
+[Trxs]CustomerCode:=$Cust
+[Trxs]Charge:=True
+
+$PercCalc:=$ReceiptAmount-$Fixed
+$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))//$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+SAVE RECORD([Trxs])
+
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+
+End if 
+
+End if 
+End if 
+
+End if 
+If (bCancel=1) | (bAbortArray=1)
+SET AUTOMATIC RELATIONS(False;False)
+End if 
+

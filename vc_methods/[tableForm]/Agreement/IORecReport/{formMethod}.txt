@@ -1,0 +1,68 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+C_REAL(vMthRent;vOldRent;vActualRent;vOccVal;vVariance;vRentChg)
+If (Form event=On Header)
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text17";Get localized string("Berth"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text17";Get localized string("Appliance"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text17";Get localized string("Space"))
+Else 
+OBJECT SET TITLE(*;"Text17";Get localized string("Unit"))
+End case 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+RELATE ONE([Agreement]CustomerCode)
+vRentChg:=0
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vOldDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AnalysisCode)
+If ([Analysis]KeyStatsCategory="Rent")
+ADD TO SET([Trxs];"billing")
+vRentChg:=vRentChg+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+vMthRent:=CalcRentAdvance (vMthDate;vRentAdvMethod;False)
+vOldRent:=CalcRentAdvance (vOldDate-1;vRentAdvMethod;False)
+If (vMthRent=-1) | (vMthRent=-2) | (vMthRent=-3)
+vMthRent:=0
+End if 
+If (vOldRent=-1) | (vOldRent=-2) | (vOldRent=-3)
+vOldRent:=0
+End if 
+vActualRent:=vRentChg+vOldRent-vMthRent
+vOccVal:=0
+QUERY([UnitHistory];[UnitHistory]MoveOut>vMthDate;*)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vMthDate)
+For ($i;1;Records in selection([UnitHistory]))
+If ([UnitHistory]RentedValue#-999)
+vOccVal:=vOccVal+[UnitHistory]RentedValue
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+vVariance:=vActualRent-vOccVal
+End if 
+If (Form event=On Printing Break)
+vTotal:=Subtotal(vOldRent)
+vTot:=Subtotal(vMthRent)
+vTot1:=Subtotal(vActualRent)
+vTot2:=Subtotal(vOccVal)
+vTot3:=Subtotal(vVariance)
+vTot4:=Subtotal(vRentChg)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

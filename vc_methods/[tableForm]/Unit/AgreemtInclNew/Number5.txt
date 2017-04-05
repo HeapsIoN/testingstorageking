@@ -1,0 +1,143 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Data Change)
+RELATE ONE([Unit]UnitTypeCode)
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Unit]ExtraDisc:=vUnitBaseRate-[Unit]DailyRentedValue
+: ([BillPlan]PlanPeriod="Week")
+[Unit]ExtraDisc:=vUnitBaseRate-[Unit]WeeklyRentedValue
+Else 
+[Unit]ExtraDisc:=vUnitBaseRate-[Unit]RentedValue
+End case 
+bChange:=True
+
+//22/07/16 DAM Added the code to fix the bug for multipe units
+C_LONGINT(vTickCountStart)
+C_REAL(vrecNo;$selectedRecno)
+
+//FIRST RECORD DO NOT NEED TO DO ANYTHING
+$selectedRecno:=0
+$selectedRecno:=Selected record number([Unit])
+
+If ($selectedRecno#1)
+If (vTickCountStart=0)
+If (vrecNo=0)// First time
+vrecNo:=Record number([Unit])
+End if 
+vTickCountStart:=Tickcount
+Else 
+$vTickCountCurrent:=Tickcount
+$vrecNoNew:=Record number([Unit])
+If (vrecNo#$vrecNoNew)
+[Unit]DailyRentedValue:=Old([Unit]DailyRentedValue)
+[Unit]ExtraDisc:=Old([Unit]ExtraDisc)
+End if 
+If ($vTickCountCurrent-vTickCountStart>=120)
+Else 
+[Unit]DailyRentedValue:=Old([Unit]DailyRentedValue)
+[Unit]ExtraDisc:=Old([Unit]ExtraDisc)
+End if 
+vTickCountStart:=0
+vrecNo:=0
+End if 
+Else 
+
+$vTickCountCurrent:=Tickcount
+If ($vTickCountCurrent-vTickCountStart>=120)
+Else 
+[Unit]DailyRentedValue:=Old([Unit]DailyRentedValue)
+[Unit]ExtraDisc:=Old([Unit]ExtraDisc)
+End if 
+vTickCountStart:=0
+End if 
+
+
+//Billing To SU, SU to Billing
+If (<>sFacility="ST@")
+//Read in the SUFacilityInfo field into the arrays, locate the Facility Info to change, make the change and safe the arrays back to the SUFacilityInfo field
+C_LONGINT(vliFacilityID;vliFacilityIDMod;$Offset)
+C_DATE(vdFacilityLicenseUpdateDate;vdFacilityLicenseUpdateDateMod;vdFacilityPaidToDate;vdFacilityPaidToDateMod)
+C_TIME(vtFacilityLicenseUpdateTime;vtFacilityLicenseUpdateTimeMod)
+C_TEXT(vtFacilityPassword;vtFacilityPasswordMod;vtFacilityEmail;vtFacilityEmailMod;vtFacilityPhone;vtFacilityPhoneMod;vtFacilitySupportPlan;vtFacilitySupportPlanMod;vtFacilityName;vtFacilityNameMod;vtFacilityOldSupportPlan)
+
+vliFacilityID:=0
+vdFacilityLicenseUpdateDate:=!00-00-00!
+vtFacilityLicenseUpdateTime:=?00:00:00?
+vdFacilityPaidToDate:=!00-00-00!
+vtFacilityPassword:=""
+vtFacilityEmail:=""
+vtFacilityPhone:=""
+vtFacilitySupportPlan:=""
+vtFacilityName:=""
+vtFacilityOldSupportPlan:=""
+$Offset:=0
+ARRAY LONGINT(vliaFacilityID;0)
+ARRAY DATE(vdaFacilityLicenseUpdateDate;0)
+ARRAY LONGINT(vtmFacilityLicenseUpdateTime;0)
+ARRAY DATE(vdaFacilityPaidToDate;0)
+ARRAY TEXT(vtaFacilityPassword;0)
+ARRAY TEXT(vtaFacilityEmail;0)
+ARRAY TEXT(vtaFacilityPhone;0)
+ARRAY TEXT(vtaFacilitySupportPlan;0)
+ARRAY TEXT(vtaFacilityName;0)
+ARRAY TEXT(vtaFacilityOldSupportPlan;0)
+ARRAY TEXT(vtaBillingAnnualFee;0)
+
+//Read the contents of the Blob containing all the current Facility information
+$lf:=Char(Line feed)
+$FacilityRecordCount:=GetSeparatedTextCount ([Agreement]SUFacilityInfo;$lf)
+For ($FacilityRecordCounter;1;$FacilityRecordCount)
+$FacilityRecord:=GetSeparatedText ([Agreement]SUFacilityInfo;$lf;$FacilityRecordCounter)
+If ($FacilityRecord#"")
+INSERT IN ARRAY(vliaFacilityID;1;1)
+INSERT IN ARRAY(vdaFacilityLicenseUpdateDate;1;1)
+INSERT IN ARRAY(vtmFacilityLicenseUpdateTime;1;1)
+INSERT IN ARRAY(vdaFacilityPaidToDate;1;1)
+INSERT IN ARRAY(vtaFacilityPassword;1;1)
+INSERT IN ARRAY(vtaFacilityEmail;1;1)
+INSERT IN ARRAY(vtaFacilityPhone;1;1)
+INSERT IN ARRAY(vtaFacilitySupportPlan;1;1)
+INSERT IN ARRAY(vtaFacilityName;1;1)
+INSERT IN ARRAY(vtaFacilityOldSupportPlan;1;1)
+INSERT IN ARRAY(vtaBillingAnnualFee;1;1)
+vliaFacilityID{1}:=Num(GetSeparatedText ($FacilityRecord;";";1))
+vdaFacilityLicenseUpdateDate{1}:=Date(GetSeparatedText ($FacilityRecord;";";2))
+vtmFacilityLicenseUpdateTime{1}:=Time(GetSeparatedText ($FacilityRecord;";";3))+0//Convert Time to LongInt
+vdaFacilityPaidToDate{1}:=Date(GetSeparatedText ($FacilityRecord;";";4))
+vtaFacilityPassword{1}:=GetSeparatedText ($FacilityRecord;";";5)
+vtaFacilityEmail{1}:=GetSeparatedText ($FacilityRecord;";";6)
+vtaFacilityPhone{1}:=GetSeparatedText ($FacilityRecord;";";7)
+vtaFacilitySupportPlan{1}:=GetSeparatedText ($FacilityRecord;";";8)
+vtaFacilityName{1}:=GetSeparatedText ($FacilityRecord;";";9)
+vtaFacilityOldSupportPlan{1}:=GetSeparatedText ($FacilityRecord;";";10)
+vtaBillingAnnualFee{1}:=GetSeparatedText ($FacilityRecord;";";11)
+Else 
+//If Facility Record is blank, then skip it
+End if 
+End for 
+
+//Save the change into the arrays
+$Index:=Find in array(vliaFacilityID;[Unit]SUFacilityID)
+If ($Index#-1)
+vdaFacilityLicenseUpdateDate{$Index}:=Current date
+vtmFacilityLicenseUpdateTime{$Index}:=Current time+0
+vtaBillingAnnualFee{$Index}:=String(([Unit]RentedValue*12))
+
+//Register that the Facility has been updated
+If (Position(","+String(vliaFacilityID{$Index})+",";[Agreement]SUFacilitiesUpdated)=0)
+If (Position(",";[Agreement]SUFacilitiesUpdated)#1)
+[Agreement]SUFacilitiesUpdated:=","+[Agreement]SUFacilitiesUpdated
+End if 
+[Agreement]SUFacilitiesUpdated:=[Agreement]SUFacilitiesUpdated+String(vliaFacilityID{$Index})+","
+End if 
+End if 
+
+
+
+//Save the Arrays into the [Agreement]SUFacilitiesUpdated field.
+[Agreement]SUFacilityInfo:=""
+For ($Counter;1;Size of array(vliaFacilityID))
+[Agreement]SUFacilityInfo:=[Agreement]SUFacilityInfo+String(vliaFacilityID{$Counter})+";"+String(vdaFacilityLicenseUpdateDate{$Counter})+";"+String(Time(Time string(vtmFacilityLicenseUpdateTime{$Counter})))+";"+String(vdaFacilityPaidToDate{$Counter})+";"+vtaFacilityPassword{$Counter}+";"+vtaFacilityEmail{$Counter}+";"+vtaFacilityPhone{$Counter}+";"+vtaFacilitySupportPlan{$Counter}+";"+vtaFacilityName{$Counter}+";"+vtaFacilityOldSupportPlan{$Counter}+";"+vtaBillingAnnualFee{$Counter}+";"+Char(Line feed)
+End for 
+End if 
+End if 

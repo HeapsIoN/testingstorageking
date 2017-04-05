@@ -1,0 +1,51 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Called by SynctoSite and SyncFromSite both on Webserver
+C_TEXT($0;$FacilityCode)//$0 is error code  `$cr
+C_TEXT($1)//IP Address
+C_BOOLEAN($2)//True in SyncFromSite , False in SyncToSite When True clear SyncError=160
+ALL RECORDS([Facility])
+bConfirm:=[Facility]PrefixPIN
+If ([Facility]PrefixPIN)//True for Debug mode
+BLOB TO DOCUMENT("BlobIn"+Replace string(String(Current time);":";"")+".txt";vbEventContent)
+End if 
+vErrors:=""
+vDate:=[Facility]VersionDate
+If ([Facility]SyncError>"300") | ([Facility]SyncError="151") | ([Facility]SyncError="160")//SDD 4/12/11 Added code 160 to use Site SeqNo
+vErrors:=[Facility]SyncError
+If (vErrors="301")
+vErrors:=vErrors+"-"+[Facility]CentralAddress
+End if 
+End if 
+//DELETE FROM BLOB(vbEventContent;0;52)  //Equals 52 now, not mistake
+SET BLOB SIZE(vbPositions;0)
+SET BLOB SIZE(vbRecord;0)
+SET BLOB SIZE(vbField;0)
+SET BLOB SIZE(vbResponse;0)
+$FacilityCode:=SyncBlobtoText (SyncTagsToBlob ("<SiteHeader>";->vbEventContent;->vbRecord;0))
+READ WRITE([Facility])
+$Save:=False
+QUERY([Facility];[Facility]FacilityCode=$FacilityCode)
+If (Records in selection([Facility])=1)
+If ([Facility]CheckIPValid=False) | ([Facility]CentralAddress=$1)
+[Facility]CentralAddress:=$1
+$Save:=True
+If (vErrors="") & ([Facility]SyncError>"")
+vErrors:=[Facility]SyncError
+If (vErrors="301")
+vErrors:=vErrors+"-"+[Facility]CentralAddress
+End if 
+End if 
+End if 
+$0:=[Facility]FacilityCode
+If (vErrors="160") & ($2)
+[Facility]SyncError:=""
+$Save:=True
+End if 
+If ($Save)
+SAVE RECORD([Facility])
+End if 
+Else 
+$0:=$FacilityCode
+End if 
+READ ONLY([Facility])
+LOAD RECORD([Facility])

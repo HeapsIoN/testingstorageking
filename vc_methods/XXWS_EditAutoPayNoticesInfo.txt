@@ -1,0 +1,197 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 04/06/15, 15:39:50
+// ----------------------------------------------------
+// Method: WS_EditAutoPayNoticesInfo
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT(vDaysLate)
+C_DATE(vDateInvoice)
+
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+
+SOAP DECLARATION(WS_DaysLate;Is longint;SOAP input;"WS_DaysLate")
+SOAP DECLARATION(WS_LateCycleStartDate;Is date;SOAP input;"WS_LateCycleStartDate")
+SOAP DECLARATION(WS_LastRentIncreaseDate;Is date;SOAP input;"WS_LastRentIncreaseDate")
+SOAP DECLARATION(WS_DisableAutoIncreases;Is Boolean;SOAP input;"WS_DisableAutoIncreases")
+SOAP DECLARATION(WS_LienNoticeDate;Is date;SOAP input;"WS_LienNoticeDate")
+SOAP DECLARATION(WS_LastNotice;Is integer;SOAP input;"WS_LastNotice")
+SOAP DECLARATION(WS_NewBillingPlan;Is text;SOAP input;"WS_NewBillingPlan")
+SOAP DECLARATION(WS_DateInvoice;Is date;SOAP input;"WS_DateInvoice")
+SOAP DECLARATION(WS_SendNotices;Is Boolean;SOAP input;"WS_SendNotices")
+SOAP DECLARATION(WS_ReceiveNoticesDays;Is integer;SOAP input;"WS_ReceiveNoticeDays")
+SOAP DECLARATION(WS_SendOptionalInvoices;Is Boolean;SOAP input;"WS_SendOptionalInvoices")
+SOAP DECLARATION(WS_SendOptionalStatements;Is Boolean;SOAP input;"WS_SendOptionalStatements")
+SOAP DECLARATION(WS_SendNoticesEmail;Is Boolean;SOAP input;"WS_SendNoticesEmail")
+SOAP DECLARATION(WS_SendNoticesSMS;Is Boolean;SOAP input;"WS_SendNoticesSMS")
+SOAP DECLARATION(WS_AutopayValidFrom;Is date;SOAP input;"WS_AutopayValidFrom")
+SOAP DECLARATION(WS_AutopayValidTo;Is date;SOAP input;"WS_AutopayValidTo")
+SOAP DECLARATION(WS_UseAutopay;Is Boolean;SOAP input;"WS_UseAutopay")
+SOAP DECLARATION(WS_AutopayAmt;Is real;SOAP input;"WS_AutopayAmt")
+SOAP DECLARATION(WS_CCName;Is text;SOAP input;"WS_CCName")
+SOAP DECLARATION(WS_CCNo;Is text;SOAP input;"WS_CCNo")
+SOAP DECLARATION(WS_CCValidFrom;Is text;SOAP input;"WS_CCValidFrom")
+SOAP DECLARATION(WS_CCExpiry;Is text;SOAP input;"WS_CCExpiry")
+SOAP DECLARATION(WS_CCInfo;Is text;SOAP input;"WS_CCInfo")
+SOAP DECLARATION(WS_AutoEmailCC;Is Boolean;SOAP input;"WS_AutoMailCC")
+SOAP DECLARATION(WS_customerProfileID;Is text;SOAP input;"WS_customerProfileID")
+SOAP DECLARATION(WS_customerPaymentProfID;Is text;SOAP input;"WS_customerPaymentProfID")
+SOAP DECLARATION(WS_BankAccountName;Is text;SOAP input;"WS_BankAccountName")
+SOAP DECLARATION(WS_BankAcct;Is text;SOAP input;"WS_BankAcct")
+SOAP DECLARATION(WS_BankName;Is text;SOAP input;"WS_BankName")
+SOAP DECLARATION(WS_AccountType;Is integer;SOAP input;"WS_AccountType")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+
+$String:="Start WS_EditAutoPayNotices"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRecordLog ($String)
+READ WRITE([Customer])
+READ WRITE([Agreement])
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+Case of 
+: (Records in selection([Agreement])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+: (Records in selection([Agreement])=1)
+RELATE ONE([Agreement]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+If (Records in selection([Customer])=1) & (Locked([Customer])=False)
+If (Records in selection([Agreement])=1) & (Locked([Agreement])=False)
+[Agreement]LateCycleStDate:=WS_LateCycleStartDate
+[Agreement]LastRentIncrDate:=WS_LastRentIncreaseDate
+[Agreement]DisableAutoIncr:=WS_DisableAutoIncreases
+[Agreement]LienDate:=WS_LienNoticeDate
+[Agreement]NewBillingPlan:=WS_NewBillingPlan
+[Agreement]SendNotices:=WS_SendNotices
+[Agreement]NoticeDaysPrior:=WS_ReceiveNoticeDays
+[Agreement]SendInvoices:=WS_SendOptionalInvoices
+[Agreement]SendStatements:=WS_SendOptionalStatements
+[Agreement]SendNoticesEmail:=WS_SendNoticesEmail
+[Agreement]SendNoticeSMS:=WS_SendNoticesSMS
+[Agreement]AuthCCSigned:=WS_AutopayValidFrom
+[Agreement]AuthCCExpiry:=WS_AutopayValidTo
+[Agreement]AutoPay:=WS_UseAutopay
+[Agreement]AutoPayAmt:=WS_AutopayAmt
+[Agreement]AutoPayType:=WS_AutopayTypeI
+[Customer]CCName:=WS_CCName
+If ([Customer]customerProfileID>"") | ([Customer]custPaymentProfID>"")
+[Customer]CCNo:="000000000000"+Substring(WS_CCNo;(Length(WS_CCNo)-4))
+//[Customer]CCNo:=Tokenizer ([Customer]CCNo;True)
+Encode256 (WS_CCNo)
+Else 
+//[Customer]CCNo:=Tokenizer (WS_CCNo;True)
+Encode256 (WS_CCNo)
+End if 
+[Customer]CCValidFrom:=WS_CCValidFrom
+[Customer]CCExpiry:=WS_CCExpiry
+[Customer]CCInfo:=WS_CCInfo
+[Customer]AutoEmailCC:=WS_AutoEMailCC
+[Customer]customerProfileID:=WS_customerProfileID
+[Customer]custPaymentProfID:=WS_customerPaymentProfID
+[Customer]BankAccountName:=WS_BankAccountName
+[Customer]BankAcct:=WS_BankAcct
+[Customer]BankName:=WS_BankName
+[Customer]AccountType:=WS_AccountType
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:="Agreement record successfully edited."
+
+Else 
+If (Locked([Agreement]))
+LOCKED BY([Agreement];$Process;$User;$Machine;$ProcName)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1018
+WS_ORErrorDescription:="Agreeemnt record/s locked in database Storman. Please try again later. "+String(Records in selection([Customer]))+" Read/Write= "+String(Read only state([Customer]))+" Locked= "+String(Locked([Customer]))+"Details: "+String($Process)+" "+String($User)+" "+String($Machine)+" "+String($ProcName)
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+End if 
+Else 
+If (Locked([Customer]))
+LOCKED BY([Customer];$Process;$User;$Machine;$ProcName)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1019
+WS_ORErrorDescription:="Customer record/s locked in database Storman. Please try again later. "+String(Records in selection([Customer]))+" Read/Write= "+String(Read only state([Customer]))+" Locked= "+String(Locked([Customer]))+"Details: "+String($Process)+" "+String($User)+" "+String($Machine)+" "+String($ProcName)
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1012
+WS_ORErrorDescription:="Customer record not found in database Storman."
+End if 
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1029
+WS_ORErrorDescription:="Invalid Customer password."
+End if 
+
+
+End case 
+End if 
+
+$String:="End WS_EditAutopayNoticesInfo"+Char(13)
+$String:=$String+"WS_DaysLate: "+String(WS_DaysLate)+Char(13)
+$String:=$String+"WS_LateCycleStartDate: "+String(WS_LateCycleStartDate)+Char(13)
+$String:=$String+"WS_LastRentIncreaseDate: "+String(WS_LastRentIncreaseDate)+Char(13)
+$String:=$String+"WS_DisableAutoIncreases: "+String(WS_DisableAutoIncreases)+Char(13)
+$String:=$String+"WS_LienNoticeDate: "+String(WS_LienNoticeDate)+Char(13)
+$String:=$String+"WS_NewBillingPlan: "+WS_NewBillingPlan+Char(13)
+$String:=$String+"WS_DateInvoice: "+String(WS_DateInvoice)+Char(13)
+$String:=$String+"WS_SendNotices: "+String(WS_DisableAutoIncreases)+Char(13)
+$String:=$String+"WS_ReceiveNoticeDays: "+String(WS_ReceiveNoticeDays)+Char(13)
+$String:=$String+"WS_SendOptionalInvoices: "+String(WS_SendOptionalInvoices)+Char(13)
+$String:=$String+"WS_SendOptionalStatements: "+String(WS_SendOptionalStatements)+Char(13)
+$String:=$String+"WS_SendNoticesEmail: "+String(WS_SendNoticesEmail)+Char(13)
+$String:=$String+"WS_AutopayValidFrom: "+String(WS_AutopayValidFrom)+Char(13)
+$String:=$String+"WS_AutopayValidTo: "+String(WS_AutopayValidTo)+Char(13)
+$String:=$String+"WS_UseAutopay: "+String(WS_UseAutopay)+Char(13)
+$String:=$String+"WS_AutopayAmt: "+String(WS_AutopayAmt)+Char(13)
+$String:=$String+"WS_AutopayType: "+String(WS_AutopayType)+Char(13)
+$String:=$String+"WS_CCName: "+WS_CCName+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_CCValidFrom: "+WS_CCValidFrom+Char(13)
+$String:=$String+"WS_CCExpiry: "+WS_CCExpiry+Char(13)
+$String:=$String+"WS_CCInfo: "+WS_CCInfo+Char(13)
+$String:=$String+"WS_AutoEmailCC: "+String(WS_AutoEmailCC)+Char(13)
+$String:=$String+"WS_customerProfileID: "+WS_customerProfileID+Char(13)
+$String:=$String+"WS_customerPaymentProfID: "+WS_customerPaymentProfID+Char(13)
+$String:=$String+"WS_BankAccountName: "+WS_BankAccountName+Char(13)
+$String:=$String+"WS_BankAcct: "+WS_BankAcct+Char(13)
+$String:=$String+"WS_BankName: "+WS_BankName+Char(13)
+$String:=$String+"WS_AccountType: "+String(WS_AccountType)+Char(13)
+
+WSRecordLog ($String)
+
+READ ONLY([Customer])
+READ ONLY([Agreement])
+
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+
+ReadOnlyAll 
+UnloadAll 

@@ -1,0 +1,1637 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Unit Test or Manual DD
+//It will test Agreement, Reservation  and Credit Sales
+//It will Select the first record of agreement in agreement table for testing agreement and credit sales
+//and will select first record from reservation table and if there is no record in reservation it will create new reservation
+//for first customer in customer table and then will test reservation 
+//This method will check successful and unsuccessful transaction for testing Agreement, Reservation  and Credit Sales
+
+//SHOW ON DISK(Get 4D folder+"4D Preferences v13.4DPreferences")
+C_TEXT($UUID;$DigKey;$Success;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$AgreeNo)
+C_TEXT($vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate)
+C_TEXT($vBankAccName;$vBankBSB;$vBankAccNo;$vEziDDStatus)
+SetFacility 
+////********************************* Agreement
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//  // Successful transaction for agreement
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+AlertMessage ("Agreement - testing successful transaction manual DD.")
+QUERY([Agreement];[Agreement]RAgreeNo=<>SFACILITY+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"#@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+FIRST RECORD([Agreement])
+
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+READ WRITE([Agreement])
+READ WRITE([Customer])
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Agreement]RAgreeNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+READ WRITE([Trxs])
+vPlus:=100
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=False
+vtReverse:=False
+bAddRefund:=0
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+If ([Trxs]AgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Agreement]BalanceOwing
+If ([Trxs]TotAmt<0)
+If ([Agreement]ActiveAgreemt) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+Else 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+If ([Trxs]AnalysisCode="")
+[Trxs]AnalysisCode:=[Trxs]AnalysisCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for agreement : "+[Agreement]AgreeNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for agreement : "+[Agreement]AgreeNo)
+End if 
+
+End if 
+End if 
+SAVE RECORD([Customer])
+SAVE RECORD([Agreement])
+
+
+
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//  // Unsuccessful transaction for agreement
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+AlertMessage ("Agreement - testing unsuccessful transaction manual DD.")
+QUERY([Agreement];[Agreement]RAgreeNo=<>SFACILITY+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"#@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+FIRST RECORD([Agreement])
+
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+READ WRITE([Agreement])
+READ WRITE([Customer])
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Agreement]RAgreeNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+READ WRITE([Trxs])
+vPlus:=0//--------    This will make problem is should be greater than 2
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=False
+vtReverse:=False
+bAddRefund:=0
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+If ([Trxs]AgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Agreement]BalanceOwing
+If ([Trxs]TotAmt<0)
+If ([Agreement]ActiveAgreemt) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+Else 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+If ([Trxs]AnalysisCode="")
+[Trxs]AnalysisCode:=[Trxs]AnalysisCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for agreement : "+[Agreement]AgreeNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for agreement : "+[Agreement]AgreeNo)
+End if 
+
+End if 
+End if 
+SAVE RECORD([Customer])
+SAVE RECORD([Agreement])
+
+//********************************* Reservation
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Successful transaction for reservation
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+QUERY([Reservation];[Reservation]RReserveNo=<>SFACILITY+"@";*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+AlertMessage ("Reservation - testing successful transaction manual DD.")
+If (Records in selection([Reservation])>0)
+FIRST RECORD([Reservation])
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+READ WRITE([Reservation])
+READ WRITE([Customer])
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Reservation]ReserveNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+READ WRITE([Trxs])
+vPlus:=100
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=True
+vtReverse:=True
+bAddRefund:=0
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+End if 
+If ([Trxs]AgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Reservation]Balance
+If ([Trxs]TotAmt<0)
+If ([Agreement]ActiveAgreemt) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+Else 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+If ([Trxs]AnalysisCode="")
+[Trxs]AnalysisCode:=[Trxs]AnalysisCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for reservation : "+[Reservation]ReserveNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for reservation : "+[Reservation]ReserveNo)
+End if 
+
+End if 
+End if 
+SAVE RECORD([Customer])
+SAVE RECORD([Reservation])
+Else //Need to create new reservation
+AlertMessage ("Can Not find reservation and test manual DD!")
+End if 
+AlertMessage ("Creating new reservation for testing successful transaction manual DD.")
+C_TEXT($ORFacilityCode)
+C_TEXT($ORCustomerName)
+C_TEXT($ORCustomerEmail)
+C_BOOLEAN($ORCustomerEmailSend)
+C_BOOLEAN($ORFacilityEmailSend)
+C_TEXT($ORCustomerPhone)
+C_TEXT($ORUnitTypeCode)
+C_TEXT($ORDateUnitRequired)
+C_TEXT($ORUnitRateSelected)
+C_TEXT($Username)
+C_TEXT($CustPass)
+C_TEXT($ORUnitSelect)
+C_TEXT($OREnquiryNo)
+C_TEXT($WebServicePassword)
+C_TEXT($CTCustType)
+C_TEXT($CallTakenBy)
+C_LONGINT($CTStoredBefore)
+C_TEXT($MarketSrce)
+C_REAL($CustomRate)
+C_BOOLEAN($CustomRateSet)
+C_TEXT(UT_CustomerID)
+C_TEXT(UT_ReservationID)
+C_BOOLEAN(UT_ORSuccess)
+C_LONGINT(UT_ORErrorCode)
+C_TEXT(UT_ORErrorDescription)
+
+QUERY([Customer];[Customer]CustomerCode=<>SFACILITY+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#"@MISCL";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#"@PETTY")
+FIRST RECORD([Customer])
+
+QUERY([UnitType];[UnitType]RUnitType=<>SFACILITY+"@")
+FIRST RECORD([UnitType])
+$ORFacilityCode:=<>SFACILITY
+$ORCustomerName:=[Customer]CustomerName+" "+[Customer]FirstName
+$ORCustomerEmail:="TestReservation@storman.com"
+$ORCustomerEmailSend:=True
+$ORFacilityEmailSend:=False
+$ORCustomerPhone:="02102102102"
+$ORUnitTypeCode:=[UnitType]RUnitType
+$MM:=String(Month of(Current date))
+$DD:=String(Day of(Current date))
+
+If (Length($DD)=1)
+$DD:="0"+$DD
+End if 
+
+If (Length($MM)=1)
+$MM:="0"+$MM
+End if 
+
+$ORDateUnitRequired:=String(Year of(Current date))+"/"+$MM+"/"+$DD
+$ORUnitRateSelected:=""
+$Username:=[Customer]CustomerCode
+$CustPass:=""
+$ORUnitSelect:=""
+$OREnquiryNo:=""
+$WebServicePassword:=[Facility]ODBCPassword
+$CTCustType:="Web"
+$CallTakenBy:=""
+$CTStoredBefore:=0
+$MarketSrce:=""
+$CustomRate:=0
+$CustomRateSet:=False
+
+
+WEB SERVICE SET PARAMETER("WS_ORFacilityCode";$ORFacilityCode)
+WEB SERVICE SET PARAMETER("WS_ORCustomerName";$ORCustomerName)
+WEB SERVICE SET PARAMETER("WS_ORCustomerEmail";$ORCustomerEmail)
+WEB SERVICE SET PARAMETER("WS_ORCustomerEmailSend";$ORCustomerEmailSend)
+WEB SERVICE SET PARAMETER("WS_ORFacilityEmailSend";$ORFacilityEmailSend)
+WEB SERVICE SET PARAMETER("WS_ORCustomerPhone";$ORCustomerPhone)
+WEB SERVICE SET PARAMETER("WS_ORUnitTypeCode";$ORUnitTypeCode)
+WEB SERVICE SET PARAMETER("WS_ORDateUnitRequired";$ORDateUnitRequired)
+WEB SERVICE SET PARAMETER("WS_ORUnitRateSelected";$ORUnitRateSelected)
+WEB SERVICE SET PARAMETER("WS_Username";$Username)
+WEB SERVICE SET PARAMETER("WS_CustPass";$CustPass)
+WEB SERVICE SET PARAMETER("WS_ORUnitSelect";$ORUnitSelect)
+WEB SERVICE SET PARAMETER("WS_OREnquiryNo";$OREnquiryNo)
+WEB SERVICE SET PARAMETER("WS_WebServicePassword";$WebServicePassword)
+WEB SERVICE SET PARAMETER("WS_CTCustType";$CTCustType)
+WEB SERVICE SET PARAMETER("WS_CallTakenBy";$CallTakenBy)
+WEB SERVICE SET PARAMETER("WS_CTStoredBefore";$CTStoredBefore)
+WEB SERVICE SET PARAMETER("WS_MarketSrce";$MarketSrce)
+WEB SERVICE SET PARAMETER("WS_CustomRate";$CustomRate)
+WEB SERVICE SET PARAMETER("WS_CustomRateSet";$CustomRateSet)
+
+WEB SERVICE CALL("http://192.168.3.17:19812/4DSOAP/";"Storman#WS_CreateReservation";"WS_CreateReservation";"http://192.168.2.229/4dwsdl";Web Service dynamic)
+
+If (OK=1)
+WEB SERVICE GET RESULT(UT_CustomerID;"WS_CustomerID")
+WEB SERVICE GET RESULT(UT_ReservationID;"WS_ReservationID")
+WEB SERVICE GET RESULT(UT_ORSuccess;"WS_ORSuccess")
+WEB SERVICE GET RESULT(UT_ORErrorCode;"WS_ORErrorCode")
+WEB SERVICE GET RESULT(UT_ORErrorDescription;"WS_ORErrorDescription";*)// Memory clean-up on the final return value.
+
+QUERY([Reservation];[Reservation]ReserveNo=UT_ReservationID)
+
+If (Records in selection([Reservation])>0)
+QUERY([Customer];[Customer]CustomerCode=UT_CustomerID)
+READ WRITE([Reservation])
+READ WRITE([Customer])
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Reservation]ReserveNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+READ WRITE([Trxs])
+vPlus:=100
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=True
+vtReverse:=True
+bAddRefund:=0
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+End if 
+If ([Trxs]AgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Reservation]Balance
+If ([Trxs]TotAmt<0)
+If ([Agreement]ActiveAgreemt) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+Else 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+If ([Trxs]AnalysisCode="")
+[Trxs]AnalysisCode:=[Trxs]AnalysisCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for reservation : "+[Reservation]ReserveNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for reservation : "+[Reservation]ReserveNo)
+End if 
+
+End if 
+End if 
+SAVE RECORD([Customer])
+SAVE RECORD([Reservation])
+Else 
+AlertMessage ("Can not create new reservation!")
+End if 
+
+Else 
+AlertMessage ("Can Not create reservation and test manual DD!")
+End if 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// Unsuccessful transaction for reservation
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+AlertMessage ("Reservation - testing unsuccessful transaction manual DD.")
+QUERY([Reservation];[Reservation]RReserveNo=<>SFACILITY+"@";*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+If (Records in selection([Reservation])>0)
+FIRST RECORD([Reservation])
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+READ WRITE([Reservation])
+READ WRITE([Customer])
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Reservation]ReserveNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+READ WRITE([Trxs])
+vPlus:=0//-------------  Error
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=True
+vtReverse:=True
+bAddRefund:=0
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+End if 
+If ([Trxs]AgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Reservation]Balance
+If ([Trxs]TotAmt<0)
+If ([Agreement]ActiveAgreemt) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+Else 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+If ([Trxs]AnalysisCode="")
+[Trxs]AnalysisCode:=[Trxs]AnalysisCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for reservation : "+[Reservation]ReserveNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for reservation : "+[Reservation]ReserveNo)
+End if 
+
+End if 
+End if 
+SAVE RECORD([Customer])
+SAVE RECORD([Reservation])
+Else 
+AlertMessage ("Can Not find reservation and test manual DD!")
+End if 
+AlertMessage ("Creating new reservation for testing unsuccessful transaction manual DD.")
+//Create new reservation
+C_TEXT($ORFacilityCode)
+C_TEXT($ORCustomerName)
+C_TEXT($ORCustomerEmail)
+C_BOOLEAN($ORCustomerEmailSend)
+C_BOOLEAN($ORFacilityEmailSend)
+C_TEXT($ORCustomerPhone)
+C_TEXT($ORUnitTypeCode)
+C_TEXT($ORDateUnitRequired)
+C_TEXT($ORUnitRateSelected)
+C_TEXT($Username)
+C_TEXT($CustPass)
+C_TEXT($ORUnitSelect)
+C_TEXT($OREnquiryNo)
+C_TEXT($WebServicePassword)
+C_TEXT($CTCustType)
+C_TEXT($CallTakenBy)
+C_LONGINT($CTStoredBefore)
+C_TEXT($MarketSrce)
+C_REAL($CustomRate)
+C_BOOLEAN($CustomRateSet)
+C_TEXT(UT_CustomerID)
+C_TEXT(UT_ReservationID)
+C_BOOLEAN(UT_ORSuccess)
+C_LONGINT(UT_ORErrorCode)
+C_TEXT(UT_ORErrorDescription)
+
+QUERY([Customer];[Customer]CustomerCode=<>SFACILITY+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#"@MISCL";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#"@PETTY")
+FIRST RECORD([Customer])
+
+QUERY([UnitType];[UnitType]RUnitType=<>SFACILITY+"@")
+FIRST RECORD([UnitType])
+$ORFacilityCode:=<>SFACILITY
+$ORCustomerName:=[Customer]CustomerName+" "+[Customer]FirstName
+$ORCustomerEmail:="TestReservation@storman.com"
+$ORCustomerEmailSend:=True
+$ORFacilityEmailSend:=False
+$ORCustomerPhone:="02102102102"
+$ORUnitTypeCode:=[UnitType]RUnitType
+$MM:=String(Month of(Current date))
+$DD:=String(Day of(Current date))
+
+If (Length($DD)=1)
+$DD:="0"+$DD
+End if 
+
+If (Length($MM)=1)
+$MM:="0"+$MM
+End if 
+
+$ORDateUnitRequired:=String(Year of(Current date))+"/"+$MM+"/"+$DD
+$ORUnitRateSelected:=""
+$Username:=[Customer]CustomerCode
+$CustPass:=""
+$ORUnitSelect:=""
+$OREnquiryNo:=""
+$WebServicePassword:=[Facility]ODBCPassword
+$CTCustType:="Web"
+$CallTakenBy:=""
+$CTStoredBefore:=0
+$MarketSrce:=""
+$CustomRate:=0
+$CustomRateSet:=False
+
+
+WEB SERVICE SET PARAMETER("WS_ORFacilityCode";$ORFacilityCode)
+WEB SERVICE SET PARAMETER("WS_ORCustomerName";$ORCustomerName)
+WEB SERVICE SET PARAMETER("WS_ORCustomerEmail";$ORCustomerEmail)
+WEB SERVICE SET PARAMETER("WS_ORCustomerEmailSend";$ORCustomerEmailSend)
+WEB SERVICE SET PARAMETER("WS_ORFacilityEmailSend";$ORFacilityEmailSend)
+WEB SERVICE SET PARAMETER("WS_ORCustomerPhone";$ORCustomerPhone)
+WEB SERVICE SET PARAMETER("WS_ORUnitTypeCode";$ORUnitTypeCode)
+WEB SERVICE SET PARAMETER("WS_ORDateUnitRequired";$ORDateUnitRequired)
+WEB SERVICE SET PARAMETER("WS_ORUnitRateSelected";$ORUnitRateSelected)
+WEB SERVICE SET PARAMETER("WS_Username";$Username)
+WEB SERVICE SET PARAMETER("WS_CustPass";$CustPass)
+WEB SERVICE SET PARAMETER("WS_ORUnitSelect";$ORUnitSelect)
+WEB SERVICE SET PARAMETER("WS_OREnquiryNo";$OREnquiryNo)
+WEB SERVICE SET PARAMETER("WS_WebServicePassword";$WebServicePassword)
+WEB SERVICE SET PARAMETER("WS_CTCustType";$CTCustType)
+WEB SERVICE SET PARAMETER("WS_CallTakenBy";$CallTakenBy)
+WEB SERVICE SET PARAMETER("WS_CTStoredBefore";$CTStoredBefore)
+WEB SERVICE SET PARAMETER("WS_MarketSrce";$MarketSrce)
+WEB SERVICE SET PARAMETER("WS_CustomRate";$CustomRate)
+WEB SERVICE SET PARAMETER("WS_CustomRateSet";$CustomRateSet)
+
+WEB SERVICE CALL("http://192.168.3.17:19812/4DSOAP/";"Storman#WS_CreateReservation";"WS_CreateReservation";"http://192.168.2.229/4dwsdl";Web Service dynamic)
+
+If (OK=1)
+WEB SERVICE GET RESULT(UT_CustomerID;"WS_CustomerID")
+WEB SERVICE GET RESULT(UT_ReservationID;"WS_ReservationID")
+WEB SERVICE GET RESULT(UT_ORSuccess;"WS_ORSuccess")
+WEB SERVICE GET RESULT(UT_ORErrorCode;"WS_ORErrorCode")
+WEB SERVICE GET RESULT(UT_ORErrorDescription;"WS_ORErrorDescription";*)// Memory clean-up on the final return value.
+
+QUERY([Reservation];[Reservation]ReserveNo=UT_ReservationID)
+
+If (Records in selection([Reservation])>0)
+QUERY([Customer];[Customer]CustomerCode=UT_CustomerID)
+READ WRITE([Reservation])
+READ WRITE([Customer])
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Reservation]ReserveNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+READ WRITE([Trxs])
+vPlus:=0//------ Error
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=True
+vtReverse:=True
+bAddRefund:=0
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+End if 
+If ([Trxs]AgreeNo#"")
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+
+If ([Trxs]TotAmt=0)
+[Trxs]TotAmt:=[Reservation]Balance
+If ([Trxs]TotAmt<0)
+If ([Agreement]ActiveAgreemt) | (vtReverse=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=0
+Else 
+[Trxs]Drawer:=[Facility]BankAcName
+End if 
+End if 
+If ([Trxs]TotAmt>0) & (vtReverse=True)
+[Trxs]TotAmt:=0
+End if 
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+If ([Trxs]AnalysisCode="")
+[Trxs]AnalysisCode:=[Trxs]AnalysisCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for reservation : "+[Reservation]ReserveNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for reservation : "+[Reservation]ReserveNo)
+End if 
+
+End if 
+End if 
+SAVE RECORD([Customer])
+SAVE RECORD([Reservation])
+Else 
+AlertMessage ("Can not create new reservation!")
+End if 
+
+Else 
+AlertMessage ("Can Not create reservation and test manual DD!")
+End if 
+
+//********************************* Credit Sales
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//  // Successful transaction for Credit Sales
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+AlertMessage ("Credit Sales - testing successful transaction manual DD.")
+C_REAL($Surcharge)
+C_BOOLEAN($HasSurcharge)
+[Trxs]CashReceived:=Abs([Trxs]TotAmt)
+C_BOOLEAN(vAutoNotice;ReservationAgreement)
+C_DATE(vdTrxDate)
+C_REAL(vOldAmount;TrxOldAmt;BalanceOwingOriginal)
+C_TEXT(OldValue;TrxOldAc)
+TrxOldAmt:=0
+TrxOldAc:=""
+OldValue:=""
+FieldAgNo:=""
+bModReceipt:=True
+vAutoNotice:=False
+BalanceOwingOriginal:=0
+ReservationAgreement:=False
+vAmount:=0
+bRepDate:=0
+vLastDate:=!00-00-00!
+vtReverse:=False
+bAddRec:=0
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+
+If ([Trxs]SeqNo=0)
+vNewReceipt:=True
+Else 
+vNewReceipt:=False
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+If ([Trxs]AgreeNo="")
+If (Records in selection([Agreement])=1)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+End if 
+If (Records in selection([Reservation])=1)
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+End if 
+End if 
+[Trxs]TotAmt:=vAmount
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])>0)
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+End if 
+
+If ([Trxs]TrxDate=!00-00-00!)
+If (bRepDate=1) & (vLastDate#!00-00-00!)
+[Trxs]TrxDate:=vLastDate
+Else 
+[Trxs]TrxDate:=Current date
+End if 
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+vCol1:=[Analysis]Code
+If ([Trxs]AnalysisCode="")
+If (vtReverse)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+If (Records in selection([Analysis])>0)
+vCol1:=[Analysis]Code
+End if 
+End if 
+[Trxs]AnalysisCode:=vCol1
+RELATE ONE([Trxs]AnalysisCode)
+
+vAllowed:=True
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+vAllowed:=False
+For ($m;1;Records in selection([UserGroup]))
+If ([Analysis]Groups=("@"+[UserGroup]GroupID+",@")) | ([Analysis]Groups="ALL")
+vAllowed:=True
+End if 
+NEXT RECORD([UserGroup])
+End for 
+End if 
+
+If (vtReverse=True)
+If ([Analysis]ReceiptShow=1)
+vAllowed:=False
+End if 
+Else 
+If ([Analysis]ReceiptShow=2)
+vAllowed:=False
+End if 
+End if 
+
+If (Records in selection([Analysis])=0) | ([Analysis]Inactive) | ([Analysis]SortOrder<50) | (Substring([Trxs]AgreeNo;1;5)#Substring([Analysis]Code;1;5)) | (vAllowed=False)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+If (vtReverse=True)
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#1)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+End if 
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Trxs]Description="")
+If (vtReverse)
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Refund")
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+End if 
+End if 
+End if 
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+RELATE ONE([Trxs]AnalysisCode)
+LoadAnlsArrays (False;True)
+If ([Trxs]Description="")
+If (vtReverse)
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Refund")
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+[Trxs]Confirmed:=True
+End if 
+If ([Trxs]TotAmt#0)
+vMinus:=Abs([Trxs]TotAmt)
+Else 
+vMinus:=0
+End if 
+If ([Trxs]TotAmt>=0)
+vPlus:=[Trxs]TotAmt
+//04/06/15 DAM Added new condition to show the message only when new receipt is added and amount is > 0
+If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))) & (bAddRec=1) & (vPlus>0)
+C_REAL($Surcharge)
+$Surcharge:=0
+If ([Trxs]CustomerCode="@MISCL@")// 10/06/15 DAM Cash sale)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=vPlus-[Trxs]TotAmt
+AlertMessage ("This analysis code has a surcharge. The receipt amount of "+String([Trxs]TotAmt)+", will incur a surcharge of "+String($Surcharge)+", The total amount including the surcharge will be "+String(vPlus))
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+Else 
+ConfirmTwo ("Do you want the receipt amount to be "+String(vPlus)+" including or excluding the surcharge?";"Excluding";"Including")
+If (OK=1)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+End if 
+End if 
+End if 
+End if 
+If (vtReverse) & ([Trxs]TotAmt>0)//if  a refund or credit - changed from >0
+[Trxs]TotAmt:=[Trxs]TotAmt*(-1)
+vMinus:=Abs([Trxs]TotAmt)
+End if 
+If (([Trxs]TotAmt<=0) & (vtReverse))
+vMinus:=Abs([Trxs]TotAmt)
+End if 
+If ([Trxs]AnalysisCode=(<>sFacility+"CA")) & (vtReverse=False) & ([Facility]DisableTender=False)
+If ([Trxs]SeqNo=0)
+[Trxs]CashReceived:=0
+End if 
+Else 
+[Trxs]CashReceived:=Abs([Trxs]TotAmt)
+End if 
+
+QUERY([Agreement];[Agreement]RAgreeNo=<>SFACILITY+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"#@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+FIRST RECORD([Agreement])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+FieldAgNo:=[Agreement]AgreeNo
+If (Length(FieldAgNo)<=9)
+[Trxs]AgreeNo:=<>sFacility+FieldAgNo//[Trxs]CustomerCode
+End if 
+
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+SAVE RECORD([Agreement])
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+SAVE RECORD([Reservation])
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])=0)
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+End if 
+If (Records in selection([Agreement])#1) & (Records in selection([Reservation])#1)
+AlertMessage (Get localized string("Agreement Number not on file"))
+OldValue:=[Trxs]AgreeNo
+REJECT([Trxs]AgreeNo)//[Trxs]CustomerCode
+Else 
+OldValue:=[Trxs]AgreeNo
+FieldAgNo:=[Trxs]AgreeNo
+If (Records in selection([Reservation])=1) & (Records in selection([Agreement])#1)
+[Reservation]Balance:=[Reservation]Balance-[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Reservation]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Agreement]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+End if 
+End if 
+SET AUTOMATIC RELATIONS(True;False)
+If ([Trxs]TotAmt=0)
+If ([Agreement]BalanceOwing>0) | ([Agreement]ActiveAgreemt=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=Round([Agreement]BalanceOwing;2)
+End if 
+End if 
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+
+
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Agreement]RAgreeNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+
+vPlus:=100
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=False
+vtReverse:=False
+bAddRefund:=0
+
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for credit sales : "+[Agreement]AgreeNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for credit sales : "+[Agreement]AgreeNo)
+End if 
+
+End if 
+End if 
+
+SAVE RECORD([Customer])
+SAVE RECORD([Agreement])
+
+
+
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//  // Successful transaction for Credit Sales
+//  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+AlertMessage ("Credit Sales - testing unsuccessful transaction manual DD.")
+C_REAL($Surcharge)
+C_BOOLEAN($HasSurcharge)
+[Trxs]CashReceived:=Abs([Trxs]TotAmt)
+C_BOOLEAN(vAutoNotice;ReservationAgreement)
+C_DATE(vdTrxDate)
+C_REAL(vOldAmount;TrxOldAmt;BalanceOwingOriginal)
+C_TEXT(OldValue;TrxOldAc)
+TrxOldAmt:=0
+TrxOldAc:=""
+OldValue:=""
+FieldAgNo:=""
+bModReceipt:=True
+vAutoNotice:=False
+BalanceOwingOriginal:=0
+ReservationAgreement:=False
+vAmount:=0
+bRepDate:=0
+vLastDate:=!00-00-00!
+vtReverse:=False
+bAddRec:=0
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+
+If ([Trxs]SeqNo=0)
+vNewReceipt:=True
+Else 
+vNewReceipt:=False
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]Confirmed:=True
+End if 
+If ([Trxs]AgreeNo="")
+If (Records in selection([Agreement])=1)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+End if 
+If (Records in selection([Reservation])=1)
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+End if 
+End if 
+[Trxs]TotAmt:=vAmount
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])>0)
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+End if 
+
+If ([Trxs]TrxDate=!00-00-00!)
+If (bRepDate=1) & (vLastDate#!00-00-00!)
+[Trxs]TrxDate:=vLastDate
+Else 
+[Trxs]TrxDate:=Current date
+End if 
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+vCol1:=[Analysis]Code
+If ([Trxs]AnalysisCode="")
+If (vtReverse)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+If (Records in selection([Analysis])>0)
+vCol1:=[Analysis]Code
+End if 
+End if 
+[Trxs]AnalysisCode:=vCol1
+RELATE ONE([Trxs]AnalysisCode)
+
+vAllowed:=True
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+vAllowed:=False
+For ($m;1;Records in selection([UserGroup]))
+If ([Analysis]Groups=("@"+[UserGroup]GroupID+",@")) | ([Analysis]Groups="ALL")
+vAllowed:=True
+End if 
+NEXT RECORD([UserGroup])
+End for 
+End if 
+
+If (vtReverse=True)
+If ([Analysis]ReceiptShow=1)
+vAllowed:=False
+End if 
+Else 
+If ([Analysis]ReceiptShow=2)
+vAllowed:=False
+End if 
+End if 
+
+If (Records in selection([Analysis])=0) | ([Analysis]Inactive) | ([Analysis]SortOrder<50) | (Substring([Trxs]AgreeNo;1;5)#Substring([Analysis]Code;1;5)) | (vAllowed=False)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+If (vtReverse=True)
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#1)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+End if 
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Trxs]Description="")
+If (vtReverse)
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Refund")
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+End if 
+End if 
+End if 
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+End if 
+RELATE ONE([Trxs]AnalysisCode)
+LoadAnlsArrays (False;True)
+If ([Trxs]Description="")
+If (vtReverse)
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Refund")
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+[Trxs]Confirmed:=True
+End if 
+If ([Trxs]TotAmt#0)
+vMinus:=Abs([Trxs]TotAmt)
+Else 
+vMinus:=0
+End if 
+If ([Trxs]TotAmt>=0)
+vPlus:=[Trxs]TotAmt
+//04/06/15 DAM Added new condition to show the message only when new receipt is added and amount is > 0
+If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))) & (bAddRec=1) & (vPlus>0)
+C_REAL($Surcharge)
+$Surcharge:=0
+If ([Trxs]CustomerCode="@MISCL@")// 10/06/15 DAM Cash sale)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=vPlus-[Trxs]TotAmt
+AlertMessage ("This analysis code has a surcharge. The receipt amount of "+String([Trxs]TotAmt)+", will incur a surcharge of "+String($Surcharge)+", The total amount including the surcharge will be "+String(vPlus))
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+Else 
+ConfirmTwo ("Do you want the receipt amount to be "+String(vPlus)+" including or excluding the surcharge?";"Excluding";"Including")
+If (OK=1)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+End if 
+End if 
+End if 
+End if 
+If (vtReverse) & ([Trxs]TotAmt>0)//if  a refund or credit - changed from >0
+[Trxs]TotAmt:=[Trxs]TotAmt*(-1)
+vMinus:=Abs([Trxs]TotAmt)
+End if 
+If (([Trxs]TotAmt<=0) & (vtReverse))
+vMinus:=Abs([Trxs]TotAmt)
+End if 
+If ([Trxs]AnalysisCode=(<>sFacility+"CA")) & (vtReverse=False) & ([Facility]DisableTender=False)
+If ([Trxs]SeqNo=0)
+[Trxs]CashReceived:=0
+End if 
+Else 
+[Trxs]CashReceived:=Abs([Trxs]TotAmt)
+End if 
+
+QUERY([Agreement];[Agreement]RAgreeNo=<>SFACILITY+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"#@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+FIRST RECORD([Agreement])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+FieldAgNo:=[Agreement]AgreeNo
+If (Length(FieldAgNo)<=9)
+[Trxs]AgreeNo:=<>sFacility+FieldAgNo//[Trxs]CustomerCode
+End if 
+
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+SAVE RECORD([Agreement])
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+SAVE RECORD([Reservation])
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])=0)
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+End if 
+If (Records in selection([Agreement])#1) & (Records in selection([Reservation])#1)
+AlertMessage (Get localized string("Agreement Number not on file"))
+OldValue:=[Trxs]AgreeNo
+REJECT([Trxs]AgreeNo)//[Trxs]CustomerCode
+Else 
+OldValue:=[Trxs]AgreeNo
+FieldAgNo:=[Trxs]AgreeNo
+If (Records in selection([Reservation])=1) & (Records in selection([Agreement])#1)
+[Reservation]Balance:=[Reservation]Balance-[Trxs]TotAmt
+BalanceOwingOriginal:=[Reservation]Balance
+ReservationAgreement:=True
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Reservation]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+BalanceOwingOriginal:=[Agreement]BalanceOwing
+ReservationAgreement:=False
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+SAVE RECORD([Customer])
+RELATE ONE([Agreement]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+[Trxs]CustomerCode:=[Customer]CustomerCode
+If ([Trxs]AgreeNo>"")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+End if 
+End if 
+SET AUTOMATIC RELATIONS(True;False)
+If ([Trxs]TotAmt=0)
+If ([Agreement]BalanceOwing>0) | ([Agreement]ActiveAgreemt=False)//3.1.3 Don't show negative amount while agreement is still active
+[Trxs]TotAmt:=Round([Agreement]BalanceOwing;2)
+End if 
+End if 
+If ([Trxs]Drawer="")
+[Trxs]Drawer:=[Customer]LastDrawer
+End if 
+If ([Trxs]BankBranch="")
+[Trxs]BankBranch:=[Customer]LastBankBranch
+End if 
+
+
+$vCustomerName:=[Customer]CustomerName
+$vCustomerFirstName:=[Customer]FirstName
+$vAddress1:=[Customer]MailAddress
+$vAddress2:=[Customer]MailCity
+$vCustomerSuburb:=[Customer]MailSuburb
+$vCustomerState:=[Customer]MailState
+$vCustomerPostZIPCode:=[Customer]MailPostZIPCode
+$vCustomerEmail:="TEST@STORMAN.COM"//[Customer]EmailAddress
+$vCustomerMob:="02102102102"//[Customer]MobilePhone
+$AgreeNo:=[Agreement]RAgreeNo
+$vContractStartDate:=String(Current date)
+$UUID:=Generate UUID
+$DigKey:="7D71C831-5069-466B-7E20-7534958F97CD"//String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+[Facility]TestAccount:=True
+$vBankAccName:="TEST"
+$vBankBSB:="012003"
+$vBankAccNo:="1234567"
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;$AgreeNo;$vCustomerName;$vCustomerFirstName;$vAddress1;$vAddress2;$vCustomerSuburb;$vCustomerState;$vCustomerPostZIPCode;$vCustomerEmail;$vCustomerMob;$vContractStartDate;"No";"No";"No";"";True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+[Customer]DDProfileID:=$UUID
+$CustCreate:=True
+Else 
+AlertMessage ("Customer Profile not created")
+$CustCreate:=False
+End if 
+
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;$vBankAccName;$vBankBSB;$vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+[Customer]DDPaymentProfileID:=$UUID
+[Customer]customerProfileID:=$UUID
+[Customer]BankAcct:="1234567"
+[Customer]BankName:="TEST"
+[Customer]BSB:="012003"
+[Customer]BankAccountName:="TEST"
+SAVE RECORD([Customer])
+Else 
+AlertMessage ("Customer Direct Debit Profile not updated")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If ($Success2="S") & (Records in selection([Analysis])=1)
+
+vPlus:=0//-------------- Error
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=False
+vtReverse:=False
+bAddRefund:=0
+
+ManualDD 
+
+If (GERROR="OK")
+AlertMessage ("Direct Debit payment for credit sales : "+[Agreement]AgreeNo+" successfully palced in th Ezidebit system")
+Else 
+AlertMessage ("Unsuccessful Direct Debit payment for credit sales : "+[Agreement]AgreeNo)
+End if 
+
+End if 
+End if 
+
+SAVE RECORD([Customer])
+SAVE RECORD([Agreement])

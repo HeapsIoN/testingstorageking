@@ -1,0 +1,703 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+
+
+//``````````==========================S T A R T  Space Control===============================
+
+C_TEXT($SQLStm;$tmpr_str)
+C_LONGINT($vlElem;$vlElem2;$vlfind;$vlfind2;$vlfind3;$vlfind4;$vlfind5;$vlfind6;$vlfind7;$lng_str)
+
+SQL LOGIN("ODBC:SpaceControl";"";"")
+If (OK=1)
+
+
+
+READ WRITE([Unit])
+READ WRITE([UnitType])
+READ WRITE([BillPlan])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([UnitHistory])
+READ WRITE([Trxs])
+
+
+TRUNCATE TABLE([Unit])
+TRUNCATE TABLE([UnitType])
+TRUNCATE TABLE([BillPlan])
+TRUNCATE TABLE([Agreement])
+TRUNCATE TABLE([Customer])
+TRUNCATE TABLE([UnitHistory])
+TRUNCATE TABLE([Trxs])
+
+
+
+//`------------------------Product for billing plan ----------------------------------
+// check Rental mode table also!
+ARRAY LONGINT($ProductProductID;0)
+ARRAY LONGINT($ProductOwnerID;0)
+ARRAY TEXT($ProductName;0)
+ARRAY LONGINT($ProductGLAccountID;0)
+
+$SQLStm:="SELECT ProductID, OwnerID, Name, GLAccountID FROM Product where GLAccountID=22"
+SQL EXECUTE($SQLStm;$ProductProductID;$ProductOwnerID;$ProductName;$ProductGLAccountID)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+
+
+//`------------------------RentableUnits ----------------------------------
+
+ARRAY LONGINT($RentableUnitRentableUnitID;0)
+ARRAY LONGINT($RentableUnitProductID;0)
+ARRAY LONGINT($RentableUnitOwnerID;0)
+ARRAY TEXT($RentableUnitRentableNumber;0)
+ARRAY LONGINT($RentableUnitRentableStatusID;0)
+
+$SQLStm:="SELECT RentableUnitID, ProductID, OwnerID, RentableNumber, RentableStatusID  FROM RentableUnit"
+SQL EXECUTE($SQLStm;$RentableUnitRentableUnitID;$RentableUnitProductID;$RentableUnitOwnerID;$RentableUnitRentableNumber;$RentableUnitRentableStatusID)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//`------------------------RentableStatus ----------------------------------
+
+ARRAY LONGINT($RentableStatusRentableStatusID;0)
+ARRAY TEXT($RentableStatusRentableStatusNam;0)
+ARRAY BOOLEAN($RentableStatusActiveFlag;0)
+
+$SQLStm:="SELECT RentableStatusID, RentableStatusName, ActiveFlag  FROM RentableStatus"
+SQL EXECUTE($SQLStm;$RentableStatusRentableStatusID;$RentableStatusRentableStatusNam;$RentableStatusActiveFlag)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//`------------------------OrganizationUnit  ----------------------------------
+ARRAY LONGINT($OrganizationUnitID;0)
+ARRAY LONGINT($OrganizationSiteID;0)
+ARRAY BOOLEAN($OrganizationActiveFlag;0)
+ARRAY TEXT($OrganizationFirstName;0)
+ARRAY TEXT($OrganizationDriversLicense;0)
+ARRAY LONGINT($OrganizationGateID;0)
+ARRAY TEXT($OrganizationGateCode;0)
+ARRAY TEXT($OrganizationUnitName;0)
+
+
+$SQLStm:="SELECT  OrganizationUnitID, SiteID, ActiveFlag,FirstName,DriversLicense,GateID, GateCode,OrganizationUnitName FROM OrganizationUnit"
+SQL EXECUTE($SQLStm;$OrganizationUnitID;$OrganizationSiteID;$OrganizationActiveFlag;$OrganizationFirstName;$OrganizationDriversLicense;$OrganizationGateID;$OrganizationGateCode;$OrganizationUnitName)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------Address ----------------------------------
+ARRAY LONGINT($AddressAdressID;0)
+ARRAY LONGINT($AddressAdressTypeID;0)
+ARRAY LONGINT($AddressOrganizationUnitID;0)
+ARRAY TEXT($AddressFirstName;0)
+ARRAY TEXT($AddressLastName;0)
+ARRAY TEXT($AddressStreet1;0)
+ARRAY TEXT($AddressStreet2;0)
+ARRAY TEXT($AddressCity;0)
+ARRAY TEXT($AddressState;0)
+ARRAY TEXT($AddressZIP;0)
+ARRAY TEXT($AddressHomePhone;0)
+ARRAY TEXT($AddressWorkPhone;0)
+ARRAY TEXT($AddressMobile;0)
+ARRAY TEXT($AddressEmail;0)
+ARRAY BOOLEAN($AddressActiveFlag;0)
+
+$SQLStm:="SELECT  AddressID, AddressTypeID, OrganizationUnitID, FirstName, LastName, Street1, Street2, City, State, ZIP, HomePhone, WorkPhone, Mobile, Email, ActiveFlag  FROM Address where (LastName <>'-' and LastName <>'.' )"
+SQL EXECUTE($SQLStm;$AddressAdressID;$AddressAdressTypeID;$AddressOrganizationUnitID;$AddressFirstName;$AddressLastName;$AddressStreet1;$AddressStreet2;$AddressCity;$AddressState;$AddressZIP;$AddressHomePhone;$AddressWorkPhone;$AddressMobile;$AddressEmail;$AddressActiveFlag)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//`------------------------Agreement ----------------------------------
+
+ARRAY LONGINT($AgreementMatchSiteID;0)// needs for trx
+ARRAY TEXT($AgreementMatchSM;0)
+
+
+ARRAY LONGINT($AgreementSiteID;0)
+ARRAY LONGINT($AgreementCustomerID;0)
+ARRAY LONGINT($AgreementAgreementID;0)
+ARRAY LONGINT($AgreementMasterSiteID;0)
+ARRAY LONGINT($AgreementMasterCustomerID;0)
+ARRAY LONGINT($AgreementMasterAgreementID;0)
+ARRAY LONGINT($AgreementProductID;0)
+ARRAY LONGINT($AgreementOwnerID;0)
+ARRAY LONGINT($AgreementRentableUnitID;0)
+ARRAY LONGINT($AgreementRentalModeID;0)
+ARRAY REAL($AgreementRentAmount;0)
+ARRAY REAL($AgreementDepositAmount;0)
+ARRAY LONGINT($AgreementRentDueDay;0)
+ARRAY LONGINT($AgreementPrintInvoiceDays;0)
+ARRAY DATE($AgreementAgreementBegin;0)
+ARRAY DATE($AgreementAgreementEnd;0)
+ARRAY DATE($AgreementPaidThroughDate;0)
+//$SQLStm:="SELECT SiteID, CustomerID, AgreementID, MasterSiteID, MasterCustomerID, MasterAgreementID, ProductID, OwnerID, RentableUnitID, RentalModeID, RentAmount, DepositAmount, RentDueDay, PrintInvoiceDays, AgreementBegin, AgreementEnd, PaidThroughDate   FROM "+"Agreement where ( TRIM(AgreementEnd) IS NULL) "
+$SQLStm:="SELECT SiteID, CustomerID, AgreementID, MasterSiteID, MasterCustomerID, MasterAgreementID, ProductID, OwnerID, RentableUnitID, RentalModeID, RentAmount, DepositAmount, RentDueDay, PrintInvoiceDays, AgreementBegin, AgreementEnd, PaidThroughDate   FROM "+"Agreement "
+
+
+SQL EXECUTE($SQLStm;$AgreementSiteID;$AgreementCustomerID;$AgreementAgreementID;$AgreementMasterSiteID;$AgreementMasterCustomerID;$AgreementMasterAgreementID;$AgreementProductID;$AgreementOwnerID;$AgreementRentableUnitID;$AgreementRentalModeID;$AgreementRentAmount;$AgreementDepositAmount;$AgreementRentDueDay;$AgreementPrintInvoiceDays;$AgreementAgreementBegin;$AgreementAgreementEnd;$AgreementPaidThroughDate)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//-------------------------tbl Unittype--------------------------
+
+ARRAY INTEGER($UTProductProductID;0)
+ARRAY INTEGER($UTProductOwnerID;0)
+ARRAY TEXT($UTProductName;0)
+ARRAY BOOLEAN($UTProductActive;0)
+
+ARRAY REAL($UTRent_tmp;0)
+ARRAY REAL($UTSpace_tmp;0)
+ARRAY REAL($UTRent;0)
+ARRAY REAL($UTSpace;0)
+
+$SQLStm:="SELECT ProductID, OwnerID, Name, Active FROM Product where GLAccountID=5"
+SQL EXECUTE($SQLStm;$UTProductProductID;$UTProductOwnerID;$UTProductName;$UTProductActive)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+//rent price & space sqFt
+For ($vlElem;1;Size of array($UTProductProductID))
+$SQLStm:="SELECT TOP 1 StandardRent,TotalSpacesSqFt FROM RentalActivityTransaction where ProductID="+String($UTProductProductID{$vlElem})
+$SQLStm:=$SQLStm+" ORDER by TransactionDate DESC;"
+SQL EXECUTE($SQLStm;$UTRent_tmp;$UTSpace_tmp)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+If (Size of array($UTRent_tmp)=1)
+APPEND TO ARRAY($UTRent;$UTRent_tmp{1})
+APPEND TO ARRAY($UTSpace;$UTSpace_tmp{1})
+Else 
+APPEND TO ARRAY($UTRent;0)
+APPEND TO ARRAY($UTSpace;0)
+End if 
+
+End for 
+
+
+
+//`` =================================build UnitType table==================================
+READ WRITE([UnitType])
+DEFAULT TABLE([UnitType])
+For ($vlElem;1;Size of array($UTProductProductID))
+CREATE RECORD([UnitType])
+[UnitType]UnitTypeCode:=String($UTProductOwnerID{$vlElem})+$UTProductName{$vlElem}
+[UnitType]RUnitType:=<>sFacility+[UnitType]UnitTypeCode
+If ($UTRent>0)
+[UnitType]MonthlyRate:=$UTRent{$vlElem}
+[UnitType]AreaSizeOccup:=$UTSpace{$vlElem}
+End if 
+
+[UnitType]NoTotal:=1
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])
+End for 
+
+//` =================================build Unit table==================================
+
+
+ARRAY LONGINT($AgrRentableUnitID;0)
+ARRAY TEXT($SMUnitNo;0)
+
+
+DEFAULT TABLE([Unit])
+READ WRITE([Unit])
+READ WRITE([UnitType])
+
+
+For ($vlElem;1;Size of array($RentableUnitRentableUnitID))
+CREATE RECORD([Unit])
+
+$vlfind:=Find in array($UTProductProductID;$RentableUnitProductID{$vlElem})
+If ($vlfind>0)
+[Unit]UnitTypeCode:=<>sFacility+String($UTProductOwnerID{$vlfind})+$UTProductName{$vlfind}
+[Unit]UnitSize:=String($UTSpace{$vlfind})
+[Unit]RentedValue:=$UTRent{$vlfind}
+
+[Unit]UnitNo:=String($UTProductOwnerID{$vlfind})+" "+$UTProductName{$vlfind}+" "+$RentableUnitRentableNumber{$vlElem}
+[Unit]RUnitNo:=<>sFacility+[Unit]UnitNo
+Else 
+[Unit]UnitTypeCode:=<>sFacility+String($RentableUnitOwnerID{$vlElem})+String($RentableUnitProductID{$vlElem})
+
+[Unit]UnitNo:=String($RentableUnitOwnerID{$vlElem})+" "+$RentableUnitRentableNumber{$vlElem}
+[Unit]RUnitNo:=<>sFacility+[Unit]UnitNo
+End if 
+
+APPEND TO ARRAY($AgrRentableUnitID;$RentableUnitRentableUnitID{$vlElem})
+APPEND TO ARRAY($SMUnitNo;[Unit]UnitNo)
+
+[Unit]AgreeNo:=""
+
+$vlfind:=Find in array($RentableStatusRentableStatusID;$RentableUnitRentableStatusID{$vlElem})
+If ($vlfind>0)
+[Unit]Status:=$RentableStatusRentableStatusNam{$vlfind}
+If ($RentableStatusRentableStatusNam{$vlfind}="Vacant")
+[Unit]Vacant:=True
+[Unit]Status:="Vacant"
+Else 
+[Unit]Vacant:=False
+[Unit]Status:="Rented"
+End if 
+End if 
+
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+
+//all records([UnitType])
+QUERY([UnitType];[UnitType]UnitTypeCode#"")
+$temp_counter:=Records in selection([UnitType])
+If (Records in selection([UnitType])>0)
+FIRST RECORD([Unit])// Start at first record in the selection 
+For ($vlRecord;1;Records in selection([UnitType]))// Loop once for each record 
+//all records([Unit])
+QUERY([Unit];[Unit]UnitTypeCode=[UnitType]RUnitType)
+[UnitType]NoTotal:=Records in selection([Unit])
+
+QUERY([Unit];[Unit]UnitTypeCode=[UnitType]RUnitType;*)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+[UnitType]NoVacant:=Records in selection([Unit])
+
+
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])// Move to the next record 
+End for 
+
+
+
+End if 
+//  //` =================================build Billing plans table==================================
+
+
+READ WRITE([BillPlan])
+DEFAULT TABLE([BillPlan])
+// 5
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"MO"/// 1 month
+[BillPlan]Description:="Monthly"
+[BillPlan]PlanPeriod:="1m"
+[BillPlan]PlanPeriod:="Month"
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"MO5"/// 1 month
+[BillPlan]Description:="5%Monthly"
+[BillPlan]PlanPeriod:="1m"
+[BillPlan]PlanPeriod:="Month"
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+[BillPlan]DiscPercentage:=5
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"MO10"/// 1 month
+[BillPlan]Description:="10%Monthly"
+[BillPlan]PlanPeriod:="1m"
+[BillPlan]PlanPeriod:="Month"
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+[BillPlan]DiscPercentage:=10
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"MO20"/// 1 month
+[BillPlan]Description:="20%Monthly"
+[BillPlan]PlanPeriod:="1m"
+[BillPlan]PlanPeriod:="Month"
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+[BillPlan]DiscPercentage:=20
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+
+
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"6M"/// 1 month
+[BillPlan]Description:="6Monthly"
+[BillPlan]PlanPeriod:="6m"
+[BillPlan]PlanPeriod:="Month"
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=5
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+"12M"/// 1 month
+[BillPlan]Description:="12Monthly"
+[BillPlan]PlanPeriod:="12m"
+[BillPlan]PlanPeriod:="Month"
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=11
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+
+//``` =================================build Customer table==================================
+
+DEFAULT TABLE([Customer])
+READ WRITE([Customer])
+C_TEXT($Name13)
+ARRAY LONGINT($tblMatchingPartID;0)
+ARRAY TEXT($tblMatchingCustomerCode;0)
+
+For ($vlElem;1;Size of array($AddressAdressID))
+CREATE RECORD([Customer])
+$Name13:=$AddressLastName{$vlElem}+$AddressFirstName{$vlElem}
+$Name13:=RemoveSpecial ($Name13)
+vName:=$Name13
+CreateCustCode (True;True)
+
+$vlfind:=Find in array($OrganizationUnitID;$AddressOrganizationUnitID{$vlElem})
+//SQL EXECUTE($SQLStm;$AddressAdressID;$AddressAdressTypeID;$AddressOrganizationUnitID;$AddressFirstName;$AddressLastName;$AddressStreet1;$AddressStreet2;$AddressCity;$AddressState;$AddressZIP;$AddressHomePhone;$AddressWorkPhone;$AddressMobile;$AddressEmail;$AddressActiveFlag)
+
+If ($vlfind>0)
+[Customer]LicenceNo:=$OrganizationDriversLicense{$vlfind}
+///[Customer]CustomerName:=$OrganizationUnitName{$vlfind}
+[Customer]GatePIN:=$OrganizationGateCode{$vlfind}
+End if 
+
+[Customer]CustomerName:=$AddressFirstName{$vlElem}+" "+$AddressLastName{$vlElem}
+[Customer]UserName:=$AddressFirstName{$vlElem}
+
+If ($AddressStreet1{$vlElem}#"")
+[Customer]StreetAddress:=$AddressStreet1{$vlElem}
+If ($AddressStreet2{$vlElem}#"")
+[Customer]StreetAddress:=[Customer]StreetAddress+$AddressStreet2{$vlElem}
+End if 
+
+End if 
+
+[Customer]StreetCity:=$AddressCity{$vlElem}
+[Customer]MailCity:=$AddressCity{$vlElem}
+[Customer]MailPostZIPCode:=$AddressZIP{$vlElem}
+[Customer]MobilePhone:=$AddressMobile{$vlElem}
+[Customer]EmailAddress:=$AddressEmail{$vlElem}
+[Customer]PhoneBus:=$AddressWorkPhone{$vlElem}
+[Customer]PhonePrivate:=$AddressHomePhone{$vlElem}
+[Customer]StreetState:=$AddressState{$vlElem}
+
+
+
+//`//===========!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!=============================
+APPEND TO ARRAY($tblMatchingPartID;$AddressAdressID{$vlElem})
+APPEND TO ARRAY($tblMatchingCustomerCode;[Customer]CustomerCode)
+
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+
+
+
+
+//``` =================================build Agreement table==================================
+
+//ARRAY LONGINT($AgreementSiteID;0)
+//ARRAY LONGINT($AgreementCustomerID;0)
+//ARRAY LONGINT($AgreementAgreementID;0)
+//ARRAY LONGINT($AgreementMasterSiteID;0)
+//ARRAY LONGINT($AgreementMasterCustomerID;0)
+//ARRAY LONGINT($AgreementMasterAgreementID;0)
+//ARRAY LONGINT($AgreementProductID;0)
+//ARRAY LONGINT($AgreementOwnerID;0)
+//ARRAY LONGINT($AgreementRentableUnitID;0)
+//ARRAY LONGINT($AgreementRentalModeID;0)
+//ARRAY REAL($AgreementRentAmount;0)
+//ARRAY REAL($AgreementDepositAmount;0)
+//ARRAY LONGINT($AgreementRentDueDay;0)
+//ARRAY LONGINT($AgreementPrintInvoiceDays;0)
+//ARRAY DATE($AgreementAgreementBegin;0)
+//ARRAY DATE($AgreementAgreementEnd;0)
+//ARRAY DATE($AgreementPaidThroughDate;0)
+
+DEFAULT TABLE([Agreement])
+READ WRITE([Agreement])
+READ WRITE([Unit])
+READ WRITE([UnitHistory])
+READ WRITE([UnitType])
+
+
+For ($vlElem;1;Size of array($AgreementAgreementID))
+$tmpr_str:=String($AgreementAgreementID{$vlElem})
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)// Loop as long as the user wants to
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+
+$vlfind:=Find in array($tblMatchingPartID;$AgreementCustomerID{$vlElem})
+If ($vlfind>0)
+CREATE RECORD([Agreement])
+[Agreement]CustomerCode:=$tblMatchingCustomerCode{$vlfind}
+[Agreement]AgreeNo:=$tmpr_str
+[Agreement]RAgreeNo:=<>sFacility+$tmpr_str
+[Agreement]MoveIn:=$AgreementAgreementBegin{$vlElem}
+[Agreement]MoveOut:=$AgreementAgreementEnd{$vlElem}
+
+[Agreement]MoveOut:=$AgreementAgreementEnd{$vlElem}
+[Agreement]NoticePlanNo:=0
+[Agreement]NoticeAmtToBill:=0
+
+
+////ARRAY LONGINT($AgreementMatchSiteID;0)  // needs for trx
+////ARRAY TEXT($AgreementMatchSM;0)
+APPEND TO ARRAY($AgreementMatchSiteID;$AgreementAgreementID{$vlElem})
+APPEND TO ARRAY($AgreementMatchSM;[Agreement]RAgreeNo)
+
+If (($AgreementPaidThroughDate{$vlElem}>!2015-01-01!))//&([Agreement]MoveOut)#"")
+If ([Agreement]MoveOut=!00-00-00!)
+[Agreement]ActiveAgreemt:=True
+End if 
+End if 
+
+$tmp_date:=[Agreement]MoveIn
+$nextbd:=[Agreement]MoveIn//` starting point
+//` put it to one month plan as it is currently
+If (Current date>$nextbd)
+While (Current date>$nextbd)
+$nextbd:=Add to date($nextbd;0;1;0)
+End while 
+End if 
+
+If ([Agreement]ActiveAgreemt=True)
+
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;-1;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;-2;0)
+[Agreement]MthsAdv:=1//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+End if 
+//SAVE RECORD([Agreement])
+//NEXT RECORD([Agreement])
+
+$vlfind2:=Find in array($AgrRentableUnitID;$AgreementRentableUnitID{$vlElem})
+If ($vlfind2>0)
+QUERY([Unit];[Unit]UnitNo=$SMUnitNo{$vlfind2})
+If ([Unit]Vacant=True)
+[Unit]AgreeNo:=""
+SAVE RECORD([Unit])
+Else 
+[Unit]AgreeNo:=<>sFacility+[Agreement]AgreeNo
+[Unit]MoveIn:=[Agreement]MoveIn
+//[Unit]Vacant:=False
+SAVE RECORD([Unit])
+End if 
+
+[Agreement]UnitsOccup:=$SMUnitNo{$vlfind2}
+End if 
+
+[Agreement]RentAmt:=$AgreementRentAmount{$vlElem}
+[Agreement]RegularRent:=([Unit]RentedValue)///66666
+
+
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+
+End if 
+
+End for 
+
+
+
+
+//  //` =================================Unit-History==================================
+DEFAULT TABLE([Unit])
+READ WRITE([Agreement])
+READ WRITE([UnitHistory])
+READ WRITE([UnitType])
+
+//ALL RECORDS([Unit])
+
+QUERY([Agreement];[Agreement]UnitsOccup#"")
+If (Records in selection([Agreement])>0)
+FIRST RECORD([Agreement])// Start at first record in the selection 
+For ($vlElem;1;Records in selection([Agreement]))
+CREATE RECORD([UnitHistory])
+
+[UnitHistory]AgreeNo:=<>sFacility+[Agreement]AgreeNo
+[UnitHistory]UnitNo:=<>sFacility+[Agreement]UnitsOccup
+[UnitHistory]MoveIn:=([Agreement]MoveIn)
+[UnitHistory]RentedValue:=[Agreement]RentAmt
+[UnitHistory]MoveOut:=[Agreement]MoveOut
+
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+
+SAVE RECORD([UnitHistory])
+NEXT RECORD([Agreement])
+End for 
+End if 
+
+
+
+
+
+//``/` =================================build TRX(transactions) table==================================
+
+///---------------- extra data--------------------
+//transacion master
+ARRAY LONGINT($TransactionMasterTransactionID;0)
+ARRAY LONGINT($TransactionMasterAgreementID;0)
+ARRAY LONGINT($TransactionMasterTransactionTyp;0)
+ARRAY DATE($TransactionMasterTransactionDat;0)
+
+$SQLStm:="SELECT TransactionID, AgreementID, TransactionTypeID, TransactionDate  FROM TransactionMaster "
+SQL EXECUTE($SQLStm;$TransactionMasterTransactionID;$TransactionMasterAgreementID;$TransactionMasterTransactionTyp;$TransactionMasterTransactionDat)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+//transacion type
+ARRAY LONGINT($TransactionTypeTransactionTypeI;0)
+ARRAY TEXT($TransactionTypeTransactionTypeN;0)
+ARRAY BOOLEAN($TransactionTypeChargeFlag;0)
+
+$SQLStm:="SELECT TransactionTypeID, TransactionTypeName, ChargeFlag FROM TransactionType "
+SQL EXECUTE($SQLStm;$TransactionTypeTransactionTypeI;$TransactionTypeTransactionTypeN;$TransactionTypeChargeFlag)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+//GLAccount
+ARRAY LONGINT($GLAccountGLAccountID;0)
+ARRAY TEXT($GLAccountGLAccountName;0)
+ARRAY LONGINT($GLAccountBalanceTypeID;0)
+
+$SQLStm:="SELECT GLAccountID, GLAccountName, BalanceTypeID FROM GLAccount "
+SQL EXECUTE($SQLStm;$GLAccountGLAccountID;$GLAccountGLAccountName;$GLAccountBalanceTypeID)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//BalanceType
+ARRAY LONGINT($BalanceTypeBalanceTypeID;0)
+ARRAY TEXT($BalanceTypeBalanceTypeName;0)
+ARRAY LONGINT($BalanceTypePaymentOrder;0)
+
+
+$SQLStm:="SELECT BalanceTypeID, BalanceTypeName, PaymentOrder FROM BalanceType "
+SQL EXECUTE($SQLStm;$BalanceTypeBalanceTypeID;$BalanceTypeBalanceTypeName;$BalanceTypePaymentOrder)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+///------------------------------------------------
+DEFAULT TABLE([Trxs])
+READ WRITE([Agreement])
+READ WRITE([Analysis])
+
+//APPEND TO ARRAY($tblMatchingPartID;$AddressOrganizationUnitID{$vlElem})
+//APPEND TO ARRAY($tblMatchingCustomerCode;[Customer]CustomerCode)
+
+ARRAY LONGINT($GLTransactionGLTransactionID;0)
+ARRAY LONGINT($GLTransactionGLAccountID;0)
+ARRAY LONGINT($GLTransactionSiteID;0)
+ARRAY LONGINT($GLTransactionCustomerID;0)
+ARRAY LONGINT($GLTransactionAgreementID;0)
+ARRAY LONGINT($GLTransactionTransactionID;0)
+ARRAY LONGINT($GLTransactionAppliedTo;0)
+ARRAY REAL($GLTransactionAmount;0)
+ARRAY REAL($GLTransactionAllocatedAmount;0)
+ARRAY LONGINT($GLTransactionProductID;0)
+ARRAY LONGINT($GLTransactionQuantity;0)
+
+ARRAY REAL($GLTransactionTax;0)//!!!
+C_TEXT(descr1;descr2;descr3)
+C_LONGINT($applto)
+
+$GLTransactionProductID:=0
+
+For ($vlElem2;1;Size of array($tblMatchingPartID))//orig customer id
+$SQLStm:="SELECT GLTransactionID,GLAccountID, SiteID, CustomerID, AgreementID, TransactionID, AppliedTo, Amount, AllocatedAmount, ProductID,  Quantity   FROM GLTransaction where CustomerID = "+String($tblMatchingPartID{$vlElem2})+" Order by GLTransactionID"
+SQL EXECUTE($SQLStm;$GLTransactionGLTransactionID;$GLTransactionGLAccountID;$GLTransactionSiteID;$GLTransactionCustomerID;$GLTransactionAgreementID;$GLTransactionTransactionID;$GLTransactionAppliedTo;$GLTransactionAmount;$GLTransactionAllocatedAmount;$GLTransactionProductID;$GLTransactionQuantity)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+$GLTransactionTax:=0
+
+
+For ($vlElem;1;Size of array($GLTransactionGLTransactionID))//11
+//  ///////
+$descr1:=""
+$descr2:=""
+$descr3:=""
+$vlfind:=Find in array($AgreementMatchSiteID;$GLTransactionAgreementID{$vlElem})
+If ($vlfind>0)
+If ($GLTransactionAmount{$vlElem}#0)
+//
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=$AgreementMatchSM{$vlfind}
+[Trxs]CustomerCode:=$tblMatchingCustomerCode{$vlElem2}
+[Trxs]Confirmed:=True
+//
+$vlfind2:=Find in array($TransactionMasterTransactionID;$GLTransactionTransactionID{$vlElem})
+If ($vlfind2>0)
+[Trxs]TrxDate:=$TransactionMasterTransactionDat{$vlfind2}
+//$vlfind3:=Find in array($TransactionTypeTransactionTypeID;$TransactionMasterTransactionType{$vlfind2})
+//  If ($vlfind3>0)
+//  descr1:=$TransactionTypeTransactionTypeName{$vlfind3}
+//  If (($TransactionTypeChargeFlag{$vlfind3})=True)
+//  [Trxs]Charge:=True
+//  Else 
+//  [Trxs]Charge:=False
+//  End if 
+//
+If ($GLTransactionAmount{$vlElem}>0)
+[Trxs]Charge:=True
+Else 
+[Trxs]Charge:=False
+End if 
+
+$vlfind4:=Find in array($GLAccountGLAccountID;$GLTransactionGLAccountID{$vlElem})
+If ($vlfind4>0)
+$descr1:=$GLAccountGLAccountName{$vlfind4}
+//  //$BalanceTypeBalanceTypeID;$BalanceTypeBalanceTypeName;$BalanceTypePaymentOrder
+$vlfind5:=Find in array($BalanceTypeBalanceTypeID;$GLAccountBalanceTypeID{$vlfind4})
+If ($vlfind5>0)
+$descr2:=$BalanceTypeBalanceTypeName{$vlfind5}
+//If ($BalanceTypeBalanceTypeID{$vlfind5}<0)
+//[Trxs]TaxAmt:=$vat
+//Else 
+[Trxs]TotAmt:=$GLTransactionAmount{$vlElem}
+End if 
+End if 
+End if 
+//
+
+//
+//
+//[Trxs]DateFrom:=$dated_created
+//
+//
+//
+//[Trxs]UnitNo:=$unit
+//  /////[Trxs]TrxDate:=$dated_created  ///Current date
+//  //[Trxs]Description:="test"
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+//
+[Trxs]Description:=$descr1+", "+$descr2
+//
+SAVE RECORD([Trxs])
+// NEXT RECORD([Trxs])
+//
+End if 
+End if 
+//End if 
+//End if 
+//
+End for //11
+//
+//$GLTransactionProductID:=0
+
+End for 
+
+
+
+Else 
+AlertMessage ("ODBC connection problems found,"+Char(Carriage return)+" Process interrupted ")
+ABORT
+End if 
+
+

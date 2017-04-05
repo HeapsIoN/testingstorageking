@@ -1,0 +1,270 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Create a Reservation record, Link it to a Unit record, Change appropriate Unit record values, Create a linked deposit Transaction record
+
+C_LONGINT($vliNextReserveNo;$i;$vliNextContactNo)
+C_TEXT($Key)
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sProduct:=[Facility]ProductCode
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sFacility:=Substring([Customer]CustomerCode;1;5)
+
+//Create a sales inquiry if set to force enquries
+If ([Facility]SaleInqRequest)
+CREATE RECORD([Contacts])
+
+//Pick up the next Sales Enquiry number available
+If ([Contacts]ContactNo="")
+If (<>sProduct="MV")
+vOldContact:=500001
+Else 
+vOldContact:=[Facility]NextContactNo
+End if 
+$Continue:=False
+If (Not(Semaphore("<>bNextSalesInqNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//10285
+
+//If (Application type=4D Remote Mode)
+GET PROCESS VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+//End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+If (<>aiNextSalesInqNo{$arraypos}>vOldContact)
+//If (<>sProduct#"MV")
+//ConfirmTwo (Get localized string("It appears the next sales inquiry number of")+" "+String(vOldContact;"0000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//Else 
+//OK:=1
+//End if 
+//If (OK=1)
+[Contacts]ContactNo:=<>sFacility+String(<>aiNextSalesInqNo{$arraypos};"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=<>aiNextSalesInqNo{$arraypos}+1
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+Else 
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+End if 
+//Else 
+//[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+//vOldContact:=vOldContact+1
+//If (<>sProduct#"MV")
+//[Facility]NextContactNo:=[Facility]NextContactNo+1
+//<>aiNextSalesInqNo{$arraypos}:=vOldContact
+//End if 
+//End if 
+Else 
+[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+<>aiNextSalesInqNo{$arraypos}:=vOldContact
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+//End if 
+CLEAR SEMAPHORE("<>bNextSalesInqNo")
+Else 
+Repeat 
+[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+End if 
+
+//Fills out the Sales Enquiry
+[Contacts]Facility:=[Facility]FacilityCode
+[Contacts]ContactName:=[Customer]CustomerName
+[Contacts]Firstname:=[Customer]FirstName
+[Contacts]EmailAddress:=[Customer]EmailAddress
+[Contacts]Outcome:="Reserved"
+[Contacts]CallTakenBy:="Web"
+[Contacts]OutComeDate:=Current date
+[Contacts]CallDate:=Current date
+[Contacts]CallTime:=Current time
+[Contacts]ContactPhone:=[Customer]PhonePrivate
+[Contacts]MarketSrce:="Web"
+If (vtCustMarketSrc#"Not Selected")
+[Contacts]MarketSrce:=vtCustMarketSrc
+End if 
+If (vtCustCustType#"Not Selected")
+[Contacts]CustType:=vtCustCustType
+End if 
+
+//Save the record
+SAVE RECORD([Contacts])
+End if 
+
+
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+//ORes.xml
+If (OR_ReadOResXML ="True")//Does the XML file exist?
+$vtCreatechargeTransaction:=OR_ReadOResXML ("ChargeTransaction";"Create")//Find out what the deposit value for this Facility Code is
+If ($vtCreatechargeTransaction="")//If value not found then default to True - Create Charge Transaction
+$vtCreatechargeTransaction:="TRUE"
+End if 
+$vtDepositAmt:=OR_ReadOResXML ("deposit";[Facility]FacilityCode)//Find out what the deposit value for this Facility Code is
+If ($vtDepositAmt="")//If a Deposit value is found from the XML file, apply it to the array
+$vtDepositAmt:="0"
+End if 
+Else 
+$vtCreatechargeTransaction:="TRUE"
+$vtDepositAmt:="0"
+End if 
+
+CREATE RECORD([Reservation])
+[Reservation]ActiveReserve:=True
+[Reservation]CustomerCode:=[Customer]CustomerCode
+[Reservation]DateDepPaid:=!00-00-00!
+[Reservation]DepositAmt:=Num(vtDepositAmt)
+
+If ($vtCreatechargeTransaction#"TRUE")
+[Reservation]DepositAmt:=0
+End if 
+
+[Reservation]ExpMoveIn:=Date(vtDateUnitRequired)
+[Reservation]ReservedDate:=Current date
+[Reservation]ReservedTime:=Current time
+If (([Reservation]DepositAmt=0) & ($vtDepositAmt#"0"))
+[Reservation]Balance:=Num($vtDepositAmt)
+Else 
+[Reservation]Balance:=[Reservation]DepositAmt
+End if 
+[Reservation]UserLogin:="Web"
+[Reservation]UnitsReserved:=[Unit]UnitNo
+[Reservation]OutcomeDate:=!00-00-00!
+[Reservation]OnlineRes:=True
+[Reservation]ContactNo:=[Reservation]ContactNo
+[Reservation]CallTakenBy:="Web"
+If (vtUnitTypeRateSelected="W")
+[Reservation]Weekly:=True
+Else 
+[Reservation]Weekly:=False
+End if 
+If ([Reservation]ReserveNo="")
+$vliNextReserveNo:=[Facility]NextReserveNo
+$Continue:=False
+If (Not(Semaphore("<>bNextResNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//If (Application type=4D Remote Mode)
+//10285
+
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+//End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+
+//If (<>aiNextResNo{$arraypos}>[Facility]NextReserveNo)
+//ConfirmTwo (Get localized string("It appears the next reservation number of")+" "+String([Facility]NextReserveNo;"00000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//If (OK=1)
+[Reservation]ReserveNo:=String(<>aiNextResNo{$arraypos};"00000000")
+[Facility]NextReserveNo:=<>aiNextResNo{$arraypos}+1
+//Else 
+//[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+//[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+//End if 
+//Else 
+//[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+//[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+//End if 
+<>aiNextResNo{$arraypos}:=[Facility]NextReserveNo
+$Key:=<>sFacility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+//End if 
+CLEAR SEMAPHORE("<>bNextResNo")
+Else 
+Repeat 
+
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+
+$Key:=<>sFacility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+End if 
+[Reservation]RReserveNo:=$Key
+[Reservation]TaxExempt:=[Facility]TaxFreeDefault
+End if 
+SAVE RECORD([Reservation])
+
+
+//Modify Unit Table values as appropriate
+[Unit]ReservedTo:=[Reservation]RReserveNo
+[Unit]ReserveDeposit:=[UnitType]DepositAmt
+
+If ($vtCreatechargeTransaction#"TRUE") | ([Facility]AgreeOnlyDeposit=True)
+[Unit]ReserveDeposit:=0
+End if 
+
+[Unit]ReservedDate:=Current date
+[Unit]LastStatusDate:=Current date
+If ([Unit]Vacant=True)
+[Unit]Status:="Reserved"
+End if 
+
+If ([Reservation]Weekly)
+[Unit]QuotedRate:=[UnitType]OnlineWeeklyRate
+Else 
+[Unit]QuotedRate:=[UnitType]OnlineMonthlyRate
+End if 
+
+
+If ($vtCreatechargeTransaction="TRUE")
+//Create Transaction Record
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]Balance:=[Reservation]DepositAmt
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"DP"
+[Trxs]Description:=[Analysis]Description+" Unit "+[Unit]UnitNo
+[Trxs]TotAmt:=[Reservation]DepositAmt//RoundAmt ([UnitType]DepositAmt)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+
+
+SAVE RECORD([Reservation])
+SAVE RECORD([Unit])

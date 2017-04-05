@@ -1,0 +1,113 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT(vT1;vT2;vT3;vT4;vT5;vT6)
+C_TEXT(vErrors)
+C_LONGINT($i)
+C_BOOLEAN($Reset)
+READ ONLY(*)
+If (<>tGateSys) | ([Facility]TutorialData)
+
+If ((<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY))
+//do something
+Else 
+SetFacility 
+End if 
+
+
+iOK:=1
+If ([Facility]GateSysType>=2)
+$Reset:=<>tGateOn
+LogAction (False;Get localized string("Download GateData commenced"))
+//vErrors:="Errors:"+Char(13)
+If (<>tLogging=False)
+LogAction (True;Get localized string("Download GateData finished"))
+If ([Facility]GateSysType=3)
+SetDateTime 
+Else 
+iOK:=1
+End if 
+If (iOK=1)
+If ([Facility]GateSysType=5) | ([Facility]GateSysType=9)//Access Ezy Reset command + Sentinel
+ConfirmTwo (Get localized string("Transfer all Controller & Input data for each Unit?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+If (<>tGateOn)
+<>tGateOn:=False//Turn Gate off so that things download in order
+End if 
+GateQueue ("ResetI";1)
+If ([Facility]CentralGate=True)
+ALL RECORDS([Unit])//Added on 6/9/05 SDD
+Else 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@")
+End if 
+ORDER BY([Unit];[Unit]UnitNo;>)
+APPLY TO SELECTION([Unit];GateQueue ("AddUnit";[Unit]UnitNumeric;"";0;"";!00-00-00!;0;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;[Unit]UnitLetter;[Unit]UnitNo;[Unit]InputPort;0;[Unit]DisableAlarm;Substring([Unit]AgreeNo;6)))
+End if 
+If (<>tGateOn)
+<>tGateOn:=False//Turn Gate off so that things download in order
+End if 
+If ([Facility]GateOption=False)
+GateQueue ("ResetS";1)
+End if 
+End if 
+If (<>tGateOn)
+<>tGateOn:=False//Turn Gate off so that things download in order
+End if 
+//If ([Facility]GateSysType=3)
+//ALL SUBRECORDS([Facility]GateTimeZones)
+//QUERY SUBRECORDS([Facility]GateTimeZones;[Facility]GateTimeZones'TimeZoneNo<1000)
+//For ($i;1;Records in subselection([Facility]GateTimeZones))
+//GateQueue ("SetZone";[Facility]GateTimeZones'TimeZoneNo;" ";0)  //Use access times from [System] file
+//NEXT SUBRECORD([Facility]GateTimeZones)
+//End for 
+//End if 
+//
+//If ([Facility]GateSysType#12) // Old code marked by Hamid 23 Sep 2014
+//QUERY([StaffPINS];[StaffPINS]FacilityCode=<>sFacility)
+//For ($i;1;Records in selection([StaffPINS]))
+//QUERY([Unit];[Unit]UnitNumeric=[StaffPINS]UserNo)
+//If (Records in selection([Unit])=0)
+//GateQueue ("CreateUser";[StaffPINS]UserNo;[StaffPINS]PINNumber;0;Substring([StaffPINS]Name;1;16);Current date;[StaffPINS]TimeZoneNo;0;0;0;0;String([StaffPINS]UserNo);False)
+//Else 
+//AlertMessage (Get localized string("The StaffPIN for")+" "+[StaffPINS]Name+" "+Get localized string("User No")+" "+String([StaffPINS]UserNo)+" "+Get localized string("could not be downloaded because a Unit number already exists!"))
+//End if 
+//NEXT RECORD([StaffPINS])
+//End for 
+//End if 
+//
+//
+//If ([Facility]GateSysType=12)
+//QUERY([StaffPINS];[StaffPINS]FacilityCode=<>sFacility)
+//For ($i;1;Records in selection([StaffPINS]))
+//QUERY([Unit];[Unit]UnitNumeric=[StaffPINS]UserNo)
+//If (Records in selection([Unit])=0)
+//GateQueue ("CreateUser";[StaffPINS]UserNo;[StaffPINS]PINNumber;0;Substring([StaffPINS]Name;1;16);Current date;[StaffPINS]TimeZoneNo;0;0;0;0;String([StaffPINS]UserNo);False)
+//Else 
+//AlertMessage (Get localized string("The StaffPIN for")+" "+[StaffPINS]Name+" "+Get localized string("User No")+" "+String([StaffPINS]UserNo)+" "+Get localized string("could not be downloaded because a Unit number already exists!"))
+//End if 
+//NEXT RECORD([StaffPINS])
+//End for 
+//End if 
+//***
+End if 
+If ([Facility]GateSysType=11)
+<>GateDownload:=True
+End if 
+If (iOK=1)
+READ WRITE([Unit])
+If ([Facility]CentralGate=True)
+ALL RECORDS([Unit])
+Else 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@")
+End if 
+APPLY TO SELECTION([Unit];[Unit]UpdateGate:=True)
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+End if 
+<>tGateOn:=$Reset
+
+Else 
+LogAction (True;Get localized string("Download GateData finished"))
+End if 
+Else 
+AlertMessage (Get localized string("You must purchase the Access Control module to use this option. Please contact your nearest Sales office for more information."))
+End if 

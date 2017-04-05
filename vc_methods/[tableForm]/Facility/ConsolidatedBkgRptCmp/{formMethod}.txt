@@ -1,0 +1,86 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL(vAmt1;vAmt2;vAmt3;vAmt4;vAmt5;vAmt6;vAmt7;vSum;vTotal;vDepositAmt;vBankDep)
+If (Form event=On Header)
+vLegend:=Get localized string("Consolidated Banking Report")+" - "+String(vRptDate)
+$x:=6
+//CREATE EMPTY SET(
+For ($i;1;$x)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=(50+$i))
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+//ADD TO SET([Analysis];"Banking")
+
+$p:=Get pointer("vHdr"+String($i))
+$p->:=Substring([Analysis]Description;1;12)
+If ([Analysis]InclBankRpt)
+$p:=Get pointer("vCol"+String($i))
+$p->:="•"
+End if 
+End for 
+QUERY([Analysis];[Analysis]SortOrder>(50+$x))
+$p:=Get pointer("vHdr"+String($x+1))
+If (Records in selection([Analysis])>1)
+$p->:="Other"
+Else 
+$p->:=Substring([Analysis]Description;1;12)
+End if 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+
+If (Form event=On Printing Detail)
+vBankDep:=0
+$b:=1
+$x:=7
+For ($b;1;$x)
+vSum:=0
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+If ($b=7)
+QUERY([Analysis]; & ;[Analysis]SortOrder>=(50+$b))
+Else 
+QUERY([Analysis]; & ;[Analysis]SortOrder=(50+$b))
+End if 
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+CREATE EMPTY SET([Trxs];"Anlys1")
+If (Records in selection([Analysis])>1)
+FIRST RECORD([Analysis])
+For ($j;1;Records in selection([Analysis]))
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code)
+CREATE SET([Trxs];"Anlys")
+UNION("Anlys1";"Anlys";"Anlys1")
+NEXT RECORD([Analysis])
+End for 
+USE SET("Anlys1")
+Else 
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code)
+End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+QUERY SELECTION([Trxs];[Trxs]DateBanked=vRptDate)
+For ($i;1;Records in selection([Trxs]))
+vSum:=vSum+[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+$p:=Get pointer("vAmt"+String($b))
+$p->:=vSum
+If ([Analysis]InclBankRpt)
+vBankDep:=vBankDep+vSum
+End if 
+End for 
+End if 
+If (Form event=On Printing Break)
+vAmt1:=Subtotal(vAmt1)
+vAmt2:=Subtotal(vAmt2)
+vAmt3:=Subtotal(vAmt3)
+vAmt4:=Subtotal(vAmt4)
+vAmt5:=Subtotal(vAmt5)
+vAmt6:=Subtotal(vAmt6)
+vAmt7:=Subtotal(vAmt7)
+vTotal:=vAmt1+vAmt2+vAmt3+vAmt4+vAmt5+vAmt6+vAmt7
+vDepositAmt:=Subtotal(vBankDep)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+//SetFormats 

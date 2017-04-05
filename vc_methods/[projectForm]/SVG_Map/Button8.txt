@@ -1,0 +1,73 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+ARRAY TEXT($arrAfound;0)
+ARRAY TEXT($variables0;0)
+ARRAY TEXT($values0;0)
+ARRAY LONGINT($variables1;0)
+ARRAY LONGINT($arrAtype;0)
+ARRAY TEXT($values1;0)
+ARRAY TEXT($variables2;0)
+ARRAY TEXT($values2;0)
+C_LONGINT($i;$loc;$q)
+C_TEXT($Found)
+C_POINTER($var0;$val0;$var2;$val2)
+$var0:=->$variables0
+$val0:=->$values0
+$var2:=->$variables2
+$val2:=->$values2
+
+READ WRITE([Unit])
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+
+DOM GET XML CHILD NODES(unitgroup;$arrAtype;$arrAfound)
+
+For ($i;1;Size of array($arrAfound))
+SVG_GET_ATTRIBUTES ($arrAfound{$i};$var0;$val0)
+$loc:=Find in array($variables0;"unit")
+QUERY([Unit];[Unit]RUnitNo=$values0{$loc})
+If (Records in selection([Unit])=1)
+DOM GET XML CHILD NODES($arrAfound{$i};$variables1;$values1)
+For ($q;1;Size of array($variables1))
+SVG_GET_ATTRIBUTES ($values1{$q};$var2;$val2)
+$loc:=Find in array($variables2;"type")
+If (($values2{$loc}="rect"))
+$loc:=Find in array($variables2;"x")
+[Unit]XCoordinate:=Num($values2{$loc})
+$loc:=Find in array($variables2;"y")
+[Unit]YCoordinate:=Num($values2{$loc})
+$transform:=Find in array($variables2;"transform")
+If ($transform>0)
+$transstart:=Position("(";$values2{$transform};*)
+$transend:=Position(" ";$values2{$transform};*)
+[Unit]Rotation:=Num(Substring($values2{$transform};$transstart;($transend-$transstart)))
+Else 
+[Unit]Rotation:=0
+End if 
+
+End if 
+End for 
+SAVE RECORD([Unit])
+End if 
+End for 
+
+DOM REMOVE XML ELEMENT(highlightObject)
+
+For ($i;1;Size of array(resizeHandles))
+DOM REMOVE XML ELEMENT(resizeHandles{$i})
+End for 
+
+DOM EXPORT TO VAR(group;CustomSVG)
+[Facility]SVG_map_custom:=CustomSVG//Custom objects go here
+
+[Facility]SVGColours:=ColourElement
+[Facility]SVGBackgroundImage:=vDrawBackground
+[Facility]SVGMapScale:=svgScale
+[Facility]SVGFontSize:=selectedFontSize
+SAVE RECORD([Facility])
+
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 

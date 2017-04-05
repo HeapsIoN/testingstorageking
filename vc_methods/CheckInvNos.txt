@@ -1,0 +1,32 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Error)
+C_LONGINT($i;$j;$Order)
+$Error:=""
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([Trxs];[Trxs]InvNo>[Facility]NextInvNo)
+If (Records in selection([Trxs])>0)
+$Error:=$Error+"Facility: "+[Facility]FacilityCode+" next invoice number is lower than existing transactions."+Char(Carriage return)
+End if 
+NEXT RECORD([Facility])
+End for 
+$Error:=$Error+Char(Carriage return)
+QUERY([Customer];[Customer]CustomerCode#"@MISCL";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts#0)
+ORDER BY([Customer];[Customer]CustomerCode;>)
+For ($i;1;Records in selection([Customer]))
+$Order:=0
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]InvNo#0)
+ORDER BY([Trxs];[Trxs]InvDate;>;[Trxs]InvNo;>)
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]InvNo<$Order)
+$Error:=$Error+"Customer: "+[Customer]CustomerCode+" has invalid invoice numbers on existing transactions."+Char(Carriage return)
+End if 
+$Order:=[Trxs]InvNo
+NEXT RECORD([Trxs])
+End for 
+NEXT RECORD([Customer])
+End for 
+SET TEXT TO PASTEBOARD($Error)
+AlertMessage ("Checking complete")

@@ -1,0 +1,221 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//7/12/05 RWFR Added [Photoscards]UnitSuffix to code
+C_LONGINT($i;$Access;$UnitLetter;$Ascii)
+C_TEXT($Action;$Result)
+C_TEXT($UnitNo)
+READ WRITE([Unit])
+FIRST RECORD([Unit])
+
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("LoadGateUnits Records in selection ([Unit])="+String(Records in selection([Unit])))
+End if 
+For ($i;1;Records in selection([Unit]))
+
+$Facility:=Substring([Unit]RUnitNo;1;5)
+
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+
+If (vErrors="Error@")
+GOTO XY(2;3)
+//MESSAGE(Get localized string("Downloading GatePIN for Unit")+" "+[Unit]UnitNo+"    ")
+MESSAGE("Downloading Gate PIN "+String($i)+" of "+String(Records in selection([Unit]))+".     Unit "+[Unit]UnitNo)
+[Unit]UpdateGate:=False//Only do once when Download All
+End if 
+If ([Unit]UnitNo>"")
+If ([Unit]Vacant)//No PIN number invalidates number
+$Result:=GateAction ("DeleteUser";[Unit]UnitNumeric;"0";1;" ";!00-00-00!;0;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;[Unit]UnitLetter;[Unit]UnitNo;[Unit]InputPort;0;[Unit]DisableAlarm;"")
+$UnitNo:=[Unit]UnitNo
+If ([Facility]GateSysType=4) & ([Unit]TotExtraPins>0)
+$UnitNo:=$UnitNo+"Z"
+$Ascii:=90
+For ($i;1;[Unit]TotExtraPins)
+GateAction ("DeleteUser";[Unit]UnitNumeric;"0";1;" ";!00-00-00!;0;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;[Unit]UnitLetter;$UnitNo;[Unit]InputPort;0;[Unit]DisableAlarm;"")
+$Ascii:=$Ascii-1
+$UnitNo:=Substring($UnitNo;1;Length($UnitNo)-1)+Char($Ascii)
+End for 
+[Unit]TotExtraPins:=0
+End if 
+If ($Result#"Fail")
+[Unit]UpdateGate:=False
+End if 
+Else 
+RELATE ONE([Unit]AgreeNo)
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("LoadGateUnits Records in selection ([Agreement])="+String(Records in selection([Agreement])))
+End if 
+If (Records in selection([Agreement])=1)//Keep trying until the agreement record has been saved
+RELATE ONE([Agreement]CustomerCode)
+If (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False)
+$Access:=1
+Else 
+$Access:=0
+End if 
+If ([Facility]GateSysType=3) & ([Facility]LockbefMovein=True)
+If (Day number(Current date)>=6)
+$Date:=Current date+3//Allow extra for weekends
+Else 
+$Date:=Current date+1//Allow for early gate users
+End if 
+If ([Agreement]MoveIn>$Date)
+If ([Customer]AllowAccessArrs=False)
+$Access:=1
+End if 
+End if 
+End if 
+$Action:="CreateUser"
+If ($Access=1) & (([Facility]GateSysType#11) | (([Facility]GateSysType=11) & (<>GateDownload=False)))
+$Action:="DenyAccess"
+End if 
+If (Num([Customer]GatePIN)<=0)//Previously only did GateAction when GatePIN>0 however was not deleting old ones in AccessEzy
+$Action:="DeleteUser"
+End if 
+If ($Action#"DeleteUser") & (([Facility]GateSysType=7) | ([Facility]GateSysType=8))
+GateAction ("DeleteUser";[Unit]UnitNumeric;"0";1;" ";!00-00-00!;0;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;[Unit]UnitLetter;[Unit]UnitNo;[Unit]InputPort;0;[Unit]DisableAlarm;"")
+End if 
+If ([Customer]GatePIN>"")
+If ([Facility]GateSysType=2)
+
+If (GateAction ($Action;[Unit]UnitNumeric;[Customer]GatePIN;$Access;Substring([Customer]CustomerName;1;32);[Agreement]MoveIn;[Customer]GateTimeZone;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;1;[Unit]UnitNo;[Unit]InputPort;[Customer]KeypadZone;[Unit]DisableAlarm)="Fail")
+$Result:="Fail"
+End if 
+Else 
+
+If ([Facility]GateSysType=8) & ($Action="DeleteUser")// Added by Hamid 12/11/2014
+// do something
+Else 
+If (GateAction ($Action;[Unit]UnitNumeric;[Customer]GatePIN;$Access;Substring([Customer]CustomerName;1;32);[Agreement]MoveIn;[Customer]GateTimeZone;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;[Unit]UnitLetter;[Unit]UnitNo;[Unit]InputPort;[Customer]KeypadZone;[Unit]DisableAlarm;Substring([Unit]AgreeNo;6);"P")="Fail")
+$Result:="Fail"
+End if 
+End if 
+
+
+End if 
+Else 
+If ([Facility]GateSysType=12)// Fo Insight system if the PIN is "" generate an event ot delete the customer from the system
+
+If (GateAction ($Action;[Unit]UnitNumeric;[Customer]GatePIN;$Access;Substring([Customer]CustomerName;1;32);[Agreement]MoveIn;[Customer]GateTimeZone;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;[Unit]UnitLetter;[Unit]UnitNo;[Unit]InputPort;[Customer]KeypadZone;[Unit]DisableAlarm;Substring([Unit]AgreeNo;6);"P")="Fail")
+$Result:="Fail"
+End if 
+
+End if 
+End if 
+$Action:="CreateUser"
+If ($Access=1) & (([Facility]GateSysType#11) | (([Facility]GateSysType=11) & (<>GateDownload=False)))
+$Action:="DenyAccess"
+End if 
+If (<>GateDownload=True)
+<>GateDownload:=False
+End if 
+READ WRITE([PhotosCards])
+QUERY([PhotosCards];[PhotosCards]UnitAccess="All";*)
+QUERY([PhotosCards]; | ;[PhotosCards]UnitAccess=[Unit]UnitNo;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Code=[Customer]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]PINCardNo>"")
+ORDER BY([PhotosCards];[PhotosCards]UnitSuffix;>)
+$UnitNo:=[Unit]UnitNo
+If ([Facility]GateSysType=4) | (([Facility]GateSysType=9) & ([Facility]VerifyGateDL=True))
+$UnitNo:=$UnitNo+"Z"
+$Ascii:=90
+End if 
+$UnitLetter:=[Unit]UnitLetter
+If ([Facility]GateSysType=2)
+$UnitLetter:=2
+End if 
+If ([Facility]GateSysType=7) | ([Facility]GateSysType=8)
+$Access:=4
+End if 
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("LoadGateUnits Line 110")
+End if 
+While (End selection([PhotosCards])=False) & ($Result#"Fail")
+If (Num([PhotosCards]PINCardNo)>0)
+If ([Facility]GateSysType=3)//Added in 4.1.1 to try to allow Falcon to have multiple pin numbers per unit
+$UnitLetter:=$UnitLetter+1
+[PhotosCards]UnitSuffix:=$UnitLetter
+SAVE RECORD([PhotosCards])
+End if 
+If ([Facility]GateSysType=9) & ([Facility]VerifyGateDL=True)
+If (GateAction ($Action;[Unit]UnitNumeric;[PhotosCards]PINCardNo;$Access;[PhotosCards]Name;[Agreement]MoveIn;[PhotosCards]TimeZone;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;$Ascii;[Unit]UnitNo;[Unit]InputPort;1;[Unit]DisableAlarm;Substring([Unit]AgreeNo;6))="Fail")
+$Result:="Fail"
+End if 
+Else 
+If (GateAction ($Action;[Unit]UnitNumeric;[PhotosCards]PINCardNo;$Access;[PhotosCards]Name;[Agreement]MoveIn;[PhotosCards]TimeZone;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;$UnitLetter;$UnitNo;[Unit]InputPort;[PhotosCards]KeypadZone;[Unit]DisableAlarm;Substring([Unit]AgreeNo;6);"S")="Fail")
+$Result:="Fail"
+End if 
+End if 
+If ([Facility]GateSysType=4) | (([Facility]GateSysType=9) & ([Facility]VerifyGateDL=True))
+$Ascii:=$Ascii-1
+$UnitNo:=Substring($UnitNo;1;Length($UnitNo)-1)+Char($Ascii)
+End if 
+If ([Facility]GateSysType=2)
+$UnitLetter:=$UnitLetter+1
+End if 
+End if 
+NEXT RECORD([PhotosCards])
+End while 
+If (Records in selection([PhotosCards])<[Unit]TotExtraPins) & ([Facility]GateSysType#7)
+$Action:="DeleteUser"
+$UnitLetter:=[Unit]TotExtraPins+1
+While ([Unit]TotExtraPins>Records in selection([PhotosCards])) & ($Result#"Fail")
+If ([Facility]GateSysType=3)
+$UnitLetter:=$UnitLetter+1
+End if 
+If ([Facility]GateSysType=9) & ([Facility]VerifyGateDL=True)
+If (GateAction ($Action;[Unit]UnitNumeric;[PhotosCards]PINCardNo;$Access;[PhotosCards]Name;[Agreement]MoveIn;[PhotosCards]TimeZone;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;$Ascii;[Unit]UnitNo;[Unit]InputPort;1;[Unit]DisableAlarm;Substring([Unit]AgreeNo;6))="Fail")
+$Result:="Fail"
+End if 
+Else 
+
+If ([Facility]GateSysType=8) & ($Action="DeleteUser")// Added by Hamid 13/11/2014
+// do something
+Else 
+If (GateAction ($Action;[Unit]UnitNumeric;[PhotosCards]PINCardNo;$Access;[PhotosCards]Name;[Agreement]MoveIn;[PhotosCards]TimeZone;[Unit]MuxController;[Unit]ChannelInput;[Unit]UnitSection;$UnitLetter;$UnitNo;[Unit]InputPort;0;[Unit]DisableAlarm;Substring([Unit]AgreeNo;6);"S")="Fail")
+$Result:="Fail"
+End if 
+End if 
+
+
+End if 
+If ([Facility]GateSysType=4) | (([Facility]GateSysType=9) & ([Facility]VerifyGateDL=True))
+$Ascii:=$Ascii-1
+$UnitNo:=Substring($UnitNo;1;Length($UnitNo)-1)+Char($Ascii)
+End if 
+If ([Facility]GateSysType=2)
+$UnitLetter:=$UnitLetter-1
+End if 
+[Unit]TotExtraPins:=[Unit]TotExtraPins-1
+End while 
+End if 
+[Unit]TotExtraPins:=Records in selection([PhotosCards])
+READ ONLY([PhotosCards])
+UNLOAD RECORD([PhotosCards])
+If ((Length([Customer]GatePIN)>3) | ([Facility]GateSysType=5) | ([Facility]GateSysType=12)) & ($Result#"Fail")//Keep trying if GatePIN is not greater than 4 digits
+[Unit]UpdateGate:=False
+End if 
+End if 
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("LoadGateUnits Line 169")
+End if 
+End if 
+End if 
+SAVE RECORD([Unit])
+If (<>tStop)
+$i:=Records in selection([Unit])+1
+End if 
+NEXT RECORD([Unit])
+End for 
+If (<>tStop)
+ON EVENT CALL("")
+If ([Facility]LockbefMovein=True) & ([Facility]GateSysType#3) & ([Facility]GateSysType#5)
+QUERY([Unit];[Unit]UpdateGate=True;*)
+QUERY([Unit]; & ;[Unit]MoveIn<=Current date)
+Else 
+QUERY([Unit];[Unit]UpdateGate=True)
+End if 
+ConfirmTwo (Get localized string("There are")+" "+String(Records in selection([Unit]))+" "+Get localized string("PINs which have not been downloaded successfully.");Get localized string("Stop Trying");Get localized string("Keep Trying"))
+If (OK=1)
+APPLY TO SELECTION([Unit];[Unit]UpdateGate:=False)
+End if 
+End if 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])

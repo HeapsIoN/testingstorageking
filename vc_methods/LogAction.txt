@@ -1,0 +1,99 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Records an event in the event log
+//SDD 22/10/10 Added loop & message to prevent continuing if LogMonitor is still processing while tLogging is False
+
+C_BOOLEAN($1;$Abort)//Set ◊tLogging true or false
+C_TEXT($2)
+C_BOOLEAN($3;$Search)//True if from Custom Search
+C_TEXT($Message)//Message to record in log, Blank=don't record
+C_LONGINT($i)
+<>tLogging:=$1
+$Message:=$2
+$Search:=False
+If (Count parameters>2)
+$Search:=$3
+End if 
+$Abort:=False
+If (Application type#4D Server)
+If (<>tLogging=False)//LogMonitor
+//If (<>tClient)
+//ARRAY TEXT($aClients;0)
+//ARRAY LONGINT($aMethods;0)
+//GET REGISTERED CLIENTS($aClients;$aMethods)
+//If (Size of array($aClients)>1)
+//$i:=Find in array($aClients;<>sCurrentUser)
+//If ($i>0)
+//DELETE FROM ARRAY($aClients;$i)
+//End if 
+//  //$Message:=""
+//  //For ($i;1;Size of array($aClients))
+//  //$Message:=$Message+$aClients{$i}+", "
+//  //End for 
+//$Message:=$2
+//If (Records in table([Facility])<2)  //Don't do this in Central as it causes grief to other users. Planet 21/7/04
+//ConfirmTwo (Get localized string("There are")+" "+String(Count users-2)+Get localized string(" other users logged on");Get localized string("Yes");Get localized string("No"))
+//If (OK=1)
+//For ($i;1;Size of array($aClients))
+//If ($aClients{$i}#<>sCurrentUser)
+//EXECUTE ON CLIENT($aClients{$i};"Quitnow";True)
+//End if 
+//End for 
+//Else 
+//$Abort:=True
+//End if 
+//Else 
+//  //SDD What is the point of this as there is nothing the user can do about it!!  REMOVED
+//  //AlertMessage (Get localized string("There are")+" "+String(Count users-2)+Get localized string(" other users logged on1"))
+//End if 
+//End if 
+//End if 
+$Message:=GetProcessNames 
+If ($Message>" ")//Dont allow any other processes while logging is off    
+<>tLogging:=True
+AlertMessage (Get localized string("All processes other than")+Char(13)+$Message)
+$Message:=""
+Else 
+$Message:=$2
+End if 
+End if 
+//SDD 22/10/10 Following loop added to ensure that LogMonitor is in the Paused state before continuing
+If (<>tLogging=False) & (<>iLogMonitor>0)
+$WinRef:=Open window(50;50;500;150;5;Get localized string("Processing")+"...")
+GOTO XY(2;2)
+MESSAGE(Get localized string("Waiting for background process to pause")+"..."+"    ")
+While (Process state(<>iLogMonitor)#Delayed) & (Process state(<>iLogMonitor)#Paused)
+IDLE
+End while 
+CLOSE WINDOW($WinRef)
+End if 
+End if 
+If ($Message>"") & ($Abort=False)
+READ WRITE([EventLog])
+viError:=0
+ON ERR CALL("ErrorNone")
+CREATE RECORD([EventLog])
+[EventLog]EventDate:=UTCDate (Current time;True;Current date)
+[EventLog]EventTime:=UTCTime (Current time;True)
+[EventLog]Processed:=True
+[EventLog]EventAlert:=True
+[EventLog]LogDetail:=$2
+[EventLog]UserLogin:=Substring(<>sCurrentUser;1;15)
+[EventLog]FacilityCode:=<>sFacility
+If ($Search)
+[EventLog]EventRecNo:=Records in selection
+End if 
+If (<>sFacility=<>sHOFacility)//These will not be replicated.
+[EventLog]SyncStatus:=5
+End if 
+SAVE RECORD([EventLog])
+ON ERR CALL("ErrorLog")
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+If (Application type#4D Remote mode)
+SyncRecordLog ($2)
+End if 
+If (viError=-9999)//Locked datafile
+AlertMessage (Get localized string("The datafile at ")+Data file+Get localized string(" is locked."))
+QUIT 4D
+End if 
+End if 

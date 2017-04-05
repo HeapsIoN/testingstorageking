@@ -1,0 +1,65 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($HeaderCode;$ErrorCode;$ErrorDescription)
+C_LONGINT($i;$Error;$TickCount;$SeqNo;$ServerSeqNo;$Pos)
+SET BLOB SIZE(vbResponse;0)
+SET BLOB SIZE(vbEventContent;0)
+SET BLOB SIZE(vbField;0)
+$SeqNo:=0
+$ServerSeqNo:=0
+vDate:=<>dCompileDate
+$Pos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+If ($Pos>0)
+$SeqNo:=<>aiEventSeqNo{$Pos}+1
+End if 
+SyncGetEvents ($SeqNo)
+$Tickcount:=Tickcount
+
+$Error:=SyncPrepare ("/4DCGI/SyncToMaster")
+If ($Error=0)
+
+$HeaderCode:=SyncGetHTTPHeaderCode (->vbResponse)
+SyncGetHTTPBody (->vbResponse;->vbEventContent)
+
+$ErrorCode:=SyncBlobtoText (SyncTagsToBlob ("<ErrorCode>";->vbEventContent;->vbField;0))
+$ErrorDescription:=SyncBlobtoText (SyncTagsToBlob ("<ErrorDescription>";->vbEventContent;->vbField;0))
+If ($ErrorCode="15@")
+$i:=Position("MV:";$ErrorDescription)
+If ($i>0)
+$ServerSeqNo:=Num(Substring($ErrorDescription;$i+3))
+End if 
+End if 
+SET BLOB SIZE(vbResponse;0)
+SET BLOB SIZE(vbEventContent;0)
+SET BLOB SIZE(vbField;0)
+
+If ($ErrorCode="000")
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+For ($i;1;Records in selection([EventLog]))
+[EventLog]SyncStatus:=1
+[EventLog]SeqNo:=$SeqNo
+SET BLOB SIZE([EventLog]LogBlob;0)
+SAVE RECORD([EventLog])
+NEXT RECORD([EventLog])
+End for 
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+If ($Pos>0)
+SyncRecordLog ("Setting Event Seq No to "+String($SeqNo)+" - SyncToMaster #47")
+<>aiEventSeqNo{$Pos}:=$SeqNo
+End if 
+SyncRecordLog (Get localized string("Sent")+" "+String(Records in selection([EventLog]))+" "+Get localized string("Events for")+" "+<>sFacility+" - "+Get localized string("Seq No")+" "+String($SeqNo)+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+Else 
+If ($ErrorCode="151") & ($ServerSeqNo<$SeqNo) & ($ServerSeqNo>5) & ($SeqNo>5)//Then we must resend some events
+SyncResetEvents (<>sFacility;$ServerSeqNo)
+Else 
+SyncRecordLog (Get localized string("Attempted to Send for")+" "+<>sFacility+" - "+String(Records in selection([EventLog]))+" "+Get localized string("Events - Server Host Error")+" #"+$ErrorCode+" - "+$ErrorDescription+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+If ($ErrorCode<"300") & ($ErrorCode#"") & ($ErrorDescription#"")
+vMax:=3//This to stop further syncing
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Syncing Error at")+" "+[EventLog]FacilityCode;Get localized string("Attempted to Send for")+" "+<>sFacility+" - "+String(Records in selection([EventLog]))+" "+Get localized string("Events - Server Host Error")+" #"+$ErrorCode+" - "+$ErrorDescription+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+End if 
+End if 
+End if 
+Else 
+SyncRecordLog (Get localized string("Attempted to Send for")+" "+<>sFacility+" - "+String(Records in selection([EventLog]))+" "+Get localized string("Events - TCP Error")+" #"+String($Error)+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+End if 

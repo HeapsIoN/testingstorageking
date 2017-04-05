@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Rent Roll Report started.")// records the report being started in the eventlog
+If (PermissionsControl (61))
+OK:=1
+If (<>tBatch)
+sUnit:=0
+If ([Facility]UnitNoRpts)
+sUnit:=1
+End if 
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]RegularRent<1)
+If (Records in selection([Agreement])>0)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Agreement]))+Get localized string(" agreement(s) with no rent amount.  [")+[Agreement]CustomerCode+Get localized string("]  The report may be incorrect."))
+End if 
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+SetFacility 
+//Open window(120;120;520;440;5)
+Open window((Screen width/2)-203;(Screen height/2)-164;(Screen width/2)+203;(Screen height/2)+164;5;Get localized string("MenuReportrentRollReport"))
+DIALOG([Agreement];"RentRollDialog")
+CLOSE WINDOW
+End if 
+If (OK=1)
+tBoolean:=(vReportSettings[[8]]="Y")
+DEFAULT TABLE([Agreement])
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#"@MISCL";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#"@PETTY")
+CalcAgedDebtors (vMthDate;->[Agreement];tBoolean;False)
+If (sUnit=1)
+ORDER BY([Agreement];[Agreement]UnitsOccup;>)
+Else 
+ORDER BY([Agreement];[Agreement]CustomerCode;>)
+End if 
+If (<>iPrinttoFile=3)//Excel
+ARRAY TEXT(aFieldNames;11)
+aFieldNames{1}:="[Agreement]UnitsOccup"
+aFieldNames{2}:="OnDetail[Customer]CustomerName"
+aFieldNames{3}:="[Agreement]MoveIn"
+aFieldNames{4}:="MthlyRent"
+aFieldNames{5}:="[Agreement]DepositAmt"
+aFieldNames{6}:="[Agreement]PaidToDate"
+aFieldNames{7}:="BalOwing"
+aFieldNames{8}:="OnDetail"+GetKeyNo ([Facility]AgedDebtorBreaks;1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;2)+" "+Get localized string("Days")
+aFieldNames{9}:="OnDetail"+String(Num(GetKeyNo ([Facility]AgedDebtorBreaks;2))+1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;3)+" "+Get localized string("Days")
+If (tBoolean)
+aFieldNames{10}:="OnDetail"+"> "+GetKeyNo ([Facility]AgedDebtorBreaks;3)+" "+Get localized string("Days")
+aFieldNames{11}:="OnDetail"+"Fees/Other"
+Else 
+aFieldNames{10}:="OnDetail"+String(Num(GetKeyNo ([Facility]AgedDebtorBreaks;3))+1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;4)+" "+Get localized string("Days")
+aFieldNames{11}:="OnDetail"+"> "+GetKeyNo ([Facility]AgedDebtorBreaks;4)+" "+Get localized string("Days")
+End if 
+vpTable:=->[Agreement]
+CreateExcelReport (11;Records in selection([Agreement]);"MethodOnLoadRentRoll";[Facility]FacilityName;Get localized string("Rent Roll as at ")+" "+String(vMthDate);"")//no of columns on report, no of rows, lines to execute"
+Else 
+BREAK LEVEL(0)
+ACCUMULATE(vAmt1;vAmt2;vAmt3;vAmt4;vAmt5;vAmt6;[Agreement]RegularRent;[Agreement]DepositAmt)
+FORM SET OUTPUT([Agreement];"RentRoll")
+PrintSelection ("L")
+FORM SET OUTPUT([Agreement];"Output")
+End if 
+ARRAY TEXT(aCustCode;0)
+ARRAY REAL(aTotals;0;0)
+End if 
+End if 
+LogAction (True;"Rent Roll Report ended.")

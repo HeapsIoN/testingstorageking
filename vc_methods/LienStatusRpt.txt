@@ -1,0 +1,46 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+LogAction (False;"Lien Status Report started.")// records the report being started in the eventlog
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+If (PermissionsControl (75))
+DEFAULT TABLE([Unit])
+//All new code to commented out QUERY added in 3.3 to locate agreements last notice
+ARRAY LONGINT($Plans;0)
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+DISTINCT VALUES([Notices]NoticePlanNo;$Plans)
+CREATE EMPTY SET([Agreement];"LienStatus")
+CREATE EMPTY SET([Agreement];"Found")
+SET QUERY DESTINATION(Into set;"Found")
+For ($i;1;Size of array($Plans))
+QUERY([Notices];[Notices]RefDateField=48;*)
+QUERY([Notices]; | ;[Notices]RefDateField=44;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]LateCycleIgnore=False;*)
+QUERY([Notices]; & ;[Notices]DaysAfter>0;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=$Plans{$i})
+If (Records in selection([Notices])>0)
+ORDER BY([Notices];[Notices]DaysAfter;<)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]NoticePlanNo=$Plans{$i};*)
+QUERY([Agreement]; & ;[Agreement]LastNotice=[Notices]DaysAfter)//Daily
+UNION("LienStatus";"Found";"LienStatus")
+End if 
+End for 
+USE SET("LienStatus")
+CLEAR SET("LienStatus")
+CLEAR SET("Found")
+SET QUERY DESTINATION(0)
+RELATE MANY SELECTION([Unit]AgreeNo)
+//QUERY([Unit];[Unit]Status="Locked")
+ORDER BY([Unit];[Unit]UnitNo;>)
+FORM SET OUTPUT([Unit];"LienStatus")
+BREAK LEVEL(0)
+ACCUMULATE([Agreement]BalanceOwing)
+PrintSelection ("P")
+FORM SET OUTPUT([Unit];"Output")
+End if 
+LogAction (True;"Lien Status Report ended.")

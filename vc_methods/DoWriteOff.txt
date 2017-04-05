@@ -1,0 +1,66 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//DoWriteOff
+//SDD 6/12/12
+//This method will search for all agreements with Old Balance Owing and create transaction to write off small balance
+If (PermissionsControl (221))
+
+C_LONGINT($i)
+C_DATE(vPriorDate;vTrxDate)
+C_REAL(vSmallValue)
+vSmallValue:=Num(RequestMessage ("Write off Agreements where balances is less than:";"10.00"))
+vPriorDate:=Current date-365
+vPriorDate:=RequestDate ("Write off Agreements where last transaction is prior to:";vPriorDate)
+Repeat 
+vTrxDate:=GetValidDate (RequestDate ("Transaction Date for write off transactions:";Current date);Current date;True)
+Until (OK#1) | (vTrxDate>=[Facility]CantModPrior)
+If (OK=1)
+READ WRITE([Agreement])
+READ WRITE([Trxs])
+READ WRITE([Customer])
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#"@MISCL";*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing<vSmallValue;*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing#0;*)
+QUERY([Agreement]; & ;[Agreement]LastPmtDate<vPriorDate;*)
+QUERY([Agreement]; & ;[Agreement]LastBillDate<vPriorDate)
+CONFIRM("There are "+String(Records in selection([Agreement]))+" agreements to be written off.  Continue?";"Yes";"No")
+If (OK=1)
+ORDER BY([Agreement];[Agreement]RAgreeNo;>)
+For ($i;1;Records in selection([Agreement]))
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+GetAnalysis 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=vTrxDate
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=Round([Agreement]BalanceOwing*-1;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Analysis]Code;vTrxDate;vTrxDate)
+[Trxs]Confirmed:=True
+[Trxs]Narration:="Write off small balance"
+SAVE RECORD([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)//
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Customer])
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+ReCalcUnpaid 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+End if 
+READ ONLY([Agreement])
+READ ONLY([Trxs])
+READ ONLY([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Customer])
+End if 
+
+Else 
+///////AlertMessage (Get localized string("Permission not granted"))
+End if 

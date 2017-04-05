@@ -1,0 +1,119 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+//Incoming Information - This variable definedin Compiler_Web method
+C_TEXT(WS_vtAgreementNumber;WS_vtPassword)
+
+//Outgoing information
+C_TEXT(WS_vtStorerName;WS_vtEmailAddress;WS_vtError)
+C_DATE(WS_vdLastBillDate;WS_vdNextDueDate)
+C_REAL(WS_vrDueNowAmt;WS_vrNextDueAmt;WS_vrTotalDueAmt;WS_vrLastBillAmt)
+C_LONGINT(WS_viRestrictions)//1=Accept any partial payment, 2=Accept only DueNowAmt, 3=No payment allowed - call at office
+C_TEXT(WS_vtAllowPartPayment)//"1"=Allow, "0"=Block
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_vtAgreementNumber;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+WS_viRestrictions:=1
+WS_vtAllowPartPayment:="0"
+Case of 
+: (Records in selection([Agreement])=0)
+WS_vtError:="4"//4 - Incorrect Username
+: (Records in selection([Agreement])=1)
+RELATE ONE([Agreement]CustomerCode)
+//Case of 
+//: ([Customer]Password<"  ")
+//WS_vtError:="1"  //1 - No password available at site
+//: (WS_vtPassword<"  ")
+//WS_vtError:="2"  //2 - No password entered by customer
+//: ([Customer]Password=WS_vtPassword)
+WS_vtError:="0"//0 - Authenticated
+
+//Get the values to be returned
+WS_vtStorerName:=[Customer]CustomerName
+WS_vdNextDueDate:=[Agreement]NextBillDate
+WS_vdLastBillDate:=[Agreement]LastBillDate
+WS_vrLastBillAmt:=[Agreement]LastBillAmt//
+WS_vrDueNowAmt:=Round([Agreement]BalanceOwing;2)//Balance Owing
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]NextBillDate>=[Agreement]NewRentFrom)
+WS_vrNextDueAmt:=[Agreement]NewRentAmt
+Else 
+WS_vrNextDueAmt:=[Agreement]RentAmt
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+For ($k;1;Records in selection([OtherChgs]))
+If ([Agreement]NextBillDate>=[OtherChgs]IncreaseFrom)
+WS_vrNextDueAmt:=WS_vrNextDueAmt+[OtherChgs]NewAmount
+Else 
+WS_vrNextDueAmt:=WS_vrNextDueAmt+[OtherChgs]Amount
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+WS_vrNextDueAmt:=Round(WS_vrNextDueAmt;2)
+WS_vrTotalDueAmt:=Round([Agreement]BalanceOwing;2)//Balance Owing
+WS_vtEmailAddress:=[Customer]EmailAddress
+//
+//Else 
+//WS_vtError:="3"  //3 - Entered Incorrect Password
+//End case 
+: (Records in selection([Agreement])>1)
+WS_vtError:="5"//5 - Duplicate Agreements
+Else 
+//do nothing
+End case 
+Else 
+WS_vtError:="99"
+End if 
+//Check whether this Facility permits Part Payment
+//Returns:  1=Allow, 0=Block, -1=Error (Block)
+$FacilityCode:=Substring(WS_vtAgreementNumber;1;5)
+QUERY([Facility];[Facility]FacilityCode=$FacilityCode)
+If (Records in selection([Facility])=1)//Facility Found
+WS_vtAllowPartPayment:=BooleanToString (Not([Facility]BlockStorpayPartPay);"1";"0")
+End if 
+
+
+//Send them back to the client
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+//SOAP DECLARATION(WS_vtPassword;Is Text;SOAP Input;"WS_vtPassword")
+
+$String:="Start WS_GetAgreementInfoNoPW"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_vtStorerName;Is text;SOAP output)
+SOAP DECLARATION(WS_vdLastBillDate;Is date;SOAP output)
+SOAP DECLARATION(WS_vdNextDueDate;Is date;SOAP output)
+SOAP DECLARATION(WS_vrDueNowAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrNextDueAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrTotalDueAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrLastBillAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vtEmailAddress;Is text;SOAP output)
+SOAP DECLARATION(WS_vtError;Is text;SOAP output)
+SOAP DECLARATION(WS_viRestrictions;Is integer;SOAP output)
+SOAP DECLARATION(WS_vtAllowPartPayment;Is text;SOAP output)
+
+$String:="End WS_GetAgreementInfoNoPW"+Char(13)
+$String:=$String+"WS_vtStorerName: "+WS_vtStorerName+Char(13)
+$String:=$String+"WS_vdLastBillDate: "+String(WS_vdLastBillDate)+Char(13)
+$String:=$String+"WS_vdNextDueDate: "+String(WS_vdNextDueDate)+Char(13)
+$String:=$String+"WS_vrDueNowAmt: "+String(WS_vrDueNowAmt)+Char(13)
+$String:=$String+"WS_vrNextDueAmt: "+String(WS_vrNextDueAmt)+Char(13)
+$String:=$String+"WS_vrTotalDueAmt: "+String(WS_vrTotalDueAmt)+Char(13)
+$String:=$String+"WS_vrLastBillAmt: "+String(WS_vrLastBillAmt)+Char(13)
+$String:=$String+"WS_vtEmailAddress: "+WS_vtEmailAddress+Char(13)
+$String:=$String+"WS_vtError: "+WS_vtError+Char(13)
+$String:=$String+"WS_viRestrictions: "+String(WS_viRestrictions)+Char(13)
+$String:=$String+"WS_vtAllowPartPayment: "+WS_vtAllowPartPayment+Char(13)
+
+ReadOnlyAll 
+UnloadAll 
+
+WSRecordLog ($String)

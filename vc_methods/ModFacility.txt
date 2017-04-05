@@ -1,0 +1,243 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: ModFacility
+// Description
+//
+// This method updates the facility code for all records in Storman wiht the new facility code
+//
+// Parameters
+// ----------------------------------------------------
+
+//SDD 29/11/13 Modified so that it will work on a MV server as it now queries rather than using all records
+//SDD 29/11/13 Obviously needs to be used with care
+
+//ConfirmTwo ("WARNING! You are able to change the facility code from "+$1+" to "+$2+" are you sure you want to continue?";"Yes";"No")
+
+//If (OK=1)
+
+C_LONGINT($i)
+C_TEXT($1;$2;$Facility;$OldFacility)
+$CurrentUser:=SetSyncUser ("Sync";3)
+$Facility:=$2
+$OldFacility:=$1
+READ WRITE(*)
+//If (Size of array(<>asSiteCodes)=1)  //This will not work on a site with multiple facilities
+$Pos:=Find in array(<>asSiteCodes;$1)
+If ($Pos>0)
+<>asSiteCodes{$Pos}:=$2
+End if 
+If (<>sFacility=<>sHOFacility)
+<>sHOFacility:=$2
+<>sFacility:=$2
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>sHOFacility;<>sHOFacility)
+VARIABLE TO VARIABLE(-1;<>sFacility;<>sFacility)
+End if 
+Else 
+<>sFacility:=$2
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>sFacility;<>sFacility)
+End if 
+End if 
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>asSiteCodes;<>asSiteCodes)
+$process:=Execute on server("InitNextPrimaryKeys";400000;"InitNextPrimaryKeys")
+End if 
+InitNextPrimaryKeys 
+//End if 
+QUERY([UnitType];[UnitType]RUnitType=$OldFacility+"@")
+APPLY TO SELECTION([UnitType];[UnitType]RUnitType:=$Facility+[UnitType]UnitTypeCode)
+QUERY([MarketingTypes];[MarketingTypes]Facility=$OldFacility)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Facility:=$Facility)
+Open window(20;50;300;150;0;Get localized string("Progress"))
+QUERY([Unit];[Unit]RUnitNo=$OldFacility+"@")
+For ($i;1;Records in selection([Unit]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Unit")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Unit]))+"     ")
+[Unit]RUnitNo:=$Facility+[Unit]UnitNo
+[Unit]UnitTypeCode:=$Facility+Substring([Unit]UnitTypeCode;6)
+If ([Unit]AgreeNo>"")
+[Unit]AgreeNo:=$Facility+Substring([Unit]AgreeNo;6)
+End if 
+If ([Unit]ReservedTo>"")
+[Unit]ReservedTo:=$Facility+Substring([Unit]ReservedTo;6)
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+QUERY([Agreement];[Agreement]RAgreeNo=$OldFacility+"@")
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Agreement")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"     ")
+[Agreement]RAgreeNo:=$Facility+[Agreement]AgreeNo
+[Agreement]CustomerCode:=$Facility+Substring([Agreement]CustomerCode;6)
+[Agreement]BillingPlanCode:=$Facility+Substring([Agreement]BillingPlanCode;6)
+[Agreement]ContactNo:=$Facility+Substring([Agreement]ContactNo;6)
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=$OldFacility+"@")
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AnalysisCode:=$Facility+Substring([OtherChgs]AnalysisCode;6))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AgreeNo:=$Facility+Substring([OtherChgs]AgreeNo;6))
+QUERY([Trxs];[Trxs]AgreeNo=$OldFacility+"@")
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Transaction")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs]))+"     ")
+[Trxs]AgreeNo:=$Facility+Substring([Trxs]AgreeNo;6)
+If ([Trxs]CustomerCode=($OldFacility+"@"))
+[Trxs]CustomerCode:=$Facility+Substring([Trxs]CustomerCode;6)
+End if 
+If ([Trxs]AnalysisCode=($OldFacility+"@"))
+[Trxs]AnalysisCode:=$Facility+Substring([Trxs]AnalysisCode;6)
+End if 
+[Trxs]MiscDetls:=Replace string([Trxs]MiscDetls;$OldFacility;$Facility;*)
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+QUERY([Reservation];[Reservation]RReserveNo=$OldFacility+"@")
+For ($i;1;Records in selection([Reservation]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Reservation")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Reservation]))+"     ")
+[Reservation]RReserveNo:=$Facility+[Reservation]ReserveNo
+[Reservation]CustomerCode:=$Facility+Substring([Reservation]CustomerCode;6)
+[Reservation]ContactNo:=$Facility+Substring([Reservation]ContactNo;6)
+SAVE RECORD([Reservation])
+NEXT RECORD([Reservation])
+End for 
+QUERY([UnitHistory];[UnitHistory]UnitNo=$OldFacility+"@")
+For ($i;1;Records in selection([UnitHistory]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("UnitHistory")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"     ")
+[UnitHistory]UnitNo:=$Facility+Substring([UnitHistory]UnitNo;6)
+[UnitHistory]AgreeNo:=$Facility+Substring([UnitHistory]AgreeNo;6)
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=$OldFacility+"@")
+For ($i;1;Records in selection([MerchPlan]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("MerchPlan")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([MerchPlan]))+"     ")
+[MerchPlan]MerchPlanID:=$Facility+Substring([MerchPlan]MerchPlanID;6)
+[MerchPlan]AnalysisCodes:=Replace string([MerchPlan]AnalysisCodes;$OldFacility;$Facility)
+If ([MerchPlan]DiscountAnalysis#"")
+[MerchPlan]DiscountAnalysis:=$Facility+Substring([MerchPlan]DiscountAnalysis;6)
+End if 
+SAVE RECORD([MerchPlan])
+NEXT RECORD([MerchPlan])
+End for 
+QUERY([Promotions];[Promotions]PromoCode=$OldFacility+"@")
+For ($i;1;Records in selection([Promotions]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Promotions")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Promotions]))+"     ")
+[Promotions]PromoCode:=$Facility+Substring([Promotions]PromoCode;6)
+If ([Promotions]BillingPlanCode#"")
+[Promotions]BillingPlanCode:=$Facility+Substring([Promotions]BillingPlanCode;6)
+End if 
+If ([Promotions]AnalysisCode#"")
+[Promotions]AnalysisCode:=$Facility+Substring([Promotions]AnalysisCode;6)
+End if 
+SAVE RECORD([Promotions])
+NEXT RECORD([Promotions])
+End for 
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=$OldFacility+"@")
+For ($i;1;Records in selection([PromotionHistory]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("PromotionHistory")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([PromotionHistory]))+"     ")
+[PromotionHistory]AgreeNo:=$Facility+Substring([PromotionHistory]AgreeNo;6)
+[PromotionHistory]RefAgreeNo:=$Facility+Substring([PromotionHistory]RefAgreeNo;6)
+SAVE RECORD([PromotionHistory])
+NEXT RECORD([PromotionHistory])
+End for 
+QUERY([Letters];[Letters]AgreeNo=$OldFacility+"@";*)
+QUERY([Letters]; | ;[Letters]ContactNo=$OldFacility+"@")
+For ($i;1;Records in selection([Letters]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Letters")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Letters]))+"     ")
+If ([Letters]AgreeNo=($OldFacility+"@"))
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$Facility+Substring([Letters]AgreeNo;6))
+End if 
+If ([Letters]ContactNo=($OldFacility+"@"))
+APPLY TO SELECTION([Letters];[Letters]ContactNo:=$Facility+Substring([Letters]ContactNo;6))
+End if 
+SAVE RECORD([Letters])
+NEXT RECORD([Letters])
+End for 
+CLOSE WINDOW
+QUERY([Customer];[Customer]CustomerCode=$OldFacility+"@")
+APPLY TO SELECTION([Customer];[Customer]CustomerCode:=$Facility+Substring([Customer]CustomerCode;6))
+QUERY([Analysis];[Analysis]Code=$OldFacility+"@")
+APPLY TO SELECTION([Analysis];[Analysis]Code:=$Facility+Substring([Analysis]Code;6))
+QUERY([BillPlan];[BillPlan]Code=$OldFacility+"@")
+APPLY TO SELECTION([BillPlan];[BillPlan]Code:=$Facility+Substring([BillPlan]Code;6))
+QUERY([Notices];[Notices]FacilityCode=$OldFacility)
+APPLY TO SELECTION([Notices];[Notices]FacilityCode:=$Facility)
+QUERY([Activity];[Activity]FacilityCode=$OldFacility)
+APPLY TO SELECTION([Activity];[Activity]FacilityCode:=$Facility)
+QUERY([Contacts];[Contacts]ContactNo=$OldFacility+"@")
+For ($i;1;Records in selection([Contacts]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("[Contacts")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Contacts]))+"     ")
+[Contacts]Facility:=$Facility
+[Contacts]ContactNo:=$Facility+Substring([Contacts]ContactNo;6)
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+End for 
+//APPLY TO SELECTION([Contacts];[Contacts]Facility:=$Facility)
+//APPLY TO SELECTION([Contacts];[Contacts]ContactNo:=$Facility+Substring([Contacts]ContactNo;6))
+//QUERY([GateLog];[GateLog]CustCode="")
+//DELETE SELECTION([GateLog])
+QUERY([GateLog];[GateLog]CustCode=$OldFacility+"@")
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$Facility+Substring([GateLog]CustCode;6))
+//QUERY([PhotosCards];[PhotosCards]Code="")
+//DELETE SELECTION([PhotosCards])
+QUERY([PhotosCards];[PhotosCards]Code=$OldFacility+"@")
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=$Facility+Substring([PhotosCards]Code;6))
+QUERY([NotesHistory];[NotesHistory]CustomerCode=$OldFacility+"@")
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$Facility+Substring([NotesHistory]CustomerCode;6))
+QUERY([NotesHistory];[NotesHistory]ContactNo=$OldFacility+"@")
+APPLY TO SELECTION([NotesHistory];[NotesHistory]ContactNo:=$Facility+Substring([NotesHistory]ContactNo;6))
+QUERY([Boat];[Boat]RUnitNo=$OldFacility+"@")
+APPLY TO SELECTION([Boat];[Boat]RUnitNo:=$Facility+Substring([Boat]RUnitNo;6))
+QUERY([InsuranceRates];[InsuranceRates]Facility=$OldFacility)
+APPLY TO SELECTION([InsuranceRates];[InsuranceRates]Facility:=$Facility)
+QUERY([Pictures];[Pictures]Facility=$OldFacility)
+APPLY TO SELECTION([Pictures];[Pictures]Facility:=$Facility)
+QUERY([Quote];[Quote]ContactNo=$OldFacility+"@")
+APPLY TO SELECTION([Quote];[Quote]ContactNo:=$Facility+Substring([Quote]ContactNo;6))
+APPLY TO SELECTION([Quote];[Quote]AnalysisCode:=$Facility+Substring([Quote]AnalysisCode;6))
+APPLY TO SELECTION([Quote];[Quote]UnitTypeCode:=$Facility+Substring([Quote]UnitTypeCode;6))
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=$OldFacility+"@")
+APPLY TO SELECTION([UnitStatusTrx];[UnitStatusTrx]UnitNo:=$Facility+Substring([UnitStatusTrx]UnitNo;6))
+APPLY TO SELECTION([UnitStatusTrx];[UnitStatusTrx]OldNo:=$Facility+Substring([UnitStatusTrx]OldNo;6))
+QUERY([UserLogins];[UserLogins]Facility=$OldFacility+"@")
+APPLY TO SELECTION([UserLogins];[UserLogins]Facility:=$Facility)
+QUERY([Utilities];[Utilities]FacilityCode=$OldFacility+"@")
+APPLY TO SELECTION([Utilities];[Utilities]FacilityCode:=$Facility)
+APPLY TO SELECTION([Utilities];[Utilities]AgreeNo:=$Facility+Substring([Utilities]AgreeNo;6))
+APPLY TO SELECTION([Utilities];[Utilities]UnitNo:=$Facility+Substring([Utilities]UnitNo;6))
+QUERY([RCHistory];[RCHistory]UnitType=$OldFacility+"@")
+APPLY TO SELECTION([RCHistory];[RCHistory]UnitType:=$Facility+Substring([RCHistory]UnitType;6))
+QUERY([StaffPINS];[StaffPINS]FacilityCode=$OldFacility)
+APPLY TO SELECTION([StaffPINS];[StaffPINS]FacilityCode:=$Facility)
+QUERY([Shipping];[Shipping]FacilityCode=$OldFacility)
+APPLY TO SELECTION([Shipping];[Shipping]FacilityCode:=$Facility)
+
+READ ONLY(*)
+UnloadAll 
+SetFacility 
+<>sFacility:=$Facility
+SetSyncUser ("Sync";2)
+SetSyncUser ($CurrentUser)
+
+AlertMessage ("The Facility Code has been changed!")
+
+//Else 
+
+//End if 
+
+

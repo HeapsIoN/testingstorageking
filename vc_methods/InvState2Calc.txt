@@ -1,0 +1,245 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE(vTransDate)
+
+If ([Reservation]RReserveNo>"")
+$Reserve:=True
+Else 
+$Reserve:=False
+End if 
+
+If ([Facility]InvStatement=2)
+
+If (Undefined(tempSearchInvNo))
+tempSearchInvNo:=True
+End if 
+
+If (tempSearchInvNo=False)//Added by Hamid - 22/04/2015 - 8846
+USE SET("SearchInvNo")
+End if 
+
+
+$AgreeNo:=[Trxs]AgreeNo
+$Cust:=[Trxs]CustomerCode
+$InvNo:=[Trxs]InvNo
+$InvDate:=[Trxs]InvDate
+
+If ([Facility]InvUseAgrBalFwd)
+QUERY([Trxs];[Trxs]AgreeNo=$AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]InvNo<$InvNo)
+CREATE SET([Trxs];"Cust")
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]InvNo#0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+vBalFwdAmt:=Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Refunds
+USE SET("Cust")
+//If (sAll=1)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$InvDate;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+//QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+vBalFwdAmt:=vBalFwdAmt-Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Receipts
+USE SET("Cust")
+//If (sAll=1)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$InvDate;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//QUERY SELECTION([Transaction]; & ;[Transaction]Match=0)
+//[Customer]BalFwd:=0
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+//$totReceipts:=0
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+$totReceipts:=Round(Sum([Trxs]TotAmt);2)
+
+//Credits
+USE SET("Cust")
+//If (sAll=1)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]InvNo#0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+
+$totReceipts:=$totReceipts-Round(Sum([Trxs]TotAmt);2)
+
+$k:=0
+vBalFwdAmt:=Round(vBalFwdAmt-$totReceipts;2)
+//For ($j;1;Records in selection([Transaction]))
+//If ([Transaction]Charge=True)
+//[Customer]BalFwd:=[Customer]BalFwd+[Transaction]TotAmt
+//Else 
+//[Customer]BalFwd:=[Customer]BalFwd-[Transaction]TotAmt
+//$totReceipts:=$totReceipts+[Transaction]TotAmt
+//End if 
+//  `If (bAll#1)
+//[Transaction]Balance:=Round([Customer]BalFwd;2)
+//SAVE RECORD([Transaction])
+//  `End if 
+//NEXT RECORD([Transaction])
+//End for 
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date;*)
+//QUERY SELECTION([Transaction]; & ;[Transaction]Balance<=0)
+//QUERY SELECTION([Transaction];[Transaction]Charge=True)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+While ($totReceipts>=0)
+$k:=$k+1
+If ($k>Records in selection([Trxs]))
+//AlertMessage (Get localized string("Transactions for Customer ")+[Customer]CustomerCode+" not equal to Customer's balance. Balance brought forward may be inaccurate.")
+$totReceipts:=-1
+End if 
+If ([Trxs]Charge=True) & ([Trxs]TotAmt>=0)
+$totReceipts:=$totReceipts-[Trxs]TotAmt
+End if 
+If ([Trxs]Charge=False) & ([Trxs]TotAmt<0)
+$totReceipts:=$totReceipts+[Trxs]TotAmt
+End if 
+If ($totReceipts<0)
+vTransDate:=[Trxs]TrxDate
+End if 
+NEXT RECORD([Trxs])
+End while 
+
+[Agreement]FooterBalance:=[Agreement]FooterBalance-Round([Agreement]BalFwd;2)+vBalFwdAmt
+
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=$Cust;*)
+QUERY([Trxs]; & ;[Trxs]InvNo<$InvNo)
+
+CREATE SET([Trxs];"Cust")
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]InvNo#0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+vBalFwdAmt:=Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Refunds
+USE SET("Cust")
+//If (sAll=1)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$InvDate;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+//QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+vBalFwdAmt:=vBalFwdAmt-Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Receipts
+USE SET("Cust")
+//If (sAll=1)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$InvDate;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//QUERY SELECTION([Transaction]; & ;[Transaction]Match=0)
+//[Customer]BalFwd:=0
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+//$totReceipts:=0
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+$totReceipts:=Round(Sum([Trxs]TotAmt);2)
+
+//Credits
+USE SET("Cust")
+//If (sAll=1)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]InvNo#0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+
+$totReceipts:=$totReceipts-Round(Sum([Trxs]TotAmt);2)
+
+$k:=0
+vBalFwdAmt:=Round(vBalFwdAmt-$totReceipts;2)
+//For ($j;1;Records in selection([Transaction]))
+//If ([Transaction]Charge=True)
+//[Customer]BalFwd:=[Customer]BalFwd+[Transaction]TotAmt
+//Else 
+//[Customer]BalFwd:=[Customer]BalFwd-[Transaction]TotAmt
+//$totReceipts:=$totReceipts+[Transaction]TotAmt
+//End if 
+//  `If (bAll#1)
+//[Transaction]Balance:=Round([Customer]BalFwd;2)
+//SAVE RECORD([Transaction])
+//  `End if 
+//NEXT RECORD([Transaction])
+//End for 
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date;*)
+//QUERY SELECTION([Transaction]; & ;[Transaction]Balance<=0)
+//QUERY SELECTION([Transaction];[Transaction]Charge=True)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+While ($totReceipts>=0)
+$k:=$k+1
+If ($k>Records in selection([Trxs]))
+//AlertMessage (Get localized string("Transactions for Customer ")+[Customer]CustomerCode+" not equal to Customer's balance. Balance brought forward may be inaccurate.")
+$totReceipts:=-1
+
+End if 
+If ([Trxs]Charge=True) & ([Trxs]TotAmt>=0)
+$totReceipts:=$totReceipts-[Trxs]TotAmt
+End if 
+If ([Trxs]Charge=False) & ([Trxs]TotAmt<0)
+$totReceipts:=$totReceipts+[Trxs]TotAmt
+End if 
+If ($totReceipts<0)
+vTransDate:=[Trxs]TrxDate
+End if 
+NEXT RECORD([Trxs])
+End while 
+
+[Customer]FooterBalance:=[Customer]FooterBalance-Round([Customer]BalFwd;2)+vBalFwdAmt
+
+End if 
+vBalFwdStart:=vTransDate
+[Customer]BalFwd:=vBalFwdAmt
+[Agreement]BalFwd:=vBalFwdAmt
+[Customer]BalFwdDate:=vBalFwdStart
+[Agreement]BalFwdDate:=vBalFwdStart
+End if 
+
+If ($Reserve=False)
+UNLOAD RECORD([Reservation])
+Else 
+UNLOAD RECORD([Agreement])
+End if 

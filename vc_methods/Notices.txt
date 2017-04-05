@@ -1,0 +1,58 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD Added additional asDescription options 12 & 13 - for the future.  Daily Processing doesn't currently have ability to send notices from other tables
+C_LONGINT($Days;$LastPlan)
+If (PermissionsControl (9))
+SetFacility 
+DEFAULT TABLE([Notices])
+READ WRITE([Notices])
+FORM SET OUTPUT([Notices];"NoticesOut")
+FORM SET INPUT([Notices];"NoticesIn")
+ARRAY TEXT(asDescription;11)//SDD Need to change this to 13 when the fields below are added
+asDescription{1}:=Get localized string("Next Bill Date")//Field 11
+asDescription{2}:=Substring(Get localized string("Late Cycle Start Date:");1;Length(Get localized string("Late Cycle Start Date:"))-1)//Field 44
+asDescription{3}:=Get localized string("Insurance Expiry")//Field 16
+asDescription{4}:=Get localized string("Move In Date")//Field 3
+asDescription{5}:=Get localized string("Move Out Date")//Field 4
+asDescription{6}:=Get localized string("Rent Increase Date")//Field 41
+asDescription{7}:=Get localized string("CC Auth Expiry Date")//Field 61
+asDescription{8}:=Get localized string("Paid To Date")//Field 48
+asDescription{9}:=Get localized string("CC Expiry Date")//Field 70
+asDescription{10}:=Get localized string("Last Bill Date")//Field 20
+asDescription{11}:=Get localized string("Date of Birth:")//Field 75 - SDD This really should be in the Customer table I would have thought
+//asDescription{11}:="Date of Birth"
+//asDescription{12}:="Reservation Cancel Date"  //Reservation Field 9 but must check Field 8 - 1709
+//asDescription{13}:="Sales Inquiry Decline Date"  //Contacts Field 21 but must also check Field 20 - 1221
+bSort:=1
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+ORDER BY([Notices];[Notices]NoticePlanNo;>;[Notices]DaysAfter;>;[Notices]Description;>)
+ALL RECORDS([Agreement])//This is to ensure no undefined errors in creating letter formulae
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+<>tEditLetter:=True
+SET AUTOMATIC RELATIONS(True;True)//This is so a print merge can be done
+MODIFY SELECTION(*)
+SET AUTOMATIC RELATIONS(False;False)
+<>tEditLetter:=False
+ORDER BY([Notices];[Notices]NoticePlanNo;>;[Notices]DaysAfter;>;[Notices]RefDateField;>)
+$Days:=-999
+$RefDate:=0
+FIRST RECORD([Notices])
+$LastPlan:=[Notices]NoticePlanNo
+While (End selection([Notices])=False)
+If ($Days=[Notices]DaysAfter) & ($RefDate=[Notices]RefDateField) & ([Notices]DaysAfter#0)
+AlertMessage (Get localized string("Maintenance - Notice Plans1");Get localized string("OK");"http://my.storman.com/support/knowledgebase/errors/multiplenoticessametimingpoints.php?src=lm")
+ABORT
+End if 
+$Days:=[Notices]DaysAfter
+$RefDate:=[Notices]RefDateField
+NEXT RECORD([Notices])
+If ([Notices]NoticePlanNo#$LastPlan)
+$LastPlan:=[Notices]NoticePlanNo
+$Days:=-999
+$RefDate:=0
+End if 
+End while 
+READ ONLY([Notices])
+UNLOAD RECORD([Notices])
+End if 

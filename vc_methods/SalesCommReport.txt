@@ -1,0 +1,130 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SalesCommReport - A method to produce the sales reports from Storman Billing and calculate the commissions due - written by SDD 29/07/09
+C_LONGINT($i)
+//Dialog to collect Month date as well as commission rates, whether it is reprint of earlier report or not
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1//Last day of last month
+vMthDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vMthDate)
+vSalesPerson:=""
+If (OK=1)
+While (vSalesPerson="") & (OK=1)
+vSalesPerson:=RequestMessage (Get localized string("Enter Sales Person to Print for:"))
+If (OK=1)
+If (vSalesPerson#"ALL")
+$i:=Find in array(<>asUserNames;vSalesPerson)
+vSalesPerson:=""
+If ($i>0)
+vSalesPerson:=<>asUserNames{$i}
+Else 
+AlertMessage (Get localized string("Not a valid sales person name - please try again!"))
+End if 
+End if 
+End if 
+End while 
+If (OK=1)
+$i:=ConfirmThree (Get localized string("Print the Sales Comm or Sales Comm Collected or Comm Owing Report?");Get localized string("Commission");Get localized string("Collected");Get localized string("Owing");Get localized string("Cancel"))
+//print report
+READ WRITE([Trxs])
+Case of 
+: ($i=1)
+QUERY([Trxs];[Trxs]TrxDate>=GetDate (1;Month of(vMthDate);Year of(vMthDate));*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If (vSalesPerson="ALL")
+QUERY([Trxs]; & ;[Trxs]UserLogin#"Daily";*)
+QUERY([Trxs]; & ;[Trxs]UserLogin#"Sync")
+Else 
+QUERY([Trxs]; & ;[Trxs]Drawer=vSalesPerson)
+End if 
+APPLY TO SELECTION([Trxs];[Trxs]BankBranch:=Substring([Trxs]AgreeNo;1;5))
+//APPLY TO SELECTION([Transaction];[Transaction]CashReceived:=Month of([Transaction]TrxDate))
+ORDER BY([Trxs];[Trxs]BankBranch;>;[Trxs]TrxDate;>;[Trxs]TotAmt;<)
+//ORDER BY FORMULA([Transaction];Substring([Transaction]AgreeNo;1;5);>;[Transaction]TrxDate;>;[Transaction]TotAmt;<)
+//ORDER BY([Transaction];[Transaction]AgreeNo;>;[Transaction]TrxDate;>;[Transaction]TotAmt;<)
+BREAK LEVEL(1)
+ACCUMULATE([Trxs]SalesCost;vAmt2;vAmt3)
+FORM SET OUTPUT([Trxs];"SalesCommRpt")
+SetFacility 
+vTitle:=Get localized string("MenuMoreReportssalesCommissionReport")+" - "+vSalesPerson
+vLegend:=Get localized string("For the Month Ended")+" "+String(vMthDate;6)
+//If (<>iPrinttoFile=3)
+//ARRAY TEXT(aFieldNames;7)
+//aFieldNames{1}:="[Transaction]TrxDate"
+//aFieldNames{2}:="[Transaction]AgreeNo"
+//aFieldNames{3}:="OnDetail[Customer]CustomerName"
+//aFieldNames{4}:="[Transaction]Description"
+//aFieldNames{5}:="[Transaction]DateBanked"
+//aFieldNames{6}:="Paid"
+//aFieldNames{7}:="Amount"
+//vpTable:=->[Transaction]
+//CreateExcelReport (7;Records in selection([Transaction]);"MethodCalcSalesComm";[Facility]FacilityName;vLegend)  `no of columns on report, no of rows, lines to execute, header 1, header 2, footer
+//End if 
+PrintSelection ("L";->[Trxs])
+FORM SET OUTPUT([Trxs];"Output")
+APPLY TO SELECTION([Trxs];[Trxs]BankBranch:="")
+: ($i=2)
+QUERY([Trxs];[Trxs]TrxDate>=!2009-07-01!;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match>0;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked=!00-00-00!;*)
+If (vSalesPerson="ALL")
+QUERY([Trxs]; & ;[Trxs]UserLogin#"Daily";*)
+QUERY([Trxs]; & ;[Trxs]UserLogin#"Sync")
+Else 
+QUERY([Trxs]; & ;[Trxs]Drawer=vSalesPerson)
+End if 
+//CREATE SET([Transaction];"ToPay")
+APPLY TO SELECTION([Trxs];[Trxs]BankBranch:=Substring([Trxs]AgreeNo;1;5))//workaround until 4D fixes order by formula
+APPLY TO SELECTION([Trxs];[Trxs]CashReceived:=Month of([Trxs]TrxDate))
+//USE SET("ToPay")
+ORDER BY([Trxs];[Trxs]BankBranch;>;[Trxs]Drawer;>;[Trxs]CashReceived;>;[Trxs]TrxDate;>;[Trxs]TotAmt;<)
+//ORDER BY FORMULA([Transaction];Substring([Transaction]AgreeNo;1;5);>;Month of([Transaction]TrxDate);>;[Transaction]TrxDate;>;[Transaction]TotAmt;<)
+//ORDER BY([Transaction];[Transaction]AgreeNo;>;[Transaction]TrxDate;>;[Transaction]TotAmt;<)
+BREAK LEVEL(3)
+ACCUMULATE([Trxs]TotAmt;vAmt2)
+FORM SET OUTPUT([Trxs];"SalesCommPdRpt")
+vTitle:=Get localized string("Sales Commissions Collected")+" - "+vSalesPerson
+vLegend:=Get localized string("For the Month Ended")+" "+String(vMthDate;6)
+PrintSelection ("L";->[Trxs])
+FORM SET OUTPUT([Trxs];"Output")
+ConfirmTwo (Get localized string("Set this commission to paid as at date")+" "+String(vMthDate+1)+"?";Get localized string("No");Get localized string("Yes"))
+If (OK=0)// add a permission to report
+APPLY TO SELECTION([Trxs];[Trxs]DateBanked:=vMthDate+1)
+End if 
+APPLY TO SELECTION([Trxs];[Trxs]BankBranch:="")//workaround until 4D fixes order by formula
+APPLY TO SELECTION([Trxs];[Trxs]CashReceived:=0)
+: ($i=3)//Owing Report
+QUERY([Trxs];[Trxs]TrxDate>=!2009-07-01!;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Drawer#"";*)
+QUERY([Trxs]; & ;[Trxs]Drawer#"None")
+QUERY SELECTION([Trxs];[Trxs]DateBanked=!00-00-00!;*)
+QUERY SELECTION([Trxs]; | ;[Trxs]DateBanked>vMthDate)
+CREATE SET([Trxs];"ToPay")
+APPLY TO SELECTION([Trxs];[Trxs]BankBranch:=Substring([Trxs]AgreeNo;1;5))//workaround until 4D fixes order by formula
+APPLY TO SELECTION([Trxs];[Trxs]CashReceived:=Month of([Trxs]TrxDate))
+USE SET("ToPay")
+ORDER BY([Trxs];[Trxs]BankBranch;>;[Trxs]Drawer;>;[Trxs]CashReceived;>;[Trxs]TrxDate;>;[Trxs]TotAmt;<)//Facility,SalesPerson,TrxDate,TotAmt
+BREAK LEVEL(3)
+ACCUMULATE([Trxs]TotAmt;vAmt2)
+FORM SET OUTPUT([Trxs];"SalesCommPdRpt")
+vTitle:=Get localized string("Sales Commissions Owing")
+vLegend:=Get localized string("As at")+" "+String(vMthDate)
+PrintSelection ("P";->[Trxs])
+FORM SET OUTPUT([Trxs];"Output")
+APPLY TO SELECTION([Trxs];[Trxs]BankBranch:="")//workaround until 4D fixes order by formula
+APPLY TO SELECTION([Trxs];[Trxs]CashReceived:=0)
+QUERY SELECTION([Trxs];[Trxs]Drawer="Credit")
+If (Records in selection([Trxs])>0)
+ConfirmTwo (Get localized string("Clear items showing as 'Credit'?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+APPLY TO SELECTION([Trxs];[Trxs]Drawer:="None")
+End if 
+End if 
+End case 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+SetFacility 
+End if 
+End if 

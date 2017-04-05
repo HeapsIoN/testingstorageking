@@ -1,0 +1,994 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+ALL RECORDS([Facility])
+SELECTION TO ARRAY([Facility]FacilityCode;atFromCode;[Facility]FacilityName;atFromFacility)
+atFromFacility:=1
+atFromCode:=1
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([Facility];"FacilityChoice")
+CLOSE WINDOW($Window)
+
+If (OK=1)
+CREATE EMPTY SET([Facility];"Standard")
+For ($i;1;Records in selection([Facility]))
+If ([Facility]FacilityCode#atFromCode{atFromFacility})
+ADD TO SET([Facility];"Standard")
+End if 
+NEXT RECORD([Facility])
+End for 
+USE SET("Standard")
+FIRST RECORD([Facility])
+READ WRITE(*)
+
+ConfirmTwo ("Do you want to standardize billing plans?";"Yes";"No")
+
+If (OK=1)
+QUERY([BillPlan];[BillPlan]Code=atFromCode{atFromFacility}+"@")
+
+SELECTION TO ARRAY([BillPlan]Code;atBillPlanCode)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([BillPlan];[BillPlan]Code=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([BillPlan];[BillPlan]Inactive:=True)
+
+For ($j;1;Size of array(atBillPlanCode))
+$Code:=[Facility]FacilityCode+Substring(atBillPlanCode{$j};6)
+QUERY([BillPlan];[BillPlan]Code=$Code)
+If (Records in selection([BillPlan])>0)
+DELETE SELECTION([BillPlan])
+End if 
+
+QUERY([BillPlan];[BillPlan]Code=atBillPlanCode{$j})
+DUPLICATE RECORD([BillPlan])
+[BillPlan]PrimaryKey:=0
+[BillPlan]Code:=[Facility]FacilityCode+Substring([BillPlan]Code;6)
+SAVE RECORD([BillPlan])
+
+End for 
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize notices?";"Yes";"No")
+
+If (OK=1)
+QUERY([Notices];[Notices]FacilityCode=atFromCode{atFromFacility};*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+
+SELECTION TO ARRAY([Notices]Description;atNoticeCode;[Notices]NoticePlanNo;aiNoticePlanNo)
+DISTINCT VALUES([Notices]NoticePlanNo;aiNoticeNo)
+
+ARRAY TEXT(atMarketingSource;Size of array(aiNoticeNo))
+For ($t;1;Size of array(aiNoticeNo))
+atMarketingSource{$t}:=String(aiNoticeNo{$t})
+End for 
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode+"@";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+If (Records in selection([Notices])>0)
+DELETE SELECTION([Notices])
+End if 
+
+QUERY([Agreement];[Agreement]NoticePlanNo#Num(atMarketingSource{1});*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Agreement]; & ;[Agreement]NoticePlanNo#Num(atMarketingSource{$k});*)
+End for 
+
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Agreement])>0)
+DISTINCT VALUES([Agreement]NoticePlanNo;aiChangeNoticeNo)
+ARRAY TEXT(atChangeMarktSource;Size of array(aiChangeNoticeNo))
+For ($t;1;Size of array(aiChangeNoticeNo))
+atChangeMarktSource{$t}:=String(aiChangeNoticeNo{$t})
+End for 
+End if 
+
+Repeat 
+If (Records in selection([Agreement])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Agreement];[Agreement]NoticePlanNo=Num(atChangeMarktSource{$q}))
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Agreement];[Agreement]NoticePlanNo:=Num(atMarketingSource{atMarketingSource}))
+
+End if 
+End for 
+
+QUERY([Agreement];[Agreement]NoticePlanNo#Num(atMarketingSource{1});*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Agreement]; & ;[Agreement]NoticePlanNo#Num(atMarketingSource{$k});*)
+End for 
+
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Agreement])>0)
+DISTINCT VALUES([Agreement]NoticePlanNo;aiChangeNoticeNo)
+ARRAY TEXT(atChangeMarktSource;Size of array(aiChangeNoticeNo))
+For ($t;1;Size of array(aiChangeNoticeNo))
+atChangeMarktSource{$t}:=String(aiChangeNoticeNo{$t})
+End for 
+End if 
+End if 
+Until (Records in selection([Agreement])=0)
+
+For ($j;1;Size of array(atNoticeCode))
+QUERY([Notices];[Notices]Description=atNoticeCode{$j};*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=aiNoticePlanNo{$j};*)
+QUERY([Notices]; & ;[Notices]FacilityCode=atFromCode{atFromFacility}+"@";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+
+DUPLICATE RECORD([Notices])
+[Notices]PrimaryKey:=0
+[Notices]FacilityCode:=[Facility]FacilityCode
+SAVE RECORD([Notices])
+
+End for 
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize merchandise discount plans?";"Yes";"No")
+
+If (OK=1)
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=atFromCode{atFromFacility}+"@")
+
+SELECTION TO ARRAY([MerchPlan]MerchPlanID;atMerchPlan)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([MerchPlan];[MerchPlan]Inactive:=True)
+
+For ($j;1;Size of array(atMerchPlan))
+$Code:=[Facility]FacilityCode+Substring(atMerchPlan{$j};6)
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=$Code)
+If (Records in selection([MerchPlan])>0)
+DELETE SELECTION([MerchPlan])
+End if 
+
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=atMerchPlan{$j})
+DUPLICATE RECORD([MerchPlan])
+[MerchPlan]PrimaryKey:=0
+[MerchPlan]MerchPlanID:=[Facility]FacilityCode+Substring([MerchPlan]MerchPlanID;6)
+SAVE RECORD([MerchPlan])
+
+End for 
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize rent increase rules?";"Yes";"No")
+
+If (OK=1)
+QUERY([Notices];[Notices]FacilityCode=atFromCode{atFromFacility}+"@";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=True)
+
+SELECTION TO ARRAY([Notices]Description;atRuleNoticeCode)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode+"@";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=True)
+If (Records in selection([Notices])>0)
+DELETE SELECTION([Notices])
+End if 
+
+For ($j;1;Size of array(atRuleNoticeCode))
+QUERY([Notices];[Notices]Description=atRuleNoticeCode{$j};*)
+QUERY([Notices]; & ;[Notices]FacilityCode=atFromCode{atFromFacility}+"@";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=True)
+
+DUPLICATE RECORD([Notices])
+[Notices]PrimaryKey:=0
+[Notices]FacilityCode:=[Facility]FacilityCode
+SAVE RECORD([Notices])
+
+End for 
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize insurance rates?";"Yes";"No")
+If (OK=1)
+QUERY([InsuranceRates];[InsuranceRates]Facility=atFromCode{atFromFacility}+"@")
+
+SELECTION TO ARRAY([InsuranceRates]StartValue;atInsRate)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([InsuranceRates];[InsuranceRates]Facility=[Facility]FacilityCode+"@")
+If (Records in selection([InsuranceRates])>0)
+DELETE SELECTION([InsuranceRates])
+End if 
+
+For ($j;1;Size of array(atInsRate))
+QUERY([InsuranceRates];[InsuranceRates]StartValue=atInsRate{$j};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([InsuranceRates])
+[InsuranceRates]PrimaryKey:=0
+[InsuranceRates]Facility:=[Facility]FacilityCode
+SAVE RECORD([InsuranceRates])
+
+End for 
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize marketing sources?";"Yes";"No")
+If (OK=1)
+QUERY([MarketingTypes];[MarketingTypes]Facility=atFromCode{atFromFacility}+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MS")
+
+SELECTION TO ARRAY([MarketingTypes]Description;atMarketingSource)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MS")
+If (Records in selection([MarketingTypes])>0)
+DELETE SELECTION([MarketingTypes])
+End if 
+
+For ($j;1;Size of array(atMarketingSource))
+QUERY([MarketingTypes];[MarketingTypes]Description=atMarketingSource{$j};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MS";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([MarketingTypes])
+[MarketingTypes]PrimaryKey:=0
+[MarketingTypes]Facility:=[Facility]FacilityCode
+SAVE RECORD([MarketingTypes])
+
+End for 
+
+QUERY([Customer];[Customer]MarketSrce#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]MarketSrce#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]MarketSrce;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Customer])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Customer];[Customer]MarketSrce=atChangeMarktSource{$q};*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Customer];[Customer]MarketSrce:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Customer];[Customer]MarketSrce#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]MarketSrce#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]MarketSrce;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Customer])=0)
+
+QUERY([Contacts];[Contacts]MarketSrce#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]MarketSrce#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]MarketSrce;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Contacts])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Contacts];[Contacts]MarketSrce=atChangeMarktSource{$q};*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Contacts];[Contacts]MarketSrce:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Contacts];[Contacts]MarketSrce#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]MarketSrce#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]MarketSrce;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Contacts])=0)
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize customer types?";"Yes";"No")
+If (OK=1)
+QUERY([MarketingTypes];[MarketingTypes]Facility=atFromCode{atFromFacility}+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT")
+
+SELECTION TO ARRAY([MarketingTypes]Description;atMarketingSource)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT")
+If (Records in selection([MarketingTypes])>0)
+DELETE SELECTION([MarketingTypes])
+End if 
+
+For ($j;1;Size of array(atMarketingSource))
+QUERY([MarketingTypes];[MarketingTypes]Description=atMarketingSource{$j};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([MarketingTypes])
+[MarketingTypes]PrimaryKey:=0
+[MarketingTypes]Facility:=[Facility]FacilityCode
+SAVE RECORD([MarketingTypes])
+
+End for 
+
+QUERY([Customer];[Customer]CustType#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]CustType#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]CustType;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Customer])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Customer];[Customer]CustType=atChangeMarktSource{$q};*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Customer];[Customer]CustType:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Customer];[Customer]CustType#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]CustType#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]CustType;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Customer])=0)
+
+QUERY([Contacts];[Contacts]CustType#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]CustType#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]CustType;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Contacts])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Contacts];[Contacts]CustType=atChangeMarktSource{$q};*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Contacts];[Contacts]CustType:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Contacts];[Contacts]CustType#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]CustType#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]CustType;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Contacts])=0)
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize business types?";"Yes";"No")
+If (OK=1)
+QUERY([MarketingTypes];[MarketingTypes]Facility=atFromCode{atFromFacility}+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="BT")
+
+SELECTION TO ARRAY([MarketingTypes]Description;atMarketingSource)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="BT")
+If (Records in selection([MarketingTypes])>0)
+DELETE SELECTION([MarketingTypes])
+End if 
+
+For ($j;1;Size of array(atMarketingSource))
+QUERY([MarketingTypes];[MarketingTypes]Description=atMarketingSource{$j};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="BT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([MarketingTypes])
+[MarketingTypes]PrimaryKey:=0
+[MarketingTypes]Facility:=[Facility]FacilityCode
+SAVE RECORD([MarketingTypes])
+
+End for 
+
+QUERY([Customer];[Customer]BusType#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]BusType#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]BusType;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Customer])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Customer];[Customer]BusType=atChangeMarktSource{$q};*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Customer];[Customer]BusType:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Customer];[Customer]BusType#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]BusType#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]BusType;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Customer])=0)
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize reason for move in?";"Yes";"No")
+If (OK=1)
+QUERY([MarketingTypes];[MarketingTypes]Facility=atFromCode{atFromFacility}+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MW")
+
+SELECTION TO ARRAY([MarketingTypes]Description;atMarketingSource)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MW")
+If (Records in selection([MarketingTypes])>0)
+DELETE SELECTION([MarketingTypes])
+End if 
+
+For ($j;1;Size of array(atMarketingSource))
+QUERY([MarketingTypes];[MarketingTypes]Description=atMarketingSource{$j};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MW";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([MarketingTypes])
+[MarketingTypes]PrimaryKey:=0
+[MarketingTypes]Facility:=[Facility]FacilityCode
+SAVE RECORD([MarketingTypes])
+
+End for 
+
+QUERY([Customer];[Customer]ReasonRenting#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]ReasonRenting#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]ReasonRenting;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Customer])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Customer];[Customer]ReasonRenting=atChangeMarktSource{$q};*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Customer];[Customer]ReasonRenting:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Customer];[Customer]ReasonRenting#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]ReasonRenting#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]ReasonRenting;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Customer])=0)
+
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize reason for move out?";"Yes";"No")
+If (OK=1)
+QUERY([MarketingTypes];[MarketingTypes]Facility=atFromCode{atFromFacility}+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RM")
+
+SELECTION TO ARRAY([MarketingTypes]Description;atMarketingSource)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RM")
+If (Records in selection([MarketingTypes])>0)
+DELETE SELECTION([MarketingTypes])
+End if 
+
+For ($j;1;Size of array(atMarketingSource))
+QUERY([MarketingTypes];[MarketingTypes]Description=atMarketingSource{$j};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RM";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([MarketingTypes])
+[MarketingTypes]PrimaryKey:=0
+[MarketingTypes]Facility:=[Facility]FacilityCode
+SAVE RECORD([MarketingTypes])
+
+End for 
+
+QUERY([Customer];[Customer]ReasonMoveout#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]ReasonMoveout#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]ReasonMoveout;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Customer])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Customer];[Customer]ReasonMoveout=atChangeMarktSource{$q};*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Customer];[Customer]ReasonMoveout:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Customer];[Customer]ReasonMoveout#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Customer]; & ;[Customer]ReasonMoveout#atMarketingSource{$k};*)
+End for 
+
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If (Records in selection([Customer])>0)
+DISTINCT VALUES([Customer]ReasonMoveout;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Customer])=0)
+
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize contact categories?";"Yes";"No")
+If (OK=1)
+QUERY([MarketingTypes];[MarketingTypes]Facility=atFromCode{atFromFacility}+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CC")
+
+SELECTION TO ARRAY([MarketingTypes]Description;atMarketingSource)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CC")
+If (Records in selection([MarketingTypes])>0)
+DELETE SELECTION([MarketingTypes])
+End if 
+
+For ($j;1;Size of array(atMarketingSource))
+QUERY([MarketingTypes];[MarketingTypes]Description=atMarketingSource{$j};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([MarketingTypes])
+[MarketingTypes]PrimaryKey:=0
+[MarketingTypes]Facility:=[Facility]FacilityCode
+SAVE RECORD([MarketingTypes])
+
+End for 
+
+QUERY([Contacts];[Contacts]Category#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]Category#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]Category;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Contacts])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Contacts];[Contacts]Category=atChangeMarktSource{$q};*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Contacts];[Contacts]Category:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Contacts];[Contacts]Category#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]Category#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]Category;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Contacts])=0)
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize reason for decline?";"Yes";"No")
+If (OK=1)
+QUERY([MarketingTypes];[MarketingTypes]Facility=atFromCode{atFromFacility}+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RD")
+
+SELECTION TO ARRAY([MarketingTypes]Description;atMarketingSource)
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode+"@";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RD")
+If (Records in selection([MarketingTypes])>0)
+DELETE SELECTION([MarketingTypes])
+End if 
+
+For ($j;1;Size of array(atMarketingSource))
+QUERY([MarketingTypes];[MarketingTypes]Description=atMarketingSource{$j};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RD";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=atFromCode{atFromFacility}+"@")
+
+DUPLICATE RECORD([MarketingTypes])
+[MarketingTypes]PrimaryKey:=0
+[MarketingTypes]Facility:=[Facility]FacilityCode
+SAVE RECORD([MarketingTypes])
+
+End for 
+
+QUERY([Contacts];[Contacts]ReasonDeclined#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]ReasonDeclined#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]ReasonDeclined;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Contacts])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Contacts];[Contacts]ReasonDeclined=atChangeMarktSource{$q};*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Contacts];[Contacts]ReasonDeclined:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Contacts];[Contacts]ReasonDeclined#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Contacts]; & ;[Contacts]ReasonDeclined#atMarketingSource{$k};*)
+End for 
+
+QUERY([Contacts]; & ;[Contacts]ContactNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Contacts])>0)
+DISTINCT VALUES([Contacts]ReasonDeclined;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Contacts])=0)
+
+QUERY([Reservation];[Reservation]ReasonDeclined#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Reservation]; & ;[Reservation]ReasonDeclined#atMarketingSource{$k};*)
+End for 
+
+QUERY([Reservation]; & ;[Reservation]RReserveNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Reservation])>0)
+DISTINCT VALUES([Reservation]ReasonDeclined;atChangeMarktSource)
+End if 
+
+Repeat 
+If (Records in selection([Reservation])>0)
+vTitle:="Standard Facility Setup"
+$Window:=Open window((Screen width/2)-256;(Screen height/2)-150;(Screen width/2)+256;(Screen height/2)+150;Movable dialog box;"Standard Facility Setup")
+DIALOG([MarketingTypes];"MarketStandard")
+CLOSE WINDOW($Window)
+
+For ($q;1;Size of array(FromFacilityBox))
+If (FromFacilityBox{$q}=True)
+QUERY([Reservation];[Reservation]ReasonDeclined=atChangeMarktSource{$q};*)
+QUERY([Reservation]; & ;[Reservation]RReserveNo=[Facility]FacilityCode+"@")
+
+APPLY TO SELECTION([Reservation];[Reservation]ReasonDeclined:=atMarketingSource{atMarketingSource})
+
+End if 
+End for 
+
+QUERY([Reservation];[Reservation]ReasonDeclined#atMarketingSource{1};*)
+
+For ($k;2;Size of array(atMarketingSource))
+QUERY([Reservation]; & ;[Reservation]ReasonDeclined#atMarketingSource{$k};*)
+End for 
+
+QUERY([Reservation]; & ;[Reservation]RReserveNo=[Facility]FacilityCode+"@")
+
+If (Records in selection([Reservation])>0)
+DISTINCT VALUES([Reservation]ReasonDeclined;atChangeMarktSource)
+End if 
+End if 
+Until (Records in selection([Reservation])=0)
+
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+ConfirmTwo ("Do you want to standardize analysis codes?";"Yes";"No")
+
+If (OK=1)
+QUERY([Analysis];[Analysis]Code=atFromCode{atFromFacility}+"@")
+
+SELECTION TO ARRAY([Analysis]Code;atAnalysisCode)
+
+$Start:=999
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([Analysis];[Analysis]Inactive:=True)
+APPLY TO SELECTION([Analysis];[Analysis]InvItem:=False)
+APPLY TO SELECTION([Analysis];[Analysis]InvQtyonHand:=0)
+APPLY TO SELECTION([Analysis];[Analysis]SpecialOptions:=0)
+
+For ($j;1;Size of array(atAnalysisCode))
+$Code:=[Facility]FacilityCode+Substring(atAnalysisCode{$j};6)
+QUERY([Analysis];[Analysis]Code=$Code)
+If (Records in selection([Analysis])>0)
+$Rent:=[Facility]FacilityCode+"RF"
+$Late:=[Facility]FacilityCode+"LF"
+$Deposit:=[Facility]FacilityCode+"DP"
+$Card:=[Facility]FacilityCode+"CRD"
+$Insurance:=[Facility]FacilityCode+"IN"
+$Cash:=[Facility]FacilityCode+"CA"
+$Cheque:=[Facility]FacilityCode+"CH"
+If ([Analysis]Code=$Rent) | ([Analysis]Code=$Late) | ([Analysis]Code=$Deposit) | ([Analysis]Code=$Insurance) | ([Analysis]Code=$Card) | ([Analysis]Code=$Cash) | ([Analysis]Code=$Cheque)
+DELETE SELECTION([Analysis])
+Else 
+For ($s;1;Records in selection([Analysis]))
+SET QUERY DESTINATION(Into variable;$Found)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+String($Start))
+While ($Found>0)
+$Start:=$Start-1
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+String($Start))
+End while 
+SET QUERY DESTINATION(Into current selection)
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code)
+APPLY TO SELECTION([Trxs];[Trxs]AnalysisCode:=[Facility]FacilityCode+String($Start))
+[Analysis]Code:=[Facility]FacilityCode+String($Start)
+$Start:=$Start-1
+SAVE RECORD([Analysis])
+NEXT RECORD([Analysis])
+End for 
+End if 
+End if 
+
+QUERY([Analysis];[Analysis]Code=atAnalysisCode{$j})
+DUPLICATE RECORD([Analysis])
+[Analysis]PrimaryKey:=0
+[Analysis]Code:=[Facility]FacilityCode+Substring([Analysis]Code;6)
+SAVE RECORD([Analysis])
+
+End for 
+
+NEXT RECORD([Facility])
+End for 
+End if 
+
+USE SET("Standard")
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+
+If (Application type=4D Remote mode)
+$Proc:=Execute on server("SyncCreateAllProc";64000;"SyncCreateAll7";7;[Facility]FacilityCode;False;True;False;False;False;False)
+Else 
+SyncCreateAllProc (7;[Facility]FacilityCode;False;True;False;False;False;False)
+End if 
+
+If (Application type=4D Remote mode)
+$Proc:=Execute on server("SyncCreateAllProc";64000;"SyncCreateAll8";8;[Facility]FacilityCode;False;True;False;False;False;False)
+Else 
+SyncCreateAllProc (8;[Facility]FacilityCode;False;True;False;False;False;False)
+End if 
+
+If (Application type=4D Remote mode)
+$Proc:=Execute on server("SyncCreateAllProc";64000;"SyncCreateAll9";9;[Facility]FacilityCode;False;True;False;False;False;False)
+Else 
+SyncCreateAllProc (9;[Facility]FacilityCode;False;True;False;False;False;False)
+End if 
+
+If (Application type=4D Remote mode)
+$Proc:=Execute on server("SyncCreateAllProc";64000;"SyncCreateAll15";15;[Facility]FacilityCode;False;True;False;False;False;False)
+Else 
+SyncCreateAllProc (15;[Facility]FacilityCode;False;True;False;False;False;False)
+End if 
+
+If (Application type=4D Remote mode)
+$Proc:=Execute on server("SyncCreateAllProc";64000;"SyncCreateAll34";34;[Facility]FacilityCode;False;True;False;False;False;False)
+Else 
+SyncCreateAllProc (34;[Facility]FacilityCode;False;True;False;False;False;False)
+End if 
+
+If (Application type=4D Remote mode)
+$Proc:=Execute on server("SyncCreateAllProc";64000;"SyncCreateAll35";35;[Facility]FacilityCode;False;True;False;False;False;False)
+Else 
+SyncCreateAllProc (35;[Facility]FacilityCode;False;True;False;False;False;False)
+End if 
+
+NEXT RECORD([Facility])
+End for 
+
+CLEAR SET("Standard")
+READ ONLY(*)
+UnloadAll 
+SetFacility 
+
+End if 

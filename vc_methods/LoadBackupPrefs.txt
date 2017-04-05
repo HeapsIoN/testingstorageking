@@ -1,0 +1,172 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)
+C_DATE(vdBackupLastBackupDate)
+C_TEXT(vAutoBackupNote;vtBackupDataFileName;vtBackupDestinationFolder;vtSchedulerFrequency;vtSchedulerDailyEvery;vtBackupFilename;vtBackupPrefsErrorMessage;vtSetNumberValue)
+C_TIME(vtmBackupLastBackupTime;vtmDailyBackupTime)
+C_BOOLEAN(vbBackupActive;vbBackupStructure;vbBackupDatafile;vbPerformBackup;vbSetNumberEnable)
+
+$0:=False
+
+vbBackupActive:=False
+vtBackupPrefsErrorMessage:=""
+vtSchedulerDailyEvery:="0"
+vtSchedulerWeeklyEvery:="0"
+If (ParseBackupPrefsFile )
+vtBackupDataFileName:=GetArrayPairValue ("Preferences4D/Backup/DataBase/DatabaseName/Item1";->vtaBackupParameter;->vtaBackupParameterValue)
+If (vtBackupDataFileName="")
+vtBackupDataFileName:="Information unavailable"
+End if 
+vtLastBackupDestinationFolder:=GetPath (GetArrayPairValue ("Preferences4D/Backup/DataBase/LastBackupPath/Item1";->vtaBackupParameter;->vtaBackupParameterValue))
+vtBackupDestinationFolder:=GetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";->vtaBackupParameter;->vtaBackupParameterValue)
+
+
+If (vtBackupDestinationFolder="/") | (Substring(vtBackupDestinationFolder;1;1)="/")
+vtBackupDestinationFolder:=vtLastBackupDestinationFolder
+End if 
+
+
+If (vtBackupDestinationFolder="")
+vtBackupDestinationFolder:="Information unavailable"
+End if 
+$LastBackupDate1:=GetArrayPairValue ("Preferences4D/Backup/DataBase/LastBackupDate/Item1";->vtaBackupParameter;->vtaBackupParameterValue)
+$LastBackupDate2:=Substring($LastBackupDate1;1;Position("T";$LastBackupDate1)-1)
+vdBackupLastBackupDate:=Date(Substring($LastBackupDate2;9;2)+"/"+Substring($LastBackupDate2;6;2)+"/"+Substring($LastBackupDate2;1;4))
+$LastBackupTime1:=GetArrayPairValue ("Preferences4D/Backup/DataBase/LastBackupTime/Item1";->vtaBackupParameter;->vtaBackupParameterValue)
+$LastBackupTime2:=Substring($LastBackupTime1;Position("T";$LastBackupTime1)+1)
+vtmBackupLastBackupTime:=Time($LastBackupTime2)
+vtSchedulerFrequency:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";->vtaBackupParameter;->vtaBackupParameterValue)
+If (vtSchedulerFrequency="Never")
+vbBackupActive:=False
+Else 
+vbBackupActive:=True
+End if 
+vtBackupFilename:=GetArrayPairValue ("Preferences4D/Backup/DataBase/LastBackupPath/Item1";->vtaBackupParameter;->vtaBackupParameterValue)
+
+If (vtBackupFilename="")
+vtBackupFilename:="Information unavailable"
+Else 
+$posBeraket:=Position("[";vtBackupFilename)
+$posBeraket:=$posBeraket-1
+$start:=1
+$valTemp:=0
+$lengthfound:=Length(vtBackupFilename)
+If (Application type=4D Remote mode)
+$look:="\\"//for windows server
+Else 
+If (<>IPLATFORM=3)
+$look:="\\"
+Else 
+$look:=":"
+End if 
+End if 
+
+Repeat 
+$vlResult:=Position($look;vtBackupFilename;$start;$lengthfound)
+$start:=$start+$lengthfound
+$lengthfound:=Length(vtBackupFilename)-$start
+If ($vlResult>0)
+$valTemp:=$vlResult
+End if 
+Until ($vlResult=0)
+$posBeraket:=$posBeraket-$valTemp
+$valTemp:=$valTemp+1
+$FacilitySubStr:=Substring(vtBackupFilename;$valTemp;$posBeraket)
+$currentdatafile:=Substring(Data file;1;Length(Data file)-4)
+//If ($currentdatafile#$FacilitySubStr)
+//
+//vbInitialBackup:=False
+//VDBACKUPLASTBACKUPDATE:=!00/00/0000!
+//vdBackupNextBackupDate:=!00/00/0000!
+//vtmBackupLastBackupTime:=?00:00:00?
+//vtmBackupNextBackupTime:=?00:00:00?
+//vtBackupDestinationFolder:=""
+//[Facility]BackupFolder:=""
+//vtBackupDataFileName:=""
+//vtBackupFilename:="Information unavailable"
+//vtLogFilename:=""
+//OBJECT SET VISIBLE(vbInitialBackup;true)
+//End if 
+
+End if 
+
+//Hourly
+vtSchedulerHourlyEvery:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Hourly/Every";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerHourlyHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Hourly/StartingAt";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmHourlyBackupTime:=Time(Substring($vtSchedulerHourlyHourTemp;Position("T";$vtSchedulerHourlyHourTemp)+1))
+
+//Daily
+vtSchedulerDailyEvery:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Daily/Every";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerDailyHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Daily/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmDailyBackupTime:=Time(Substring($vtSchedulerDailyHourTemp;Position("T";$vtSchedulerDailyHourTemp)+1))
+
+//Weekly
+vtSchedulerWeeklyEvery:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Every";->vtaBackupParameter;->vtaBackupParameterValue)
+
+vtMondaySave:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Save";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerMondayHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmMondayBackupTime:=Time(Substring($vtSchedulerMondayHourTemp;Position("T";$vtSchedulerMondayHourTemp)+1))
+
+vtTuesdaySave:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Save";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerTuesdayHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmTuesdayBackupTime:=Time(Substring($vtSchedulerTuesdayHourTemp;Position("T";$vtSchedulerTuesdayHourTemp)+1))
+
+vtWednesdaySave:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Save";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerWednesdayHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmWednesdayBackupTime:=Time(Substring($vtSchedulerWednesdayHourTemp;Position("T";$vtSchedulerWednesdayHourTemp)+1))
+
+vtThursdaySave:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Save";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerThursdayHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmThursdayBackupTime:=Time(Substring($vtSchedulerThursdayHourTemp;Position("T";$vtSchedulerThursdayHourTemp)+1))
+
+vtFridaySave:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Save";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerFridayHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmFridayBackupTime:=Time(Substring($vtSchedulerFridayHourTemp;Position("T";$vtSchedulerFridayHourTemp)+1))
+
+vtSaturdaySave:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Save";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerSaturdayHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmSaturdayBackupTime:=Time(Substring($vtSchedulerSaturdayHourTemp;Position("T";$vtSchedulerSaturdayHourTemp)+1))
+
+vtSundaySave:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Save";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerSundayHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmSundayBackupTime:=Time(Substring($vtSchedulerSundayHourTemp;Position("T";$vtSchedulerSundayHourTemp)+1))
+
+//Monthly
+vtSchedulerMonthlyEvery:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Every";->vtaBackupParameter;->vtaBackupParameterValue)
+$vtSchedulerMonthlyHourTemp:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Hour";->vtaBackupParameter;->vtaBackupParameterValue)
+vtmMonthlyBackupTime:=Time(Substring($vtSchedulerMonthlyHourTemp;Position("T";$vtSchedulerMonthlyHourTemp)+1))
+vtmMonthlyDay:=GetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Day";->vtaBackupParameter;->vtaBackupParameterValue)
+
+vbBackupStructure:=StringToBoolean (GetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeStructureFile";->vtaBackupParameter;->vtaBackupParameterValue))
+vbBackupDatafile:=StringToBoolean (GetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeDataFile";->vtaBackupParameter;->vtaBackupParameterValue))
+vtBackupLogFilename:=GetArrayPairValue ("Preferences4D/Backup/DataBase/LastBackupLogPath/Item1";->vtaBackupParameter;->vtaBackupParameterValue)
+vbSetNumberEnable:=StringToBoolean (GetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";->vtaBackupParameter;->vtaBackupParameterValue))
+vtSetNumberValue:=GetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";->vtaBackupParameter;->vtaBackupParameterValue)
+If (vtBackupLogFilename="")
+vtBackupLogFilename:="Information unavailable"
+End if 
+vtLogFilename:=GetArrayPairValue ("LogFileName";->vtaBackupParameter;->vtaBackupParameterValue)
+If (vtLogFilename="")
+vtLogFilename:="Information unavailable"
+End if 
+vtBackupStatus:=GetArrayPairValue ("LastBackupStatus";->vtaBackupParameter;->vtaBackupParameterValue)
+GET BACKUP INFORMATION(Next backup date;vdBackupNextBackupDate;vtmBackupNextBackupTime)
+vbPerformBackup:=StringToBoolean (GetArrayPairValue ("PerformBackup";->vtaBackupParameter;->vtaBackupParameterValue))
+//Commented by Hamid 24 Oct 2014
+//If ($currentdatafile#$FacilitySubStr)
+//vbInitialBackup:=False
+//VDBACKUPLASTBACKUPDATE:=!00/00/0000!
+//vdBackupNextBackupDate:=!00/00/0000!
+//vtmBackupLastBackupTime:=?00:00:00?
+//vtmBackupNextBackupTime:=?00:00:00?
+//vtBackupDestinationFolder:=""
+//[Facility]BackupFolder:=""
+//vtBackupDataFileName:=""
+//vtBackupFilename:="Information unavailable"
+//vtLogFilename:=""
+//OBJECT SET VISIBLE(vbInitialBackup;True)
+//End if 
+
+
+$0:=True
+
+End if 

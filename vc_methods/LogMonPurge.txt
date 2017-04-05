@@ -1,0 +1,105 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): Jonathon & Eugene
+// Date and time: 16/12/15, 11:44:02
+// ----------------------------------------------------
+// Method: LogMonPurge
+// Description
+//
+// This method is used to clear out old records at a MV,
+// based on the [Facility]DeleteLogDays.
+//
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT($DaysToPurge)
+C_TEXT($TempUser)
+
+SetFacility 
+
+$TempUser:=<>sCurrentUser
+<>sCurrentUser:="Server"
+READ WRITE([UserLogins])
+////////////////  fb 10250
+READ WRITE([UnitStatusTrx])
+READ WRITE([EventLog])
+READ WRITE([GateLog])
+READ WRITE([Letters])
+
+/////////////////
+
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+[UserLogins]RecordStatus:=3
+SAVE RECORD([UserLogins])
+Set4DUser ([UserLogins]Name)
+
+If (<>sProduct="M@")
+QUERY([Facility];[Facility]SortOrder<0)
+Else 
+If (<>sFacility="KE@")
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+End if 
+End if 
+
+
+If (Records in selection([Facility])=1)
+
+If ([Facility]DeleteLogDays>10)
+
+$DaysToPurge:=[Facility]DeleteLogDays
+SyncRecordLog ("Data purge started! Days to be deleted: "+String($DaysToPurge))
+
+QUERY([EventLog];[EventLog]EventDate<=(Current date-$DaysToPurge))
+If (Records in selection([EventLog])>0)
+SyncRecordLog ("Eventlog records to be purged: "+String(Records in selection([EventLog])))
+If (Locked([EventLog]))
+SyncRecordLog ("Eventlog locked, cannot purge")//if this doesn't work, read write and/or for loop?
+LOCKED BY([EventLog];$Process;$4DUser;$SessionUser;$ProcessName)
+SyncRecordLog ("EventLog table Locked "+String($Process)+" "+$4DUser+" "+$SessionUser+" "+$ProcessName)
+End if 
+DELETE SELECTION([EventLog])
+End if 
+
+QUERY([GateLog];[GateLog]GateDate<=(Current date-$DaysToPurge))
+If (Records in selection([GateLog])>0)
+SyncRecordLog ("Gatelog records to be purged: "+String(Records in selection([GateLog])))
+If (Locked([GateLog]))
+SyncRecordLog ("Gatelog locked, cannot purge")
+LOCKED BY([GateLog];$Process;$4DUser;$SessionUser;$ProcessName)
+SyncRecordLog ("GateLog table Locked "+String($Process)+" "+$4DUser+" "+$SessionUser+" "+$ProcessName)
+
+End if 
+DELETE SELECTION([GateLog])
+End if 
+
+QUERY([UnitStatusTrx];[UnitStatusTrx]DateUnitStatus<=(Current date-$DaysToPurge))
+If (Records in selection([UnitStatusTrx])>0)
+SyncRecordLog ("UnitStatusTrx records to be purged: "+String(Records in selection([UnitStatusTrx])))
+If (Locked([UnitStatusTrx]))
+SyncRecordLog ("UnitStatusTrx locked, cannot purge")
+LOCKED BY([UnitStatusTrx];$Process;$4DUser;$SessionUser;$ProcessName)
+SyncRecordLog ("UnitStatusTrx table Locked "+String($Process)+" "+$4DUser+" "+$SessionUser+" "+$ProcessName)
+
+End if 
+DELETE SELECTION([UnitStatusTrx])
+End if 
+
+End if 
+End if 
+
+<>sCurrentUser:=$TempUser
+[UserLogins]RecordStatus:=0
+SAVE RECORD([UserLogins])
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+If (Records in selection([UserLogins])=1)
+Set4DUser ([UserLogins]Name)
+End if 
+READ ONLY([UserLogins])
+READ ONLY([UnitStatusTrx])
+READ ONLY([EventLog])
+READ ONLY([GateLog])
+READ ONLY([Letters])
+SyncRecordLog ("Data purge complete!")
+
+UnloadAll 

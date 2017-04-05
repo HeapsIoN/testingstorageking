@@ -1,0 +1,55 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 17/11/11 Changes to allow reversal of MOD's as well.  N.B. Changes to SyncUpdateRecord as well
+C_LONGINT($i)
+ConfirmTwo ("This will either UNDO a MOD event by setting the record back to what it was, or add records from a DEL event. All events must be of the same type. Continue?")
+If (OK=1)
+ConfirmTwo ("Do you want to reverse all records in selection or just those highlighted";"Highlighted";"All")
+If (OK=1)
+USE SET("UserSet")
+End if 
+ConfirmTwo ("Are these events MOD or DEL?";"MOD";"DEL")
+If (OK=1)
+ConfirmTwo ("When UNDOing these MOD's do you want to create a new event that will get synced?";"Yes";"No")
+If (OK=1)
+$RecordStatus:=0
+Else 
+$RecordStatus:=2
+End if 
+$Mod:=True
+QUERY SELECTION([EventLog];[EventLog]EventType="MOD")
+Else 
+$RecordStatus:=2
+$Mod:=False
+QUERY SELECTION([EventLog];[EventLog]EventType="DEL")
+End if 
+CREATE SET([EventLog];"ToProcess")
+CREATE EMPTY SET([EventLog];"Received")
+$CurrentUser:=SetSyncUser ("Sync";$RecordStatus)
+If (Records in selection([UserLogins])=1) & ([UserLogins]RecordStatus=$RecordStatus)
+//ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+Open window(20;50;400;150;0;Get localized string("Progress"))
+For ($i;1;Records in selection([EventLog]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([EventLog]))+"    ")
+USE SET("ToProcess")
+GOTO SELECTED RECORD([EventLog];$i)
+If ($Mod)
+SyncUpdateRecord (False;"MOD";True)
+Else 
+SyncUpdateRecord (False;"ADD")
+End if 
+NEXT RECORD([EventLog])
+End for 
+CLOSE WINDOW
+USE SET("Received")
+If (Records in selection([EventLog])>0)
+AlertMessage (Get localized string("The remaining EventLog items could not be processed because of an error."))
+Else 
+USE SET("ToProcess")
+End if 
+Else 
+End if 
+SetSyncUser ($CurrentUser)//Set it back
+CLEAR SET("Received")
+CLEAR SET("ToProcess")
+End if 

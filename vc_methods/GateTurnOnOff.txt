@@ -1,0 +1,88 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$Pos;$Ticks)
+Case of 
+: (<>iSetGate=1)//Turn Gate On
+//If ([Facility]GateviaModem=True)
+//FloatMessage ("Start Gate")
+//Open window(20;50;300;300;0;Get localized string("Progress"))
+//GOTO XY(0;0)
+//MESSAGE(Get localized string("Setting up modem")+"..."+Char(13))
+//SET CHANNEL([Facility]SerialPortNo;[Facility]ModemSettings)
+//vCity:=[Facility]GateModemInit
+//Repeat 
+//$Pos:=Position(Char(13);vCity;0;*)
+//If ($Pos>0)
+//vLeg7:=Substring(vCity;1;$Pos-1)
+//vCity:=Substring(vCity;$Pos+1)
+//If (Character code(Substring(vCity;1;1))<32)
+//vCity:=Substring(vCity;2)
+//End if 
+//Else 
+//vLeg7:=vCity
+//End if 
+//If (Length(vLeg7)>2)
+//SEND PACKET(vLeg7+Char(13))
+//MESSAGE(vLeg7+Char(13))
+//$i:=0
+//If (vLeg7="ATDT@")
+//$j:=200
+//Else 
+//$j:=10
+//End if 
+//vLeg7:=""
+//Repeat 
+//$i:=$i+1
+//$Ticks:=Tickcount
+//Repeat 
+//IDLE
+//Until (Tickcount>($Ticks+10))
+//RECEIVE BUFFER(vLeg7)
+//Until (Length(vLeg7)>2) | ($i>$j)
+//vLeg7:=Replace string(Replace string(vLeg7;Char(10);"";*);Char(13);"";*)
+//If (Length(vLeg7)>=2)
+//MESSAGE(vLeg7+Char(13))
+//If (vLeg7="NO DIAL@")
+//$Pos:=-98
+//End if 
+//Else 
+//MESSAGE(Get localized string("No response from modem!")+Char(13))
+//$Pos:=-99
+//End if 
+//End if 
+//Until ($Pos<=0)
+//If ($Pos<=-90)
+//If ($Pos=-98)
+//AlertMessage (Get localized string("The modem could not detect dial tone. Please ensure modem is plugged in and try again")+"...")
+//End if 
+//<>iSetGate:=-99
+//MESSAGE(Get localized string("Setup of modem failed!"))
+//Else 
+//<>iSetGate:=0
+//MESSAGE(Get localized string("Setup of modem complete!"))
+//End if 
+//$Ticks:=Tickcount
+//Repeat 
+//IDLE
+//Until (Tickcount>($Ticks+120))  //Pause 2 sec to view
+//CLOSE WINDOW
+//  //SET CHANNEL(11)  `GateAction 
+//End if 
+<>iSetGate:=0
+: (<>iSetGate=9)//Turn Gate Off
+//If ([Facility]GateviaModem=True)
+//  //SET CHANNEL([System]SerialPortNo;[System]ModemSettings)
+//  //Baud=9600,Data bits 7,Stop bits 1,Parity Even
+//  //10+1024+16384+12288
+//FloatMessage ("Stop Gate")
+//SEND PACKET("+++")
+//DELAY PROCESS(Current process;90)  //Wait for 1 second to take effect
+//SEND PACKET("ATH"+Char(13))  //INSERT DISCONNECT MODEM CODE HERE
+//SET CHANNEL(11)
+//<>tGateOn:=False  //Must be turned off immediately to avoid GateLog running again
+//Else 
+AlertMessage (Get localized string("WARNING - Turning off the gate system means that no communication will be made to the gate system!"))
+//End if 
+<>iSetGate:=0
+Else 
+//Do Nothing
+End case 

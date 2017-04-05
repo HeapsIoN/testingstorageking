@@ -1,0 +1,132 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 04/05/11, 13:49:14
+// ----------------------------------------------------
+// Method: CTSelection
+// Description
+// Selects customer type and prompts to change unit type values if appropriate
+//
+// Parameters
+// ----------------------------------------------------
+
+If (asList2>0) & (asList2{asList2}#"<None>")
+[Customer]CustType:=asList2{asList2}
+End if 
+If (asList2>0) & (asList2{asList2}="<None>")
+[Customer]CustType:=""
+End if 
+
+If (<>sFacility="KE@") & ([Customer]CustType="National Account")
+OBJECT SET VISIBLE(vName;False)
+OBJECT SET VISIBLE(bEditCust;False)
+OBJECT SET VISIBLE(asAccountList;True)
+OBJECT SET VISIBLE(asDepartmentList;True)
+Else 
+OBJECT SET VISIBLE(vName;True)
+OBJECT SET VISIBLE(bEditCust;True)
+OBJECT SET VISIBLE(asAccountList;False)
+OBJECT SET VISIBLE(asDepartmentList;False)
+End if 
+
+$Change:=False
+RELATE ONE([Agreement]BillingPlanCode)
+
+If (Records in selection([UnitAgree])=0)
+FIRST RECORD([Unit])
+
+For ($i;1;Records in selection([Unit]))
+Case of 
+: ([BillPlan]CasualBilling)
+If (CalculateBaseRate (2;0)#[Unit]DailyRentedValue)
+$Change:=True
+End if 
+: ([BillPlan]PlanPeriod="Week")
+If (CalculateBaseRate (2;0)#[Unit]WeeklyRentedValue)
+$Change:=True
+End if 
+Else 
+If (CalculateBaseRate (2;0)#[Unit]RentedValue)
+$Change:=True
+End if 
+End case 
+NEXT RECORD([Unit])
+End for 
+
+Else 
+FIRST RECORD([UnitAgree])
+
+For ($i;1;Records in selection([UnitAgree]))
+Case of 
+: ([BillPlan]CasualBilling)
+If (CalculateBaseRate (2;0)#[UnitAgree]DailyRentedValue)
+$Change:=True
+End if 
+: ([BillPlan]PlanPeriod="Week")
+If (CalculateBaseRate (2;0)#[UnitAgree]WeeklyRentedValue)
+$Change:=True
+End if 
+Else 
+If (CalculateBaseRate (2;0)#[UnitAgree]RentedValue)
+$Change:=True
+End if 
+End case 
+NEXT RECORD([UnitAgree])
+End for 
+
+End if 
+If ($Change) & ([Facility]CTPrices)
+ConfirmTwo (Get localized string("Do you wish to reset the rented values of the units to the defaults for this customer type?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+If (Records in selection([UnitAgree])=0)
+FIRST RECORD([Unit])
+
+For ($i;1;Records in selection([Unit]))
+Case of 
+: ([BillPlan]CasualBilling)
+[Unit]DailyRentedValue:=CalculateBaseRate (2;0)
+[Unit]DailyNewRent:=[Unit]DailyRentedValue
+: ([BillPlan]PlanPeriod="Week")
+[Unit]WeeklyRentedValue:=CalculateBaseRate (2;0)
+[Unit]WeeklyNewRentAmt:=[Unit]WeeklyRentedValue
+Else 
+[Unit]RentedValue:=CalculateBaseRate (2;0)
+[Unit]NewRentAmt:=[Unit]RentedValue
+End case 
+[Unit]ExtraDisc:=0
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+Else 
+FIRST RECORD([UnitAgree])
+
+For ($i;1;Records in selection([UnitAgree]))
+Case of 
+: ([BillPlan]CasualBilling)
+[UnitAgree]DailyRentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]DailyNewRentAmt:=[UnitAgree]DailyRentedValue
+: ([BillPlan]PlanPeriod="Week")
+[UnitAgree]WeeklyRentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]WeeklyNewRentAmt:=[UnitAgree]WeeklyRentedValue
+Else 
+[UnitAgree]RentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]NewRentAmt:=[UnitAgree]RentedValue
+End case 
+[UnitAgree]ExtraDisc:=0
+SAVE RECORD([UnitAgree])
+NEXT RECORD([UnitAgree])
+End for 
+End if 
+End if 
+End if 
+
+bChange:=True
+bNewChange:=True
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]CustType)
+
+If (Records in selection([MarketingTypes])=1)
+[Customer]Organization:=[MarketingTypes]Organization
+End if 

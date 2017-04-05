@@ -1,0 +1,345 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//TrainingFile - Reads Training.xml file and changes data in the Customer and Facility tables to stop customers getting test or training data
+//SDD 25/10/10 Added second line to customer seaches to speed up on subsequent launches
+//SDD 26/03/13 Improve performance by reducing number of SAVE RECORD's required on Customer and Contact
+//SDD 26/03/13 Added Progress Messages throughout
+
+
+C_LONGINT($WinRef)
+READ WRITE([Facility])
+READ WRITE([Customer])
+READ WRITE([Contacts])
+
+If (Application type#4D Server)
+$WinRef:=Open window(50;50;500;300;0;"Progress")
+End if 
+If (Test path name(<>sPreferencesPath+"Training.xml")=Is a document)
+If (Application type#4D Server)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Applying Training File Settings...")+"    ")
+End if 
+DOCUMENT TO BLOB(<>sPreferencesPath+"Training.xml";$Training)
+$xmlref:=DOM Parse XML variable($Training)
+
+$statement_xpath:="/Preferences4D/SyncOn"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$DetailSetting:=$value_t
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+If ($DetailSetting="False")
+[Facility]SyncingOn:=False
+[Facility]CentralAddress:=""
+Else 
+[Facility]SyncingOn:=True
+End if 
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+
+//Start of Customer & Contact Changes
+$CustomerEmail:="DONT"
+$statement_xpath:="/Preferences4D/CustEmail"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$CustomerEmail:=$value_t
+End if 
+
+$CustomerCC:="DONT"
+$statement_xpath:="/Preferences4D/CustCCNo"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$CustomerCC:=$value_t
+End if 
+
+$CustomerMobile:="DONT"
+$statement_xpath:="/Preferences4D/CustMobile"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$CustomerMobile:=$value_t
+End if 
+
+$CustomerBank:="DONT"
+$statement_xpath:="/Preferences4D/CustBank"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$CustomerBank:=$value_t
+End if 
+
+If ($CustomerEmail#"DONT")//SDD Do as much in one pass as possible to save reloading and saving of Customer and Contact records
+If (Application type#4D Server)
+GOTO XY(2;3)
+MESSAGE("Querying Customer Email Address              ")
+End if 
+QUERY([Customer];[Customer]EmailAddress>"";*)
+QUERY([Customer]; & ;[Customer]EmailAddress#$CustomerEmail)
+For ($i;1;Records in selection([Customer]))
+If (Application type#4D Server)
+GOTO XY(2;4)
+MESSAGE("Updating Customer "+String($i)+" of "+String(Records in selection([Customer]))+"         ")
+End if 
+[Customer]EmailAddress:=$CustomerEmail
+If ([Customer]MobilePhone#$CustomerMobile) & ($CustomerMobile#"DONT")
+[Customer]MobilePhone:=$CustomerMobile
+End if 
+
+//If (Tokenizer ([Customer]CCNo;False)#$CustomerCC) & ($CustomerCC#"DONT")
+//[Customer]CCNo:=Tokenizer ($CustomerCC;True)
+//End if 
+If (Decode256 #$CustomerCC) & ($CustomerCC#"DONT")
+Encode256 ($CustomerCC)
+End if 
+
+If ([Customer]BankAcct#$CustomerBank) & ($CustomerBank#"DONT")
+[Customer]BankAcct:=$CustomerBank
+End if 
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+If (Application type#4D Server)
+GOTO XY(2;3)
+MESSAGE("Querying Contacts Email Address              ")
+End if 
+QUERY([Contacts];[Contacts]EmailAddress>"";*)
+QUERY([Contacts]; & ;[Contacts]EmailAddress#$CustomerEmail)
+For ($i;1;Records in selection([Contacts]))
+If (Application type#4D Server)
+GOTO XY(2;4)
+MESSAGE("Updating Contact "+String($i)+" of "+String(Records in selection([Contacts]))+"         ")
+End if 
+[Contacts]EmailAddress:=$CustomerEmail
+If ([Contacts]MobilePhone#$CustomerMobile) & ($CustomerMobile#"DONT")
+[Contacts]MobilePhone:=$CustomerMobile
+End if 
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+End for 
+End if 
+
+If ($CustomerMobile#"DONT")
+If (Application type#4D Server)
+GOTO XY(2;3)
+MESSAGE("Querying Customer Mobile Phone              ")
+End if 
+QUERY([Customer];[Customer]MobilePhone>"";*)
+QUERY([Customer]; & ;[Customer]MobilePhone#$CustomerMobile)
+For ($i;1;Records in selection([Customer]))
+If (Application type#4D Server)
+GOTO XY(2;4)
+MESSAGE("Updating Customer "+String($i)+" of "+String(Records in selection([Customer]))+"         ")
+End if 
+
+[Customer]MobilePhone:=$CustomerMobile
+//If (Tokenizer ([Customer]CCNo;False)#$CustomerCC) & ($CustomerCC#"DONT")
+//[Customer]CCNo:=Tokenizer ($CustomerCC;True)
+//End if 
+If (Decode256 #$CustomerCC) & ($CustomerCC#"DONT")
+Encode256 ($CustomerCC)
+End if 
+
+If ([Customer]BankAcct#$CustomerBank) & ($CustomerBank#"DONT")
+[Customer]BankAcct:=$CustomerBank
+End if 
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+If (Application type#4D Server)
+GOTO XY(2;3)
+MESSAGE("Querying Contacts Mobile Phone              ")
+End if 
+QUERY([Contacts];[Contacts]MobilePhone>"";*)
+QUERY([Contacts]; & ;[Contacts]MobilePhone#$CustomerMobile)
+For ($i;1;Records in selection([Contacts]))
+If (Application type#4D Server)
+GOTO XY(2;4)
+MESSAGE("Updating Contact "+String($i)+" of "+String(Records in selection([Contacts]))+"         ")
+End if 
+[Contacts]MobilePhone:=$CustomerMobile
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+End for 
+End if 
+
+If ($CustomerCC#"DONT")
+If (Application type#4D Server)
+GOTO XY(2;3)
+MESSAGE("Querying Customer Credit Card              ")
+End if 
+//QUERY([Customer];[Customer]CCNo>"";*)
+//QUERY([Customer]; & ;[Customer]CCNo#Tokenizer ($CustomerCC;True))
+ALL RECORDS([Customer])
+
+For ($i;1;Records in selection([Customer]))
+If (Application type#4D Server)
+GOTO XY(2;4)
+MESSAGE("Updating Customer "+String($i)+" of "+String(Records in selection([Customer]))+"         ")
+End if 
+//[Customer]CCNo:=Tokenizer ($CustomerCC;True)
+If ([Customer]CCNo#"")
+Encode256 ($CustomerCC)
+End if 
+
+If ([Customer]BankAcct#$CustomerBank) & ($CustomerBank#"DONT")
+[Customer]BankAcct:=$CustomerBank
+End if 
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+End if 
+
+If ($CustomerBank#"DONT")
+If (Application type#4D Server)
+GOTO XY(2;3)
+MESSAGE("Querying Customer Bank Acct              ")
+End if 
+QUERY([Customer];[Customer]BankAcct>"";*)
+QUERY([Customer]; & ;[Customer]BankAcct#$CustomerBank)
+For ($i;1;Records in selection([Customer]))
+If (Application type#4D Server)
+GOTO XY(2;4)
+MESSAGE("Updating Customer "+String($i)+" of "+String(Records in selection([Customer]))+"         ")
+End if 
+[Customer]BankAcct:=$CustomerBank
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+End if 
+If (Application type#4D Server)
+GOTO XY(2;3)
+MESSAGE("Updating Facility Preferences              ")
+End if 
+$statement_xpath:="/Preferences4D/FacilityEmail"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+[Facility]EmailAddress:=$value_t
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+
+$statement_xpath:="/Preferences4D/GateOn"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$DetailSetting:=$value_t
+
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+If ($DetailSetting="False")
+[Facility]GateOnStart:=False
+Else 
+[Facility]GateOnStart:=True
+End if 
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+
+$statement_xpath:="/Preferences4D/CCDetails"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$CCDetails:=$value_t
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+[Facility]MerchantDetails:="Advam,"+$CCDetails+",1,90,False,"
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+
+$statement_xpath:="/Preferences4D/SMSDetails"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$SMSDetails:=$value_t
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+[Facility]SMSAcctDetails:=$SMSDetails
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+
+$statement_xpath:="/Preferences4D/DDDetails"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$DDDetails:=$value_t
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+[Facility]DDAccountDetails:=$DDDetails+","
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+
+$statement_xpath:="/Preferences4D/BankRecSite"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$BankRecSite:=$value_t
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+If ($BankRecSite="False")
+[Facility]CentralSite:=True
+Else 
+[Facility]CentralSite:=False
+End if 
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+
+End if 
+
+
+$statement_xpath:="/Preferences4D/MaxDaysPassword"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$MaxDaysPassword:=Num($value_t)
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+[Facility]MaxDaysPassword:=$MaxDaysPassword
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+
+End if 
+
+DOM CLOSE XML($xmlref)
+
+ALL RECORDS([Facility])
+For ($i;1;Records in selection([Facility]))
+[Facility]Max4DClients:=10
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+FIRST RECORD([Facility])
+End if 
+If (Application type#4D Server)
+CLOSE WINDOW($WinRef)
+End if 
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Contacts])
+UNLOAD RECORD([Contacts])

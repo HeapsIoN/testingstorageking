@@ -1,0 +1,452 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//Unit to find if specified
+C_BOOLEAN($2)//If set to true it means it was just converted
+SET MENU BAR(3)
+READ ONLY(*)
+SetCurrentUser 
+DEFAULT TABLE([Reservation])
+SetFacility 
+READ WRITE([Customer])
+READ WRITE([Reservation])
+READ WRITE([PhotosCards])
+READ WRITE([NotesHistory])
+READ WRITE([Letters])
+READ WRITE([Unit])
+vConverted:=False
+If (Count parameters>1)
+vConverted:=$2
+End if 
+FORM SET OUTPUT([Reservation];"ReservationOut")
+FORM SET INPUT([Reservation];"ReservationIn")
+bPrtRec:=0
+bEmailReceipt:=0
+viMatch:=0
+ARRAY TEXT(aDesc;3)
+aDesc{1}:=Get localized string("Customer Code")
+aDesc{2}:=Get localized string("Reservation Number")
+aDesc{3}:=Get localized string("Unit Number")
+aDesc:=1
+ARRAY TEXT(aPageNo;7)
+aPageNo{1}:=Get localized string("Reservation")
+aPageNo{2}:=Get localized string("Customer Info")+" 1"
+aPageNo{3}:=Get localized string("Customer Info")+" 2"
+aPageNo{4}:=Get localized string("Notices & Photos")
+aPageNo{5}:=Get localized string("Transactions")
+aPageNo{6}:=Get localized string("Notes & Alerts")
+aPageNo{7}:=Get localized string("Event Log")
+//If (<>sFacility="KE@") Removed till CC is active
+//INSERT IN ARRAY(aPageNo;8)
+//aPageNo{8}:="Responses & Story"
+//End if 
+ARRAY TEXT(asAgreemt;3)
+asAgreemt{1}:=Get localized string("All Reservations")
+asAgreemt{2}:=Get localized string("Active Reservations")
+asAgreemt{3}:=Get localized string("Inactive Reservations")
+asAgreemt:=2
+ARRAY TEXT(asSortby;4)
+asSortBy{1}:=Get localized string("Reserve No")
+asSortBy{2}:=Get localized string("Alpha Order")
+asSortBy{3}:=Get localized string("Exp MoveIn")
+asSortBy{4}:=<>vtUnitsCap+" "+Get localized string("No1")
+If ([Facility]AgreemtSortDefault<1) | ([Facility]AgreemtSortDefault>4)
+asSortBy:=1
+Else 
+asSortBy:=[Facility]AgreemtSortDefault
+End if 
+vLegend:=""
+//ARRAY TEXT(;asCountries;246)
+//asCountries{1}:="AFGHANISTAN"
+//asCountries{2}:="ÅLAND ISLANDS"
+//asCountries{3}:="ALBANIA"
+//asCountries{4}:="ALGERIA"
+//asCountries{5}:="AMERICAN SAMOA"
+//asCountries{6}:="ANDORRA"
+//asCountries{7}:="ANGOLA"
+//asCountries{8}:="ANGUILLA"
+//asCountries{9}:="ANTARCTICA"
+//asCountries{10}:="ANTIGUA AND BARBUDA"
+//asCountries{11}:="ARGENTINA"
+//asCountries{12}:="ARMENIA"
+//asCountries{13}:="ARUBA"
+//asCountries{14}:="AUSTRALIA"
+//asCountries{15}:="AUSTRIA"
+//asCountries{16}:="AZERBAIJAN"
+//asCountries{17}:="BAHAMAS"
+//asCountries{18}:="BAHRAIN"
+//asCountries{19}:="BANGLADESH"
+//asCountries{20}:="BARBADOS"
+//asCountries{21}:="BELARUS"
+//asCountries{22}:="BELGIUM"
+//asCountries{23}:="BELIZE"
+//asCountries{24}:="BENIN"
+//asCountries{25}:="BERMUDA"
+//asCountries{26}:="BHUTAN"
+//asCountries{27}:="BOLIVIA"
+//asCountries{28}:="BOSNIA AND HERZEGOVINA"
+//asCountries{29}:="BOTSWANA"
+//asCountries{30}:="BOUVET ISLAND"
+//asCountries{31}:="BRAZIL"
+//asCountries{32}:="BRITISH INDIAN OCEAN TERRITORY"
+//asCountries{33}:="BRUNEI DARUSSALAM"
+//asCountries{34}:="BULGARIA"
+//asCountries{35}:="BURKINA FASO"
+//asCountries{36}:="BURUNDI"
+//asCountries{37}:="CAMBODIA"
+//asCountries{38}:="CAMEROON"
+//asCountries{39}:="CANADA"
+//asCountries{40}:="CAPE VERDE"
+//asCountries{41}:="CAYMAN ISLANDS"
+//asCountries{42}:="CENTRAL AFRICAN REPUBLIC"
+//asCountries{43}:="CHAD"
+//asCountries{44}:="CHILE"
+//asCountries{45}:="CHINA"
+//asCountries{46}:="CHRISTMAS ISLAND"
+//asCountries{47}:="COCOS(KEELING)ISLANDS"
+//asCountries{48}:="COLOMBIA"
+//asCountries{49}:="COMOROS"
+//asCountries{50}:="CONGO"
+//asCountries{51}:="CONGO, THE DEMOCRATIC REPUBLIC OF THE"
+//asCountries{52}:="COOK ISLANDS"
+//asCountries{53}:="COSTA RICA"
+//asCountries{54}:="CÔTE D'IVOIRE"
+//asCountries{55}:="CROATIA"
+//asCountries{56}:="CUBA"
+//asCountries{57}:="CYPRUS"
+//asCountries{58}:="CZECH REPUBLIC"
+//asCountries{59}:="DENMARK"
+//asCountries{60}:="DJIBOUTI"
+//asCountries{61}:="DOMINICA"
+//asCountries{62}:="DOMINICAN REPUBLIC"
+//asCountries{63}:="ECUADOR"
+//asCountries{64}:="EGYPT"
+//asCountries{65}:="EL SALVADOR"
+//asCountries{66}:="EQUATORIAL GUINEA"
+//asCountries{67}:="ERITREA"
+//asCountries{68}:="ESTONIA"
+//asCountries{69}:="ETHIOPIA"
+//asCountries{70}:="FALKLAND ISLANDS(MALVINAS)"
+//asCountries{71}:="FAROE ISLANDS"
+//asCountries{72}:="FIJI"
+//asCountries{73}:="FINLAND"
+//asCountries{74}:="FRANCE"
+//asCountries{75}:="FRENCH GUIANA"
+//asCountries{76}:="FRENCH POLYNESIA"
+//asCountries{77}:="FRENCH SOUTHERN TERRITORIES"
+//asCountries{78}:="GABON"
+//asCountries{79}:="GAMBIA"
+//asCountries{80}:="GEORGIA"
+//asCountries{81}:="GERMANY"
+//asCountries{82}:="GHANA"
+//asCountries{83}:="GIBRALTAR"
+//asCountries{84}:="GREECE"
+//asCountries{85}:="GREENLAND"
+//asCountries{86}:="GRENADA"
+//asCountries{87}:="GUADELOUPE"
+//asCountries{88}:="GUAM"
+//asCountries{89}:="GUATEMALA"
+//asCountries{90}:="GUERNSEY"
+//asCountries{91}:="GUINEA"
+//asCountries{92}:="GUINEA-BISSAU"
+//asCountries{93}:="GUYANA"
+//asCountries{94}:="HAITI"
+//asCountries{95}:="HEARD ISLAND AND MCDONALD ISLANDS"
+//asCountries{96}:="HOLY SEE(VATICAN CITY STATE)"
+//asCountries{97}:="HONDURAS"
+//asCountries{98}:="HONG KONG"
+//asCountries{99}:="HUNGARY"
+//asCountries{100}:="ICELAND"
+//asCountries{101}:="INDIA"
+//asCountries{102}:="INDONESIA"
+//asCountries{103}:="IRAN, ISLAMIC REPUBLIC OF"
+//asCountries{104}:="IRAQ"
+//asCountries{105}:="IRELAND"
+//asCountries{106}:="ISLE OF MAN"
+//asCountries{107}:="ISRAEL"
+//asCountries{108}:="ITALY"
+//asCountries{109}:="JAMAICA"
+//asCountries{110}:="JAPAN"
+//asCountries{111}:="JERSEY"
+//asCountries{112}:="JORDAN"
+//asCountries{113}:="KAZAKHSTAN"
+//asCountries{114}:="KENYA"
+//asCountries{115}:="KIRIBATI"
+//asCountries{116}:="KOREA, DEMOCRATIC PEOPLE'S REPUBLIC OF"
+//asCountries{117}:="KOREA, REPUBLIC OF"
+//asCountries{118}:="KUWAIT"
+//asCountries{119}:="KYRGYZSTAN"
+//asCountries{120}:="LAO PEOPLE'S DEMOCRATIC REPUBLIC"
+//asCountries{121}:="LATVIA"
+//asCountries{122}:="LEBANON"
+//asCountries{123}:="LESOTHO"
+//asCountries{124}:="LIBERIA"
+//asCountries{125}:="LIBYAN ARAB JAMAHIRIYA"
+//asCountries{126}:="LIECHTENSTEIN"
+//asCountries{127}:="LITHUANIA"
+//asCountries{128}:="LUXEMBOURG"
+//asCountries{129}:="MACAO"
+//asCountries{130}:="MACEDONIA, THE FORMER YUGOSLAV REPUBLIC OF"
+//asCountries{131}:="MADAGASCAR"
+//asCountries{132}:="MALAWI"
+//asCountries{133}:="MALAYSIA"
+//asCountries{134}:="MALDIVES"
+//asCountries{135}:="MALI"
+//asCountries{136}:="MALTA"
+//asCountries{137}:="MARSHALL ISLANDS"
+//asCountries{138}:="MARTINIQUE"
+//asCountries{139}:="MAURITANIA"
+//asCountries{140}:="MAURITIUS"
+//asCountries{141}:="MAYOTTE"
+//asCountries{142}:="MEXICO"
+//asCountries{143}:="MICRONESIA, FEDERATED STATES OF"
+//asCountries{144}:="MOLDOVA, REPUBLIC OF"
+//asCountries{145}:="MONACO"
+//asCountries{146}:="MONGOLIA"
+//asCountries{147}:="MONTENEGRO"
+//asCountries{148}:="MONTSERRAT"
+//asCountries{149}:="MOROCCO"
+//asCountries{150}:="MOZAMBIQUE"
+//asCountries{151}:="MYANMAR"
+//asCountries{152}:="NAMIBIA"
+//asCountries{153}:="NAURU"
+//asCountries{154}:="NEPAL"
+//asCountries{155}:="NETHERLANDS"
+//asCountries{156}:="NETHERLANDS ANTILLES"
+//asCountries{157}:="NEW CALEDONIA"
+//asCountries{158}:="NEW ZEALAND"
+//asCountries{159}:="NICARAGUA"
+//asCountries{160}:="NIGER"
+//asCountries{161}:="NIGERIA"
+//asCountries{162}:="NIUE"
+//asCountries{163}:="NORFOLK ISLAND"
+//asCountries{164}:="NORTHERN MARIANA ISLANDS"
+//asCountries{165}:="NORWAY"
+//asCountries{166}:="OMAN"
+//asCountries{167}:="PAKISTAN"
+//asCountries{168}:="PALAU"
+//asCountries{169}:="PALESTINIAN TERRITORY, OCCUPIED"
+//asCountries{170}:="PANAMA"
+//asCountries{171}:="PAPUA NEW GUINEA"
+//asCountries{172}:="PARAGUAY"
+//asCountries{173}:="PERU"
+//asCountries{174}:="PHILIPPINES"
+//asCountries{175}:="PITCAIRN"
+//asCountries{176}:="POLAND"
+//asCountries{177}:="PORTUGAL"
+//asCountries{178}:="PUERTO RICO"
+//asCountries{179}:="QATAR"
+//asCountries{180}:="REUNION"
+//asCountries{181}:="ROMANIA"
+//asCountries{182}:="RUSSIAN FEDERATION"
+//asCountries{183}:="RWANDA"
+//asCountries{184}:="SAINT BARTHÉLEMY"
+//asCountries{185}:="SAINT HELENA"
+//asCountries{186}:="SAINT KITTS AND NEVIS"
+//asCountries{187}:="SAINT LUCIA"
+//asCountries{188}:="SAINT MARTIN"
+//asCountries{189}:="SAINT PIERRE AND MIQUELON"
+//asCountries{190}:="SAINT VINCENT AND THE GRENADINES"
+//asCountries{191}:="SAMOA"
+//asCountries{192}:="SAN MARINO"
+//asCountries{193}:="SAO TOME AND PRINCIPE"
+//asCountries{194}:="SAUDI ARABIA"
+//asCountries{195}:="SENEGAL"
+//asCountries{196}:="SERBIA"
+//asCountries{197}:="SEYCHELLES"
+//asCountries{198}:="SIERRA LEONE"
+//asCountries{199}:="SINGAPORE"
+//asCountries{200}:="SLOVAKIA"
+//asCountries{201}:="SLOVENIA"
+//asCountries{202}:="SOLOMON ISLANDS"
+//asCountries{203}:="SOMALIA"
+//asCountries{204}:="SOUTH AFRICA"
+//asCountries{205}:="SOUTH GEORGIA AND THE SOUTH SANDWICH ISLANDS"
+//asCountries{206}:="SPAIN"
+//asCountries{207}:="SRI LANKA"
+//asCountries{208}:="SUDAN"
+//asCountries{209}:="SURINAME"
+//asCountries{210}:="SVALBARD AND JAN MAYEN"
+//asCountries{211}:="SWAZILAND"
+//asCountries{212}:="SWEDEN"
+//asCountries{213}:="SWITZERLAND"
+//asCountries{214}:="SYRIAN ARAB REPUBLIC"
+//asCountries{215}:="TAIWAN, PROVINCE OF CHINA"
+//asCountries{216}:="TAJIKISTAN"
+//asCountries{217}:="TANZANIA, UNITED REPUBLIC OF"
+//asCountries{218}:="THAILAND"
+//asCountries{219}:="TIMOR-LESTE"
+//asCountries{220}:="TOGO"
+//asCountries{221}:="TOKELAU"
+//asCountries{222}:="TONGA"
+//asCountries{223}:="TRINIDAD AND TOBAGO"
+//asCountries{224}:="TUNISIA"
+//asCountries{225}:="TURKEY"
+//asCountries{226}:="TURKMENISTAN"
+//asCountries{227}:="TURKS AND CAICOS ISLANDS"
+//asCountries{228}:="TUVALU"
+//asCountries{229}:="UGANDA"
+//asCountries{230}:="UKRAINE"
+//asCountries{231}:="UNITED ARAB EMIRATES"
+//asCountries{232}:="UNITED KINGDOM"
+//asCountries{233}:="UNITED STATES"
+//asCountries{234}:="UNITED STATES MINOR OUTLYING ISLANDS"
+//asCountries{235}:="URUGUAY"
+//asCountries{236}:="UZBEKISTAN"
+//asCountries{237}:="VANUATU"
+//asCountries{238}:="VENEZUELA"
+//asCountries{239}:="VIET NAM"
+//asCountries{240}:="VIRGIN ISLANDS, BRITISH"
+//asCountries{241}:="VIRGIN ISLANDS, U.S."
+//asCountries{242}:="WALLIS AND FUTUNA"
+//asCountries{243}:="WESTERN SAHARA"
+//asCountries{244}:="YEMEN"
+//asCountries{245}:="ZAMBIA"
+//asCountries{246}:="ZIMBABWE"
+ReadCountryCodeXML 
+ARRAY TEXT(asMailCountries;246)
+ARRAY TEXT(asAltCountries;246)
+COPY ARRAY(asCountries;asMailCountries)
+COPY ARRAY(asCountries;asAltCountries)
+ARRAY TEXT(asList1;0)
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MS";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList1)
+INSERT IN ARRAY(asList1;1)
+asList1{1}:="<None>"
+ARRAY TEXT(asList2;0)
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList2)
+INSERT IN ARRAY(asList2;1)
+asList2{1}:="<None>"
+ARRAY TEXT(asList3;0)
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="BT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList3)
+INSERT IN ARRAY(asList3;1)
+asList3{1}:="<None>"
+ARRAY TEXT(asList4;0)
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="MW";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList4)
+INSERT IN ARRAY(asList4;1)
+asList4{1}:="<None>"
+
+ARRAY TEXT(asListIDType;0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="FI";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asListIDType)
+INSERT IN ARRAY(asListIDType;1)
+asListIDType{1}:="<None>"
+
+ARRAY TEXT(asList8;0)
+//If (<>sProduct="M@")
+//QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+//Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+//End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RD";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList8)
+INSERT IN ARRAY(asList8;1)
+asList8{1}:="<None>"
+
+ARRAY TEXT(asNotesList;0)
+ARRAY TEXT(asNotesSortList;0)
+
+QUERY([MarketingTypes];[MarketingTypes]ListCode="NC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asNotesList)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="NC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asNotesSortList)
+INSERT IN ARRAY(asNotesList;1)
+asNotesList{1}:="<None>"
+INSERT IN ARRAY(asNotesSortList;1)
+asNotesSortList{1}:="All"
+asNotesSortList:=1
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+"@";*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+Case of 
+: (asSortBy=1)
+ORDER BY([Reservation]ReserveNo;<)
+: (asSortBy=2)
+ORDER BY([Reservation]CustomerCode;>)
+: (asSortBy=3)
+ORDER BY([Reservation]ExpMoveIn;<)
+: (asSortBy=4)
+ORDER BY([Reservation]UnitsReserved;>)
+Else 
+//Do Nothing
+End case 
+Open window((Screen width/2)-425;(Screen height/2)-326;(Screen width/2)+425;(Screen height/2)+326;4;Get localized string("Processing Reservation"))
+bAdd:=0
+tFindWindow:=False
+If (<>tFind=True)
+If (Count parameters>0)
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+$1)
+If (Records in selection([Reservation])=1)
+FindCust ($1;3)//Find by Reserve No
+Else 
+QUERY([Reservation];[Reservation]CustomerCode=$1)
+If (Records in selection([Reservation])=1)
+FindCust ($1;2)//Find by customer
+Else 
+If ($1>"")
+FindCust ($1;4)
+Else 
+bAdd:=1
+vExisting:=$1
+ADD RECORD(*)
+End if 
+End if 
+End if 
+Else 
+FindCust 
+End if 
+Else 
+bAgree:=0
+If (Screen height>401) | (Records in selection=1)
+MODIFY SELECTION(*)
+Else 
+MODIFY SELECTION
+End if 
+End if 
+READ ONLY([Customer])
+READ ONLY([Reservation])
+READ ONLY([PhotosCards])
+READ ONLY([NotesHistory])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([PhotosCards])
+UNLOAD RECORD([NotesHistory])
+CloseWindow 

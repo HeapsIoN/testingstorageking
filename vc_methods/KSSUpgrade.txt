@@ -1,0 +1,185 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+
+[Facility]InvToDate:=True
+[Facility]StatementDetail:=True
+[Facility]LateFeeReset:=True
+[Facility]StockSysStart:=Current date
+While (Length([Facility]FieldSettings)<95)
+[Facility]FieldSettings:=[Facility]FieldSettings+"1"
+End while 
+[Facility]FieldSettings:=Substring([Facility]FieldSettings;1;93)+"33"//Set options "Optional Invoices" and statement invisible 
+[Facility]InvStatement:=2
+[Facility]MinCustomRentIncr:=5
+[Facility]GraphiconInv:=True
+[Facility]HeaderonInv:=True
+[Facility]CustomInvFooter:=True
+[Facility]StandardInvFooter:=True
+
+DOCUMENT TO BLOB("C:\\StormanDownloads\\Footer.svg";[Facility]InvFooter_)
+COMPRESS BLOB([Facility]InvFooter_)
+
+DOCUMENT TO BLOB("C:\\StormanDownloads\\Header.svg";[Facility]InvHeader_)
+COMPRESS BLOB([Facility]InvHeader_)
+
+SAVE RECORD([Facility])
+
+READ WRITE([Notices])
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode)
+
+For ($i;1;Records in selection([Notices]))
+If ([Notices]Description="Final Notice") & ([Facility]FacilityCode="KEZ@")
+$Path:="C:\\StormanDownloads\\"+[Notices]Description+"NZ.4e7"
+Else 
+$Path:="C:\\StormanDownloads\\"+[Notices]Description+".4e7"
+End if 
+If (Test path name($Path)=Is a document)
+DOCUMENT TO BLOB($Path;[Notices]Email)
+COMPRESS BLOB([Notices]Email)
+End if 
+
+Case of 
+: ([Notices]Description="AutoCC-Expiry")
+[Notices]AttachInvoice:=0
+[Notices]AttachStatement:=0
+: ([Notices]Description="Invoice")
+[Notices]AttachInvoice:=1
+[Notices]AttachStatement:=1
+: ([Notices]Description="AutoCCFailure")
+[Notices]AttachInvoice:=0
+[Notices]AttachStatement:=1
+: ([Notices]Description="AutoCCRSuccess")
+[Notices]AttachInvoice:=0
+[Notices]AttachStatement:=1
+: ([Notices]Description="AutoCCSuccess")
+[Notices]AttachInvoice:=0
+[Notices]AttachStatement:=1
+: ([Notices]Description="Late1")
+[Notices]AttachInvoice:=0
+[Notices]AttachStatement:=1
+: ([Notices]Description="Late2")
+[Notices]AttachInvoice:=0
+[Notices]AttachStatement:=1
+: ([Notices]Description="Final Notice")
+[Notices]AttachInvoice:=0
+[Notices]AttachStatement:=1
+: ([Notices]Description="AuctionLetter")
+[Notices]AttachInvoice:=1
+[Notices]AttachStatement:=1
+End case 
+
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+
+READ ONLY([Notices])
+UNLOAD RECORD([Notices])
+
+READ WRITE([UnitType])
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+"@";*)
+QUERY([UnitType]; & ;[UnitType]NoTotal=0)
+DELETE SELECTION([UnitType])
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+"@")
+ORDER BY([UnitType];[UnitType]Area;>)
+For ($i;1;Records in selection([UnitType]))
+[UnitType]SortOrder:=$i
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])
+End for 
+
+READ WRITE([Unit])
+QUERY([Unit];[Unit]RUnitNo=[Facility]FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+APPLY TO SELECTION([Unit];[Unit]LastInc:=!00-00-00!)
+APPLY TO SELECTION([Unit];[Unit]LastRentAmt:=0)
+
+READ WRITE([Agreement])
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]AutoPay=True;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]AuthCCSigned=!00-00-00!)
+For ($i;1;Records in selection([Agreement]))
+RELATE MANY([Agreement]RAgreeNo)
+ORDER BY([Unit];[Unit]MoveIn;<)
+[Agreement]AuthCCSigned:=[Unit]MoveIn
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]LastDiscAmt#0;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+APPLY TO SELECTION([Agreement];[Agreement]LastDiscAmt:=0)
+
+READ WRITE([Analysis])
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis];[Analysis]InvItem=True)
+APPLY TO SELECTION([Analysis];[Analysis]InvQtyonHand:=0)
+
+READ WRITE([OtherChgs])
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([OtherChgs]; & ;[OtherChgs]Amount<=0)
+
+DELETE SELECTION([OtherChgs])
+
+If ([Facility]InvStatement=2)
+READ WRITE([Trxs])
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+For ($j;1;Records in selection([Agreement]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]InvNo=0)
+DISTINCT VALUES([Trxs]TrxDate;$TrxDate)
+CREATE SET([Trxs];"SearchInvNo")
+For ($inv;1;Size of array($TrxDate))
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+End for 
+CLEAR SET("SearchInvNo")
+NEXT RECORD([Agreement])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 

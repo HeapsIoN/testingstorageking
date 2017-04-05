@@ -1,0 +1,40 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+///**** 8341 - By Hamid 28/11/2014
+C_BOOLEAN($1)
+
+If (Count parameters=1)
+SetFacility 
+End if 
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+<>ProgressInd:=1
+Open window(20;50;600;150;0)
+READ WRITE([Customer])
+QUERY([Customer];[Customer]customerProfileID#"";*)
+QUERY([Customer]; & ;[Customer]custPaymentProfID="")
+$DigiKey:=String(GetTextNo ([Facility]MerchantDetails;2;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;3;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;4;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;5;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;6;","))
+SyncRecordLog ("Digital Key: "+$DigiKey)
+FIRST RECORD([Customer])
+$TotAgree:=Records in selection([Customer])
+For ($i;1;Records in selection([Customer]))
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+
+GOTO XY(2;2)
+MESSAGE("Retrieving EziDebit ID for Customer "+String($i)+" of "+String(Records in selection([Customer])))//Johnno
+
+$custStatus:=WSC_EziGetCustomerDetails ($DigiKey;"";[Customer]CustomerCode)
+
+If (Substring($custStatus;1;1)="A")
+$custStatus:=GetTextNo ($custStatus;2;",")
+[Customer]custPaymentProfID:=$custStatus
+SAVE RECORD([Customer])
+Else 
+// Customer not find
+End if 
+NEXT RECORD([Customer])
+End for 
+
+<>ProgressInd:=100
+End if 
+
+///****

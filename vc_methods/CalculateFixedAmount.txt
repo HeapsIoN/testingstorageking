@@ -1,0 +1,109 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 15/12/11, 13:39:01
+// ----------------------------------------------------
+// Method: CalculateFixedAmount
+// Description
+// Calculates the fixed amount for a billing plan based on customer type
+//
+// Parameters
+// ----------------------------------------------------
+
+
+C_REAL($0)
+
+RELATE ONE([Agreement]BillingPlanCode)
+
+$MonthlyRate:=[BillPlan]FixedBill
+
+If ([Facility]CTPrices)
+ARRAY LONGINT(aiCustTypeID;0)
+ARRAY REAL(arMonthlyRate;0)
+ARRAY REAL(arWeeklyRate;0)
+ARRAY REAL(arDailyRate;0)
+ARRAY LONGINT(aiLength;4)
+aiLength{1}:=-2
+aiLength{2}:=-3
+aiLength{3}:=-3
+aiLength{4}:=-3
+
+TextToArrays (->[UnitType]CTPrices;->aiLength;->aiCustTypeID;->arMonthlyRate;->arWeeklyRate;->arDailyRate)
+
+$j:=Size of array(aiCustTypeID)
+$i:=1
+
+While ($j>0) & ($i#0)
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=aiCustTypeID{$i};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([BillPlan]Code;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+If (Records in selection([MarketingTypes])#1)
+DELETE FROM ARRAY(aiCustTypeID;$i)
+DELETE FROM ARRAY(arMonthlyRate;$i)
+End if 
+
+$j:=Size of array(aiCustTypeID)
+$i:=$i+1
+
+If ($i>$j)
+$i:=0
+End if 
+
+End while 
+
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([BillPlan]Code;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+
+For ($i;1;Records in selection([MarketingTypes]))
+
+$j:=Find in array(aiCustTypeID;[MarketingTypes]PrimaryKey)
+
+If ($j<1)
+APPEND TO ARRAY(aiCustTypeID;[MarketingTypes]PrimaryKey)
+APPEND TO ARRAY(arMonthlyRate;[BillPlan]FixedBill)
+End if 
+
+NEXT RECORD([MarketingTypes])
+End for 
+
+ARRAY TEXT(atCustType;Size of array(aiCustTypeID))
+
+
+For ($i;1;Size of array(aiCustTypeID))
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=aiCustTypeID{$i})
+atCustType{$i}:=[MarketingTypes]Description
+End for 
+
+$Pos:=Find in array(atCustType;[Customer]CustType)
+
+If ($Pos>0)
+$MonthlyRate:=arMonthlyRate{$pos}
+End if 
+
+End if 
+
+$MonthlyTotal:=0
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+FIRST RECORD([Unit])
+
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([UnitType]VariableLength)
+If ([Unit]UnitLength<[UnitType]VariableMinimum)
+$MonthlyTotal:=$MonthlyTotal+([UnitType]VariableMinimum*$MonthlyRate)
+Else 
+$MonthlyTotal:=$MonthlyTotal+([Unit]UnitLength*$MonthlyRate)
+End if 
+Else 
+$MonthlyTotal:=$MonthlyTotal+$MonthlyRate
+End if 
+NEXT RECORD([Unit])
+End for 
+
+$0:=Round($MonthlyTotal;2)

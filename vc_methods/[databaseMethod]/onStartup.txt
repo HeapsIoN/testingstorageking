@@ -1,0 +1,595 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 15/10/13 Moved InitSites later in method and so that if Shift Down it will not run to allow opening of old datafiles
+C_LONGINT(<>iVersion;<>iPlatform;<>iLogMonitor;<>iDesign;<>iFloating;<>iSetGate;$i;$Users)
+C_DATE(<>dCompileDate)
+C_BOOLEAN(<>tMirror)
+
+$i:=0
+HIDE TOOL BAR
+PLATFORM PROPERTIES(<>iPlatform;$i)//Platform 1=Mac OS Classic, 2=Mac OS X, 3=Windows
+If (<>iPlatform<3) & (($i >> 8)<16)//Mac OS 8 or 9
+<>iPlatform:=1
+End if 
+
+If (<>iPlatform=3)
+$sSeparator:="\\"//Windows
+Else 
+$sSeparator:=":"//Macintosh
+End if 
+
+<>tMirror:=False
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>tMirror;<>tMirror)
+End if 
+If (<>tMirror)//Mirror must not change any records
+HIDE TOOL BAR
+SET WINDOW TITLE("Storman Mirror Database - No Modifications Allowed")
+SET MENU BAR(4)//After below only has CDR
+For ($i;1;5)
+DELETE MENU ITEM(3;1)
+End for 
+For ($i;1;10)
+DELETE MENU ITEM(1;1)
+End for 
+<>sCurrentUser:="Admin"
+READ ONLY(*)
+ALL RECORDS([Facility])
+<>sProduct:=[Facility]ProductCode
+Else 
+If (Application type#4D Remote mode) & (Current date<=!2017-01-01!)
+aa4D_NP_Schedule_Reports_Server (5)
+aa4D_NP_Reports_Max_Set_Limit (8640)
+End if 
+
+If (Test path name(Get 4D folder(Current resources folder)+"DebugMode.txt")=Is a document)
+SET DATABASE PARAMETER(34;3)
+End if 
+
+//Run 4DPop
+//This code is available even if the component is not present like in the final application.
+If (Not(Is compiled mode))
+ARRAY TEXT($tTxt_Components;0)
+COMPONENT LIST($tTxt_Components)
+If (Find in array($tTxt_Components;"4DPop")>0)
+EXECUTE METHOD("4DPop_Palette")
+End if 
+End if 
+
+$sApplication:=Application file
+$j:=Length($sApplication)
+While ($j>2) & (Substring($sApplication;$j;1)#$sSeparator)
+$j:=$j-1
+End while 
+$sApplication:=Substring($sApplication;1;$j)
+$sApplication:=$sApplication+"webserverclient.txt"
+
+If (Test path name($sApplication)=Is a document)
+SetupArrays 
+Initialise 
+ON ERR CALL("ErrorLog")
+InitSites (True)
+InitNextPrimaryKeys (True)
+<>iTrafficRecv:=0
+<>iTrafficSent:=0
+SyncRecordLog (Get localized string("Webserver commenced");"TrafficCount")
+C_TEXT($CipherList)
+//$CipherList:="HIGH:+MEDIUM:!SSLv2:!EXP:!ADH:!aNULL:!eNULL:!NULL"
+$CipherList:="ECDH+AESGCM:ECDH+AES256:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS:!TLSv1"
+SET DATABASE PARAMETER(SSL cipher list;$CipherList)
+WEB START SERVER
+<>tWebServer:=True
+Else 
+
+$ScreenX:=CheckPrefs ("ScreenX")
+$ScreenY:=CheckPrefs ("ScreenY")
+$ScreenW:=CheckPrefs ("ScreenW")
+$ScreenH:=CheckPrefs ("ScreenH")
+
+If (<>iPlatform<3)
+
+If ($ScreenX="") | (Num($ScreenX)<0)
+$ScreenX:="2"
+End if 
+If ($ScreenY="") | (Num($ScreenY)<0)
+$ScreenY:="45"
+End if 
+If ($ScreenW="") | (Num($ScreenW)<0)
+$ScreenW:=String(Screen width-2)
+End if 
+If ($ScreenH="") | (Num($ScreenH)<0)
+$ScreenH:=String(Screen height-20)
+End if 
+//SET WINDOW RECT(2;45;Screen width-2;Screen height-20)  //SDD 17/2/11 To account for dock
+Else 
+$ScreenX:="4"
+$ScreenY:="50"
+If ($ScreenW="") | (Num($ScreenW)<0)
+$ScreenW:=String(Screen width-4)
+End if 
+If ($ScreenH="") | (Num($ScreenH)<0)
+$ScreenH:=String(Screen height-4)
+End if 
+
+//SET WINDOW RECT(4;50;(Screen width-4);(Screen height-4))
+End if 
+SET WINDOW RECT(Num($ScreenX);Num($screenY);Num($ScreenW);Num($ScreenH))
+
+C_TEXT(vsWindowTitle)
+READ ONLY(*)
+SET DEFAULT CENTURY(19;50)
+FORM SET OUTPUT([Facility];"Output")
+<>iVersion:=10042//Also change in On Server Startup
+<>dCompileDate:=!2017-03-31!
+<>tLogOK:=False
+If (Macintosh control down=False)
+SetupArrays //Must happen before Initialise
+End if 
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+Case of 
+: ([Facility]ProductCode="@R")
+<>sOEMName:="Rental Manager"
+SET ABOUT("About Rental Manager...";"AboutStorman")
+Else 
+<>sOEMName:="Storman"
+SET ABOUT("About Storman...";"AboutStorman")
+End case 
+
+//22/10/14 DAM Added for Win name
+If (<>iPlatform=3)
+C_LONGINT($lErr;$lWindowHandle)
+C_TEXT($WinTitle)
+Case of 
+: (Application type=4D Server)
+$WinTitle:="Storman Server - "+[Facility]BusinessName
+: (Application type=4D Remote mode)
+$WinTitle:="Storman Client - "+[Facility]BusinessName
+Else 
+$WinTitle:="Storman - "+[Facility]BusinessName
+End case 
+$lWindowHandle:=gui_GetWindow ("")// main 4D window
+If ($lWindowHandle>0)
+$lErr:=gui_SetWindowTitle ($lWindowHandle;$WinTitle)
+End if 
+End if 
+
+vsWindowTitle:=<>sOEMName
+SET WINDOW TITLE(vsWindowTitle)
+Case of 
+: ([Facility]BusinessName="ControlFile")
+SET MENU BAR(3)
+: ([Facility]ProductCode="M@") | ([Facility]CentralAddress>"") | ([Facility]MaxSites>1)
+SET MENU BAR(6)
+: ([Facility]ProductCode="SL")//Lite Version
+SET MENU BAR(5)
+: ([Facility]ProductCode="PR")//Prospector
+SET MENU BAR(4)
+Else 
+SET MENU BAR(1)//Regular Storman without Central
+End case 
+Initialise 
+
+If (Test path name("Build.txt")=Is a document)
+DELETE DOCUMENT("Build.txt")
+
+If (<>iPlatform=3)
+BUILD APPLICATION("E:\\Storage v15 - Compile\\Preferences\\BuildApp\\BuildApp 32bit.xml")
+BUILD APPLICATION("E:\\Storage v15 - Compile\\Preferences\\BuildApp\\BuildApp 64bit.xml")
+Else 
+BUILD APPLICATION("Macintosh HD:Users:Shared:Storage v15 - Compile:Preferences:BuildApp:BuildApp 32bit.xml")
+End if 
+QUIT 4D
+
+
+Else 
+If (<>iPlatform=3) & ([Facility]PDFName="PDFCreator@") & (Application type#4D Server)
+SET MENU ITEM(1;13;"Print Location")
+End if 
+<>iKSSFloat:=0
+<>tKSSFloat:=False
+If (Screen height<650) | (Screen width<900)
+AlertMessage (Get localized string("Your screen resolution is")+" "+String(Screen width)+"*"+String(Screen height)+". "+Get localized string("MinScreenResolut"))
+QUIT 4D
+End if 
+<>sOpenDataFile:=""
+If (Application type#4D Remote mode)
+Case of 
+: ([Facility]BusinessName="ControlFile")
+//SDD 23/09/13 New code to locate and open facility datafile
+If (<>iPlatform=3)
+<>sOpenDataFile:="C:\\ProgramData\\Storman\\StormanFiles\\Preferences\\DatafileName.xml"//Windows
+Else 
+<>sOpenDataFile:=Get 4D folder(Database folder)
+$Pos:=Position("Applications";<>sOpenDataFile)
+If ($Pos<3)//If running uncompiled
+$Pos:=Position("Users";<>sOpenDataFile)
+End if 
+If ($Pos>2)
+<>sOpenDataFile:=Substring(<>sOpenDataFile;1;$Pos-1)+"Users:Shared:Storman:StormanFiles:Preferences:DatafileName.xml"
+End if 
+End if 
+If (Test path name(<>sOpenDataFile)=Is a document)
+DOCUMENT TO BLOB(<>sOpenDataFile;$Blob)
+$Text:=BLOB to text($Blob;Mac text without length)
+$Pos:=Position("<DatafileName>";$Text)
+<>sOpenDataFile:=Substring($Text;$Pos+14)
+$Pos:=Position("</DatafileName>";<>sOpenDataFile)
+<>sOpenDataFile:=Substring(<>sOpenDataFile;1;$Pos-1)
+Else 
+<>sOpenDataFile:=""
+End if 
+If (<>sOpenDataFile="")
+vLeg:=""
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+//JOHNNO FROM HERE 23/12/2014
+//StartupDemoCheck 
+//If (vAddr5>"")
+//FORM SET INPUT([Facility];"Startup")
+//$WinRef:=Open window((Screen width/2)-300;(Screen height/2)-308;(Screen width/2)+300;(Screen height/2)+308;5;Get localized string("Welcome to Storman!"))
+//Else 
+//end if
+//TO HERE - to stop the starting of a form we no longer use.
+FORM SET INPUT([Facility];"StartupDemo")
+$WinRef:=Open window((Screen width/2)-424;(Screen height/2)-195;(Screen width/2)+424;(Screen height/2)+195;5;Get localized string("Welcome to Storman!"))
+End if 
+MODIFY RECORD([Facility];*)
+CLOSE WINDOW($WinRef)
+If (OK=1)
+If (Test path name(vLeg)=Is a document)
+<>sOpenDataFile:=vLeg
+Else 
+CREATE DATA FILE(vLeg)
+ABORT
+End if 
+Else 
+QUIT 4D
+End if 
+//End if 
+: ([Facility]TutorialData=True)
+vsWindowTitle:=Get localized string("Tutorial Database")
+DISABLE MENU ITEM(1;5)
+SET MENU ITEM(1;9;"Facility Database")
+InitSites 
+CheckDemoDates (False;False)
+: ([Facility]FacilityName>"")
+vsWindowTitle:=Substring([Facility]BusinessName+" - "+[Facility]FacilityName;1;80)
+: ([Facility]BusinessName>"")
+vsWindowTitle:=[Facility]BusinessName
+Else 
+//Do Nothing
+End case 
+End if 
+SET WINDOW TITLE(vsWindowTitle)
+If (<>sOpenDataFile>"")
+<>iLogMonitor:=New process("LogMonitor";128000;"LogMonitor")//LogMonitor will launch the datafile
+Else 
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+<>sLastUser:="Startup"
+REGISTER CLIENT(<>sLastUser)
+If (Shift down)
+Login 
+End if 
+While (Application type=4D Remote mode) & (Test semaphore("DontAllowClient")=True)//LogMonServer
+ConfirmTwo (Get localized string("The server has not completed starting up, or has an Alert message that requires attention. Check when Storman Server has started up.");Get localized string("Continue");Get localized string("Quit"))
+If (OK#1)
+QUIT 4D
+End if 
+End while 
+$Setup:=False
+
+If (Records in selection([Facility])=0) & (Records in selection([Unit])=0) & ((Current user#"Designer") | (Shift down=False))
+If (Test path name(<>sTutPath+"NewSpecs.txt")=Is a document)
+CreateTutorial (True)
+Else 
+Open window((Screen width/2)-200;(Screen height/2)-176;(Screen width/2)+200;(Screen height/2)+176;5;Get localized string("New Datafile"))
+DIALOG([Facility];"NewData")
+CLOSE WINDOW
+If (OK=1)
+If (bSearch#1)
+Setup 
+$Setup:=True
+Else 
+If (Shift down)
+If (<>sCurrentUser#"AdminSupport")
+Login 
+End if 
+If (<>sCurrentUser="AdminSupport")
+ConfirmTwo (Get localized string("Importing from")+":";Get localized string("Storman Email");Get localized string("DataCheck Raw"))
+If (OK=1)
+ImportData (True)
+Else 
+ImportRaw 
+End if 
+End if 
+Else 
+CreateTutorial (False)
+End if 
+End if 
+Else 
+QUIT 4D
+End if 
+End if 
+End if 
+<>iWeekEndDay:=[Facility]WeekEndDay
+
+<>iGateSysType:=[Facility]GateSysType
+<>iMaxUnits:=[Facility]MaxUnits
+If (<>iMaxUnits<[Facility]PriorMaxUnits)
+<>iMaxUnits:=[Facility]PriorMaxUnits
+End if 
+If ([Facility]Version=0)//| ([Facility]PriorMaxUnits=0)
+AlertMessage (Get localized string("It appears that the System Control record is damaged. Please call Technical Support for assistance."))
+If (OK=1) & (Shift down=False)
+QUIT 4D
+End if 
+End if 
+Case of 
+: (DateFormat =1)//US Format
+If ([Facility]Country#"US")
+If ([Facility]Country#"ZA")
+ConfirmTwo (Get localized string("WARNING - This computer is set for the US date format MM/DD/YY but the datafile is for setup for an International date format DD/MM/YY. This may cause problems with data entry. We recommend that you quit and configure your timezone & date settings cor"+"rectly. For details on how to correct this, search our Online Support Knowledgebase for: EAM020. Quit now?");Get localized string("Quit");Get localized string("Continue Anyway");"http://my.storman.com/support/knowledgebase/errors/dateformatnotsetcorrectly.php?src=lm")
+Else 
+ConfirmTwo (Get localized string("WARNING - This computer is set for the US date format MM/DD/YY but the datafile is for setup for an ISO date format YYYY/MM/DD. This may cause problems with data entry. We recommend that you quit and configure your timezone & date settings correctly. "+"For details on how to correct this, search our Online Support Knowledgebase for: EAM020. Quit now?");Get localized string("Quit");Get localized string("Continue Anyway");"http://my.storman.com/support/knowledgebase/errors/dateformatnotsetcorrectly.php?src=lm")
+End if 
+If (OK=1) & (Shift down=False)//My paranoia with Quit 4D in the start procedure
+QUIT 4D
+End if 
+End if 
+: (DateFormat =2)//ISO Format
+If ([Facility]Country#"ZA") & ([Facility]Country#"CA")
+If ([Facility]Country="US")
+ConfirmTwo (Get localized string("WARNING - This computer is set for the ISO date format YYYY/MM/DD but the datafile is for setup for a US date format MM/DD/YY. This may cause problems with data entry. We recommend that you quit and configure your timezone & date settings correctly. F"+"or details on how to correct this, search our Online Support Knowledgebase for: EAM020. Quit now?");Get localized string("Quit");Get localized string("Continue Anyway");"http://my.storman.com/support/knowledgebase/errors/dateformatnotsetcorrectly.php?src=lm")
+Else 
+ConfirmTwo (Get localized string("WARNING - This computer is set for the ISO date format YYYY/MM/DD but the datafile is for setup for a International date format DD/MM/YY. This may cause problems with data entry. We recommend that you quit and configure your timezone & date settings c"+"orrectly. For details on how to correct this, search our Online Support Knowledgebase for: EAM020. Quit now?");Get localized string("Quit");Get localized string("Continue Anyway");"http://my.storman.com/support/knowledgebase/errors/dateformatnotsetcorrectly.php?src=lm")
+End if 
+If (OK=1) & (Shift down=False)
+QUIT 4D
+End if 
+End if 
+Else 
+If ([Facility]Country="US") | ([Facility]Country="ZA")
+If ([Facility]Country="ZA")
+ConfirmTwo (Get localized string("WARNING - This computer is set for the International date format DD/MM/YY but the datafile is for setup for a ISO date format YYYY/MM/DD. This may cause problems with data entry. We recommend that you quit and configure your timezone & date settings c"+"orrectly. For details on how to correct this, search our Online Support Knowledgebase for: EAM020. Quit now?");Get localized string("Quit");Get localized string("Continue Anyway");"http://my.storman.com/support/knowledgebase/errors/dateformatnotsetcorrectly.php?src=lm")
+Else 
+ConfirmTwo (Get localized string("WARNING - This computer is set for the International date format DD/MM/YY but the datafile is for setup for a US date format MM/DD/YY. This may cause problems with data entry. We recommend that you quit and configure your timezone & date settings corr"+"ectly. For details on how to correct this, search our Online Support Knowledgebase for: EAM020. Quit now?");Get localized string("Quit");Get localized string("Continue Anyway");"http://my.storman.com/support/knowledgebase/errors/dateformatnotsetcorrectly.php?src=lm")
+End if 
+If (OK=1) & (Shift down=False)
+QUIT 4D
+End if 
+End if 
+End case 
+If (Current date<!2002-01-01!)
+ConfirmTwo (Get localized string("WARNING - It appears that the computer's date is set incorrectly at")+" "+String(Current date;6)+". Please check your computer's date settings. Quit now?";Get localized string("Quit");Get localized string("Continue Anyway"))
+If (OK=1) & (Shift down=False)
+QUIT 4D
+End if 
+End if 
+If ([Facility]TutorialData=True)
+//Update Tutorial data dates based on LastDaily
+Else 
+If (Current user#"Designer")
+$Upgrade:=False
+If ([Facility]LicExpiryDate#!00-00-00!)
+$i:=[Facility]LicExpiryDate-Current date
+If ($i>46) | ($i<-20)//Date ranges reduced to avoid setting date earlier when creating datafile
+AlertMessage (Get localized string("An error has continued with")+" "+vsWindowTitle+". $i="+String($i)+" - "+Get localized string("the expiry date is out of range. Please contact Technical Support."))
+$Upgrade:=True
+End if 
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+If (<>sCurrentUser="Admin@") & ($Setup=False)
+FORM SET INPUT([Facility];"ClientSetup")
+MODIFY RECORD([Facility])
+End if 
+
+If ([Facility]LicRentExpWarn)//JCW FALSE site is subscription 
+
+If (Current date>[Facility]LicExpiryDate)
+ConfirmTwo (Get localized string("The licence for this copy of Storman has expired. Upgrade now?"))
+If (OK=1)
+$Upgrade:=True
+Else 
+QUIT 4D
+End if 
+End if 
+
+Else //JCW TRUE not subscription (outright buy) implenmentation?
+
+If (Current date>=[Facility]LicExpiryDate)
+AlertMessage (Get localized string("This datafile is not fully paid for and will expire in 7 days. Please contact Storman Sales for licencing details."))
+[Facility]LicRentExpWarn:=True
+[Facility]LicExpiryDate:=Current date+7
+SAVE RECORD([Facility])
+End if 
+End if 
+
+
+End if 
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+QUERY([Unit];[Unit]Status#"Unavail")
+If (<>iMaxUnits<Records in selection([Unit]))
+ConfirmTwo (Get localized string("There are currently more units than you are licenced for. Upgrade now?"))
+If (OK=1)
+$Upgrade:=True
+Else 
+QUIT 4D
+End if 
+End if 
+If ($Upgrade)
+If (<>sCurrentUser#"Admin@")
+AlertMessage (Get localized string("To continue, please login as Admin at the next dialog, or contact Technical Support for assistance."))
+Login 
+End if 
+
+ConfirmTwo (Get localized string("How would you like to check for licence information?");Get localized string("Via the internet");Get localized string("Via a password"))
+If (OK=1)
+CheckUpdate 
+AlertMessage (Get localized string("Storman will now quit. Please re-launch Storman to integrate the new licence details.");Get localized string("Quit"))
+QUIT 4D
+Else 
+Upgrader 
+End if 
+End if 
+End if 
+//18 days grace before message is displayed    
+If ([Facility]LicExpiryDate=!00-00-00!) & ([Facility]LicRentExpWarn) & ([Facility]UpgradesPaidTo<(Current date-18)) & ([Facility]UpgradesPaidTo#!00-00-00!) & ([Facility]LastDaily>(Current date-10))
+//On a rent program which has expired
+//Also check [System]LastDaily in case head office is reviewing an old datafile
+ConfirmTwo (Get localized string("This Storman Licence is on a rental program, which appears to have expired. Payment may have been made in the last few days. Check the Storman webserver now?");Get localized string("Check Now");Get localized string("Continue"))
+If (OK=1)
+CheckUpdate 
+End if 
+End if 
+$Days:=21
+//18/08/14 DAM Added code to ignore licences check if there is training.xml file 
+If ([Facility]UpgradesPaidTo#!00-00-00!) & ([Facility]UpgradesPaidTo<=(Current date-$Days+10)) & ([Facility]UpgradesPaidTo>=(Current date-$Days)) & (Test path name(<>sPreferencesPath+"Training.xml")#Is a document)
+ConfirmTwo (Get localized string("WARNING - In")+" "+String($Days-(Current date-[Facility]UpgradesPaidTo))+" "+Get localized string("days, your facility will be")+" "+String($Days)+" "+Get localized string("days overdue on the upgrade & support plan. An upgrade version payment will be required after")+" "+String([Facility]UpgradesPaidTo+$Days;6)+"!";Get localized string("Renew now");Get localized string("Ignore"))
+If (OK=1)
+OPEN URL("http://my.storman.com/admin/store/renewals/support/")
+End if 
+End if 
+End if 
+<>tUtilities:=[Facility]Utilities
+<>tGateSys:=[Facility]UseGateSys
+<>tCashBook:=[Facility]UseCashBook
+If (<>tGateSys)
+<>tGateOn:=[Facility]GateOnStart
+If (Application type#4) & (<>tGateOn=False)
+ConfirmTwo (Get localized string("The gate system / access control module is currently switched OFF. Would you like to turn it on?");Get localized string("Leave off for now");Get localized string("Turn on"))
+If (OK=0)
+<>tGateOn:=True
+End if 
+End if 
+End if 
+<>iSetGate:=0
+If (Current user#"Designer") | (Shift down=False)
+InitSites 
+If (Application type#4D Remote mode)
+InitNextPrimaryKeys 
+End if 
+CheckVersion 
+OtherStartup 
+End if 
+//Open floating palette
+ARRAY LONGINT(<>iProcess;1)
+<>iProcess{1}:=Current process
+ARRAY TEXT(<>aButton;1)
+<>aButton{1}:="Main"
+<>iFloating:=Current process
+<>tLoggingOn:=True
+If (Application type=4D Remote mode)
+LogAction (True;"Storman Client started")
+Else 
+LogAction (True;"Storman program started")
+End if 
+If (Shift down)
+AlertMessage (Get localized string("The LogMonitor process is not running. No logging or Gate functions will be processed. Please restart Storman, or contact Technical Support for assistance if this error continues."))
+DISABLE MENU ITEM(1;11)
+Else 
+If (<>tLoggingOn)
+<>iLogMonitor:=New process("LogMonitor";128000;"LogMonitor")
+If (<>iLogMonitor<1)
+AlertMessage (Get localized string("WARNING - The Log Monitor process could not be started. Please contact Technical Support for assistance."))
+End if 
+Else 
+<>iLogMonitor:=0
+End if 
+End if 
+If (Shift down=False) | (Current user#"Designer")
+<>iFloating:=New process("Floating";128000;"Floating")//Cannot be local process
+If ([Facility]TutorialData=True)
+<>sCurrentUser:="Admin"
+Set4DUser ("Admin")
+Else 
+Login 
+///InitArrays   //chinese lang bug by Eugene
+End if 
+//If ([Facility]LoginStartup)
+//Login 
+//Else 
+//If ([Facility]CentralAddress>"") & ([Facility]SyncingOn=True) & (<>sProduct#"M@")
+//WSC_CheckMVUserPassW (<>sCurrentUser)
+//End if 
+//If ([Facility]TutorialData=True)
+//<>sCurrentUser:="Admin"
+//End if 
+//End if 
+Case of 
+: ([Facility]LastStartDate>Current date) & (<>sCurrentUser#"AdminSupport")
+AlertMessage (Get localized string("This Datafile was last opened on")+" "+String([Facility]LastStartDate)+"! "+Get localized string("Please reset your computers date to")+" "+String([Facility]LastStartDate)+" "+Get localized string("or contact Technical Support."))
+Login 
+: ([Facility]LastStartDate>Current date) & (<>sCurrentUser#"AdminSupport")
+QUIT 4D
+Else 
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]LastStartDate:=Current date
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End case 
+
+If ([Facility]FacilityCode="SK@") & ([Facility]CentralAddress="@mv2.storman.com@")
+If (Test path name(<>sPreferencesPath+"SKBilling.xml")#Is a document)
+$Doc:=Create document(<>sPreferencesPath+"SKBilling.xml")
+CLOSE DOCUMENT($Doc)
+End if 
+End if 
+
+If ([Facility]FacilityCode="KE@") | (([Facility]Country#"AU") & ([Facility]Country#"NZ"))
+<>iKSSFloat:=New process("FloatingKSS";128000;"FloatingKSS")
+End if 
+If (Application type=4D Remote mode)
+ARRAY TEXT($aClients;0)
+ARRAY LONGINT($aMethods;0)
+GET REGISTERED CLIENTS($aClients;$aMethods)
+$Users:=0
+If (Size of array($aClients)>1)
+Repeat 
+$t:=Find in array($aClients;"AdminSupport")
+If ($t>0)
+DELETE FROM ARRAY($aClients;$t)
+End if 
+Until ($t<=0)
+Repeat 
+$t:=Find in array($aClients;"Designer")
+If ($t>0)
+DELETE FROM ARRAY($aClients;$t)
+End if 
+Until ($t<=0)
+End if 
+$Users:=Size of array($aClients)-1
+If ($Users>[Facility]Max4DClients) & ($Users>1) & (Current user#"Designer") & (<>sCurrentUser#"AdminSupport") & (Is compiled mode)
+ConfirmTwo (Get localized string("There are")+" "+String($Users)+" "+Get localized string("users logged in, but you are only licenced for")+" "+String([Facility]Max4DClients)+" "+Get localized string("users")+".";Get localized string("Upgrade licence");Get localized string("Quit"))
+If (OK=1)
+OPEN URL("http://my.storman.com/admin/store/")
+End if 
+QUIT 4D
+End if 
+End if 
+If ([Facility]ProductCode#"SL")
+If ([Facility]NoSplash=False) & (Screen width>=770) & (Screen height>485)//Control Width & Height
+If ([Facility]TutorialData)
+<>iDemo:=New process("Demo";128000;"Demo")
+End if 
+Control 
+Else 
+ReportMenu 
+If ([Facility]NoSplash=False) & (<>iPlatform=3)
+AlertMessage (Get localized string("The control window could not be displayed as the window size is too small! Please expand the window to fill the entire screen."))
+End if 
+QUERY([Activity];[Activity]ActivityDate=Current date)
+If (Records in selection([Activity])>0) & ([Activity]CalendarNotes>"")
+<>iCalendar:=New process("CalendarOpen";128000;"Calendar")
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+
+//SyncRecordLog ("Storman starting: On Startup - COMPLETE")

@@ -1,0 +1,114 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(vTotIn;vTotOut;$Total)
+C_BOOLEAN(vbColourGraphs)
+ARRAY LONGINT(tot_cnt;0)
+ARRAY DATE(tot_cnt_days;0)
+
+LogAction (False;"Graph of Occupancy Report started.")// records the report being started in the eventlog
+If (PermissionsControl (53))
+SetFacility 
+OK:=1
+vbColourGraphs:=True
+If (<>tBatch=False)
+vTitle:=Get localized string("MenuReportgraphOfOccupancy")
+Case of 
+: (<>sProduct="@B")
+vLegend:=Get localized string("GraphOfOccupancyMarina")
+: (<>sProduct="@C")
+vLegend:=Get localized string("GraphofOccupancySpace")
+Else 
+vLegend:=Get localized string("GraphofOccupancy1")
+End case 
+Open window((Screen width/2)-200;(Screen height/2)-196;(Screen width/2)+200;(Screen height/2)+196;5;Get localized string("MenuReportgraphOfOccupancy"))
+DIALOG([Unit];"ActivityDialog")
+CLOSE WINDOW
+vbColourGraphs:=(bPrev=1)
+Else 
+vRptDate:=vMthDate
+If (vRptDate>[Facility]ReCalcActivity)
+vRptDate:=[Facility]ReCalcActivity
+End if 
+vDate:=vRptDate-57
+Repeat 
+vDate:=vDate+1
+Until (Day number(vDate)=[Facility]WeekEndDay) | (vRptDate-vDate<49)
+bNext:=0
+End if 
+If (OK=1)
+READ WRITE([Activity])
+DEFAULT TABLE([Activity])
+If (bNext=1)
+QUERY([Activity];[Activity]ActivityDate>vRptDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=<>sFacility)
+vNumber:=Sum([Activity]MoveIns)
+vNoTotal:=Sum([Activity]MoveOuts)
+End if 
+QUERY([Activity];[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=vDate;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=vRptDate)
+ORDER BY([Activity]ActivityDate;>)
+
+Repeat 
+//[Activity]SortReport:=$Total
+If ([Activity]Updated=False) | ([Activity]ActivityDate>(Current date-14))
+QUERY([UnitHistory];[UnitHistory]MoveIn<=[Activity]ActivityDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=[Activity]ActivityDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut#!00-00-00!)
+//If ([Activity]ActivityMonth>0)
+//[Activity]AvgStay:=Round(Sum([UnitHistory]DaysStayed)/[Activity]ActivityMonth;2)
+//Else 
+//[Activity]AvgStay:=0
+//End if 
+[Activity]AvgStay:=Average([UnitHistory]DaysStayed)
+[Activity]Updated:=True
+End if 
+SAVE RECORD([Activity])
+//ADD TO SET("Graph")
+//$Total:=[Activity]SortReport
+NEXT RECORD([Activity])
+Until (End selection([Activity]))
+//End if 
+READ ONLY([Activity])
+FIRST RECORD([Activity])
+//USE SET("Graph")
+//vMin:=Min([Weekly]TotalOccup)-1
+
+
+bSingle:=Max([Activity]MoveIns)
+If (bSingle<Max([Activity]MoveOuts))
+bSingle:=Max([Activity]MoveOuts)
+End if 
+bSingle1:=Min([Activity]OccupUnitNo)-1
+bSingle2:=Max([Activity]OccupUnitNo)+1
+ORDER BY([Activity];[Activity]ActivityDate;>)
+
+
+$Window:=Open window(10;40;(Screen width-10);(Screen height-20);Plain window;"Graphs";"CloseBox")
+
+//$Window:=Open window(10;50;(Screen width-10);(800);Plain window;"Graphs";"CloseBox")
+
+
+DIALOG([Facility];"Graphs")
+CLOSE WINDOW($Window)
+If (bNext=1)
+Case of 
+: (sAll=1)
+ORDER BY([Activity];[Activity]ActivityDate;>)
+: (sCust=1)
+ORDER BY([Activity];[Activity]ActivityWeek;>;[Activity]ActivityDate;>)
+: (sUnit=1)
+ORDER BY([Activity];[Activity]ActivityMonth;>;[Activity]ActivityDate;>)
+Else 
+ORDER BY([Activity];[Activity]ActivityDate;>)
+End case 
+BREAK LEVEL(1)
+ACCUMULATE([Activity]AvgStay;[Activity]MoveIns;[Activity]MoveOuts;[Activity]OccupUnitNo)
+FORM SET OUTPUT([Activity];"TotInOut")
+PrintSelection ("P";->[Activity])
+FORM SET OUTPUT([Activity];"Output")
+End if 
+End if 
+End if 
+LogAction (True;"Graph of Occupancy Report ended.")
+

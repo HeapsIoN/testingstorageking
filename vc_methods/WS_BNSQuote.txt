@@ -1,0 +1,462 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+// 04/06/13 DAM Added WS_UnitTypeCodes/WS_ORUnitTypeNos - the last elemets of these arrays are used for 2 extra boxes and the price per facility doesn't include it
+
+SOAP DECLARATION(WS_PostCode;Is longint;SOAP input)
+SOAP DECLARATION(WS_ORInsurance;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_InsAmount;Is real;SOAP input)
+SOAP DECLARATION(WS_UnitTypeCodes;Text array;SOAP input)
+SOAP DECLARATION(WS_ORUnitTypeNos;LongInt array;SOAP input)
+SOAP DECLARATION(WS_ORUnitRateSelected;Is string var;SOAP input)
+SOAP DECLARATION(WS_LengthStay;Is longint;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+SOAP DECLARATION(WS_StreetSuburb;Is string var;SOAP input)
+
+$String:="Start WS_BnSQuote"+Char(13)
+$String:=$String+"WS_PostCode: "+String(WS_PostCode)+Char(13)
+$String:=$String+"WS_ORInsurance: "+String(WS_ORInsurance)+Char(13)
+$String:=$String+"WS_InsAmount: "+String(WS_InsAmount)+Char(13)
+$sizeofarray:=Size of array(WS_UnitTypeCodes)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_UnitTypeCodes("+String($vlElem)+"):"+WS_UnitTypeCodes{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ORUnitTypeNos)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ORUnitTypeNos("+String($vlElem)+"):"+String(WS_ORUnitTypeNos{$vlElem})+Char(13)
+End for 
+$String:=$String+"WS_ORUnitRateSelected: "+WS_ORUnitRateSelected+Char(13)
+$String:=$String+"WS_LengthStay: "+String(WS_LengthStay)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_StreetSuburb: "+WS_StreetSuburb+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORTotal;Is real;SOAP output)
+SOAP DECLARATION(WS_Deposit;Is real;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sProduct:=[Facility]ProductCode
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+//06/06/13 DAM Added 2 medium boxes to extra
+APPEND TO ARRAY(WS_UnitTypeCodes;"M")
+APPEND TO ARRAY(WS_ORUnitTypeNos;2)
+
+C_TEXT($CurrencySymbol;$SizeQuoted)
+C_LONGINT($Kg;$KgFlat;$NoUnit)
+ARRAY TEXT($arFacilityCode;0)
+C_LONGINT($TotUnit)
+C_REAL($Insurance)
+
+COPY ARRAY(WS_ORUnitTypeNos;$Temp)
+ARRAY TEXT(WS_BoxID;0)
+SORT ARRAY($Temp;<)
+ARRAY TEXT($UnitNumbers;Size of array(WS_UnitTypeCodes);$Temp{1})
+ARRAY LONGINT($NoUnits;Size of array(WS_UnitTypeCodes))
+C_REAL($Min;$Calculate;$BnSRent)
+C_BOOLEAN($Aval)
+$Aval:=False
+
+$CurrencySymbol:=GetTextNo ([Facility]CurrencyFormat;1;";")
+$NoUnit:=0
+$SizeQuoted:=""
+$Min:=0
+WS_ORTotal:=0
+WS_Deposit:=0
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True
+$Kg:=0
+$KgFlat:=0
+ARRAY TEXT(Attachments;0)
+$Existing:=False
+TRACE
+// Calculate the size of the package, each box 25 KG
+If (Size of array(WS_ORUnitTypeNos)#0)
+For ($v;1;Size of array(WS_ORUnitTypeNos)-1)//04/06/13 DAM Added to exlude wight calculation in the price
+$Kg:=$Kg+(WS_ORUnitTypeNos{$v}*25)
+$KgFlat:=$KgFlat+(WS_ORUnitTypeNos{$v}*1)
+End for 
+End if 
+
+//Check for a shipping
+QUERY([Shipping];[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb)
+If (Records in selection([Shipping])=0)
+WS_ORErrorCode:=16
+WS_ORErrorDescription:="Please check entered post code and Suburb: "+String(WS_PostCode)+" "+WS_StreetSuburb
+WS_ORSuccess:=False
+End if 
+
+QUERY([Shipping];[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+If (Records in selection([Shipping])=0) & (WS_ORSuccess)
+WS_ORErrorCode:=13
+WS_ORErrorDescription:="Please check entered number of boxes"
+WS_ORSuccess:=False
+End if 
+
+If (Records in selection([Shipping])#0) & (WS_ORSuccess=True)
+SELECTION TO ARRAY([Shipping]FacilityCode;$arFacilityCode)
+ARRAY REAL($PriceperFacility;Size of array($arFacilityCode))
+//Price per Facility
+For ($f;1;Size of array($arFacilityCode))
+QUERY([Facility];[Facility]FacilityCode=$arFacilityCode{$f})
+
+//Price per UnitType
+$NoUnit:=0
+For ($z;1;Size of array(WS_UnitTypeCodes)-1)//  04/06/13 DAM Added to avoid calculation for 2 extra boxes
+QUERY([UnitType];[UnitType]RUnitType=$arFacilityCode{$f}+WS_UnitTypeCodes{$z})
+
+If (Records in selection([UnitType])>0)
+If (WS_LengthStay#0)
+
+//Price Per Rate
+//DAM Added $Calculate as expression didn't calculate correctly
+If (WS_ORUnitRateSelected="W")
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]WeeklyRate*WS_ORUnitTypeNos{$z}*WS_LengthStay)
+Else 
+// Monthly Rate * No of Units Required * Length of stay
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]MonthlyRate*WS_ORUnitTypeNos{$z}*WS_LengthStay)
+End if 
+Else 
+If (WS_ORUnitRateSelected="W")
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]WeeklyRate*WS_ORUnitTypeNos{$z})
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]MonthlyRate*WS_ORUnitTypeNos{$z})
+End if 
+End if 
+
+$NoUnit:=$NoUnit+WS_ORUnitTypeNos{$z}
+Else 
+WS_ORErrorCode:=6
+WS_ORErrorDescription:="Unit Type Record not found!"
+WS_ORSuccess:=False
+End if 
+End for 
+
+For ($z;1;Size of array(WS_UnitTypeCodes))//  Cannot be done in the previous loop as Deposit is calcultaed for extra boxes too
+QUERY([UnitType];[UnitType]RUnitType=$arFacilityCode{$f}+WS_UnitTypeCodes{$z})
+//Deposit per Unit
+If ([UnitType]DepositAmt#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]DepositAmt*WS_ORUnitTypeNos{$z})
+End if 
+End for 
+
+//Rent for B&S
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"RF1")
+If (Records in selection([Analysis])=1)
+
+//Per Month
+$BnSRent:=[Analysis]DfltSellAmt*($NoUnit)// BnS Rent Per month for all Units
+If (WS_ORUnitRateSelected="W")
+$BnSRent:=$BnSRent*[Facility]RentWeeklyMthly
+End if 
+If (WS_LengthStay#0)
+$BnSRent:=$BnSRent*WS_LengthStay
+End if 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+$BnSRent
+End if 
+
+//Delivery Price
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=6)
+If (Records in selection([Analysis])=1)
+//Delivery Price from customer to depot
+QUERY([Shipping];[Shipping]FacilityCode=$arFacilityCode{$f};*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+If (Records in selection([Shipping])=0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+1000000
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+[Shipping]Price
+End if 
+
+//Delivery Price from depot to customer
+QUERY([Shipping];[Shipping]FacilityCode=$arFacilityCode{$f};*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$KgFlat;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$KgFlat)
+
+If (Records in selection([Shipping])=0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+1000000
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+[Shipping]Price
+End if 
+
+Else 
+WS_ORErrorCode:=14
+WS_ORErrorDescription:="Check the shipping Analysis Code for facility: "+String($arFacilityCode{$f})
+WS_ORSuccess:=False
+End if 
+
+//Compulsory Insurance Cost
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"IN")
+If (Records in selection([Analysis])#0)
+If (WS_ORUnitRateSelected="W")
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*[Facility]InsWeeklyMthly*WS_LengthStay*$NoUnit)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*[Facility]InsWeeklyMthly*$NoUnit)
+End if 
+Else 
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*WS_LengthStay*$NoUnit)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*$NoUnit)
+End if 
+End if 
+End if 
+
+//EXTRA Insurance cost
+If (WS_ORInsurance)
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"IN")
+If (Records in selection([Analysis])#0)
+
+If (WS_InsAmount>0)
+QUERY([InsuranceRates];[InsuranceRates]Facility=$arFacilityCode{$f})
+$Insurance:=WS_InsAmount*[InsuranceRates]Premium
+WSRecordLog ("Insurance: "+String($Insurance))
+If (WS_ORUnitRateSelected="W")
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*[Facility]InsWeeklyMthly*WS_LengthStay*$NoUnit)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*[Facility]InsWeeklyMthly*$NoUnit)
+End if 
+Else 
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*WS_LengthStay*$NoUnit)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*$NoUnit)
+End if 
+End if 
+
+End if 
+
+Else 
+WS_ORErrorCode:=15
+WS_ORErrorDescription:="No Insurance found in Storman"
+End if 
+End if 
+
+//Deposit on MI
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])=1)
+
+If (OR_ReadOResXML ="True")
+$DepositAmt:=OR_ReadOResXML ("Deposit";$arFacilityCode{$f})
+If ($DepositAmt#"")
+$PriceperFacility{$f}:=$PriceperFacility{$f}+Num($DepositAmt)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+[Analysis]DfltSellAmt
+End if 
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+[Analysis]DfltSellAmt
+End if 
+End if 
+End for 
+
+WSRecordLog ("Line 271 - Find the cheapest")
+//Find cheapest
+SORT ARRAY($PriceperFacility;$arFacilityCode;>)
+//Find the available units
+If (WS_ORSuccess=True)
+
+For ($r;1;Size of array($arFacilityCode))
+
+For ($z;1;Size of array(WS_UnitTypeCodes))
+QUERY([UnitType];[UnitType]RUnitType=$arFacilityCode{$r}+WS_UnitTypeCodes{$z})
+RELATE MANY([UnitType]RUnitType)
+QUERY SELECTION([Unit];[Unit]Vacant=True;*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Company";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Reserved";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Repair";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Unavail")
+ORDER BY([Unit];[Unit]UnitNo;>)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=2)
+FIRST RECORD([Unit])
+
+//04/06/13 DAM Added to reserve correct units for extra boxes. Unit Type for extra boxes is the last one
+WSRecordLog ("Line 287")
+
+If (Records in selection([Unit])#0)
+For ($j;1;Size of array(WS_UnitTypeCodes))
+$Pos:=Find in array($UnitNumbers{$j};[Unit]RUnitNo)
+While ($Pos#-1)
+NEXT RECORD([Unit])
+
+//24/06/13 To fix the end of selection issue
+If ([Unit]RUnitNo#"")
+$Pos:=Find in array($UnitNumbers{$j};[Unit]RUnitNo)
+Else 
+$Pos:=-1
+End if 
+
+End while 
+End for 
+End if 
+
+WSRecordLog ("Line 306")
+$NoUnits{$z}:=0
+If ([Unit]RUnitNo#"")
+For ($a;1;Records in selection([Unit]))
+If ((Locked([Unit])=True) | (Read only state([Unit])=True)) & (End selection([Unit])=False)
+Else 
+$NoUnits{$z}:=$NoUnits{$z}+1
+$UnitNumbers{$z}{$NoUnits{$z}}:=[Unit]RUnitNo
+End if 
+If (WS_ORUnitTypeNos{$z}#$NoUnits{$z})
+NEXT RECORD([Unit])
+Else 
+$a:=Records in selection([Unit])
+End if 
+End for 
+End if 
+End for 
+
+WSRecordLog ("Line 324")
+//check if there are units available -> skip looping through all facilities
+$Aval:=True
+For ($q;1;Size of array($NoUnits))
+If ($NoUnits{$q}#WS_ORUnitTypeNos{$q})
+$Aval:=False
+End if 
+End for 
+
+If ($Aval=True)
+$Facility:=$arFacilityCode{$r}
+WS_ORTotal:=$PriceperFacility{$r}
+$r:=Size of array($arFacilityCode)
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+WSRecordLog ("Facility - "+$Facility)
+End if 
+End for 
+
+If ($Aval=False)
+WS_ORErrorCode:=2
+WS_ORErrorDescription:="No Units Available"
+WS_ORSuccess:=False
+End if 
+End if 
+End if 
+
+If (WS_ORSuccess=True)
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+Else 
+WS_ORErrorCode:=99
+WS_ORErrorDescription:="Incorrect password"
+WS_ORSuccess:=False
+End if 
+End if 
+
+
+//  //ORes.xml
+If (OR_ReadOResXML ="True")//Does the XML file exist?
+$vtCreatechargeTransaction:=OR_ReadOResXML ("ChargeTransaction";"Create")//Find out what the deposit value for this Facility Code is
+If ($vtCreatechargeTransaction="")//If value not found then default to True - Create Charge Transaction
+$vtCreatechargeTransaction:="TRUE"
+End if 
+Else 
+$vtCreatechargeTransaction:="TRUE"
+End if 
+
+//  //Create Deposit trx for Reservation
+If ($vtCreatechargeTransaction="TRUE") & (WS_ORSuccess)
+QUERY([Analysis];[Analysis]Code=$Facility+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])=1)
+
+WS_Deposit:=WS_Deposit+[Analysis]DfltSellAmt
+//SAVE RECORD([Transaction])
+End if 
+End if 
+
+//End if 
+//
+
+$Tot:=0
+For ($p;1;Size of array($NoUnits))
+$Tot:=$Tot+$NoUnits{$p}
+End for 
+
+
+If (WS_ORSuccess)
+QUERY([Analysis];[Analysis]Code=$Facility+"TP";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])=1)
+$Tape:=$Tot/5
+//WSRECORDLOG ("Units: "+String($NoUnits)+" Records in selection: "+Records in selection([Analysis]))
+If ($Tape#Trunc($Tape;0))
+$Tape:=Trunc($Tape;0)+1
+Else 
+$Tape:=Trunc($Tape;0)
+End if 
+WS_Deposit:=WS_Deposit+([Analysis]DfltSellAmt*$Tape)
+WS_ORTotal:=WS_ORTotal+([Analysis]DfltSellAmt*$Tape)
+End if 
+
+QUERY([Analysis];[Analysis]Code=$Facility+"BW";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])=1)
+$Bubblewrap:=$Tot*0.5
+WS_Deposit:=WS_Deposit+([Analysis]DfltSellAmt*$Bubblewrap)
+WS_ORTotal:=WS_ORTotal+([Analysis]DfltSellAmt*$Bubblewrap)
+End if 
+
+For ($u;1;Size of array(WS_UnitTypeCodes))// -1 
+For ($u1;1;Size of array($UnitNumbers{$u}))
+If ($UnitNumbers{$u}{$u1}#"")
+QUERY([Unit];[Unit]RUnitNo=$UnitNumbers{$u}{$u1})
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+If ($vtCreatechargeTransaction="TRUE")
+WS_Deposit:=WS_Deposit+[UnitType]DepositAmt
+End if 
+
+End if 
+End for 
+End for 
+
+//Include Shipping into deposit
+//Delivery Price from depot to customer
+QUERY([Shipping];[Shipping]FacilityCode=$Facility;*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$KgFlat;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$KgFlat)
+
+WS_Deposit:=WS_Deposit+[Shipping]Price
+
+End if 
+
+$String:="End WS_BnSQuote"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORTotal: "+String(WS_ORTotal)+Char(13)
+$String:=$String+"WS_Deposit: "+String(WS_Deposit)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

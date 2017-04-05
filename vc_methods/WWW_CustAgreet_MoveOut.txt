@@ -1,0 +1,236 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method: WWW_CustAgreemt_MoveOut
+//Date: 15.3.2000
+C_TEXT($HTML;vtTable;$1)
+C_TEXT(sort;show)
+C_DATE($Date;$NextBill)
+C_TEXT($t)
+// Extract the record number from the URL
+$Rec:=$1
+$t:=Char(34)
+// Goto this record number
+GOTO RECORD([Agreement];Num($Rec))
+RELATE ONE([Agreement]CustomerCode)
+
+SetFacility 
+If ([Facility]PriorRefndPol>=1) & ([Facility]PriorRefndPol<=3) & ([Agreement]AgreeNo<[Facility]RefndAgrChange)
+[Facility]RefundPolicy:=[Facility]PriorRefndPol
+End if 
+$MthsBilled:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30;0)
+If ([Facility]RefundPolicy=2) & ($MthsBilled>[Facility]RefndWklyMths)
+[Facility]RefundPolicy:=1
+End if 
+If ([BillPlan]PlanPeriod="Week")
+$Date:=Add to date([Agreement]MoveIn;0;0;[BillPlan]MthsNoRefund*7)//Weeks No Refund
+Else 
+$Date:=Add to date([Agreement]MoveIn;0;[BillPlan]MthsNoRefund;0)//Months No Refund
+End if 
+RELATE ONE([Agreement]BillingPlanCode)
+$NextBill:=CalcNxtBillDate ([Agreement]NextBillDate;[BillPlan]FreePeriods*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)//Take out free months
+If ([BillPlan]PlanPeriod="Week")
+$FromMoveIn:=Add to date([Agreement]MoveIn;0;0;[BillPlan]MthsRevIncent*7)
+Else 
+$FromMoveIn:=Add to date([Agreement]MoveIn;0;[BillPlan]MthsRevIncent;0)
+End if 
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vAmt5:=0
+vTotBal:=0
+If ([Agreement]MoveOut#!00-00-00!) & ([Agreement]ActiveAgreemt)
+MoveOutCalc 
+End if 
+$HTML:=Char(1)
+
+$HTML:=$HTML+"<form method="+$t+"post"+$t+" action="+$t+"/4DMethod/WWW_CustAgreet_Update"+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"recnum"+$t+" value="+$t+$Rec+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"from"+$t+" value="+$t+"moveout"+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"to"+$t+" value="+$t+"null"+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"MthsBilled"+$t+" value="+$t+String($MthsBilled)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"RefundPolicy"+$t+" value="+$t+String([Facility]RefundPolicy)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"NoticeDaysReqd"+$t+" value="+$t+String([Facility]NoticeDaysReqd)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"Date"+$t+" value="+$t+String($Date)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"TodayDate"+$t+" value="+$t+String(Current date)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"NextBill"+$t+" value="+$t+String($NextBill)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"FromMoveIn"+$t+" value="+$t+String($FromMoveIn)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"LastDiscAmt"+$t+" value="+$t+String([Agreement]LastDiscAmt)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"DiscFixedAmt"+$t+" value="+$t+String([BillPlan]DiscFixedAmt)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"RemoveDiscMO"+$t+" value="+$t
+
+If ([BillPlan]RemoveDiscMO=True)
+$HTML:=$HTML+"True"
+Else 
+$HTML:=$HTML+"False"
+End if 
+$HTML:=$HTML+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"MthstoPay"+$t+" value="+$t+String([BillPlan]PeriodstoPay)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"Penalty"+$t+" value="+$t+String([BillPlan]Penalty)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"RentAmt"+$t+" value="+$t+String([Agreement]RentAmt)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"MthsAdv"+$t+" value="+$t+String([Agreement]MthsAdv)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"WeeklyMthly"+$t+" value="+$t+String([Facility]RentWeeklyMthly)+$t+">"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"hidden"+$t+" name="+$t+"DepositAmt"+$t+" value="+$t+String([Agreement]DepositAmt)+$t+">"+Char(13)
+
+$HTML:=$HTML+"<table width=640 cellspacing=0 cellpadding=0 border=0>"+Char(13)
+$HTML:=$HTML+"<tr><td valign=top height="+$t+"36"+$t+"width="+$t+"207"+$t+">"+Char(13)
+$HTML:=$HTML+"<table width=180 border= 0 cellpadding= 0 cellspacing= 0 bgcolor="+$t+"#000000"+$t+" height=15>"+Char(13)
+$HTML:=$HTML+"<tr><td width=218><div align=center><font face="+$t+"Arial, Helvetica, sans-serif"+$t+"size="+$t+"-1"+$t+"><b><font color="+$t+"#00FF00"+$t+">Move Out Details...</FONT></b></FONT></div>"+Char(13)
+$HTML:=$HTML+"</td></tr></Table></td>"+Char(13)
+$HTML:=$HTML+"<td valign=top height=36 width=427>"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"image"+$t+" src="+$t+"button_agreemtinfo.jpg"+$t+" onClick="+$t+"form.to.value='agreeno'"+$t+" border=0 width=73 height=22>"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"image"+$t+" src="+$t+"button_custinfo.jpg"+$t+" onClick="+$t+"form.to.value='custinfo'"+$t+" border=0 width=62 height=22>"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"image"+$t+" src="+$t+"button_tranx.jpg"+$t+" onClick="+$t+"form.to.value='tranx'"+$t+" border=0 width=44 height=22>"+Char(13)
+$HTML:=$HTML+"<img src="+$t+"button_moveout.jpg"+$t+" border=0 width=67 height=22>"+Char(13)
+$HTML:=$HTML+"<input type="+$t+"image"+$t+" src="+$t+"button_noteshist.jpg"+$t+" onClick="+$t+"form.to.value='notes'"+$t+" border=0 width=111 height=22>"+Char(13)
+$HTML:=$HTML+"</td></tr></Table>"+Char(13)
+
+$HTML:=$HTML+"<table cellspacing=2 cellpadding=0 border=0 width=680>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=120><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Agreement Number</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=64><input readonly type="+$t+"text"+$t+" value="+$t+([Agreement]AgreeNo)+$t+" name="+$t+"agreeno"+$t+" size="+$t+"8"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=81><input readonly type="+$t+"text"+$t+" value="+$t+([Customer]CustomerCode)+$t+" name="+$t+"customercode"+$t+" size="+$t+"8"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=270><input readonly type="+$t+"text"+$t+" value="+$t+([Customer]CustomerName)+$t+" name="+$t+"customername"+$t+" size="+$t+"35"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=145><input readonly type="+$t+"text"+$t+" value="+$t+([Agreement]UnitsOccup)+$t+" name="+$t+"unitsoccup"+$t+" size="+$t+"20"+$t+"></a></td>"+Char(13)
+$HTML:=$HTML+"</tr></table>"+Char(13)
+
+
+$HTML:=$HTML+"<table cellspacing=2 cellpadding=0 border=0 width=680>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=120><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Move In Date</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><input readonly type="+$t+"text"+$t+" value="+$t+String([Agreement]MoveIn)+$t+" name="+$t+"movein"+$t+" size="+$t+"12"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=80 colspan=3><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td colspan=2 bgcolor="+$t+"#99FF99"+$t+"><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Termination Notice Given</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><input type="+$t+"text"+$t+" value="+$t+String([Agreement]OutNoticeDate)+$t+" name="+$t+"OutNoticeDate"+$t+" size="+$t+"12"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><input type="+$t+"button"+$t+" onclick="+$t+"changedate(this.form)"+$t+" value="+$t+"Today"+$t+" name="+$t+"Today"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td width=240><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=120><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Move Out Date</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><input type="+$t+"text"+$t+" onChange="+$t+"moveoutcalc(this.form)"+$t+" value="+$t+String([Agreement]MoveOut)+$t+" name="+$t+"MoveOut"+$t+" size="+$t+"12"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td align=center bgcolor="+$t+"#99FF99"+$t+" width=240><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+"><b><u>Move Out Calculation</u></b></font></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"</table>"+Char(13)
+
+$HTML:=$HTML+"<table cellspacing=2 cellpadding=0 border=0 width=680>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td align=center rowspan=2 colspan=3><input type="+$t+"submit"+$t+"name="+$t+"CreateTranx"+$t+" onClick="+$t+"form.from.value='createtranMO'"+$t+" value="+$t+"Create Transactions and Move Out"+$t+"></td>"+Char(13)
+
+
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=241><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Balance Owing for Agreement</font></td>"
+$HTML:=$HTML+"<td width=70><input  readonly type="+$t+"text"+$t+" value="+String([Agreement]BalanceOwing;<>sFormat)+" size="+$t+"10"+$t+" name="+$t+"BalanceOwing"+$t+"></td>"
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=241><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Remove Discount</font></td>"
+$HTML:=$HTML+"<td width=70><input type="+$t+"text"+$t+"  OnChange="+$t+"calctotal(this.form)"+$t+" value="+$t+String(vAmt1;<>sFormat)+$t+" size="+$t+"10"+$t+" name="+$t+"RemoveDiscount"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=137><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Last Bill Date</font></td>"
+$HTML:=$HTML+"<td width=137><input type="+$t+"text"+$t+"  value="+$t+String([Agreement]LastBillDate)+$t+" name="+$t+"LastBillDate"+$t+"></td>"
+$HTML:=$HTML+"<td width=100>&nbsp</td>"
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=241><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Rental Credits</font></td>"
+$HTML:=$HTML+"<td width=70><input type="+$t+"text"+$t+"  OnChange="+$t+"calctotal(this.form)"+$t+" value="+$t+String(vAmt2;<>sFormat)+$t+" size="+$t+"10"+$t+" name="+$t+"RentalCredits"+$t+"></td>"
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=137><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Last Bill Amt</font></td>"
+$HTML:=$HTML+"<td width=137><input type="+$t+"text"+$t+"  OnChange="+$t+"checklastbill(this.form)"+$t+" value="+$t+String([Agreement]LastBillAmt;<>sFormat)+$t+" size="+$t+"10"+$t+" name="+$t+"LastBillAmt"+$t+"></td>"
+$HTML:=$HTML+"<td width=100>&nbsp</td>"
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=241><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Rental Charges</font></td>"
+$HTML:=$HTML+"<td width=70><input type="+$t+"text"+$t+"  OnChange="+$t+"calctotal(this.form)"+$t+" value="+$t+String(vAmt3;<>sFormat)+$t+" size="+$t+"10"+$t+" name="+$t+"RentalCharges"+$t+"></td>"
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=137><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Next Bill Date</font></td>"
+$HTML:=$HTML+"<td width=137><input type="+$t+"text"+$t+"  value="+$t+String([Agreement]NextBillDate)+$t+" name="+$t+"NextBillDate"+$t+"></td>"
+$HTML:=$HTML+"<td width=100>&nbsp</td>"
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=241><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Reverse Deposit</font></td>"
+$HTML:=$HTML+"<td width=70><input type="+$t+"text"+$t+"  OnChange="+$t+"calctotal(this.form)"+$t+" value="+$t+String(vAmt4;<>sFormat)+$t+" size="+$t+"10"+$t+" name="+$t+"ReverseDeposit"+$t+"></td>"
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=137>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td width=137>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td width=100><input type="+$t+"checkbox"+$t+" name="+$t+"vBillOther"+$t+" CHECKED ><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Bill?</font></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#99FF99"+$t+" width=241><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Other Charges</font></td>"
+$HTML:=$HTML+"<td width=70><input readonly type="+$t+"text"+$t+"  value="+$t+String(vAmt5;<>sFormat)+$t+" size="+$t+"10"+$t+" name="+$t+"OtherCharges"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=137>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td width=137>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td width=100>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td width=241 align=right BGCOLOR="+$t+"#FFCCCC"+$t+"><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" color="+$t+"#FF0000"+$t+" size="+$t+"-1"+$t+">Total:</font></td>"+Char(13)
+$HTML:=$HTML+"<td width=70><input readonly type="+$t+"text"+$t+"  value="+$t+String(vTotBal;<>sFormat)+$t+" size="+$t+"10"+$t+" name="+$t+"vTotal"+$t+"></td>"
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"</table>"+Char(13)
+
+$HTML:=$HTML+"<table cellspacing=2 cellpadding=0 border=0 width=680>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td BGCOLOR="+$t+"#99FF99"+$t+" width=137><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-1"+$t+">Gate Access History</font></td>"+Char(13)
+$HTML:=$HTML+"<td width=271>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td width=70>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td align=center width=70>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+
+$HTML:=$HTML+"<td colspan=2 rowspan=2 >"+Char(13)
+
+$HTML:=$HTML+"<table cellspacing=0 cellpadding=0 border=1 width=100%>"
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#CCCCCC"+$t+" width=20% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">Gate Date</FONT></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#CCCCCC"+$t+" width=20% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">Gate Time</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#CCCCCC"+$t+" width=10% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">Gate No</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#CCCCCC"+$t+" width=50% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">Gate Action</font></b></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+FIRST RECORD([GateLog])
+$k:=Records in selection([GateLog])
+If ($k>6)
+$k:=6
+End if 
+
+For ($i;1;$k)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=20% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">"+String([GateLog]GateDate)+"&nbsp</FONT></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=20% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">"+String([GateLog]GateTime)+"&nbsp</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=10% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">"+String([GateLog]GateNo)+"&nbsp</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=50%><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">"+([GateLog]GateActionText)+"&nbsp</font></b></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+NEXT RECORD([GateLog])
+End for 
+For ($i;1;6-$k)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=20% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">&nbsp</FONT></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=20% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">&nbsp</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=10% align=center><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">&nbsp</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$t+"#EEEEEE"+$t+" width=50%><b><font face="+$t+"Arial, Helvetica, sans-serif"+$t+" size="+$t+"-2"+$t+">&nbsp</font></b></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+NEXT RECORD([GateLog])
+End for 
+$HTML:=$HTML+"</table>"
+
+$HTML:=$HTML+"</td>"+Char(13)
+$HTML:=$HTML+"<td width=70>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td align=center width=70><input type="+$t+"submit"+$t+" onClick="+$t+"form.from.value='agreemtcancel'"+$t+"value="+$t+"Cancel"+$t+"></td>"+Char(13)
+
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=70>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td align=center width=70><input type="+$t+"submit"+$t+" name="+$t+"OK"+$t+" value="+$t+"OK"+$t+"></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"</Table></form>"+Char(13)
+
+//Assign the HTML code to vtTable to be inserted in the "CustAgreemt.htm" page
+vtTable:=$HTML+Char(13)
+//SET HTTP HEADER("pragma: no-cache")
+WEB SEND FILE("CustAgreemt.shtm")

@@ -1,0 +1,137 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Called by LogMonServer and LogMonitor if standalone
+C_LONGINT(viCount;viCounter;viCount2;vMax;viCheckTime)
+C_TIME(vTime;vFileTime;vPanicTime;vtDownloadUpdate;vtLastGateTime)
+C_DATE(vdCheckDate;vdLastGateDate)
+C_BOOLEAN(vSameDayStart;vNextDayFinish;vDatafileRebuild)
+viCount:=0
+viCounter:=0//Access Ezy counter
+viCount2:=0//Activity data locked
+viCheckTime:=0
+vMax:=0//Num of tries to connect to Central
+vTime:=Current time//Count time trying to download GatePin - 30 mins
+vFileTime:=Current time//Access Ezy not responding
+vPanicTime:=?00:00:00?//SyncUpdate - Server struggling email time
+vtDownloadUpdate:=?00:00:00?//Time of updating
+vdCheckDate:=Current date
+vdLastGateTime:=[Facility]LastGateDate
+vtLastGateTime:=[Facility]LastGateTime
+
+$FinishTime:=?06:00:00?
+$Days:=3
+$Detail:=True
+vtStartTime:=?00:10:00?
+vtStartEndTime:=?05:30:00?
+vSameDayStart:=False
+vNextDayFinish:=False
+vDatafileRebuild:=False
+vbCheckInvQty:=False
+
+
+
+If (Test path name(<>sPreferencesPath+"Overnight.xml")=Is a document)
+DOCUMENT TO BLOB(<>sPreferencesPath+"Overnight.xml";$Overnight)
+$xmlref:=DOM Parse XML variable($Overnight)
+
+$statement_xpath:="/Preferences4D/Days"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$Days:=Num($value_t)
+End if 
+
+$statement_xpath:="/Preferences4D/FinishTime"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$FinishTime:=Time($value_t)
+End if 
+
+$statement_xpath:="/Preferences4D/Detail"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$DetailSetting:=$value_t
+If ($DetailSetting="False")
+$Detail:=False
+Else 
+$Detail:=True
+End if 
+End if 
+
+$statement_xpath:="/Preferences4D/StartTime"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+vtStartTime:=Time($value_t)
+End if 
+
+$statement_xpath:="/Preferences4D/StartEndTime"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+vtStartEndTime:=Time($value_t)
+End if 
+
+$statement_xpath:="/Preferences4D/SameDayStart"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$SameDayStartSetting:=$value_t
+If ($SameDayStartSetting="False")
+vSameDayStart:=False
+Else 
+vSameDayStart:=True
+End if 
+End if 
+
+$statement_xpath:="/Preferences4D/NextDayFinish"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$NextDayFinishSetting:=$value_t
+If ($NextDayFinishSetting="False")
+vNextDayFinish:=False
+Else 
+vNextDayFinish:=True
+End if 
+End if 
+
+$statement_xpath:="/Preferences4D/DatafileRebuild"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$DatafileRebuild:=$value_t
+If ($DatafileRebuild="False")
+vDatafileRebuild:=False
+Else 
+vDatafileRebuild:=True
+End if 
+End if 
+
+$statement_xpath:="/Preferences4D/CheckInvQty"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$CheckInvQty:=$value_t
+If ($CheckInvQty="False")
+vbCheckInvQty:=False
+Else 
+vbCheckInvQty:=True
+End if 
+End if 
+
+End if 
+
+If (vSameDayStart=True)
+vdCheckDate:=vdCheckDate-1
+End if 

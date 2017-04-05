@@ -1,0 +1,120 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+$OK:=True
+QUERY([Analysis];[Analysis]Code=vAnalysisCode)
+If (vPerciville#0) & (vPlus=0) & (PermissionsControl (165;False)=False)
+AlertMessage (Get localized string("You cannot set the transaction to $0"))
+$OK:=False
+End if 
+If ([Customer]WaivedLateFees>=[Facility]MaximumWaived) & ([Trxs]AnalysisCode="@LF") & ([Facility]MaximumWaived#0) & ([Trxs]TotAmt<0) & (PermissionsControl (159;False)=False) & ([Facility]UnlimitedWaived=False)
+AlertMessage (Get localized string("You cannot waive any more late fees for this customer."))
+$OK:=False
+End if 
+If ([Analysis]InvItem) & ([Analysis]InvQtyonHand<(vQtyPlus-vPerciville))
+AlertMessage (Get localized string("You cannot sell item")+" "+[Analysis]Description+" "+Get localized string("as there are only")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("units on hand.  Please re-enter!"))
+$OK:=False
+End if 
+$Amount:=0
+//If ([Transaction]Qty>0)
+//$Amount:=Round([Transaction]TotAmt/[Transaction]Qty;2)
+//End if 
+If ([Analysis]MinAmt#0)
+If (vPlus<([Analysis]MinAmt*vQtyPlus))
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of less than")+" "+String([Analysis]MinAmt*vQtyPlus)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+If ([Analysis]MaxAmt#0)
+If (vPlus>([Analysis]MaxAmt*vQtyPlus))
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of more than")+" "+String([Analysis]MaxAmt*vQtyPlus)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+If (vPlus<0)
+If (Length(vNarration)<20)
+AlertMessage (Get localized string("You must enter a reason (at least 20 characters) in the Invoice Narration field for any credit or negative transactions.  Please enter a reason before continuing..."))
+$OK:=False
+End if 
+End if 
+
+//Check Inventory Pack quantities
+If (Records in selection([MerchPlan])=1)
+$planItems:=[MerchPlan]AnalysisCodes
+$stockAlert:=""
+While ($planItems#"")
+$aCode:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$aCode+",";"";1)
+$qAmount:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$qAmount+",";"";1)
+
+QUERY([Analysis];[Analysis]Code=$aCode)
+If (([Analysis]InvItem) & (([Analysis]InvQtyonHand-(Num($qAmount)*vQtyPlus))<0))
+$stockAlert:=$stockAlert+Char(Carriage return)+Char(Line feed)+[Analysis]Description+" - quantity on hand: "+String([Analysis]InvQtyonHand)
+End if 
+UNLOAD RECORD([Analysis])
+End while 
+
+
+If ($stockAlert#"")
+AlertMessage ("Cannot sell Inventory Pack: "+[MerchPlan]Description+"."+Char(Carriage return)+Char(Line feed)\
++"Insufficient stock on hand for:"+$stockAlert)
+$OK:=False
+End if 
+
+End if 
+
+If ($OK)
+If (vAnalysisCode=([Facility]FacilityCode+"LF")) & (vPlus<0) & (PermissionsControl (159;False)=False)
+[Customer]WaivedLateFees:=[Customer]WaivedLateFees+1
+[Customer]LateFeeDates:=[Customer]LateFeeDates+String(Current date)+";"
+End if 
+If (bModArray)
+asAnalysis{iRow}:=vAnalysisCode
+aDate{iRow}:=vTrxDate
+aDateFrom{iRow}:=vDateFrom
+aDateTo{iRow}:=vDateTo
+aQuantity{iRow}:=vQtyPlus
+adDesc{iRow}:=vDescr
+aNet{iRow}:=(vPlus-vTax)
+aTax{iRow}:=vTax
+aTot{iRow}:=vPlus
+aNarration{iRow}:=vNarration
+abPrint{iRow}:=cbPrint
+Else 
+APPEND TO ARRAY(asAnalysis;vAnalysisCode)
+APPEND TO ARRAY(aDate;vTrxDate)
+APPEND TO ARRAY(aDateFrom;vDateFrom)
+APPEND TO ARRAY(aDateTo;vDateTo)
+APPEND TO ARRAY(aQuantity;vQtyPlus)
+APPEND TO ARRAY(adDesc;vDescr)
+APPEND TO ARRAY(aNet;(vPlus-vTax))
+APPEND TO ARRAY(aTax;vTax)
+APPEND TO ARRAY(aTot;vPlus)
+APPEND TO ARRAY(aNarration;vNarration)
+APPEND TO ARRAY(abPrint;cbPrint)
+
+If (bIsCashSale)
+APPEND TO ARRAY(aCost;(vPlus/vQtyPlus))
+APPEND TO ARRAY(aiPrimaryKey;0)
+//APPEND TO ARRAY(aFullAmt;vPlus)
+
+End if 
+End if 
+bDiscount:=True
+If ([Analysis]InvItem=True)
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-vQtyPlus+vQuincy;0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-vQtyPlus+vQuincy;2)
+End if 
+SAVE RECORD([Analysis])
+READ ONLY([Analysis])
+LOAD RECORD([Analysis])
+End if 
+ACCEPT
+bModArray:=False
+bAddArray:=True
+DIALOG([Trxs];"ModChargesArray")
+End if 

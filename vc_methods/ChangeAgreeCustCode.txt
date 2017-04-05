@@ -1,0 +1,61 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Called by FixCustCodeDuplicates
+C_LONGINT($1)//Customer record primary key
+C_TEXT($2;$3;$4)//NewCustomerCode - RAgreeNo to Change - RReserveNo to change
+C_TEXT($NewCode)
+$NewCode:=$2
+$Fail:=False
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+READ WRITE([Reservation])
+QUERY([Customer];[Customer]PrimaryKey=$1)
+QUERY([Agreement];[Agreement]RAgreeNo=$3)
+QUERY([Reservation];[Reservation]RReserveNo=$4)
+If (Records in selection([Customer])=1) & (Locked([Customer])=False)
+If (Records in selection([Agreement])=1)
+If (Locked([Agreement])=False) & ([Customer]CustomerCode=[Agreement]CustomerCode)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Trxs];[Trxs]CustomerCode:=$NewCode)
+If (Records in set("LockedSet")>0)
+ALERT([Agreement]RAgreeNo+" - There were "+String(Records in set("LockedSet"))+" that were locked and not fixed.")
+End if 
+[Agreement]CustomerCode:=$NewCode
+SAVE RECORD([Agreement])
+Else 
+$Fail:=True
+ALERT("Agreement "+[Agreement]RAgreeNo+" and Customer "+[Customer]CustomerCode+" do not match or records are locked.")
+End if 
+End if 
+If (Records in selection([Reservation])=1)
+If (Locked([Reservation])=False) & ([Customer]CustomerCode=[Reservation]CustomerCode)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+APPLY TO SELECTION([Trxs];[Trxs]CustomerCode:=$NewCode)
+If (Records in set("LockedSet")>0)
+ALERT([Reservation]RReserveNo+" - There were "+String(Records in set("LockedSet"))+" that were locked and not fixed.")
+End if 
+[Reservation]CustomerCode:=$NewCode
+SAVE RECORD([Reservation])
+Else 
+$Fail:=True
+ALERT("Reservation "+[Reservation]RReserveNo+" and Customer "+[Customer]CustomerCode+" do not match or records are locked.")
+End if 
+End if 
+If ($Fail=False)
+[Customer]CustomerCode:=$NewCode
+SAVE RECORD([Customer])
+//QUERY([GateLog];[GateLog]CustCode=[Customer]CustomerCode)
+//APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$NewCode)
+//QUERY([NotesHistory];[NotesHistory]CustomerCode=[Customer]CustomerCode)
+//APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$NewCode)
+//QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+//APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=$NewCode)
+End if 
+Else 
+ALERT("Customer:"+$2+" Primary key does not exist or is locked!")
+End if 
+READ ONLY(*)
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Reservation])

@@ -1,0 +1,92 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header)
+vLeg1:=Get localized string("Unit No")
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+C_TEXT(vAgreeNo)
+C_TEXT(vUnits)
+vUnits:=""
+If (Length([Trxs]AgreeNo)=14)
+QUERY([Agreement];[Agreement]RAgreeNo=[Trxs]AgreeNo)
+vAgreeNo:=[Agreement]AgreeNo
+If ([Agreement]UnitsOccup="")
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Trxs]AgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=[Trxs]TrxDate)
+QUERY SELECTION([UnitHistory];[UnitHistory]MoveOut>=[Trxs]TrxDate;*)
+QUERY SELECTION([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>)
+vUnits:=Substring([UnitHistory]UnitNo;6)
+End if 
+Else 
+vUnits:=[Agreement]UnitsOccup
+End if 
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+vAgreeNo:=[Reservation]ReserveNo
+vUnits:=[Reservation]UnitsReserved
+End if 
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+
+//08/07/16
+//Billed in Advance
+//Calculate using whole months basis
+If (bAdjIncomePre)
+$Amount:=0
+$MthsAdv:=0
+$Month:=0
+$Tax:=0
+$MthsAdv:=Round(([Trxs]DateTo-[Trxs]DateFrom)/30.42;0)
+If ($MthsAdv>=1)
+$Month:=Trunc(((vMthDate)-[Trxs]DateFrom)/30.42;0)+1//THIS DOESN'T SEEM RIGHT 31days=2 30days=1?
+If ($Month<0)
+$Month:=0
+End if 
+$Amount:=Round([Trxs]TotAmt*($MthsAdv-$Month)/$MthsAdv;2)
+$Tax:=Round([Trxs]TaxAmt*($MthsAdv-$Month)/$MthsAdv;2)
+Else 
+$Amount:=[Trxs]TotAmt
+$Tax:=[Trxs]TaxAmt
+End if 
+If ($Amount#[Trxs]TotAmt)
+vAmt3:=[Trxs]TotAmt-$Amount
+vAmt1:=[Trxs]TaxAmt-$Tax
+vAmt2:=vAmt3-vAmt1
+Else 
+vAmt1:=[Trxs]TaxAmt
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+vAmt3:=[Trxs]TotAmt
+End if 
+Else 
+vAmt1:=[Trxs]TaxAmt
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+vAmt3:=[Trxs]TotAmt
+End if 
+End if 
+
+If (Form event=On Printing Detail)
+If ([Trxs]CustomerCode=(<>sFacility+"MISCL"))
+[Customer]CustomerName:=Get localized string("Cash Sale")//can't print the customer's name as this is saved to the MiscDetls receipt side of the cash sale!
+vUnits:=""
+vAgreeNo:=""
+End if 
+End if 
+
+If (Form event=On Printing Break)
+vAmt1:=Subtotal(vAmt1)
+vAmt2:=Subtotal(vAmt2)
+vAmt3:=Subtotal(vAmt3)
+vAmt4:=Round(vAmt1+vAmt2;2)
+vAmt5:=0
+[Analysis]Description:=Get localized string("Total for")+" "+[Analysis]Description
+[Trxs]AnalysisCode:=Substring([Trxs]AnalysisCode;6)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+SetFormats 

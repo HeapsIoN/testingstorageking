@@ -1,0 +1,434 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 17/1/13 Modified all CalcTaxAmt's to use the correct parameters
+READ WRITE([Trxs])
+C_BOOLEAN(vMisc)
+READ WRITE([Analysis])
+LOAD RECORD([Trxs])
+CREATE EMPTY SET([Trxs];"MerchDetails")
+For ($i;1;Size of array(aTot))
+
+//If inventory pack, create all the transactions - these do not qualify for Merchandise discounts
+If ((Length(asAnalysis{$i})>8) & (asAnalysis{$i}=("@IP")))
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring(asAnalysis{$i};1;8))
+If (Records in selection([MerchPlan])#0)
+$planItems:=[MerchPlan]AnalysisCodes
+$fullValue:=0
+While (Length($planItems)>0)
+$aCode:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$aCode+",";"";1)
+$qAmount:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$qAmount+",";"";1)
+CREATE RECORD([Trxs])
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]TrxDate:=aDate{$i}
+If (aDate{$i}>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=aDate{$i}
+End if 
+[Trxs]AnalysisCode:=$aCode
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+
+[Trxs]Qty:=Num($qAmount)*aQuantity{$i}
+If ([Trxs]Qty>1)
+[Trxs]Description:=[Analysis]Description+" x "+String([Trxs]Qty)
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+
+//22-12-16 DM Added code below for cash sales. Fixing issue with Inventory on hands and inv packs
+If (vMisc)
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-[Trxs]Qty;0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-[Trxs]Qty;2)
+End if 
+SAVE RECORD([Analysis])
+End if 
+////
+[Trxs]DateFrom:=aDateFrom{$i}
+[Trxs]DateTo:=aDateTo{$i}
+[Trxs]TotAmt:=Round([Analysis]DfltSellAmt*[Trxs]Qty;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;0)
+$fullValue:=$fullValue+[Trxs]TotAmt
+[Trxs]Narration:=aNarration{$i}
+[Trxs]Charge:=True
+[Trxs]PrintNarration:=abPrint{$i}
+If ([Trxs]AgreeNo="@MISCL")
+[Trxs]Match:=viCashMatch
+End if 
+SAVE RECORD([Trxs])
+
+End while 
+
+//Create the discount line, even if no discount
+CREATE RECORD([Trxs])
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+/////////////////////fb9026 by eugene, 27/05/2015///////////
+If (Substring(([Agreement]CustomerCode);6)="MISCL") & (Substring(([Agreement]RAgreeNo);6)="MISCL")
+vMisc:=True
+Else 
+vMisc:=False
+End if 
+//////////////////////
+
+
+
+[Trxs]TrxDate:=aDate{$i}
+If (aDate{$i}>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=aDate{$i}
+End if 
+
+[Trxs]Qty:=aQuantity{$i}
+
+
+If ([Trxs]Qty>1)
+[Trxs]Description:=[MerchPlan]DiscountDescription+" x "+String([Trxs]Qty)
+Else 
+[Trxs]Description:=[MerchPlan]DiscountDescription
+End if 
+
+[Trxs]AnalysisCode:=[Facility]FacilityCode+[MerchPlan]DiscountAnalysis
+[Trxs]DateFrom:=aDateFrom{$i}
+[Trxs]DateTo:=aDateTo{$i}
+
+[Trxs]TotAmt:=Round(aTot{$i}-$fullValue;2)
+
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;5)
+[Trxs]Narration:=aNarration{$i}
+[Trxs]Charge:=True
+[Trxs]PrintNarration:=abPrint{$i}
+SAVE RECORD([Trxs])
+End if 
+
+Else 
+
+If (Undefined(viCashMatch))// 10575 - fixing Cash Sales issue - By Hamid 15/4/2016
+C_REAL(viCashMatch)
+End if 
+
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=aDate{$i}
+If (aDate{$i}>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=aDate{$i}
+End if 
+[Trxs]Description:=adDesc{$i}
+[Trxs]Qty:=aQuantity{$i}
+[Trxs]TotAmt:=Round(aTot{$i};2)
+[Trxs]TaxAmt:=aTax{$i}
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+/////////////////////fb9026 by eugene, 27/05/2015///////////
+If (Substring(([Agreement]CustomerCode);6)="MISCL") & (Substring(([Agreement]RAgreeNo);6)="MISCL")
+vMisc:=True
+Else 
+vMisc:=False
+End if 
+//////////////////////
+[Trxs]AnalysisCode:=asAnalysis{$i}
+[Trxs]DateFrom:=aDateFrom{$i}
+[Trxs]DateTo:=aDateTo{$i}
+[Trxs]Narration:=aNarration{$i}
+[Trxs]Charge:=True
+[Trxs]Match:=viCashMatch// 10575 - fixing Cash Sales issue - By Hamid 15/4/2016
+[Trxs]PrintNarration:=abPrint{$i}
+SAVE RECORD([Trxs])
+ADD TO SET([Trxs];"MerchDetails")
+End if 
+End for 
+
+USE SET("MerchDetails")
+vDiscount:=0
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=False)
+ORDER BY([MerchPlan];[MerchPlan]Priority;>;[MerchPlan]MerchPlanID;>)
+ARRAY TEXT(asTMAnalysisCodes;0)
+DISTINCT VALUES([Trxs]AnalysisCode;asTMAnalysisCodes)// NEED TO ADD UNIQUE VALUES FROM ARRAY HERE
+For ($i;1;Records in selection([MerchPlan]))
+$Qty:=0
+$Total:=0
+$KSSPercent:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+USE SET("MerchDetails")
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=asTMAnalysisCodes{$j})
+If ([MerchPlan]AnalysisCodes=$MerchString)
+For ($k;1;Records in selection([Trxs]))
+$Qty:=$Qty+[Trxs]Qty
+$Total:=$Total+[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+End if 
+USE SET("MerchDetails")
+End for 
+
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+$aQty:=0
+$aTotal:=0
+FIRST RECORD([Trxs])
+For ($k;1;Records in selection([Trxs]))
+If ([Trxs]AnalysisCode=asTMAnalysisCodes{$j})
+$aQty:=$aQty+[Trxs]Qty
+$aTotal:=$aTotal+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-$Percent)/100);1)*$aQty)
+Else 
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-[MerchPlan]PercDiscount)/100);1)*$aQty)
+End if 
+End if 
+End for 
+
+If ([MerchPlan]ItemQuantity<=$Qty)
+If ([MerchPlan]PercDiscount>0)
+If (<>sFacility="KE@")
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$KSSPercent//Round(($Total/$Qty)*((100-$Percent)/100);1)*$Qty
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+[Trxs]Description:=[MerchPlan]DiscountDescription
+[Trxs]TotAmt:=Round(($Total-$NewTotal)*-1;2)
+//Last parameter set to '2' on line below so that tax is calculated on Gross amount even for TaxAddToAmt datafiles
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$KSSPercent//Round(($Total/$Qty)*((100-[MerchPlan]PercDiscount)/100);1)*$Qty
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+[Trxs]Description:=[MerchPlan]DiscountDescription
+[Trxs]TotAmt:=Round(($Total-$NewTotal)*-1;2)
+//Last parameter set to '2' on line below so that tax is calculated on Gross amount even for TaxAddToAmt datafiles
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total*((100-$Percent)/100)
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+[Trxs]Description:=[MerchPlan]DiscountDescription
+[Trxs]TotAmt:=Round(($Total-$NewTotal)*-1;2)
+//Last parameter set to '2' on line below so that tax is calculated on Gross amount even for TaxAddToAmt datafiles
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total*((100-[MerchPlan]PercDiscount)/100)
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+[Trxs]Description:=[MerchPlan]DiscountDescription
+[Trxs]TotAmt:=Round(($Total-$NewTotal)*-1;2)
+//Last parameter set to '2' on line below so that tax is calculated on Gross amount even for TaxAddToAmt datafiles
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]FixedDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total-$Percent
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+[Trxs]Description:=[MerchPlan]DiscountDescription
+[Trxs]TotAmt:=Round(($Total-$NewTotal)*-1;2)
+//Last parameter set to '2' on line below so that tax is calculated on Gross amount even for TaxAddToAmt datafiles
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total-[MerchPlan]FixedDiscount
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+[Trxs]Description:=[MerchPlan]DiscountDescription
+[Trxs]TotAmt:=Round(($Total-$NewTotal)*-1;2)
+//Last parameter set to '2' on line below so that tax is calculated on Gross amount even for TaxAddToAmt datafiles
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Repeat 
+$k:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+$k:=1
+Case of 
+: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=False)
+USE SET("MerchDetails")
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=asTMAnalysisCodes{$j})
+If ([MerchPlan]RepeatMP=True)
+APPLY TO SELECTION([Trxs];[Trxs]TotAmt:=Round([Trxs]TotAmt*((100-$Percent)/100);2))
+Else 
+APPLY TO SELECTION([Trxs];[Trxs]TotAmt:=Round([Trxs]TotAmt*((100-[MerchPlan]PercDiscount)/100);2))
+End if 
+//Last parameter set to '2' on line below so that tax is calculated on Gross amount even for TaxAddToAmt datafiles
+APPLY TO SELECTION([Trxs];[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2))
+: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis="")
+USE SET("MerchDetails")
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=asTMAnalysisCodes{$j})
+$TotAmt:=Sum([Trxs]TotAmt)
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=asTMAnalysisCodes{$j}
+QUERY([Analysis];[Analysis]Code=asTMAnalysisCodes{$j})
+[Trxs]Description:=[Analysis]Description+" Discount"
+If ([MerchPlan]RepeatMP=True)
+$DiscAmt:=$TotAmt*((100-$Percent)/100)
+Else 
+$DiscAmt:=$TotAmt*((100-[MerchPlan]PercDiscount)/100)
+End if 
+[Trxs]TotAmt:=Round(($TotAmt-$DiscAmt)*-1;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]DateFrom;[Trxs]DateTo;2)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+Else 
+//Do Nothing
+End case 
+DELETE FROM ARRAY(asTMAnalysisCodes;$j)
+$j:=Size of array(asTMAnalysisCodes)+1
+End if 
+End for 
+Until ($k=0)
+End if 
+NEXT RECORD([MerchPlan])
+End for 
+vDiscount:=vDiscount*-1
+USE SET("MerchDetails")
+CLEAR SET("MerchDetails")
+[Customer]Balance:=[Customer]Balance+vrTotal
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+If (vMisc=False)
+ReCalc 
+End if 
+CLOSE WINDOW

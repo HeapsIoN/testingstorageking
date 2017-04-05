@@ -1,0 +1,207 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1)//Date to calculate values as at
+C_POINTER($2;$TablePtr;$FieldPtr)//Customer or Agreement table
+C_BOOLEAN($3)//Web
+C_BOOLEAN($4;$CalcFees)
+C_LONGINT($i;$j;$Last;$Band1;$Band2;$Band3)
+$TablePtr:=$2
+$CalcFees:=False
+If (Count parameters>=4)
+$CalcFees:=$4
+End if 
+$FieldPtr:=Field(Table($TablePtr);1)
+If ($TablePtr=Table(4))
+$FieldPtr:=->[Agreement]RAgreeNo
+End if 
+ORDER BY($TablePtr->;$FieldPtr->;>)
+ARRAY TEXT(aCustCode;0)
+SELECTION TO ARRAY($FieldPtr->;aCustCode)
+ARRAY REAL(aTotals;13;Size of array(aCustCode))
+//{1} is Balance Owing at Date
+//{2} is Arrears Band 1 up to 30 days
+//{3} is Arrears Band 2 up to 60 days
+//{4} is Arrears Band 3 up to 90 days
+//{5} is Arrears Band 4 over 90 days
+//{6} is Rent Billed in Advance
+//{7} is Paid in Advance
+//{8} is Category as above but 1 = owing nothing
+//{9} is Fees Owing (i.e. everything except rent)
+//{10} is Bal Owing of Inactive Customer for Kennards only
+//{11} is Other Billed in Advance
+//{12} is Late Fees Billed in Advance 
+//{13} is Insurance Billed in Advance
+$Band1:=GetPrefNo ([Facility]AgedDebtorBreaks;2)
+$Band2:=GetPrefNo ([Facility]AgedDebtorBreaks;3)
+$Band3:=GetPrefNo ([Facility]AgedDebtorBreaks;4)
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+CREATE EMPTY SET($TablePtr->;"ToPrint")
+//$WinRef:=
+
+If ($3=False)
+If (Application type=4D Server)
+$ProgressWin:=Open window(20;Screen height-300;450;Screen height-200;0;Get localized string("Progress"))
+Else 
+//Open window(20;50;450;150;0;Get localized string("Progress"))
+$ProgressWin:=Open window(20;50;450;150;0)
+End if 
+End if 
+
+
+FIRST RECORD($TablePtr->)
+
+//GOTO XY(2;2)
+//MESSAGE([Facility]FacilityCode+" - Calculating Aged Receivables for "+String($1;6)+"    ")
+
+For ($i;1;Records in selection($TablePtr->))
+//GOTO XY(2;3)
+//MESSAGE("Processing "+String($i)+" of "+String(Records in selection($TablePtr->))+"    ")
+
+If ($3=False)
+GOTO XY(2;2)
+MESSAGE("Calculating Aged Receivables "+String($i)+" of "+String(Records in selection($TablePtr->)))
+End if 
+
+
+$Active:=0
+If ($TablePtr=Table(4))
+aTotals{1}{$i}:=Round([Agreement]BalanceOwing;2)
+If ([Agreement]ActiveAgreemt)
+$Active:=1
+End if 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+Else 
+aTotals{1}{$i}:=Round([Customer]Balance;2)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+For ($j;1;Records in selection([Agreement]))
+If ([Agreement]ActiveAgreemt)
+$Active:=$Active+1
+End if 
+NEXT RECORD([Agreement])
+End for 
+FIRST RECORD([Agreement])
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>=($1-$Band3))
+If ($CalcFees)
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+GetAnalysis (False;True)
+End if 
+For ($j;2;13)
+aTotals{$j}{$i}:=0
+End for 
+$Total:=aTotals{1}{$i}
+$Last:=0
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+If (Records in selection([Trxs])>0)//inactive customers won't have any trxs 
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]TrxDate>$1)
+If ([Trxs]Charge)
+aTotals{1}{$i}:=Round(aTotals{1}{$i}-[Trxs]TotAmt;2)
+Else 
+aTotals{1}{$i}:=Round(aTotals{1}{$i}+[Trxs]TotAmt;2)
+End if 
+$Total:=aTotals{1}{$i}
+$Last:=0
+Else 
+If ($Total>0)
+If ($Active>0) | ($FieldPtr->#"KE@")//Only do else part for Kennards
+If ([Trxs]Charge)
+$Amt:=[Trxs]TotAmt
+If ($Amt>=$Total)
+$Amt:=$Total
+$Last:=1//This causes the value of aTotals{8} to get set properly
+End if 
+Case of 
+: ([Trxs]AnalysisCode#[Analysis]Code) & ($CalcFees)
+aTotals{9}{$i}:=Round(aTotals{9}{$i}+$Amt;2)
+: (($1-[Trxs]TrxDate)>$Band3)
+aTotals{5}{$i}:=Round(aTotals{5}{$i}+$Amt;2)
+aTotals{8}{$i}:=$Last*5
+: (($1-[Trxs]TrxDate)>$Band2)
+aTotals{4}{$i}:=Round(aTotals{4}{$i}+$Amt;2)
+aTotals{8}{$i}:=$Last*4
+: (($1-[Trxs]TrxDate)>$Band1)
+aTotals{3}{$i}:=Round(aTotals{3}{$i}+$Amt;2)
+aTotals{8}{$i}:=$Last*3
+Else 
+aTotals{2}{$i}:=Round(aTotals{2}{$i}+$Amt;2)
+aTotals{8}{$i}:=$Last*2
+End case 
+$Total:=Round($Total-$Amt;2)
+End if 
+Else 
+aTotals{10}{$i}:=aTotals{1}{$i}//this never executes if customer has not had any trxs within the longest period - ie inactive customers
+aTotals{8}{$i}:=10
+End if 
+Else 
+$j:=Records in selection([Trxs])+1//Exit loop
+End if 
+End if 
+NEXT RECORD([Trxs])
+End for 
+End if 
+If ($Active=0) & ($FieldPtr->="KE@")// Kennards inactive customers - added 8/11/05
+aTotals{10}{$i}:=aTotals{1}{$i}
+aTotals{8}{$i}:=10
+Else 
+aTotals{5}{$i}:=Round(aTotals{1}{$i}-aTotals{2}{$i}-aTotals{3}{$i}-aTotals{4}{$i};2)
+End if 
+If (aTotals{10}{$i}<0)//added 8/11/05
+aTotals{10}{$i}:=0
+End if 
+If (aTotals{5}{$i}<0)
+aTotals{5}{$i}:=0
+End if 
+For ($j;2;4)//Removes negative amounts to the oldest balance owing
+If (aTotals{$j}{$i}<0)
+aTotals{$j+1}{$i}:=Round(aTotals{$j+1}{$i}+aTotals{$j}{$i};2)
+aTotals{$j}{$i}:=0
+End if 
+End for 
+If ($TablePtr=Table(5))
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY SELECTION([Agreement]; | ;[Agreement]MoveOut>$1;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]MoveIn<=$1)
+For ($j;1;Records in selection([Agreement]))
+$Amount:=CalcRentAdvance ($1;[Facility]RentAdvFlag;True;False)//Don't return error value
+aTotals{6}{$i}:=Round(aTotals{6}{$i}+vAmt1;2)
+aTotals{11}{$i}:=Round(aTotals{11}{$i}+vAmt2;2)//other
+aTotals{12}{$i}:=Round(aTotals{12}{$i}+vAmt3;2)//late
+aTotals{13}{$i}:=Round(aTotals{13}{$i}+vAmt4;2)//insurance
+NEXT RECORD([Agreement])
+End for 
+aTotals{7}{$i}:=Round(aTotals{6}{$i}-aTotals{1}{$i};2)
+If (aTotals{7}{$i}<0)
+aTotals{7}{$i}:=0
+End if 
+If (aTotals{1}{$i}<0)
+aTotals{8}{$i}:=1//In credit
+End if 
+If (aTotals{1}{$i}#0) | (aTotals{2}{$i}#0) | (aTotals{3}{$i}#0) | (aTotals{4}{$i}#0) | (aTotals{5}{$i}#0) | (aTotals{6}{$i}#0) | (aTotals{7}{$i}#0)
+ADD TO SET([Customer];"ToPrint")
+End if 
+Else 
+$Amount:=CalcRentAdvance ($1;[Facility]RentAdvFlag;True;False)//Don't return error value
+aTotals{6}{$i}:=Round(aTotals{6}{$i}+vAmt1;2)
+aTotals{11}{$i}:=Round(aTotals{11}{$i}+vAmt2;2)//other
+aTotals{12}{$i}:=Round(aTotals{12}{$i}+vAmt3;2)//late
+aTotals{13}{$i}:=Round(aTotals{13}{$i}+vAmt4;2)//insurance
+End if 
+NEXT RECORD($TablePtr->)
+End for 
+
+If ($TablePtr=Table(5))
+USE SET("ToPrint")
+End if 
+CLEAR SET("ToPrint")
+CLEAR SET("Future")
+CLEAR SET("All")
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+
+If ($3=False)
+CLOSE WINDOW($ProgressWin)
+End if 
+

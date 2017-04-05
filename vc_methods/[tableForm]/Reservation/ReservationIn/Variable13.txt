@@ -1,0 +1,52 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+CreateCustCode (True)
+If (vName>"")
+OBJECT SET ENABLED(bProcess;True)
+If (Records in selection([Customer])>1)
+QUERY([Customer];[Customer]CustomerCode=[Customer]CustomerCode)
+End if 
+If (Records in selection([Customer])=1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP";*)
+QUERY([Analysis]; & ;[Analysis]DfltSellAmt#0;*)
+QUERY([Analysis];[Analysis]BillMoveIn=True)
+If (Records in selection([Analysis])=1)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@DP")
+If (Records in selection([Trxs])=0)
+If ([Facility]AgreeOnlyDeposit=True)
+OK:=0
+Else 
+$Deposit:=Num(RequestMessage (Get localized string("Do you wish to charge a deposit for this Reservation?");String([Analysis]DfltSellAmt);Get localized string("Yes");Get localized string("No")))
+End if 
+If (OK=1)
+[Reservation]DepositAmt:=$Deposit
+vOthDeposit:=$Deposit
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Reservation")
+[Trxs]TrxDate:=GetValidDate ([Reservation]ReservedDate)
+[Trxs]DateFrom:=[Reservation]ReservedDate
+[Trxs]DateTo:=[Reservation]ReservedDate
+[Reservation]DateDepPaid:=[Reservation]ReservedDate
+[Trxs]TotAmt:=RoundAmt ($Deposit)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+[Customer]LatestTrxDate:=[Customer]LatestTrxDate
+vRecalc:=True
+Else 
+[Reservation]DepositAmt:=0
+vOthDeposit:=0
+End if 
+End if 
+End if 
+End if 
+End if 

@@ -1,0 +1,467 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//DigitalKey
+C_TEXT($2)//PaymentType
+C_TEXT($3)//PaymentMethod
+C_TEXT($4)//PaymentSource
+C_TEXT($5)//PaymentReference
+C_TEXT($6)//DateFrom
+C_TEXT($7)//DateTo
+C_TEXT($8)//DateField
+C_TEXT($9)//EziDebitCustomerID
+C_TEXT($10)//YourSystemReference
+C_TEXT($11)//Banking or Daily
+C_TEXT($0)
+C_TEXT($BankFailedReason)
+C_TEXT($BankReceiptID)
+C_TEXT($BankReturnCode)
+C_TEXT($CustomerName)
+C_TEXT($DebitDate)
+C_TEXT($EzidebitCustomerID)
+C_TEXT($InvoiceID)
+C_REAL($PaymentAmount)
+C_TEXT($PaymentID)
+C_TEXT($PaymentMethod)
+C_TEXT($PaymentReference)
+C_TEXT($PaymentSource)
+C_TEXT($PaymentStatus)
+C_REAL($ScheduledAmount)
+C_TEXT($SettlementDate)
+C_REAL($TransactionFeeClient)
+C_REAL($TransactionFeeCustomer)
+C_TEXT($TransactionTime)
+C_TEXT($YourGeneralReference)
+C_TEXT($YourSystemReference)
+C_LONGINT($Error;$Pos)
+C_TEXT($ErrorMessage)
+C_TEXT($root)
+C_TEXT($subElem)
+C_TEXT($nameSpace)
+C_TEXT($AnalysisCode)
+C_TEXT($AnalysisDescription)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=63)
+If (Records in selection([Analysis])#1)
+AlertMessage ("The BPAY analysis code must be selected before checking transactions status!")
+Else 
+$nameSpace:="https://px.ezidebit.com.au/"
+$root:=DOM Create XML Ref("GetPayments";$nameSpace)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/DigitalKey")
+DOM SET XML ELEMENT VALUE($subElem;$1)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/PaymentType")
+DOM SET XML ELEMENT VALUE($subElem;$2)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/PaymentMethod")
+DOM SET XML ELEMENT VALUE($subElem;$3)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/PaymentSource")
+DOM SET XML ELEMENT VALUE($subElem;$4)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/PaymentReference")
+DOM SET XML ELEMENT VALUE($subElem;$5)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/DateFrom")
+DOM SET XML ELEMENT VALUE($subElem;$6)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/DateTo")
+DOM SET XML ELEMENT VALUE($subElem;$7)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/DateField")
+DOM SET XML ELEMENT VALUE($subElem;$8)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/EziDebitCustomerID")
+DOM SET XML ELEMENT VALUE($subElem;$9)
+
+$subElem:=DOM Create XML element($root;"/GetPayments/YourSystemReference")
+DOM SET XML ELEMENT VALUE($subElem;$10)
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+
+DOM EXPORT TO VAR($root;$Message)
+SyncRecordLog ("EziDebit BPayGetParameters ("+$11+"). Request: "+$Message)
+
+If ([Facility]Highlander)
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetPayments";"GetPayments";"https://px.ezidebit.com.au/";Web Service manual)
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetPayments";"GetPayments";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+Else 
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetPayments";"GetPayments";"https://px.ezidebit.com.au/";Web Service manual)
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetPayments";"GetPayments";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+End if 
+
+$EziResult:=Num(WEB SERVICE Get info(0))
+
+If ($EziResult=0)
+If (OK=1)
+C_BLOB($blob)
+C_TEXT($resRoot;$CustomerNotFound;$CustomerNotFound1)
+C_TEXT($resSubElem;$StD;$StM;$StY)
+C_LONGINT($TPos)
+ARRAY TEXT($ArrayBankFailedReason;0)
+ARRAY TEXT($ArrayBankReceiptID;0)
+ARRAY TEXT($ArrayBankReturnCode;0)
+ARRAY TEXT($ArrayCustomerName;0)
+ARRAY TEXT($ArrayDebitDate;0)
+ARRAY TEXT($ArrayEzidebitCustomerID;0)
+ARRAY TEXT($ArrayInvoiceID;0)
+ARRAY REAL($ArrayPaymentAmount;0)
+ARRAY TEXT($ArrayPaymentID;0)
+ARRAY TEXT($ArrayPaymentMethod;0)
+ARRAY TEXT($ArrayPaymentReference;0)
+ARRAY TEXT($ArrayPaymentSource;0)
+ARRAY TEXT($ArrayPaymentStatus;0)
+ARRAY REAL($ArrayScheduledAmount;0)
+ARRAY TEXT($ArraySettlementDate;0)
+ARRAY REAL($ArrayTransactionFeeClient;0)
+ARRAY REAL($ArrayTransactionFeeCustomer;0)
+ARRAY TEXT($ArrayTransactionTime;0)
+ARRAY TEXT($ArrayYourGeneralReference;0)
+ARRAY TEXT($ArrayYourSystemReference;0)
+ARRAY TEXT($ArrayCustomerNotFound;0)
+ARRAY TEXT($ArrayCustomerNotFound1;0)
+ARRAY TEXT($ArrayPaymentReference_new;0)
+C_LONGINT($vlfind)
+
+
+C_BOOLEAN($AddTrxs)
+C_TEXT(BPAYAnalysisCode;BPAYDateofTransaction;BPAYDateBank;BPAYBankReceiptID;BPAYPaymentID)
+C_REAL(BPAYReceiptAmount)
+WEB SERVICE GET RESULT($blob;"XMLOut";*)
+$resRoot:=DOM Parse XML variable($blob)
+
+DOM EXPORT TO VAR($resroot;$Message)
+SyncRecordLog ("EziDebit BPayGetParameters ("+$11+") Response: "+$Message)
+
+$resSubElem:=DOM Find XML element($resRoot;"/GetPaymentsResponse/GetPaymentsResult/Error")
+DOM GET XML ELEMENT VALUE($resSubElem;$Error)
+
+If ($Error=0)//Checking for empty reult
+$pos:=0
+$Pos:=Position("BankFailedReason";$Message)
+End if 
+// Need for loop here
+If ($Error=0) & ($Pos>0)
+$0:="S"
+$GetCustomerFeesResultRef:=DOM Get first child XML element($resRoot)
+$DataRef:=DOM Get first child XML element($GetCustomerFeesResultRef)
+$CustomerBPAYRef:=DOM Get first child XML element($DataRef)
+$Count:=DOM Count XML elements($DataRef;"Payment")
+
+For ($i;1;$Count)
+$BankFailedReason:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/BankFailedReason")
+DOM GET XML ELEMENT VALUE($resSubElem;$BankFailedReason)
+APPEND TO ARRAY($ArrayBankFailedReason;$BankFailedReason)
+
+$BankReceiptID:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/BankReceiptID")
+DOM GET XML ELEMENT VALUE($resSubElem;$BankReceiptID)
+APPEND TO ARRAY($ArrayBankReceiptID;$BankReceiptID)
+
+$BankReturnCode:="0"
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/BankReturnCode")
+DOM GET XML ELEMENT VALUE($resSubElem;$BankReturnCode)
+APPEND TO ARRAY($ArrayBankReturnCode;$BankReturnCode)
+
+$CustomerName:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/CustomerName")
+DOM GET XML ELEMENT VALUE($resSubElem;$CustomerName)
+APPEND TO ARRAY($ArrayCustomerName;$CustomerName)
+
+$DebitDate:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/DebitDate")
+DOM GET XML ELEMENT VALUE($resSubElem;$DebitDate)
+$TPos:=0
+$TPos:=Position("T";$DebitDate)
+If ($TPos>0)
+$DebitDate:=Substring($DebitDate;1;$TPos-1)
+$StY:=Substring($DebitDate;1;4)
+$StM:=Substring($DebitDate;6;2)
+$StD:=Substring($DebitDate;9;2)
+$DebitDate:=$StD+"/"+$StM+"/"+$StY
+Else 
+$DebitDate:=""
+End if 
+APPEND TO ARRAY($ArrayDebitDate;$DebitDate)
+
+$EzidebitCustomerID:="0"
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/EzidebitCustomerID")
+DOM GET XML ELEMENT VALUE($resSubElem;$EzidebitCustomerID)
+APPEND TO ARRAY($ArrayEzidebitCustomerID;$EzidebitCustomerID)
+
+$InvoiceID:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/InvoiceID")
+DOM GET XML ELEMENT VALUE($resSubElem;$InvoiceID)
+APPEND TO ARRAY($ArrayInvoiceID;$InvoiceID)
+
+$PaymentAmount:=0
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/PaymentAmount")
+DOM GET XML ELEMENT VALUE($resSubElem;$PaymentAmount)
+APPEND TO ARRAY($ArrayPaymentAmount;$PaymentAmount)
+
+$PaymentID:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/PaymentID")
+DOM GET XML ELEMENT VALUE($resSubElem;$PaymentID)
+APPEND TO ARRAY($ArrayPaymentID;$PaymentID)
+
+$PaymentMethod:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/PaymentMethod")
+DOM GET XML ELEMENT VALUE($resSubElem;$PaymentMethod)
+APPEND TO ARRAY($ArrayPaymentMethod;$PaymentMethod)
+
+$PaymentReference:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/PaymentReference")
+DOM GET XML ELEMENT VALUE($resSubElem;$PaymentReference)
+APPEND TO ARRAY($ArrayPaymentReference;$PaymentReference)
+
+$PaymentSource:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/PaymentSource")
+DOM GET XML ELEMENT VALUE($resSubElem;$PaymentSource)
+APPEND TO ARRAY($ArrayPaymentSource;$PaymentSource)
+
+$PaymentStatus:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/PaymentStatus")
+DOM GET XML ELEMENT VALUE($resSubElem;$PaymentStatus)
+APPEND TO ARRAY($ArrayPaymentStatus;$PaymentStatus)
+
+$ScheduledAmount:=0
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/ScheduledAmount")
+DOM GET XML ELEMENT VALUE($resSubElem;$ScheduledAmount)
+APPEND TO ARRAY($ArrayScheduledAmount;$ScheduledAmount)
+
+$SettlementDate:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/SettlementDate")
+DOM GET XML ELEMENT VALUE($resSubElem;$SettlementDate)
+$TPos:=0
+$TPos:=Position("T";$SettlementDate)
+If ($TPos>0)
+$SettlementDate:=Substring($SettlementDate;1;$TPos-1)
+$StY:=Substring($SettlementDate;1;4)
+$StM:=Substring($SettlementDate;6;2)
+$StD:=Substring($SettlementDate;9;2)
+$SettlementDate:=$StD+"/"+$StM+"/"+$StY
+Else 
+$SettlementDate:=""
+End if 
+APPEND TO ARRAY($ArraySettlementDate;$SettlementDate)
+
+$TransactionFeeClient:=0
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/TransactionFeeClient")
+DOM GET XML ELEMENT VALUE($resSubElem;$TransactionFeeClient)
+APPEND TO ARRAY($ArrayTransactionFeeClient;$TransactionFeeClient)
+
+$TransactionFeeCustomer:=0
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/TransactionFeeCustomer")
+DOM GET XML ELEMENT VALUE($resSubElem;$TransactionFeeCustomer)
+APPEND TO ARRAY($ArrayTransactionFeeCustomer;$TransactionFeeCustomer)
+
+$TransactionTime:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/TransactionTime")
+DOM GET XML ELEMENT VALUE($resSubElem;$TransactionTime)
+APPEND TO ARRAY($ArrayTransactionTime;$TransactionTime)
+
+$YourGeneralReference:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/YourGeneralReference")
+DOM GET XML ELEMENT VALUE($resSubElem;$YourGeneralReference)
+APPEND TO ARRAY($ArrayYourGeneralReference;$YourGeneralReference)
+
+$YourSystemReference:=""
+$resSubElem:=DOM Find XML element($CustomerBPAYRef;"Payment/YourSystemReference")
+DOM GET XML ELEMENT VALUE($resSubElem;$YourSystemReference)
+APPEND TO ARRAY($ArrayYourSystemReference;$YourSystemReference)
+
+$CustomerBPAYRef:=DOM Get next sibling XML element($CustomerBPAYRef)
+End for 
+
+If (Size of array($ArrayPaymentReference)>1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=63)
+$AnalysisCode:=[Analysis]Code
+$AnalysisDescription:=[Analysis]Description
+C_TEXT($AgreementSearch)
+$AgreementSearch:=""
+
+
+For ($i;1;Size of array($ArrayPaymentReference))
+QUERY([Customer];[Customer]CRN=$ArrayPaymentReference{$i})
+If (Records in selection([Customer])=1)//Find customer
+QUERY([Trxs];[Trxs]AnalysisCode=$AnalysisCode;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt=$ArrayBankReceiptID{$i};*)
+QUERY([Trxs]; & ;[Trxs]CCAuthNo=$ArrayPaymentID{$i})
+If (Records in selection([Trxs])<1)//No transaction for CRN, and BankReceiptID, and PaymentID
+
+APPEND TO ARRAY($ArrayPaymentReference_new;$ArrayPaymentReference{$i})
+
+$AddTrxs:=False
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)//10882
+If (Records in selection([Agreement])=1)//10830
+$AddTrxs:=True
+$AgreementSearch:=[Agreement]RAgreeNo
+Else 
+$AddTrxs:=False//Select an agreement or Mass Payment
+ARRAY TEXT(asSelectAgreement;0)
+
+For ($j;1;Records in selection([Agreement]))
+APPEND TO ARRAY(asSelectAgreement;[Agreement]AgreeNo)
+NEXT RECORD([Agreement])
+End for 
+BPayConfirmTwo ([Customer]CustomerName;String($ArrayPaymentAmount{$i}))
+
+If (ok=1)//Mass payment
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=False)
+vmpActive:=True
+$Window2:=Open window((Screen width/2)-425;(Screen height/2)-318;(Screen width/2)+425;(Screen height/2)+318;5;Get localized string("Receipts")+"...")
+BPAYINTEX:=$i
+BPAYAnalysisCode:=""
+BPAYDateofTransaction:=""
+BPAYReceiptAmount:=0
+BPAYDateBank:=""
+BPAYAnalysisCode:=[Analysis]Code
+BPAYDateofTransaction:=$ArrayDebitDate{$i}
+BPAYReceiptAmount:=$ArrayPaymentAmount{$i}
+BPAYDateBank:=$ArraySettlementDate{$i}
+BPAYBankReceiptID:=$ArrayBankReceiptID{$i}
+BPAYPaymentID:=$ArrayPaymentID{$i}
+DIALOG([Trxs];"MassPayment")
+CLOSE WINDOW($Window2)
+UpdateAgreeBals 
+Else // An agreement
+If (asSelectAgreement{asSelectAgreement}#"")
+$AddTrxs:=True
+$AgreementSearch:=<>sFacility+asSelectAgreement{asSelectAgreement}
+End if 
+End if 
+
+End if 
+If ($AddTrxs=True)
+//QUERY([Trxs];[Trxs]AgreeNo=$AgreementSearch;*)
+//QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code;*)
+//QUERY([Trxs]; & ;[Trxs]CustomerCode=[Customer]CustomerCode;*)
+//QUERY([Trxs]; & ;[Trxs]OriginalReceipt=$ArrayBankReceiptID{$i};*)
+//QUERY([Trxs]; & ;[Trxs]CCAuthNo=$ArrayPaymentID{$i})
+//If (Records in selection([Trxs])<1)  //Add transactionn to [TRXS]
+READ WRITE([Customer])
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=$AnalysisCode
+[Trxs]AgreeNo:=$AgreementSearch//[Agreement]RAgreeNo
+[Trxs]OriginalReceipt:=$ArrayBankReceiptID{$i}
+[Trxs]CCAuthNo:=$ArrayPaymentID{$i}
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]Charge:=False
+//If ([Analysis]SetBankedDate)
+[Trxs]DateBanked:=Date($ArraySettlementDate{$i})//10878
+//Else 
+//[Trxs]DateBanked:=[Trxs]TrxDate
+//End if 
+[Trxs]Confirmed:=True
+[Trxs]DateFrom:=Date($ArrayDebitDate{$i})
+[Trxs]Description:=$AnalysisDescription//[Analysis]Description  //"BPAY transaction. CRN:"+$arrayPaymentReference{$i}+" ,PaymentMethod:"+$ArrayPaymentMethod{$i}+" ,PaymentSource:"+$ArrayPaymentSource{$i}+" ,TransactionFeeCustomer:"+String($ArrayTransactionFeeCustomer{$i})+" ,ScheduledAmount:"+String($ArrayScheduledAmount{$i})+" ,TransactionFeeClient:"+String($ArrayTransactionFeeClient{$i})
+[Trxs]TotAmt:=$ArrayPaymentAmount{$i}//*-1     - 10856
+[Trxs]TrxDate:=Date($ArrayDebitDate{$i})//Current date
+[Trxs]TrxTime:=Current time
+SAVE RECORD([Trxs])
+//UpdateAgreeBals 
+QUERY([Agreement];[Agreement]RAgreeNo=$AgreementSearch)
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+SAVE RECORD([Customer])
+SAVE RECORD([Agreement])
+//End if 
+
+End if 
+End if 
+Else //Customer not find - 10854
+$CustomerNotFound:="Customer Reference Number: "+$ArrayPaymentReference{$i}+"; Debit Date: "+$ArrayDebitDate{$i}+"; Payment Amount: "+String($ArrayPaymentAmount{$i};"##0.00")+"; Settlement Date: "+$ArraySettlementDate{$i}+"; Bank ReceiptID: "+$ArrayBankReceiptID{$i}
+//$CustomerNotFound1:="Customer Reference Number: "+$ArrayPaymentReference{$i}+"; Debit Date: "+$ArrayDebitDate{$i}+"; Payment Amount: "+String($ArrayPaymentAmount{$i})+Char(13)+"Settlement Date: "+$ArraySettlementDate{$i}+"; Bank ReceiptID: "+$ArrayBankReceiptID{$i}
+
+If (Size of array($ArrayCustomerNotFound1)=0)//10855
+$CustomerNotFound1:="Customer Reference Number"+Char(9)+"Debit Date"+Char(9)+"Amount"+Char(9)+Char(9)+"Settlement Date"+Char(9)+Char(9)+"Receipt ID"
+APPEND TO ARRAY($ArrayCustomerNotFound1;$CustomerNotFound1)
+End if 
+$CustomerNotFound1:=$ArrayPaymentReference{$i}+Char(9)+$ArrayDebitDate{$i}+Char(9)+String($ArrayPaymentAmount{$i};"##0.00")+Char(9)+Char(9)+$ArraySettlementDate{$i}+Char(9)+Char(9)+$ArrayBankReceiptID{$i}
+//$CustomerNotFound1:=$ArrayPaymentReference{$i}+Char(9)+$ArrayDebitDate{$i}+Char(9)+String($ArrayPaymentAmount{$i};"##0.00")+Char(9)+$ArrayBankReceiptID{$i}
+APPEND TO ARRAY($ArrayCustomerNotFound1;$CustomerNotFound1)
+APPEND TO ARRAY($ArrayCustomerNotFound;$CustomerNotFound)
+End if 
+End for 
+
+If (Size of array($ArrayCustomerNotFound)>0)// Show list of not found CRN
+vtFormula:=""
+VTFORMULABPAY:=""
+For ($i;1;Size of array($ArrayCustomerNotFound))
+vtFormula:=vtFormula+$ArrayCustomerNotFound{$i}+Char(13)+" "+Char(13)
+VTFORMULABPAY:=VTFORMULABPAY+$ArrayCustomerNotFound1{$i}+Char(13)+" "+Char(13)
+End for 
+VTFORMULABPAY:=VTFORMULABPAY+$ArrayCustomerNotFound1{$i}+Char(13)+" "+Char(13)//10910
+vTitle:=("Unknown Customer Reference Numbers from BPAY")
+vTitle:=vTitle+" - "+String(Current date)//10855
+//vtFormula:=("The following payments Customer Refrence Numbers  have not yet been found, please follow up:")+":"+Char(13)+Char(13)+vtFormula
+vtFormula:="The following payments have been processed, but could not be found in Storman. Please contact Ezidebit."+Char(13)+Char(13)+vtFormula
+VTFORMULABPAY:="The following payments have been processed, but could not be found in Storman. Please contact Ezidebit."+Char(13)+Char(13)+VTFORMULABPAY
+$WindowImportDialog:=Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Online Reservation Errors"))
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW($WindowImportDialog)
+vtFormula:=""
+VTFORMULABPAY:=""
+End if 
+
+
+End if 
+Else 
+If ($Error=0) & ($Pos<=0)
+$0:="ERR-Empty"
+SyncRecordLog ("EziDebit GetBPayCRN call result is empty")
+Else 
+$resSubElem:=DOM Find XML element($resRoot;"/GetPaymentsResponse/GetPaymentsResult/ErrorMessage")
+DOM GET XML ELEMENT VALUE($resSubElem;$ErrorMessage)
+$0:="ERR"+String($Error)
+End if 
+End if 
+DOM CLOSE XML($resRoot)
+End if 
+Else 
+SyncRecordLog ("EziDebit BPayGetParameters ("+$11+") call result: "+String($EziResult))
+//AlertMessage ("EziDebit call result, error code: "+String($EziResult)+" (Unable to process update)")
+$0:="Err"+String($EziResult)
+End if 
+
+DOM CLOSE XML($root)
+
+//  //31/01 ED Commented the changes below there is no test transactions
+If (Size of array($ArrayPaymentReference_new)>=1)
+CREATE EMPTY SET([Trxs];"$BPayTrxs")
+For ($i;1;Size of array($ArrayPaymentReference_new))
+QUERY([Customer];[Customer]CRN=$ArrayPaymentReference_new{$i})
+If (Records in selection([Customer])=1)//Find customer
+$vlfind:=Find in array($ArrayPaymentReference;$ArrayPaymentReference_new{$i})
+If ($vlfind>0)
+QUERY([Trxs];[Trxs]AnalysisCode=$AnalysisCode;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt=$ArrayBankReceiptID{$vlfind};*)
+QUERY([Trxs]; & ;[Trxs]CCAuthNo=$ArrayPaymentID{$vlfind})
+If (Records in selection([Trxs])>0)
+ADD TO SET([Trxs];"$BPayTrxs")
+End if 
+End if 
+End if 
+End for 
+USE SET("$BPayTrxs")
+CLEAR SET("$BPayTrxs")
+BREAK LEVEL(0)
+FORM SET OUTPUT([Trxs];"TransPrintUncon")
+vTitle:="BPay Report "+" "+String(Current date)///+String([Facility]LastDaily;6)
+PrintSelection ("P")
+End if 
+
+End if 

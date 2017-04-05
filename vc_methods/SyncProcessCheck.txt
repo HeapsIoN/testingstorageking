@@ -1,0 +1,63 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//There is nothing to process the files Transact,Letters,PhotosCa,UnitHist,NotesHis,UnitStat
+
+//SDD 25/3/11 Method to process incoming CHK records at HOF
+//SDD 08/03/13 Modified to only include 8 chars in BillPAnls field
+C_TEXT($Report)
+C_REAL($Total)
+$Report:=""
+$Total:=0
+Case of 
+: ([EventLog]BillPAnlys="Activity")
+SyncProcessCheckSumActivity ([EventLog]LogDetail)
+: ([EventLog]BillPAnlys="Facility")
+SyncProcessCheckSumFacility ([EventLog]LogDetail)
+: ([EventLog]BillPAnlys="UnitType")
+SyncProcessCheckSumMain ([EventLog]LogDetail;2;<>aiPrimaryKeyField{2};48)//Table 2 UnitType, FacilityFieldKey, MD5 Field
+: ([EventLog]BillPAnlys="Unit")
+SyncProcessCheckSumMain ([EventLog]LogDetail;3;<>aiPrimaryKeyField{3};74)
+: ([EventLog]BillPAnlys="Agreemen")//SDD Only 8 chars
+SyncProcessCheckSumMain ([EventLog]LogDetail;4;<>aiPrimaryKeyField{4};46)
+: ([EventLog]BillPAnlys="Customer")
+SyncProcessCheckSumMain ([EventLog]LogDetail;5;<>aiPrimaryKeyField{5};47)
+: ([EventLog]BillPAnlys="Analysis")
+SyncProcessCheckSumMain ([EventLog]LogDetail;7;<>aiPrimaryKeyField{7};40)
+: ([EventLog]BillPAnlys="BillPlan")
+SyncProcessCheckSumMain ([EventLog]LogDetail;8;<>aiPrimaryKeyField{8};33)
+: ([EventLog]BillPAnlys="Notices")
+SyncProcessCheckSumMain ([EventLog]LogDetail;9;<>aiPrimaryKeyField{9};28)
+: ([EventLog]BillPAnlys="Contacts")
+SyncProcessCheckSumMain ([EventLog]LogDetail;12;<>aiPrimaryKeyField{12};75)
+: ([EventLog]BillPAnlys="Marketin")
+SyncProcessCheckSumMain ([EventLog]LogDetail;15;<>aiPrimaryKeyField{15};18)
+: ([EventLog]BillPAnlys="Reservat")
+SyncProcessCheckSumMain ([EventLog]LogDetail;17;<>aiPrimaryKeyField{17};47)
+: ([EventLog]BillPAnlys="Insuranc")
+SyncProcessCheckSumMain ([EventLog]LogDetail;34;<>aiPrimaryKeyField{34};8)
+: ([EventLog]BillPAnlys="MerchPla")
+SyncProcessCheckSumMain ([EventLog]LogDetail;35;<>aiPrimaryKeyField{35};16)
+: ([EventLog]BillPAnlys="Promotio")
+SyncProcessCheckSumMain ([EventLog]LogDetail;46;<>aiPrimaryKeyField{46};18)
+: ([EventLog]BillPAnlys="PromotiH")
+SyncProcessCheckSumMain ([EventLog]LogDetail;47;<>aiPrimaryKeyField{47};6)
+: ([EventLog]BillPAnlys>"")
+//Some other file not listed above
+Else //Original Agreement CheckSum
+QUERY([Agreement];[Agreement]RAgreeNo=[EventLog]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+ORDER BY([Agreement];[Agreement]RAgreeNo;>)
+For ($j;1;Records in selection([Agreement]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+$Report:=$Report+[Agreement]AgreeNo+Char(9)+String(Round([Agreement]BalanceOwing;2))+Char(9)+GetISODate ([Agreement]NextBillDate)+Char(9)
+$Report:=$Report+GetISODate ([Agreement]LateCycleStDate)+Char(9)+String([Agreement]LastNotice)+Char(9)+String(Records in selection([Trxs]))+Char(13)
+$Total:=$Total+Round([Agreement]BalanceOwing;2)
+NEXT RECORD([Agreement])
+End for 
+If (Round($Total;2)=Round([EventLog]TrxAmount;2)) & ($Report=[EventLog]LogDetail)
+SyncRecordLog (Get localized string("Verified Checksum of Agreements for")+" "+[EventLog]FacilityCode+" = "+String($Total;"##,###,###.00"))
+Else 
+SyncRecordLog (Get localized string("Received Checksum of Agreements for")+" "+[EventLog]FacilityCode+", ERROR Host = "+String($Total;"##,###,###.00")+" Site = "+String([EventLog]TrxAmount;"##,###,###.00"))
+SyncProcessCheckSum ($Report;[EventLog]LogDetail)
+End if 
+End case 
+[EventLog]SyncStatus:=3

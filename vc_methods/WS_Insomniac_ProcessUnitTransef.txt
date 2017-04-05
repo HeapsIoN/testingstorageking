@@ -1,0 +1,255 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_GateCode;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitIDFrom;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitIDTo;Is text;SOAP input)
+SOAP DECLARATION(WS_Start_Date;Is date;SOAP input)
+SOAP DECLARATION(WS_PaymAmount;Is real;SOAP input)
+SOAP DECLARATION(WS_PaymMethod;Is text;SOAP input)
+SOAP DECLARATION(WS_CCType;Is text;SOAP input)
+SOAP DECLARATION(WS_CCNo;Is text;SOAP input)
+SOAP DECLARATION(WS_RoutingN;Is text;SOAP input)
+SOAP DECLARATION(WS_Expirdate;Is text;SOAP input)
+SOAP DECLARATION(WS_CCStreetAdr;Is text;SOAP input)
+SOAP DECLARATION(WS_CCPostCode;Is text;SOAP input)
+SOAP DECLARATION(WS_CCCVV;Is text;SOAP input)
+SOAP DECLARATION(WS_Track;Is text;SOAP input)
+
+
+$String:="Start WS_INsomniac_ProcessUnitTransef"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_GateCode: "+WS_GateCode+Char(13)
+$String:=$String+"WS_UnitIDFrom: "+WS_UnitIDFrom+Char(13)
+$String:=$String+"WS_UnitIDTo: "+WS_UnitIDTo+Char(13)
+$String:=$String+"WS_Start_Date: "+String(WS_Start_Date)+Char(13)
+$String:=$String+"WS_PaymAmount: "+String(WS_PaymAmount)+Char(13)
+$String:=$String+"WS_PaymMethod: "+WS_PaymMethod+Char(13)
+$String:=$String+"WS_CCType: "+WS_CCType+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_RoutingN: "+WS_RoutingN+Char(13)
+$String:=$String+"WS_Expirdate: "+WS_Expirdate+Char(13)
+$String:=$String+"WS_CCStreetAdr: "+WS_CCStreetAdr+Char(13)
+$String:=$String+"WS_CCPostCode: "+WS_CCPostCode+Char(13)
+$String:=$String+"WS_CCCVV: "+WS_CCCVV+Char(13)
+$String:=$String+"WS_Track: "+WS_Track+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+
+
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitIDFrom)
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+If (Records in selection([Agreement])#0)
+$Create1:=False
+If (Records in selection([Unit])#0)
+$X:=[Agreement]NextBillDate-WS_Start_Date
+$Y:=[Agreement]NextBillDate-[Agreement]LastBillDate
+$N:=[Agreement]MthsAdv
+$Credit:=$N*[Unit]RentedValue*($X/$Y)
+
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitIDTo;*)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+If (Records in selection([Unit])#0)
+WS_RET_CODE:=True
+
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+$X:=[Agreement]NextBillDate-WS_Start_Date
+$Y:=[Agreement]NextBillDate-[Agreement]LastBillDate
+$N:=[Agreement]MthsAdv
+
+
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+If ([BillPlan]PlanPeriod="Week")
+
+If (Records in selection([BillPlan])#0)
+$Charge:=$N*((([UnitType]MonthlyRate/0.2308)*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)*($X/$Y)
+[Unit]RentedValue:=((([UnitType]MonthlyRate/0.2308)*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+[Agreement]RentAmt:=Round([Unit]RentedValue*[Agreement]MthsAdv;2)
+Else 
+$Charge:=$N*([UnitType]MonthlyRate/0.2308)*($X/$Y)
+[Unit]RentedValue:=[UnitType]MonthlyRate/0.2308
+End if 
+
+Else 
+If (Records in selection([BillPlan])#0)
+$Charge:=$N*((([UnitType]MonthlyRate*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))*($X/$Y)
+[Unit]RentedValue:=(([UnitType]MonthlyRate*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+[Agreement]RentAmt:=Round([Unit]RentedValue*[Agreement]MthsAdv;2)
+Else 
+$Charge:=$N*[UnitType]MonthlyRate*($X/$Y)
+[Unit]RentedValue:=[UnitType]MonthlyRate
+End if 
+End if 
+
+[Unit]Vacant:=False
+[Unit]Status:="Rented"
+[Unit]AgreeNo:=[Agreement]RAgreeNo
+[Unit]MoveIn:=Current date
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+[Unit]ReservedDate:=!00-00-00!
+$Create1:=True
+SAVE RECORD([Unit])
+[Customer]Balance:=[Customer]Balance+$Charge-$Credit
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Customer])
+[Agreement]UnitsOccup:=[Unit]UnitNo
+[Agreement]RegularRent:=[Unit]RentedValue
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+$Charge-$Credit
+SAVE RECORD([Agreement])// Agreemnet changes need to be done
+Else 
+WS_ERROR:="Unit TO Not Found"
+WS_RET_CODE:=False
+End if 
+Else 
+WS_ERROR:="Unit FROM Not Found"
+WS_RET_CODE:=False
+End if 
+
+If ($Create1=True)
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitIDFrom)
+[Unit]Vacant:=True
+[Unit]Status:="Vacant"
+If ([Facility]VacantToClean=True)
+[Unit]Status:="ToClean"
+End if 
+[Unit]AgreeNo:=""
+[Unit]MoveOut:=Current date
+If ([Unit]ReservedTo>"")
+[Unit]Status:="Reserved"
+End if 
+SAVE RECORD([Unit])
+
+Case of 
+: (WS_PaymMethod="CC")
+$SpecOptions:=54
+If (WS_CCNo="37@") | (WS_CCNo="34@")//It is an Amex card
+$SpecOptions:=55
+End if 
+If ((WS_CCNo="300@") | (WS_CCNo="301@") | (WS_CCNo="38@") | (WS_CCNo="39@") | (WS_CCNo="309@") | (WS_CCNo="302@") | (WS_CCNo="303@") | (WS_CCNo="304@") | (WS_CCNo="305@") | (WS_CCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$SpecOptions:=56
+End if 
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_RET_CODE:=False
+$Create:=False
+WS_ERROR:="Payment method is Unavailable"
+End if 
+: (WS_PaymMethod="CA")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"CA")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_RET_CODE:=False
+$Create:=False
+WS_ERROR:="Payment method is Unavailable"
+End if 
+: (WS_PaymMethod="CK")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"CH")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_RET_CODE:=False
+$Create:=False
+WS_ERROR:="Payment method is Unavailable"
+End if 
+: (WS_PaymMethod="DB")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"EF")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_RET_CODE:=False
+$Create:=False
+WS_ERROR:="Payment method is Unavailable"
+End if 
+: (WS_PaymMethod="ACH")
+//Need adhoc direct debit support added
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Payment method is Unavailable"
+End case 
+
+If ($Create=True)
+
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"RF")
+If (Records in selection([Analysis])#0)
+CREATE RECORD([Trxs])
+[Trxs]Description:="Prorata "+<>vtUnitsCap+" "+WS_UnitIDFrom
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+[Trxs]TaxAmt:=[Analysis]TaxRate*$Credit
+[Trxs]TotAmt:=-$Credit
+
+//If (WS_PaymMethod="CC")
+//[Transaction]CCAuthNo:=ProcCreditCard (False;"P";WS_PaymAmount;WS_CCNo;WS_Expirdate;"";[Agreement]RAgreeNo;[Analysis]Description;[Agreement]CustomerCode;[Customer]CustomerName;WS_CCStreetAdr;WS_CCPostCode;"";"";"";[Agreement]TaxExempt;True;"";False)
+//End if 
+
+//If ([Transaction]CCAuthNo#"ERR@") & ([Transaction]CCAuthNo#"DEC@")
+SAVE RECORD([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]Description:="Prorata "+<>vtUnitsCap+" "+WS_UnitIDTo
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=False
+[Trxs]TaxAmt:=[Analysis]TaxRate*$Charge
+[Trxs]TotAmt:=$Charge
+
+If (WS_PaymMethod="CC")
+[Trxs]CCAuthNo:=ProcCreditCard (False;"P";WS_PaymAmount;WS_CCNo;WS_Expirdate;"";[Agreement]RAgreeNo;[Analysis]Description;[Agreement]CustomerCode;[Customer]CustomerName;WS_CCStreetAdr;WS_CCPostCode;"";"";"";[Agreement]TaxExempt;True;"";False)
+End if 
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+SAVE RECORD([Trxs])
+Else 
+WS_ERROR:="CC Payment is not Successfull"
+WS_RET_CODE:=False
+End if 
+
+//Else 
+//WS_RET_CODE:=False
+//End if 
+Else 
+WS_RET_CODE:=False
+End if 
+End if 
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Agreement Not Found"
+End if 
+
+$String:="End WS_INsomniac_ProcessUnitTransef"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

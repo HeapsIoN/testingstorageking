@@ -1,0 +1,380 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 24/03/10, 07:45:22
+// ----------------------------------------------------
+// Method: PeriodReportsPrint<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN"><br /><html><br /><head><br /><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><br /><meta name="Generator" content="4D Write 2004"><br /><title>UNTITLED</title><br /></head><br /><body><br />&nbsp;<br />&nbsp;<br />&nbsp;<br /><br>We are in receipt of your payment for which we thank you.<br />&nbsp;<br />&nbsp;<br /><br>Kind regards<br />&nbsp;<br />&nbsp;<br /><br>Helen Reibelt<br /><br>Manager<br /></br><br /></body><br /></html><br />
+// Description
+// Prints Period Reports
+//
+// Parameters
+//$1 = Date to run for
+//$2 = Send To List Code
+// ----------------------------------------------------
+C_DATE($1;$MthDate)
+C_TEXT($2)
+C_LONGINT($3;$Print)
+C_TEXT(vReportSettings)
+C_BOOLEAN($DWMY)// Daily Weekly Monthly Yearly
+$DWMY:=False
+
+//05/11/14 DAM Added <>vDesc:=1 to fix cust analysis report
+<>vDesc:=1
+$PosDWMY:=Find in array(<>asEmailSendToCode;"D")
+
+If ($PosDWMY>0)
+$DWMY:=True
+End if 
+
+$PosDWMY:=Find in array(<>asEmailSendToCode;"W")
+
+If ($PosDWMY>0)
+$DWMY:=True
+End if 
+
+$PosDWMY:=Find in array(<>asEmailSendToCode;"M")
+
+If ($PosDWMY>0)
+$DWMY:=True
+End if 
+
+$PosDWMY:=Find in array(<>asEmailSendToCode;"Y")
+
+If ($PosDWMY>0)
+$DWMY:=True
+End if 
+
+If (Size of array(<>asEmailSendToCode)#0) & ($DWMY) & ((Num([Facility]DailyBatch)#0) | (Num([Facility]WeeklyBatch)#0) | (Num([Facility]MonthlyBatch)#0) | (Num([Facility]YearlyBatch)#0))
+
+If (Count parameters<3)//--- By Hamid - 14/4/2015 - 8961
+<>ProgressInd:=0
+vReportSettings:="0"*49
+
+//$PeriodReports:=Open window(20;50;600;150;0)
+Progress ("Generating Periodic Reports")
+Else 
+If (Count parameters>2) & ($3#1)
+<>ProgressInd:=0
+vReportSettings:="0"*49
+Progress ("Generating Periodic Reports")
+End if 
+End if 
+
+
+$MthDate:=$1
+<>tPrintPDF:=False
+Case of 
+: ($2="D")
+$Print:=0//Num(Substring([Facility]DailyBatchOrder;1;1))
+: ($2="W")
+$Print:=0//Num(Substring([Facility]WeeklyBatchOrder;1;1))
+: ($2="M")
+$Print:=0//Num(Substring([Facility]MonthlyBatchOrder;1;1))
+: ($2="Y")
+$Print:=0//Num(Substring([Facility]YearlyBatchOrder;1;1))
+Else 
+//Do nothing
+End case 
+
+If (Count parameters>2)
+$Print:=$3
+End if 
+
+If ($Print=0)
+If (([Facility]UsePDFWriter) | (<>iPlatform=2)) & (GetEmailSendTo ($2)>"")
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+SET PRINT PREVIEW(False)
+OK:=1
+End if 
+End if 
+If (<>tPrintPDF=False)
+Case of 
+: ($2="D")
+$PrintSettings:=Position("1";[Facility]DailyBatch)
+: ($2="W")
+$PrintSettings:=Position("1";[Facility]WeeklyBatch)
+: ($2="M")
+$PrintSettings:=Position("1";[Facility]MonthlyBatch)
+: ($2="Y")
+$PrintSettings:=Position("1";[Facility]YearlyBatch)
+Else 
+//Do Nothing
+End case 
+If ($PrintSettings>0)
+$PPOS:=Find in array(<>asEmailSendToCode;$2)
+
+If ($PPOS>0)
+If (<>asEmailSendToAddress{$PPOS}="Print")
+PRINT SETTINGS
+End if 
+End if 
+
+
+
+End if 
+End if 
+If (OK=1)
+
+<>tBatch:=True
+vMthDate:=$MthDate
+vReportSettings:="0"*49
+
+If ($Print=0)
+READ WRITE([Message])
+CREATE EMPTY SET([Message];"Periodic")
+
+For ($n;1;Size of array(<>asEmailSendToReports))
+If (<>asEmailSendToCode{$n}=$2) & (<>asEmailSendToAddress{$n}#"Print")
+CREATE RECORD([Message])
+[Message]Subject:=Get localized string("Reports from")+" "+[Facility]FacilityName
+[Message]Address:=<>asEmailSendToAddress{$n}
+[Message]MsgBody:=<>asEmailSendToReports{$n}
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]Facility:=<>sFacility
+SAVE RECORD([Message])
+ADD TO SET([Message];"Periodic")
+For ($m;1;Length(<>asEmailSendToReports{$n}))
+If (Substring(<>asEmailSendToReports{$n};$m;1)="1")
+vReportSettings:=Substring(vReportSettings;1;$m-1)+"1"+Substring(vReportSettings;$m+1)
+End if 
+End for 
+End if 
+End for 
+Else 
+For ($n;1;Size of array(<>asEmailSendToReports))
+//GOTO XY(2;2)
+//MESSAGE("Generating Periodic Reports "+String($n)+" of "+String(Size of array(<>asEmailSendToReports)))  //Johnno
+If (<>asEmailSendToCode{$n}=$2) & (<>asEmailSendToAddress{$n}="Print")
+//CREATE RECORD([Message])
+//[Message]Subject:=Get localized string("Reports from")+" "+[Facility]FacilityName
+//[Message]Address:=<>asEmailSendToAddress{$n}
+//[Message]MsgBody:=<>asEmailSendToReports{$n}
+//[Message]OutIn:=True
+//[Message]MsgDate:=Current date
+//[Message]MsgTime:=Current time
+//SAVE RECORD([Message])
+//ADD TO SET([Message];"Periodic")
+For ($m;1;Length(<>asEmailSendToReports{$n}))
+If (Substring(<>asEmailSendToReports{$n};$m;1)="1")
+vReportSettings:=Substring(vReportSettings;1;$m-1)+"1"+Substring(vReportSettings;$m+1)
+End if 
+End for 
+End if 
+End for 
+End if 
+
+Case of 
+: ($2="D")
+vReportOrder:=Substring([Facility]DailyBatchOrder;2)
+: ($2="W")
+vReportOrder:=Substring([Facility]WeeklyBatchOrder;2)
+: ($2="M")
+vReportOrder:=Substring([Facility]MonthlyBatchOrder;2)
+: ($2="Y")
+vReportOrder:=Substring([Facility]YearlyBatchOrder;2)
+Else 
+//Do Nothing
+End case 
+
+ARRAY LONGINT(aiReportOrder;49)
+ARRAY LONGINT(aiReportSettings;49)
+For ($i;1;49)
+aiReportSettings{$i}:=Num(Substring(vReportSettings;$i;1))
+aiReportOrder{$i}:=Num(Substring(vReportOrder;($i*2)-1;2))
+End for 
+
+If (aiReportSettings{2}=1) | (aiReportSettings{6}=1) | (aiReportSettings{9}=1)
+CalcRentedValues (<>sFacility;vMthDate)
+End if 
+
+READ WRITE([Message])
+For ($j;1;99)
+
+<>ProgressInd:=Trunc(($j/Size of array(aiReportOrder))*100;0)//fb9150, by eugene 
+
+$i:=Find in array(aiReportOrder;$j)
+If ($i>0)
+If (aiReportSettings{$i}=1)
+$Report:=""
+vMthDate:=$MthDate
+Case of 
+: ($i=1)
+$Report:="KeyStats"
+: ($i=2)
+$Report:="Occupancy"
+: ($i=3)
+$Report:="GraphOccup"
+: ($i=4)
+$Report:="MonthlyCompare"
+: ($i=5)
+$Report:="MonthlySum"
+: ($i=6)
+$Report:="Activity"
+: ($i=7)
+$Report:="UnitStatus"
+: ($i=8)
+$Report:="PaidtoDateRpt"
+: ($i=9)
+$Report:="UnderRented"
+: ($i=10)
+$Report:="RentIncrPendingRpt"
+: ($i=11)
+$Report:="RentRoll"
+: ($i=12)
+$Report:="CustAnalysis"
+: ($i=13)
+$Report:="InsuranceRpt"
+: ($i=14)
+$Report:="Terminations"
+: ($i=15)
+$Report:="ReservationSum"
+: ($i=16)
+$Report:="Overdues"
+: ($i=17)
+$Report:="AgedReceivablesRpt"
+: ($i=18)
+$Report:="WaivedLFRpt"
+: ($i=19)
+$Report:="SumDiscounts"
+: ($i=20)
+$Report:="LengthStayRpt"
+: ($i=21)
+$Report:="CustomerBalances"
+: ($i=22)
+$Report:="SumCharges"
+: ($i=23)
+$Report:="IncomeCharged"
+: ($i=24)
+$Report:="SumCash"
+: ($i=25)
+$Report:="RentinAdvance"
+: ($i=26)
+$Report:="SchedDeposits"
+: ($i=27)
+$Report:="StockValueRpt"
+: ($i=28)
+$Report:="CashAnalysis"
+: ($i=29)
+$Report:="IncomeReceived"
+: ($i=30)
+$Report:="CheckRentChgSeq"
+: ($i=31)
+$Report:="Arrears"
+: ($i=32)
+$Report:="IORecReport"
+: ($i=33)
+$Report:="NinetyDayCash"
+: ($i=34)
+BOK:=1//9402
+$Report:="RVHistory"
+: ($i=35)
+$Report:="VacancyRpt"
+: ($i=36)
+$Report:="ProjectedChargesRpt"
+: ($i=37)
+$Report:="InsOwing"
+: ($i=38)
+Case of 
+: (<>sProduct="@R")
+$Report:="DepSchedule"
+: (<>sFacility="KE@")
+$Report:="BuybackReport"
+: (<>sFacility="SSWAR")
+$Report:="Warrigal"
+Else 
+$Report:="StampDutyRpt"
+End case 
+: ($i=39)
+$Report:="AutoPayReport"
+: ($i=40)
+$Report:="LienStatusRpt"
+: ($i=41)
+$Report:="AnticipatedOut"
+: ($i=42)
+$Report:="StockItemReport"
+: ($i=43)
+$Report:="MonthlyEnq"
+: ($i=44)
+$Report:="SalesEnqRptOpt"
+: ($i=45)
+$Report:="ThreatLevelReport"
+: ($i=46)
+$Report:="UnitTypeList"
+: ($i=47)
+$Report:="PettyCashReport"
+: ($i=48)
+$Report:="SMSDeliveryReport"
+: ($i=49)
+$Report:="SalesCommReport"
+Else 
+//Do Nothing
+End case 
+If ($Report>"")
+If (<>tPrintPDF) & ($Report#"CalcBalance")
+$Filename:=<>sFacility+$Report+".pdf"
+SelectPDFDoc (2;<>sPDFDocsPath+$Filename)
+If (Read only state([Message])=True)
+READ WRITE([Message])
+End if 
+USE SET("Periodic")
+For ($b;1;Records in selection([Message]))
+//GOTO XY(2;2)
+//MESSAGE("Generating Periodic Reports "+String($b)+" of "+String(Records in selection([Message])))  //Johnno
+If (Substring([Message]MsgBody;$i;1)="1")
+[Message]Attachments:=[Message]Attachments+<>sPDFDocsPath+$Filename+Char(13)
+End if 
+If ([Message]Attachments="")
+DELETE RECORD([Message])
+Else 
+SAVE RECORD([Message])
+End if 
+NEXT RECORD([Message])
+End for 
+End if 
+EXECUTE FORMULA($Report)
+
+If ($i=34)//9402
+BOK:=0
+End if 
+
+//If (<>tPrintPDF) & ($Report#"CalcBalance")
+//READ WRITE([Message])
+//LOAD RECORD([Message])
+//USE SET("Periodic")
+//SelectPDFDoc (4;<>sPDFDocsPath+$Filename)
+//End if 
+End if 
+End if 
+End if 
+End for 
+<>tBatch:=False
+<>ProgressInd:=100//101
+If (<>tPrintPDF)
+SelectPDFDoc (3;$Name)
+<>tPrintPDF:=False
+USE SET("Periodic")
+APPLY TO SELECTION([Message];[Message]MsgBody:=Get localized string("Reports from")+" "+[Facility]FacilityName+". "+Get localized string("See attached pdf Documents")+".")
+CLEAR SET("Periodic")
+READ ONLY([Message])
+QUERY([Message];[Message]OutIn=True;*)
+QUERY([Message]; & ;[Message]SentRead=False;*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+If (Records in selection([Message])>0)
+READ WRITE([Message])
+CheckMail 
+End if 
+End if 
+End if 
+
+
+//CLOSE WINDOW($PeriodReports) - This line commented by Hamid for fixing bug 9360- 24/6/2015
+
+<>ProgressInd:=100///101
+LogAction (<>tLogging;Get localized string("Periodic Reporting Cycle Finished"))
+End if 
+

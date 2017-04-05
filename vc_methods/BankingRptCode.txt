@@ -1,0 +1,111 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1)//true=small, false=regular
+C_LONGINT($i;$x)
+$x:=6
+If ($1)
+$x:=9
+End if 
+If (Form event=On Header)
+vTitle:=Get localized string("Banking Report")+" - "+String(vRptDate;6)
+vLegend:=""
+For ($i;1;$x)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=(50+$i))
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+$p:=Get pointer("vHdr"+String($i))
+$p->:=Substring([Analysis]Description;1;20)
+If ([Analysis]InclBankRpt)
+$p:=Get pointer("vCol"+String($i))
+$p->:="•"
+End if 
+End for 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>(50+$x))
+$p:=Get pointer("vHdr"+String($x+1))
+If (Records in selection([Analysis])>1)
+$p->:="Other"
+Else 
+$p->:=Substring([Analysis]Description;1;12)
+End if 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+OBJECT SET FORMAT([Trxs]BankBranch;<>tBankBranch)
+If (bAdd=1)
+OBJECT SET VISIBLE(*;"FieldH@";False)
+OBJECT SET VISIBLE(*;"LineH@";False)
+OBJECT SET VISIBLE(*;"TextH@";False)
+End if 
+If (Form event=On Printing Detail)
+For ($i;1;10)
+$p:=Get pointer("vAmt"+String($i))
+$p->:=0
+End for 
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AnalysisCode)
+$i:=[Analysis]SortOrder-50
+If ($i<1) | ($i>$x)
+$i:=$x+1
+End if 
+$p:=Get pointer("vAmt"+String($i))
+$p->:=[Trxs]TotAmt
+aTotal{$i}:=aTotal{$i}+[Trxs]TotAmt
+If ([Analysis]InclBankRpt)
+vDepositAmt:=vDepositAmt+[Trxs]TotAmt
+End if 
+vTotal:=vTotal+[Trxs]TotAmt
+If (vInclToday=True) & ([Trxs]DateBanked#!00-00-00!)
+vAsterisk:="*"
+Else 
+vAsterisk:=""
+End if 
+If ([Trxs]CustomerCode="@MISCL")
+$Pos:=Position(Char(17);[Trxs]Narration;*)
+[Customer]CustomerName:=Substring([Trxs]Narration;1;$Pos-1)
+If ([Customer]CustomerName="")
+[Customer]CustomerName:=Get localized string("Cash Sale")
+End if 
+End if 
+If (Records in selection([Customer])=0) | (Substring([Trxs]AgreeNo;1;5)#Substring([Trxs]AnalysisCode;1;5))
+ALL RECORDS([Customer])
+[Customer]CustomerName:=[Trxs]AgreeNo
+End if 
+End if 
+If (Form event=On Printing Break)
+If ([Facility]FacilityCode#"NS@")
+OBJECT SET VISIBLE(*;"@NationalStorage";False)
+End if 
+If (vInclToday=True)
+OBJECT SET VISIBLE(*;"@bankedt";True)
+End if 
+If (vTotal=vTotTot) | (bAll#1)
+OBJECT SET VISIBLE(vTotTot;False)
+OBJECT SET VISIBLE(*;"Text16";False)
+End if 
+vTotAmt:=0
+vNegAmt:=0
+For ($i;1;10)
+$p:=Get pointer("vAmt"+String($i))
+$p->:=aTotal{$i}
+If (aTotal{$i}>=0)
+vTotAmt:=vTotAmt+aTotal{$i}
+Else 
+vNegAmt:=vNegAmt+aTotal{$i}
+End if 
+End for 
+OBJECT SET FORMAT([Facility]BankAcNo;<>tBankAccount)
+If (vNegAmt=0)
+OBJECT SET VISIBLE(*;"Text10";False)
+Else 
+OBJECT SET VISIBLE(*;"Text10";True)
+End if 
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+SetFormats 

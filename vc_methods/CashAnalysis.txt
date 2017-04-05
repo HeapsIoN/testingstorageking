@@ -1,0 +1,148 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 27/01/17, 12:57:21
+// ----------------------------------------------------
+// Method: CashAnalysis
+// Description
+// 
+// Cash Analysis Report
+//
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT($i;$j;$k)
+C_TEXT($Tenant)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+
+If (PermissionsControl (86))
+DEFAULT TABLE([Trxs])
+READ WRITE([Trxs])
+If (<>tBatch=True)
+OK:=1
+bAll:=1
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+Else 
+//Open window(20;50;447;315;5)
+Open window((Screen width/2)-213;(Screen height/2)-137;(Screen width/2)+213;(Screen height/2)+137;5;Get localized string("MenuMoreReportscashReceivedAnalysis"))
+DIALOG([Trxs];"CashDialog")
+CLOSE WINDOW
+End if 
+If (OK=1)
+vStmtDate:=GetMonthName (Month of(vMthDate))+" "+String(Year of(vMthDate))
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]Match>=0;*)
+
+If (bBanked=1)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=vMthDate;*)
+Else 
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+End if 
+
+
+Case of 
+: (bAll=1)
+vLegend:=Get localized string("Both Cash Received and Refunds")
+: (bCash=1)
+vLegend:=Get localized string("Cash Received Only")
+QUERY([Trxs]; & ;[Trxs]TotAmt>0;*)
+: (bRefund=1)
+vLegend:=Get localized string("Refunds and Returns Only")
+QUERY([Trxs]; & ;[Trxs]TotAmt<0;*)
+Else 
+//Do Nothing
+End case 
+
+//If (bBanked=1)
+//QUERY([Trxs]; & ;[Trxs]DateBanked>=vDate)
+//Else 
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate)
+//End if 
+
+//$Date:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+//QUERY([Transaction]; & ;[Transaction]TrxDate>=$Date)
+
+If (False)//None of this now required!
+Open window(20;50;300;150;0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Initialising Array")+"..."+"    ")
+ARRAY REAL(aTotals;8;Records in selection([Trxs]))
+For ($i;1;8)
+For ($j;1;Records in selection([Trxs]))
+aTotals{$i}{$j}:=0
+End for 
+End for 
+CREATE SET([Trxs];"Selection")
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Trx")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs]))+"    ")
+GOTO SELECTED RECORD([Trxs];$i)
+[Trxs]Balance:=$i
+SAVE RECORD([Trxs])
+$j:=[Trxs]Match
+If ($j=0)
+aTotals{8}{$i}:=aTotals{8}{$i}+[Trxs]TotAmt
+Else 
+$Tenant:=[Trxs]CustomerCode
+QUERY([Trxs];[Trxs]CustomerCode=$Tenant;*)
+QUERY([Trxs]; & ;[Trxs]Match=$j;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+For ($j;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AnalysisCode)
+$k:=[Analysis]SortOrder
+If ($k<=0) | ($k>8)
+$k:=8
+End if 
+aTotals{$k}{$i}:=aTotals{$k}{$i}+[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+End if 
+USE SET("Selection")
+End for 
+CLOSE WINDOW
+End if 
+For ($i;1;7)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=$i)
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+$p:=Get pointer("vHdr"+String($i))
+$p->:=Substring([Analysis]Description;1;12)
+End for 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>7;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<50)
+vHdr8:=""
+If (Records in selection([Analysis])>1)
+vHdr8:=Get localized string("Other")
+Else 
+vHdr8:=Substring([Analysis]Description;1;12)
+End if 
+If (False)
+CREATE SET([Trxs];"Report")
+If (Records in set("Report")>0)
+CashAnalysisArrays 
+End if 
+USE SET("Report")
+End if 
+
+If (<>sFacility="SSSSS")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>;[Trxs]AgreeNo;>;[Trxs]CustomerCode;>;[Trxs]TotAmt)
+Else 
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]AgreeNo;>;[Trxs]CustomerCode;>;[Trxs]TotAmt)
+End if 
+
+BREAK LEVEL(0)
+ACCUMULATE([Trxs]TotAmt;vTax;vTot1;vTot2;vTot3;vTot4;vTot5;vTot6;vTot7;vTot8)
+FORM SET OUTPUT([Trxs];"CashAnalysis")
+PrintSelection ("L")
+FORM SET OUTPUT([Trxs];"Output")
+End if 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+CLEAR SET("Report")
+CLEAR SET("CashAnlys")
+End if 

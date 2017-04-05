@@ -1,0 +1,79 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+ARRAY LONGINT(aDataIn;0)
+ARRAY REAL(aTotal;0)
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=[Facility]StockSysStart)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Match;>)
+vQtyBal:=0
+$Balance:=0
+$Set:=0
+vTot3:=0
+vTot4:=0
+vTot5:=0
+vTot6:=0
+vTot7:=0
+vTot8:=0
+vTot1:=0
+vTot2:=0
+vLastQtyBalance:=0
+
+//03/02 DM Added code to fix batch reporting for Inventory Valuation Report
+If (<>tBatch=True)
+If (Num(vReportSettings[[28]])=1)
+tInclTax:=1
+tExTax:=0
+Else 
+tInclTax:=0
+tExTax:=1
+End if 
+End if 
+
+
+If (tExTax=1) & ([Analysis]CostPrice>0)
+[Analysis]CostPrice:=Round([Analysis]CostPrice-(CalcTaxAmt ([Analysis]CostPrice;[Analysis]Code;vMthDate;vMthDate;5));2)
+End if 
+For ($i;1;Records in selection([Trxs]))
+If ($Set=0) & ([Trxs]TrxDate>=vSDate)
+vTot1:=vQtyBal
+vTot2:=$Balance
+If ([Analysis]CostPrice#0)
+vTot2:=Round(vQtyBal*[Analysis]CostPrice;2)
+End if 
+$Set:=1
+End if 
+If ([Trxs]TrxDate>vMthDate)
+vTot7:=vQtyBal
+vTot8:=$Balance
+If ([Analysis]CostPrice#0)
+vTot8:=Round(vQtyBal*[Analysis]CostPrice;2)
+End if 
+$Set:=2
+$i:=Records in selection([Trxs])+1//Jump out of loop
+End if 
+$Balance:=CalcInvBal ($Set;tExTax)
+NEXT RECORD([Trxs])
+End for 
+Case of 
+: ($Set=0)
+vTot1:=vQtyBal
+vTot2:=$Balance
+If ([Analysis]CostPrice#0) | (vQtyBal=0)
+vTot2:=Round(vQtyBal*[Analysis]CostPrice;2)
+End if 
+vTot7:=vQtyBal
+vTot8:=$Balance
+If ([Analysis]CostPrice#0) | (vQtyBal=0)
+vTot8:=Round(vQtyBal*[Analysis]CostPrice;2)
+End if 
+: ($Set=1)
+vTot7:=vQtyBal
+vTot8:=$Balance
+If ([Analysis]CostPrice#0) | (vQtyBal=0)
+vTot8:=Round(vQtyBal*[Analysis]CostPrice;2)
+End if 
+Else 
+//do nothing
+End case 
+vProf:=Round(vTot6-(vTot2+vTot4-vTot8);2)
+[Analysis]Code:=Substring([Analysis]Code;6)//Substring([Analysis]Code;6)
+//vCounter:=vCounter+1

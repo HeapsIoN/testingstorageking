@@ -1,0 +1,53 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//http://gateway.advam.com/V2/schema
+
+If (Records in selection([Facility]))=0
+SetFacility 
+End if 
+
+C_BOOLEAN($0)
+C_LONGINT($1;$SeqNo;$PrimKey;WS_ORErrorCode)
+C_TEXT($2;$3;$4;$5;$7;WS_ORErrorDescription)
+C_TEXT($6)//CC TransID needs to be 16 chars for ADVAM
+C_TEXT($8;$9;$12;$14;$password)
+C_REAL($10)
+C_DATE($11;$13)
+$0:=False
+$password:=""
+$password:=[Facility]ODBCPassword
+WEB SERVICE SET PARAMETER("WS_SeqNo";$1)
+WEB SERVICE SET PARAMETER("WS_AgreeNo2";$2)
+WEB SERVICE SET PARAMETER("WS_Analysis";$3)
+WEB SERVICE SET PARAMETER("WS_BankBranch";$4)
+WEB SERVICE SET PARAMETER("WS_CCAuthNo";$5)
+WEB SERVICE SET PARAMETER("WS_CCTransID";$6)
+WEB SERVICE SET PARAMETER("WS_Customer";$7)
+WEB SERVICE SET PARAMETER("WS_Description";$8)
+WEB SERVICE SET PARAMETER("WS_Drawer";$9)
+WEB SERVICE SET PARAMETER("WS_TotAmt";$10)
+WEB SERVICE SET PARAMETER("WS_TrxDate";$11)
+WEB SERVICE SET PARAMETER("WS_UserLogin";$12)
+WEB SERVICE SET PARAMETER("WS_DateBanked";$13)
+WEB SERVICE SET PARAMETER("WS_OriginalReceipt";$14)
+WEB SERVICE SET PARAMETER("WS_WebServicePassword";$password)
+$PortPos:=Position(":";[Facility]CentralAddress)
+If ($PortPos>0)
+$PortString:=Substring([Facility]CentralAddress;$PortPos+1)
+Else 
+$PortString:="19812"
+End if 
+$Port:=Num($PortString)
+WEB SERVICE CALL("https://"+GetDNS ("MV")+":"+$PortString+"/4DSOAP/";"Storman#WS_AddReceiptTrx";"WS_AddReceiptTrx";"http://www.storpay.com/webservices";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT($SeqNo;"WS_SeqNoOut")
+WEB SERVICE GET RESULT($PrimKey;"WS_PrimKeyOut")
+WEB SERVICE GET RESULT($0;"WS_ORSuccess")
+WEB SERVICE GET RESULT(WS_ORErrorCode;"WS_ORErrorCode")
+WEB SERVICE GET RESULT(WS_ORErrorDescription;"WS_ORErrorDescription";*)// Memory clean-up on the final return value.
+
+[Trxs]SeqNo:=$SeqNo
+[Trxs]PrimaryKey:=$PrimKey
+End if 
+If ($0#True)
+AlertMessage (Get localized string("The receipt for")+" "+$2+" of "+String($10;"###,###.00")+" "+Get localized string("could not be added / modified to the Central server!"))
+End if 

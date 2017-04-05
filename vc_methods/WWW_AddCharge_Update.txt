@@ -1,0 +1,55 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method: WWW_AddCharge_Update
+
+C_TEXT($1;recnum;printnarration)
+C_TEXT(st)
+
+st:="/"+recnum
+
+// Goto this record number
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+GOTO RECORD([Agreement];Num(recnum))
+RELATE ONE([Agreement]CustomerCode)
+If (from#"Cancel")
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]AgreeNo
+[Trxs]TrxDate:=Date(trxdate)
+[Trxs]Charge:=True
+[Trxs]DateFrom:=Date(datefrom)
+[Trxs]DateTo:=Date(dateto)
+[Trxs]Qty:=Num(qty)
+[Trxs]Description:=details
+[Trxs]TotAmt:=Num(TotAmt)
+[Trxs]TaxAmt:=Num(TaxAmt)
+[Trxs]Narration:=narration
+[Trxs]AnalysisCode:=analcode
+If (printnarration="")
+[Trxs]PrintNarration:=False
+Else 
+[Trxs]PrintNarration:=True
+End if 
+SAVE RECORD([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+End if 
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+ReCalc 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+READ ONLY([Trxs])
+LOAD RECORD([Agreement])
+LOAD RECORD([Customer])
+WWW_CustAgreet_Tranx (st)

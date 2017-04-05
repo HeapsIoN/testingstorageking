@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+OK:=1
+If (Modified record([Agreement]) | Modified record([Customer]))
+ConfirmTwo (Get localized string("Cancel without saving changes?");Get localized string("Don't Save");Get localized string("No"))
+End if 
+If (OK=1)
+$CSContinue:=False
+$Continue:=False
+If (Not(Semaphore("<>bNextCreditSaleNo";1800)))
+$CSContinue:=True
+End if 
+If (Not(Semaphore("<>bNextAgreeNo";1800)))
+$Continue:=True
+End if 
+//10285
+[Facility]NextAgreeNo:=Old([Facility]NextAgreeNo)
+[Facility]NextCreditSaleNo:=Old([Facility]NextCreditSaleNo)
+If ($Continue)
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+
+If (<>aiNextAgreeNo{$arraypos}=([Facility]NextAgreeNo+1))
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+End if 
+End if 
+CLEAR SEMAPHORE("<>bNextAgreeNo")
+End if 
+
+If ($CSContinue)
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+End if 
+
+
+If (<>aiNextCreditSaleNo{$arraypos}=([Facility]NextCreditSaleNo+1))
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+End if 
+End if 
+CLEAR SEMAPHORE("<>bNextCreditSaleNo")
+End if 
+
+
+
+CANCEL TRANSACTION
+CANCEL
+
+READ WRITE([UnitAgree])
+DEFAULT TABLE([UnitAgree])
+
+If (<>sProduct="@B")// fb8966 by eugene, 22.04.2015, for marina
+If ([Agreement]CustomerCode="")
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([UnitAgree])>0)
+DELETE SELECTION([UnitAgree])
+End if 
+End if 
+End if 
+
+//ORDER BY([Agreement];[Agreement]RAgreeNo;<)
+
+//20/04/16 DAM Set Default table back to agreement as it was breaking the search
+DEFAULT TABLE([Agreement])
+End if 

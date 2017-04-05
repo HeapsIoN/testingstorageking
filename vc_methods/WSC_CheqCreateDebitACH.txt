@@ -1,0 +1,209 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// Cheq Services Stored Credit Card Charging
+//Transaction codes: Charge CC 28 Refund 30 Void 29
+
+C_TEXT($0;$1;$2;$4;$5;$6;$7;$Header;$Message)//userlogin, password, acct type, acct name, acct num, routing num, seccode
+C_REAL($8)//trx amt
+C_LONGINT($Error;$TCPID)//id num
+C_LONGINT($3)
+C_TEXT($root)
+C_TEXT($subelem)
+$Buffer:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+$TransactionResponse:=""
+
+//$ServerAddress:="secure.mycardhistory.com"
+$ServerAddress:="dev.nocheck.com"
+$ServerPort:=443
+$root:=DOM Create XML Ref("SVCRequest")
+//$8:=250
+//If ($8<0)
+//$Name:="CreateCreditACH"
+//$TotAmt:=$8*(-1)
+//Else 
+//$Name:="CreateDebitACH"
+//$TotAmt:=$8
+//End if 
+$Name:="CreateDebitACH"
+$TotAmt:=250
+$Type:="Check Pay"
+$subelem:=DOM Create XML element($root;"/SVCRequest/Authentication/SignOnID")//[Facility]MerchantDetails
+DOM SET XML ELEMENT VALUE($subelem;"410")//$1
+$subelem:=DOM Create XML element($root;"/SVCRequest/Authentication/Password")//[Facility]MerchantDetails
+DOM SET XML ELEMENT VALUE($subelem;"EA946F117C96500C")//$2
+
+//$subelem:=DOM Create XML element($root;"/SVCRequest/Service";"ID";1000)  //Can be anything
+//DOM SET XML ELEMENT VALUE($subelem;1000)  //$3
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Type")
+DOM SET XML ELEMENT VALUE($subelem;"Check Pay")//$Type)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Name")
+DOM SET XML ELEMENT VALUE($subelem;"CreateDebitACH")//$Name)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/MerchantID")//would this be $1 also???
+DOM SET XML ELEMENT VALUE($subelem;"410")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/PassCode")//would this be $2 also???
+DOM SET XML ELEMENT VALUE($subelem;"EA946F117C96500C")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/AccountType")//Account type
+//DOM SET XML ELEMENT VALUE($subelem;$4)
+DOM SET XML ELEMENT VALUE($subelem;"Checking")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/AccountName")//Account name
+DOM SET XML ELEMENT VALUE($subelem;"N L Tomkins")
+//DOM SET XML ELEMENT VALUE($subelem;$5)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/AccountNumber")//Account number
+DOM SET XML ELEMENT VALUE($subelem;"0676768124")
+//DOM SET XML ELEMENT VALUE($subelem;$6)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/RoutingNumber")//Routing number
+DOM SET XML ELEMENT VALUE($subelem;"026009593")
+//DOM SET XML ELEMENT VALUE($subelem;$7)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Amount")//[Transaction]TotAmt
+DOM SET XML ELEMENT VALUE($subelem;"1.00")
+
+//$subelem:=DOM Create XML element($root;"/SVCRequest/Service/SECCode")  //[Customer]CustPaymentProfID
+//DOM SET XML ELEMENT VALUE($subelem;"PPD")  //$6 - 3 digit alphanumeric ` not needed in new API
+
+//$subelem:=DOM Create XML element($root;"/SVCRequest/Service/CustomerID")  //optional - up to 40 chars, unique and digit numeric
+//DOM SET XML ELEMENT VALUE($subelem;"200000119")
+
+
+//$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Memo")  //optional up to 40 chars and alphanumeric
+//DOM SET XML ELEMENT VALUE($subelem;"")
+
+//$subelem:=DOM Create XML element($root;"/SVCRequest/Service/SubMerchID")  //sub merchant identifier 16 max digit numeric - not needed with new API
+//DOM SET XML ELEMENT VALUE($subelem;"")
+
+//$subelem:=DOM Create XML element($root;"/SVCRequest/Service/TestTransaction")  //Whether or not it is a test transaction C=test prior cert Y = test live N = real
+//DOM SET XML ELEMENT VALUE($subelem;"C")  //$7
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+
+PLATFORM PROPERTIES($platform)
+If ($platform=3)
+<>pathSpacer:="\\"
+Else 
+<>pathSpacer:=":"
+End if 
+$CurrentFolder:=Get 4D folder
+DOM EXPORT TO FILE($root;$CurrentFolder+"testCreateDebitACH.xml")
+DOM EXPORT TO VAR($root;$Message)
+DOM CLOSE XML($root)
+
+//$Folder:="/SVXML/ClientPost.svx"
+$Folder:="/eservices/api/request.pl"
+
+$Header:=$Header+"POST "+$Folder+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+":"+String($ServerPort)+$cr
+$Header:=$Header+"Connection: close"+$cr
+$Header:=$Header+"Content-type: application/xml"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr
+
+$Error:=TCP_Open ($ServerAddress;$ServerPort;$TCPID;3)
+
+//Progress ("Contacting Server...")
+
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header+$cr+$Message+$cr+$cr)
+$Reply:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 15 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10))
+$Error:=TCP_Close ($TCPID)
+<>ProgressInd:=100
+Case of 
+: ($Error>1)
+$0:="ERRTCP"
+AlertMessage (Get localized string("TCP Sending Error")+" # "+String($Error))
+: ($Error=1)
+$0:="ERR4TO"
+AlertMessage (Get localized string("TCP Timeout Error"))
+Else 
+//Repeat   //While a complete HTTP request and response is being received
+//$HTTPResponse:=Substring($Reply;1;Position($cr+$cr;$Reply)-1)
+//If (Position("HTTP";$HTTPResponse)>0)
+//$doc:=Create document($CurrentFolder+"output.xml")
+//SEND PACKET($doc;$Reply)
+//CLOSE DOCUMENT($doc)
+//$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)  //This will be e.g. 100 (Continue), 200 (OK) etc
+//$Reply:=Substring($Reply;Position($cr+$cr;$Reply)+Length($cr+$cr))
+//Else 
+//Case of 
+//: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+//$TransactionResponse:=$Reply
+//Else 
+//$TransactionResponse:=" "  //To Break out of the Until loop
+//$Error:=Num($HTTPResponseCode)
+//End case 
+//End if 
+//Until ($TransactionResponse#"")
+End case 
+If (Position("HTTP";$Reply)>0)//added because cheq services does not currently return a valid xml format
+$PosErr:=Position("Error";$Reply;1)
+$PosErrCode:=(Position("<";$Reply;($PosErr+1))-$PosErr-6)
+$Err:=Substring($Reply;($PosErr+6);($PosErrCode))
+If ($Err#"0")
+$PosErr:=Position("Message";$Reply;$PosErrCode)
+$PosErrCode:=Position("<";$Reply;$PosErr)
+$ErrMess:=Substring($Reply;($PosErr+8);($PosErrCode))
+$0:="Failed - "+$ErrMess
+Else 
+$PosTrxID:=Position("TransactionXID";$Reply;$PosErrCode)
+$PosTrx:=Position(">";$Reply;$PosTrxID)
+$PosTrxID:=Position("<";$Reply;$PosTrx)
+$resultref:=Substring($Reply;($PosTrx+1);($PosTrxID-$PosTrx-1))
+WSC_CheqReleaseACH ($3;$Type;$1;$2;$resultref)
+End if 
+End if 
+//If (Position("HTTP";$Reply)>0)  //adding all this crap because cheq services does not return a valid xml format
+//$Reply:=Substring($Reply;Position("<";$Reply;1))
+//$EndXMLtag:=Position(">";$Reply;1)
+//$Reply:=Substring($Reply;1;$EndXMLtag)+Substring($Reply;Position("<";$Reply;$EndXMLtag))
+//If (Substring($Reply;Length($Reply))#"<")
+//Repeat 
+//  //$Reply:=substring($Reply;
+//Until (Substring($Reply;Length($Reply))="<")
+//End if 
+//$doc:=Create document($CurrentFolder+"output.txt")
+//SEND PACKET($doc;$Reply)
+//CLOSE DOCUMENT($doc)
+//$response:=DOM Parse XML variable($Reply;False)
+//DOM EXPORT TO FILE($response;$CurrentFolder+"output.xml")
+//  //Check whether store was successful
+//$resultRef:=DOM Find XML element($response;"Response/Status/Error")
+//DOM GET XML ELEMENT VALUE($resultRef;$value)
+//If ($value#"0")
+//  //Return fail message if failed
+//$resultRef:=DOM Find XML element($response;"Response/Status/Message")
+//DOM GET XML ELEMENT VALUE($resultRef;$value)
+//$0:="Failed - "+$value
+//Else 
+//$resultref:=DOM Find XML element($response;"Response/Result/TransactionXID")
+//WSC_CheqReleaseACH ($3;$Type;$1;$2;$resultref)
+//End if 
+//  //Close off XML we used to read response
+//DOM CLOSE XML($response)
+//Else 
+//$response:=$Reply
+//End if 
+$doc:=Create document($CurrentFolder+"output.txt")
+SEND PACKET($doc;$Reply)
+CLOSE DOCUMENT($doc)
+Else 
+//TCP Open failed, return error message
+$0:=Get localized string("Failed - Connection could not be established to Cheq Processing' Server.")
+End if 

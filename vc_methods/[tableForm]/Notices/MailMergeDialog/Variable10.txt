@@ -1,0 +1,208 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN(bRecords)
+C_TEXT($Adress)
+$Records:=False
+If (Form event=On Clicked)
+If (vrbCustomers#0) | (vrbContacts#0)
+If (asCusFilter{asCusFilter}#"") & (vAdvancedFilter#1)
+Case of 
+: (vrbCustomers=1)
+Case of 
+: (asCusFilter=1)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@")
+: (asCusFilter=2)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts#0;*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"")
+: (asCusFilter=3)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts=0)
+: (asCusFilter=4)
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Reservation]ActiveReserve=True)
+SET AUTOMATIC RELATIONS(False;False)
+: (asCusFilter=5)
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Reservation]ActiveReserve=False)
+SET AUTOMATIC RELATIONS(False;False)
+: (asCusFilter=6)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AlternateName#"")
+: (asCusFilter=7)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AlternateName#"";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"0")
+: (asCusFilter=8)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AlternateName#"";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating="0")
+
+: (asCusFilter=9)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]Organization=False)
+: (asCusFilter=10)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]Organization=True)
+End case 
+If (asCustType{asCustType}#"")
+QUERY SELECTION([Customer];[Customer]CustType=asCustType{asCustType})
+End if 
+If (bOrganiz=1)
+QUERY SELECTION([Customer];[Customer]Organization=True)
+End if 
+If (bMarkOpt=0)
+QUERY SELECTION([Customer];[Customer]MarketingOptOut=False)
+End if 
+: (vrbContacts=1)
+Case of 
+: (asCusFilter=1)
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode)
+: (asCusFilter=2)
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate=!00-00-00!)
+: (asCusFilter=3)
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate#!00-00-00!;*)
+QUERY([Contacts]; & ;[Contacts]Outcome="Declined")
+End case 
+If (asCustType{asCustType}#"")
+QUERY SELECTION([Contacts];[Contacts]CustType=asCustType{asCustType})
+End if 
+If (bOrganiz=1)
+QUERY SELECTION([Contacts];[Contacts]Organization=True)
+End if 
+End case 
+
+If (asCusFilter=8) | (asCusFilter=7) | (asCusFilter=6)// Alternative Contact
+Case of // Make sure Email address or mobile phone is not blank 
+: (bEmail=1)
+CREATE EMPTY SET([Customer];"ToSend")
+QUERY SELECTION([Customer];[Customer]AltEmail#"")
+FIRST RECORD([Customer])
+For ($q;1;Records in selection([Customer]))
+$Adress:=[Customer]AltEmail
+$Adress:=Replace string($Adress;" ";"")
+$Pos1:=Position("@";$Adress)
+$Pos2:=Position(".";$Adress)
+//$Pos3:=
+If ($Pos1>0) & ($Pos2>0)
+ADD TO SET([Customer];"ToSend")
+End if 
+NEXT RECORD([Customer])
+End for 
+USE SET("ToSend")
+: (bSMS=1)
+QUERY SELECTION([Customer];[Customer]AltMobile#"")
+End case 
+If (bIndex=1)
+Case of 
+: (bLetter=1)
+QUERY SELECTION([Customer];[Customer]AltEmail="")// To Alt Customers with blank Email Address
+: (bEmail=1)
+QUERY SELECTION([Customer];[Customer]AltMobile="")// To Alt Customers with blank Mobile Phone
+: (bSMS=1)
+QUERY SELECTION([Customer];[Customer]AltEmail="")// To Alt Customers with blank Email Address
+End case 
+End if 
+If (bIndex1=1)
+If (bLetter=1)
+QUERY SELECTION([Customer];[Customer]AltMobile="")// To Customers with blank Mobile Phone
+End if 
+End if 
+Else 
+Case of // Make sure Email address or mobile phone is not blank
+: (bEmail=1)
+If (vrbCustomers=1)
+CREATE EMPTY SET([Customer];"ToSend")
+QUERY SELECTION([Customer];[Customer]EmailAddress#"")
+FIRST RECORD([Customer])
+For ($q;1;Records in selection([Customer]))
+$Adress:=[Customer]EmailAddress
+$Adress:=Replace string($Adress;" ";"")
+$Pos1:=Position("@";$Adress)
+$Pos2:=Position(".";$Adress)
+//$Pos3:=
+If ($Pos1>0) & ($Pos2>0)
+ADD TO SET([Customer];"ToSend")
+End if 
+NEXT RECORD([Customer])
+End for 
+USE SET("ToSend")
+Else 
+CREATE EMPTY SET([Contacts];"ToSend")
+QUERY SELECTION([Contacts];[Contacts]EmailAddress#"")
+FIRST RECORD([Contacts])
+For ($q;1;Records in selection([Contacts]))
+$Adress:=[Contacts]EmailAddress
+$Adress:=Replace string($Adress;" ";"")
+$Pos1:=Position("@";$Adress)
+$Pos2:=Position(".";$Adress)
+//$Pos3:=
+If ($Pos1>0) & ($Pos2>0)
+ADD TO SET([Contacts];"ToSend")
+End if 
+NEXT RECORD([Contacts])
+End for 
+USE SET("ToSend")
+End if 
+: (bSMS=1)
+If (vrbCustomers=1)
+QUERY SELECTION([Customer];[Customer]MobilePhone#"")
+Else 
+QUERY SELECTION([Contacts];[Contacts]MobilePhone#"")
+End if 
+End case 
+If (bIndex=1)
+Case of 
+: (bLetter=1)
+If (vrbCustomers=1)
+QUERY SELECTION([Customer];[Customer]EmailAddress="")// To Customers with blank Email Address
+Else 
+QUERY SELECTION([Contacts];[Contacts]EmailAddress="")// To Contacts with blank Email Address
+End if 
+
+: (bEmail=1)
+If (vrbCustomers=1)
+QUERY SELECTION([Customer];[Customer]MobilePhone="")// To Customers with blank Mobile Phone
+Else 
+QUERY SELECTION([Contacts];[Contacts]MobilePhone="")// To Contacts with blank Mobile Phone
+End if 
+
+: (bSMS=1)
+If (vrbCustomers=1)
+QUERY SELECTION([Customer];[Customer]EmailAddress="")// To Customers with blank Email Address
+Else 
+QUERY SELECTION([Contacts];[Contacts]EmailAddress="")// To Contacts with blank Email Address
+End if 
+End case 
+End if 
+If (bIndex1=1)
+If (bLetter=1)
+Case of 
+: (vrbCustomers=1)
+QUERY SELECTION([Customer];[Customer]MobilePhone="")// To Customers with blank Mobile Phone
+: (vrbContacts=1)
+QUERY SELECTION([Contacts];[Contacts]MobilePhone="")// To Contacts with blank Mobile Phone
+End case 
+End if 
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Please select table to search!"))
+End if 
+
+If (Records in selection([Customer])#0) | (Records in selection([Contacts])#0)
+bRecords:=True
+End if 
+
+If (vAdvancedFilter=1)
+If (Records in selection([Customer])#0) | (Records in selection([Contacts])#0)
+bRecords:=True
+End if 
+End if 
+
+ACCEPT
+End if 

@@ -1,0 +1,110 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1)
+bOKandNext:=0
+READ WRITE([Unit])
+LOAD RECORD([Unit])
+vLegend:=Get localized string("Please select the Unit Quotes you wish to convert")
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode>"")
+If (Records in selection([Quote])>0)
+For ($i;1;Records in selection([Quote]))
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+[Quote]AnalysisDescription:=[Analysis]Description
+SAVE RECORD([Quote])
+NEXT RECORD([Quote])
+End for 
+FORM SET INPUT([Contacts];"SelectQuote")
+$WinRef:=Open window((Screen width/2)-424;(Screen height/2)-310;(Screen width/2)+424;(Screen height/2)+310;5;Get localized string("Select Quote"))
+MODIFY RECORD([Contacts])
+CLOSE WINDOW($WinRef)
+FORM SET INPUT([Contacts];"ContactsIn")
+QUERY SELECTION([Quote];[Quote]Select=True)
+If ([Facility]UnitPerAgreement=True)
+While (Records in selection([Quote])>1)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("You cannot select more than one berth quote to convert because your system has the ‘Only allow one berth per agreement’ option enabled in System Setup."))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("You cannot select more than one appliance quote to convert because your system has the ‘Only allow one appliance per agreement’ option enabled in System Setup."))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("You cannot select more than one space quote to convert because your system has the ‘Only allow one space per agreement’ option enabled in System Setup."))
+Else 
+AlertMessage (Get localized string("You cannot select more than one unit quote to convert because your system has the ‘Only allow one unit per agreement’ option enabled in System Setup."))
+End case 
+FORM SET INPUT([Contacts];"SelectQuote")
+MODIFY RECORD([Contacts])
+FORM SET INPUT([Contacts];"ContactsIn")
+QUERY SELECTION([Quote];[Quote]Select=True)
+End while 
+End if 
+$Date:=Current date
+For ($i;1;Records in selection([Quote]))
+QUERY([Unit];[Unit]Vacant=False;*)
+QUERY([Unit]; & ;[Unit]MoveOut#!00-00-00!;*)
+QUERY([Unit]; & ;[Unit]MoveOut<$Date;*)//Extra condition added 12/6/05
+QUERY([Unit]; | ;[Unit]Vacant=True;*)
+QUERY([Unit]; & ;[Unit]UnitTypeCode=[Quote]UnitTypeCode;*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail")
+ORDER BY([Unit];[Unit]Status;<;[Unit]UnitNo;>)
+If (Records in selection([Unit])>0)
+tBoolean:=$1
+bOkNext:=False
+FORM SET OUTPUT([Unit];"SelectUnit")
+$WinRef:=Open window((Screen width/2)-405;(Screen height/2)-310;(Screen width/2)+405;(Screen height/2)+310;5;Get localized string("Select Unit"))
+DISPLAY SELECTION([Unit];Single selection;*)
+CLOSE WINDOW($WinRef)
+
+If (bOKandNext=1)
+SelectUnitContacts 
+End if 
+
+If (OK=1)
+LOAD RECORD([Unit])
+$Found:=True
+If (Records in selection([Unit])=0)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("You must select a single berth before clicking 'Select'!"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("You must select a single appliance before clicking 'Select'!"))
+Else 
+AlertMessage (Get localized string("You must select a single unit before clicking 'Select'!"))
+End case 
+$Found:=False
+End if 
+If ([Unit]Vacant=False) & ($1=False)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("Berth already occupied by Agreement")+" "+[Unit]AgreeNo)
+: (<>sProduct="@R")
+AlertMessage (Get localized string("Appliance already occupied by Agreement")+" "+[Unit]AgreeNo)
+: (<>sProduct="@C")
+AlertMessage (Get localized string("Space already occupied by Agreement")+" "+[Unit]AgreeNo)
+Else 
+AlertMessage (Get localized string("Unit already occupied by Agreement")+" "+[Unit]AgreeNo)
+End case 
+$Found:=False
+End if 
+Else 
+$Found:=False
+End if 
+If ($1)
+SelectUnitContactB ($Found)
+Else 
+SelectUnitContactA ($Found)
+End if 
+Else 
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("There are no berths available for that BerthsType"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("There are no appliance available for that ApplianceType"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("There are no spaces available for that SpacesType"))
+Else 
+AlertMessage (Get localized string("There are no units available for that UnitType"))
+End case 
+End if 
+NEXT RECORD([Quote])
+End for 
+End if 

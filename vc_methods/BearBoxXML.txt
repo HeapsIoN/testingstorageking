@@ -1,0 +1,280 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0)
+C_TEXT($1)//UserName
+C_TEXT($2)//Password
+C_TEXT($3)//Site ID
+C_TEXT($4)//Full
+C_TEXT($5)// Rented , Locked, Vacant
+C_TEXT($6)//lockedOut
+C_TEXT($7)//pinCode
+C_TEXT($8)//CustomerName
+C_DATE($9)// Move In
+C_TEXT($10)// TimeZone
+C_TEXT($11)//KeyPadZone
+C_TEXT($12)//UnitNo
+C_LONGINT($StartPosition)
+
+C_TEXT($valRootRef;$valElemRef;$aAttUnitNo;$valUnitNo;$aAttUnitid;$valUnitid;$aAttcustomer;$valcustomer;$response;$Content;$valueElmRes;$vsMonth;$vsDay;$vsYear;$valMove)
+C_LONGINT($i)
+C_DATE($vdDate)
+$valRootRef:=DOM Create XML Ref("bearboxRequest")
+
+$valxmlPath:="/bearboxRequest/username"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+$valxmlPath:="/bearboxRequest/password"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$2)
+
+$valxmlPath:="/bearboxRequest/siteID"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$3)
+
+$valxmlPath:="/bearboxRequest/type"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$4)
+
+$valxmlPath:="/bearboxRequest/Units"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+///--------fetch data from Unit table
+//  QUERY([Unit];[Unit]UnitNo=$13)
+//ALL RECORDS([Unit])
+//FIRST RECORD([Unit])
+$i:=1
+//creat unit elements
+
+//While (End selection([Unit])=False)
+//
+//If ($i<10)
+//$UintID:="0"+String($i)
+//Else 
+//$UintID:=String($i)
+//End if 
+
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]"
+$aAttUnitNo:="number"
+//----   for unit testing mark $valUnitNo:=[Unit]UnitNo and unmark $valUnitNo:=$UintID
+//$valUnitNo:=[Unit]UnitNo  //--ok
+$valUnitNo:=$12
+//$valUnitNo:=$UintID  //just for unit test
+$aAttUnitid:="id"
+$valUnitid:=String($i)
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath;$aAttUnitNo;$valUnitNo;$aAttUnitid;$valUnitid)
+
+//customer element
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/customer"
+$aAttcustomer:="id"
+
+//$AgreeNo:=<>sFacility+$6
+//QUERY([Agreement];[Agreement]RAgreeNo=$AgreeNo)
+//QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+//$valcustomer:=String([Agreement]CustomerCode)
+
+
+QUERY([Customer];[Customer]CustomerName=$8)
+$valcustomer:=String([Customer]CustomerCode)
+If ($valcustomer="@MISCL")//10291
+$valcustomer:=""
+End if 
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath;$aAttcustomer;$valcustomer)
+//DOM SET XML ELEMENT VALUE($valElemRef;[Customer]CustomerName)
+DOM SET XML ELEMENT VALUE($valElemRef;$8)
+
+//pinCode element
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/pinCode"
+
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+//DOM SET XML ELEMENT VALUE($valElemRef;[Customer]GatePIN)
+DOM SET XML ELEMENT VALUE($valElemRef;$7)
+
+//lockedOut elemet
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/lockedOut"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+//If ([Unit]Vacant=False)
+//DOM SET XML ELEMENT VALUE($valElemRef;"1")
+//Else 
+//DOM SET XML ELEMENT VALUE($valElemRef;"0")
+//End if 
+DOM SET XML ELEMENT VALUE($valElemRef;$6)
+//status element
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/status"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+//DOM SET XML ELEMENT VALUE($valElemRef;[Unit]Status)
+//DOM SET XML ELEMENT VALUE($valElemRef;$5) //Commented by Hamid - 28/10/2015 - 9895
+
+
+
+
+
+//zone element
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/zone"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+//DOM SET XML ELEMENT VALUE($valElemRef;[Customer]GateTimeZone)
+DOM SET XML ELEMENT VALUE($valElemRef;$10)
+
+//keypadZone element
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/keypadZone"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+//DOM SET XML ELEMENT VALUE($valElemRef;[Customer]KeypadZone)
+DOM SET XML ELEMENT VALUE($valElemRef;$11)
+
+//contractStartDate element
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/contractStartDate"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+
+// chane Move in format to yyyymmddhhmm
+//$vdDate:=[Agreement]MoveIn
+
+If ($9#!00-00-00!)//- Added by Hamid - 10208
+$vdDate:=$9
+$vsMonth:=String(Month of($vdDate))
+
+If ($vsMonth="0")
+$vsMonth:="00"
+Else 
+If (Length($vsMonth)<2)//Added if by Hamid - 28/10/2015 - 9895
+$vsMonth:="0"+$vsMonth
+End if 
+End if 
+
+
+
+$vsDay:=String(Day of($vdDate))
+
+If ($vsDay="0")
+$vsDay:="00"
+Else 
+If (Length($vsDay)<2)//Added if by Hamid - 28/10/2015 - 9895
+$vsDay:="0"+$vsDay
+End if 
+End if 
+
+
+//$vsYear:=String(Year of($vdDate)%100) //Commented by Hamid - 28/10/2015 - 9895
+$vsYear:=String(Year of($vdDate))
+If ($vsYear="0")
+$vsYear:="0000"
+End if 
+$valMove:=$vsYear+$vsMonth+$vsDay+"0000"
+Else 
+$valMove:=""
+End if 
+
+
+DOM SET XML ELEMENT VALUE($valElemRef;$valMove)
+
+//expiryDate element
+$valxmlPath:="/bearboxRequest/Units/unit["+String($i)
+$valxmlPath:=$valxmlPath+"]/expiryDate"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+
+// chane Move out format to yyyymmddhhmm
+
+//$vdDate:=[Agreement]MoveOut
+//$vsMonth:=String(Month of($vdDate))
+//$vsDay:=String(Day of($vdDate))
+//$vsYear:=String(Year of($vdDate)%100)
+//$valMove:=$vsYear+$vsMonth+$vsDay+"0000"
+//DOM SET XML ELEMENT VALUE($valElemRef;$valMove)
+//DOM SET XML ELEMENT VALUE($valElemRef;"000000000000") //Commented by Hamid - 28/10/2015 - 9895
+
+//NEXT RECORD([Unit])
+//$i:=$i+1
+//End while 
+
+
+DOM EXPORT TO VAR($valRootRef;$Content)
+//ALERT($Content)  // check point , delete this code at the end
+//DOM EXPORT TO FILE($valRootRef;"Y:\\testxml.xml")
+// HTTP Request , send request xml to bearbox server
+SyncRecordLog ($Content)
+ON ERR CALL("BearBoxErroCode")
+If (($1="storman") & ($2="xmlSt0rman") & ($3="108"))// Test account"
+httpStatus_l:=HTTP Request(HTTP POST method;"https://staging.bearbox.co.uk/remote/import.cfm";$Content;$response)//Added by Hamid - 8/1/2016
+Else 
+httpStatus_l:=HTTP Request(HTTP POST method;"https://storage.bearbox.co.uk/remote/import.cfm";$Content;$response)//Commented by Hamid - 8/1/2016
+End if 
+
+//ALERT($response)  // check point , delete this code at the end
+
+
+If (httpStatus_l=200)
+
+If ($response="")
+SyncRecordLog ("Recieved blank responses from the BearBox")
+$Content:="Recieved blank responses from the BearBox"
+Else 
+SyncRecordLog ($response)
+$xml_Struct_Ref:=DOM Parse XML variable($response)
+$documentRef:=DOM Get XML document ref($xml_Struct_Ref)
+//$valFound:=DOM Find XML element($documentRef;"bearboxResponse/authCode")
+$StartPosition:=0
+$StartPosition:=Position("<import>";$response)
+
+If ($StartPosition=0)
+$valFound:=DOM Find XML element($documentRef;"bearboxResponse/authCode")//Commented by Hamid - 29/10/2015 - 9895
+Else 
+$valFound:=DOM Find XML element($documentRef;"import/bearboxResponse/authCode")
+End if 
+
+
+
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+$0:=$valueElmRes
+
+//$valFound:=DOM Find XML element($documentRef;"bearboxResponse/results/unitResult")
+//DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+$Content:=""
+$Content:="BearBox response :"
+
+Case of 
+: ($valueElmRes="0")
+$Content:=$Content+" Success "
+: ($valueElmRes="1")
+$Content:=$Content+" Invalid login information, method or site id"
+: ($valueElmRes="2")
+$Content:=$Content+" Unknown unit"
+: ($valueElmRes="3")
+$Content:=$Content+" One or more PinCodes is not valid. Customer imported with only valid pins"
+: ($valueElmRes="4")
+$Content:=$Content+" NO valid pins passed, customer NOT imported"
+: ($valueElmRes="5")
+$Content:=$Content+" Invalid zone information - customer will not gain access"
+: ($valueElmRes="6")
+$Content:=$Content+" Unit that should have been updated (only possible where type=full)"
+: ($valueElmRes="7")
+$Content:=$Content+" Error parsing XML child. (Invalid XML in a single units XML Child, unit number returned if possible)"
+Else 
+$Content:=$Content+" Error updating unit"
+End case 
+$Content:=$Content+" (Code: "+$valueElmRes
+$Content:=$Content+") for Unit No: "+$12
+SyncRecordLog ($Content)
+End if 
+
+If (Application type=4D Server)
+EXECUTE ON CLIENT("@";"AlertMessage";$Content)
+End if 
+DOM CLOSE XML($valRootRef)//Close Request XML
+DOM CLOSE XML($xml_Struct_Ref)//Close Response XML
+
+Else 
+If (httpStatus_l=999)//10290
+$0:="999"
+AlertMessage ("Error Communicating with Bearbox Access Control System: HTTP server not reachable")
+SyncRecordLog ("Error Communicating with Bearbox Access Control System: HTTP server not reachable - Error: 999")
+Else 
+$0:="http"+String(httpStatus_l)
+End if 
+End if 

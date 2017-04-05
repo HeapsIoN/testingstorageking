@@ -1,0 +1,211 @@
+//%attributes = {"executedOnServer":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 03/06/16, 16:21:31
+// ----------------------------------------------------
+// Method: RunFixMatchMisc
+// Description
+// 
+// This method is used to scan and fix all cash sales in a database.
+// $1 can be ALL for all sites in a MV, or a Facility Code.
+// $2 is whether to create write off trx or not
+//
+// Parameters
+// ----------------------------------------------------
+// *Execute on Server
+
+SyncRecordLog ("FixMatchMisc started!";"MISCLLOG")
+
+READ WRITE([Trxs])
+LOAD RECORD([Trxs])
+
+C_TEXT($1)
+C_BOOLEAN($2)
+C_DATE($RecDate)
+ARRAY LONGINT($aMatchNos;0)
+ARRAY DATE($aDates;0)
+ARRAY LONGINT($aBrokenMatch;0)
+ARRAY TIME($aTime;0)
+ARRAY TIME($aBrokenTimes;0)
+C_REAL($Charges;$Receipts)
+$Receipts:=0
+$Charges:=0
+//ConfirmThree ("This operation will scan and attempt to fix all Cash Sales, and could take quite some time. Would you like to run this for all sites or one?";"ALL";"One Site";)
+//ConfirmTwo ("Fix dates or Matching?";"Fix Dates";"Matching")
+
+//If (Application type=4D Server)
+//$Slient:=True
+//end if 
+
+
+If ($1="ALL")
+ALL RECORDS([Facility])
+Else 
+QUERY([Facility];[Facility]FacilityCode=$1)
+End if 
+CREATE EMPTY SET([Trxs];"BrokenMatch")
+
+For ($g;1;Records in selection([Facility]))
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL")
+DISTINCT VALUES([Trxs]Match;$aMatchNos)//get days of transactions
+
+For ($k;1;Size of array($aMatchNos))
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$aMatchNos{$k};*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+DISTINCT VALUES([Trxs]TrxDate;$aDates)
+
+For ($z;1;Size of array($aDates))
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$aMatchNos{$k};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=$aDates{$z};*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+DISTINCT VALUES([Trxs]TrxTime;$aTime)
+$Charges:=0
+$Receipts:=0
+
+For ($q;1;Size of array($aTime))
+
+SyncRecordLog ("Facility "+String($g)+" of "+String(Records in selection([Facility]))+" Match "+String($k)+" of "+String(Size of array($aMatchNos)))
+//SyncRecordLog ("Time: "+String($aTime{$q})+" Number:"+String($q)+" of "+String(Size of array($aTime)))
+//SyncRecordLog ("Match: "+String($aMatchNos{$k})+" Number:"+String($k)+" of "+String(Size of array($aMatchNos)))
+//GOTO XY(2;5)
+//MESSAGE("Time: "+String($aTime{$q})+" Number:"+String($q)+" of "+String(Size of array($aTime)))
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$aMatchNos{$k};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=$aDates{$z};*)
+QUERY([Trxs]; & ;[Trxs]TrxTime=$aTime{$q};*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+$Charges:=Sum([Trxs]TotAmt)
+
+//If ([Trxs]Match=2620)
+//AlertMessage ("Yo")
+//TRACE
+//End if 
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$aMatchNos{$k};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=$aDates{$z};*)
+QUERY([Trxs]; & ;[Trxs]TrxTime=$aTime{$q};*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+$Receipts:=Sum([Trxs]TotAmt)
+
+If ($Charges=$Receipts)//Give new matching number
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+
+bNext:=<>aiNextCashSaleNo{$arraypos}
+<>aiNextCashSaleNo{$arraypos}:=<>aiNextCashSaleNo{$arraypos}+1
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$aMatchNos{$k};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=$aDates{$z};*)
+QUERY([Trxs]; & ;[Trxs]TrxTime=$aTime{$q})
+
+APPLY TO SELECTION([Trxs];[Trxs]Match:=bNext)
+
+Else 
+
+ADD TO SET([Trxs];"BrokenMatch")
+
+End if 
+
+End for 
+
+End for 
+
+End for 
+
+SyncRecordLog ("MISCL Write off log for Facility "+[Facility]FacilityCode+" "+String(Current date)+" "+String(Current time);"MISCLLOG")
+
+If ($2=True)//create write off transactions 
+TRACE
+USE SET("BrokenMatch")
+DISTINCT VALUES([Trxs]Match;$aBrokenMatch)
+
+For ($v;1;Size of array($aBrokenMatch))
+$Receipt1:=0
+$Charge1:=0
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$aBrokenMatch{$v};*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+$Charge1:=Sum([Trxs]TotAmt)
+$ChargeDate:=[Trxs]TrxDate
+$ChargeTime:=[Trxs]TrxTime
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$aBrokenMatch{$v};*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+$Receipt1:=Sum([Trxs]TotAmt)
+$ReceiptDate:=[Trxs]TrxDate
+$ReceiptTime:=[Trxs]TrxTime
+
+$Difference:=$Receipt1-$Charge1
+
+If ($ReceiptDate=!00-00-00!)
+$ReceiptDate:=$ChargeDate
+End if 
+
+If ($ReceiptTime=?00:00:00?)
+$ReceiptTime:=$ChargeTime
+End if 
+
+CREATE RECORD([Trxs])
+[Trxs]Description:="Cancellation Fee"
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"CF"
+[Trxs]CustomerCode:=[Facility]FacilityCode+"MISCL"
+[Trxs]AgreeNo:=[Facility]FacilityCode+"MISCL"
+[Trxs]Match:=$aBrokenMatch{$v}
+[Trxs]TrxDate:=$ReceiptDate
+[Trxs]TrxTime:=$ReceiptTime
+[Trxs]Charge:=True
+[Trxs]TotAmt:=$Difference
+
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+
+If ($Difference>0)
+SyncRecordLog ("Charge Trx added - Match: "+String([Trxs]Match)+" Date: "+String([Trxs]TrxDate)+" Time: "+String([Trxs]TrxTime)+" Amount: "+String([Trxs]TotAmt);"MISCLLOG")
+Else 
+SyncRecordLog ("Credit Trx added - Match: "+String([Trxs]Match)+" Date: "+String([Trxs]TrxDate)+" Time: "+String([Trxs]TrxTime)+" Amount: "+String([Trxs]TotAmt);"MISCLLOG")
+End if 
+
+End if 
+End for 
+End if 
+NEXT RECORD([Facility])
+End for 
+
+If ([Facility]FacilityCode#"")//skip when facilities are finished
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+
+bNext:=<>aiNextCashSaleNo{$arraypos}
+<>aiNextCashSaleNo{$arraypos}:=<>aiNextCashSaleNo{$arraypos}+1
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+SyncRecordLog ("Next available match number for cash sales - "+String(<>aiNextCashSaleNo{$arraypos}))
+End if 
+
+SyncRecordLog ("FixMatchMisc finished!")
+
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])

@@ -1,0 +1,124 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$2;$vtRequestString;$vtDestinationPage;$vtPeriod;$4DLink;vtHTML;$cr)
+C_DATE($YearStartDate)
+$cr:=Char(13)
+$vtRequestString:=$1
+$4DLink:=$2
+
+$vtDestinationPage:=Substring($vtRequestString;1;Position("?";$vtRequestString)-1)
+$vtPeriod:=Substring($vtRequestString;Position("?";$vtRequestString)+1)
+$vtPeriod:=Substring($vtPeriod;1;Position("/";$vtPeriod)-1)
+$vtSortby:=Substring($vtRequestString;Position("?";$vtRequestString)+1)
+$vtSortby:=Substring($vtSortby;Position("/";$vtSortby)+1)
+
+vtHTML:=""//The text containing the HTML to insert into stats page
+QUERY([Facility];[Facility]SortOrder<1000)
+ORDER BY([Facility];[Facility]SortOrder;>)
+vtHeading:=<>sOEMName+" Central Web Report - "+[Facility]BusinessName+" Facilities as at"
+
+ARRAY TEXT(aHTMLStatsFacility;Records in selection([Facility]))
+ARRAY LONGINT(aHTMLStatsSalesInquiries;Records in selection([Facility]))
+ARRAY LONGINT(aHTMLStatsMoveIns;Records in selection([Facility]))
+ARRAY LONGINT(aHTMLStatsMoveOuts;Records in selection([Facility]))
+ARRAY LONGINT(aHTMLStatsOccupancy;Records in selection([Facility]))
+ARRAY LONGINT(aHTMLStatsRate;Records in selection([Facility]))
+$YearStartDate:=[Facility]YearStartDate
+For ($i;1;Records in selection([Facility]))
+aHTMLStatsFacility{$i}:=[Facility]ShortName
+QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=Current date)
+aHTMLStatsOccupancy{$i}:=[Activity]OccupUnitNo
+aHTMLStatsRate{$i}:=0
+If ([Activity]TotUnitArea>0)
+aHTMLStatsRate{$i}:=[Activity]OccupValActual/[Activity]TotUnitArea
+End if 
+Case of 
+: ($vtPeriod="week")
+QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityWeek=[Activity]ActivityWeek)
+: ($vtPeriod="month")
+QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityMonth=[Activity]ActivityMonth)
+Else 
+QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=$YearStartDate;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=Current date)
+End case 
+aHTMLStatsSalesInquiries{$i}:=Sum([Activity]InquiriesTaken)
+aHTMLStatsMoveIns{$i}:=Sum([Activity]MoveIns)
+aHTMLStatsMoveOuts{$i}:=Sum([Activity]MoveOuts)
+NEXT RECORD([Facility])
+End for 
+
+
+Case of 
+: ($vtSortby="Facility")
+$SortHeading:=1
+SORT ARRAY(aHTMLStatsFacility;aHTMLStatsSalesInquiries;aHTMLStatsMoveIns;aHTMLStatsMoveOuts;aHTMLStatsOccupancy;aHTMLStatsRate;>)
+: ($vtSortby="SalesInq")
+$SortHeading:=2
+SORT ARRAY(aHTMLStatsSalesInquiries;aHTMLStatsFacility;aHTMLStatsMoveIns;aHTMLStatsMoveOuts;aHTMLStatsOccupancy;aHTMLStatsRate;>)
+: ($vtSortby="Move-Ins")
+$SortHeading:=3
+SORT ARRAY(aHTMLStatsMoveIns;aHTMLStatsFacility;aHTMLStatsSalesInquiries;aHTMLStatsMoveOuts;aHTMLStatsOccupancy;aHTMLStatsRate;>)
+: ($vtSortby="Move-Outs")
+$SortHeading:=4
+SORT ARRAY(aHTMLStatsMoveOuts;aHTMLStatsFacility;aHTMLStatsSalesInquiries;aHTMLStatsMoveIns;aHTMLStatsOccupancy;aHTMLStatsRate;>)
+: ($vtSortby="Occupancy")
+$SortHeading:=5
+SORT ARRAY(aHTMLStatsOccupancy;aHTMLStatsFacility;aHTMLStatsSalesInquiries;aHTMLStatsMoveIns;aHTMLStatsMoveOuts;aHTMLStatsRate;>)
+: ($vtSortby="Rate")
+$SortHeading:=6
+SORT ARRAY(aHTMLStatsRate;aHTMLStatsFacility;aHTMLStatsSalesInquiries;aHTMLStatsMoveIns;aHTMLStatsMoveOuts;aHTMLStatsOccupancy;>)
+Else 
+//Is sorted by Facility Name
+End case 
+
+
+//Initialisation & Table Header
+$q:=Char(Double quote)
+
+//The Period sorter header
+vthtml:=vthtml+"<table width=100% border=0 cellspacing=1 cellpadding=2>"+$cr
+vthtml:=vthtml+"<tr><td bgcolor=#000052>"+$cr
+vthtml:=vthtml+"<table border=0 cellspacing=0 cellpadding=0 align=center>"+$cr
+vthtml:=vthtml+"<tr>"+$cr
+vthtml:=vthtml+"<td width=80><a href="+$q+$4DLink+"/4DCGI/stats.shtml?week/facility"+$q+"><span class=tableheading1>Week</span></a></td>"+$cr
+vthtml:=vthtml+"<td width=80><a href="+$q+$4DLink+"/4DCGI/stats.shtml?month/facility"+$q+"><span class=tableheading1>Month</span></a></td>"+$cr
+vthtml:=vthtml+"<td width=80><a href="+$q+$4DLink+"/4DCGI/stats.shtml?year/facility"+$q+"><span class=tableheading1>Year</span></a></td>"+$cr
+vthtml:=vthtml+"</tr></Table></td></tr></Table>"+$cr
+
+//The Data
+vtHTML:=vtHTML+"<TABLE width=100% cellspacing=1 cellpadding=2>"+$cr
+vtHTML:=vtHTML+"<TR bgcolor=#000052>"+$cr
+vtHTML:=vtHTML+"<TD align=center valign=bottom><a href="+$q+$4DLink+"/4DCGI/stats.shtml?"+$vtPeriod+"/facility"+$q+"><span class=tablecolumnheading1>Facility</span></a></TD>"+$cr
+vtHTML:=vtHTML+"<TD align=center valign=bottom><a href="+$q+$4DLink+"/4DCGI/stats.shtml?"+$vtPeriod+"/salesinq"+$q+"><span class=tablecolumnheading1>Sales Inquiries</span></a></TD>"+$cr
+vtHTML:=vtHTML+"<TD align=center valign=bottom><a href="+$q+$4DLink+"/4DCGI/stats.shtml?"+$vtPeriod+"/move-ins"+$q+"><span class=tablecolumnheading1>Move-Ins</span></a></TD>"+$cr
+vtHTML:=vtHTML+"<TD align=center valign=bottom><a href="+$q+$4DLink+"/4DCGI/stats.shtml?"+$vtPeriod+"/move-outs"+$q+"><span class=tablecolumnheading1>Move-Outs</span></a></TD>"+$cr
+vtHTML:=vtHTML+"<TD align=center valign=bottom><a href="+$q+$4DLink+"/4DCGI/stats.shtml?"+$vtPeriod+"/occupancy"+$q+"><span class=tablecolumnheading1>Occupancy</span></a></TD>"+$cr
+vtHTML:=vtHTML+"<TD align=center valign=bottom><a href="+$q+$4DLink+"/4DCGI/stats.shtml?"+$vtPeriod+"/rate"+$q+"><span class=tablecolumnheading1>Rate</span></a></TD>"+$cr
+
+$vtRowcolour:="tablerowcolourlt"
+
+
+//Table Content
+For ($DCounter;1;Size of array(aHTMLStatsFacility))
+vtHTML:=vtHTML+"<TR class="+$vtRowcolour+">"+$cr
+vtHTML:=vtHTML+"<TD width=120 align=left class=tabledata1>"+aHTMLStatsFacility{$DCounter}+"</TD>"+$cr
+vtHTML:=vtHTML+"<TD width=90 align=center class=tabledata1>"+String(aHTMLStatsSalesInquiries{$DCounter})+"</TD>"+$cr
+vtHTML:=vtHTML+"<TD width=90 align=center class=tabledata1>"+String(aHTMLStatsMoveIns{$DCounter})+"</TD>"+$cr
+vtHTML:=vtHTML+"<TD width=90 align=center class=tabledata1>"+String(aHTMLStatsMoveOuts{$DCounter})+"</TD>"+$cr
+vtHTML:=vtHTML+"<TD width=90 align=center class=tabledata1>"+String(aHTMLStatsOccupancy{$DCounter})+"</TD>"+$cr
+vtHTML:=vtHTML+"<TD width=90 align=center class=tabledata1>"+String(aHTMLStatsRate{$DCounter})+"</TD>"+$cr
+vtHTML:=vtHTML+"</TR>"+$cr
+Case of 
+: ($vtRowcolour="tablerowcolourlt")
+$vtRowcolour:="tablerowcolourdk"
+Else 
+$vtRowcolour:="tablerowcolourlt"
+End case 
+End for 
+
+//Table Footer
+vtHTML:=vtHTML+"</TABLE>"
+WEB SEND FILE($vtDestinationPage)

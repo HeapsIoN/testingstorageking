@@ -1,0 +1,63 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+LogAction (False;"Aged Receivables Report started.")// records the report being started in the eventlog
+If (PermissionsControl (72))
+OK:=1
+If (<>tBatch=False)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]RentAmt<1)
+If (Records in selection([Agreement])>0)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Agreement]))+Get localized string(" agreement(s) with no rent amount.  [")+[Agreement]CustomerCode+Get localized string("]  The report may be incorrect."))
+End if 
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vMthDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vMthDate)
+End if 
+If (OK=1)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+DEFAULT TABLE([Customer])
+QUERY([Customer];[Customer]LatestTrxDate>(vMthDate-92);*)//Don't calculate for old customers whose balance is zero.
+QUERY([Customer]; | ;[Customer]LatestTrxDate=!00-00-00!;*)
+QUERY([Customer]; | ;[Customer]Balance#0;*)
+QUERY([Customer]; | ;[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#<>sFacility+"PETTY")
+CalcAgedDebtors (vMthDate;->[Customer];False)
+If ([Facility]UnitNoRpts)
+SortbyUnits 
+Else 
+ORDER BY([Customer]CustomerCode;>)
+End if 
+If (<>iPrinttoFile=3)
+ARRAY TEXT(aFieldNames;11)
+If ([Facility]UnitNoRpts=True)
+aFieldNames{1}:=Get localized string("OnDetailUnit")
+Else 
+aFieldNames{1}:=Get localized string("OnDetailAgree't")
+End if 
+aFieldNames{2}:="[Customer]CustomerName"
+aFieldNames{3}:="[Agreement]LastPmtDate"
+aFieldNames{4}:=Get localized string("Bal Owing")
+aFieldNames{5}:=GetKeyNo ([Facility]AgedDebtorBreaks;1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;2)+" "+Get localized string("Days")
+aFieldNames{6}:=String(Num(GetKeyNo ([Facility]AgedDebtorBreaks;2))+1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;3)+" "+Get localized string("Days")
+aFieldNames{7}:=String(Num(GetKeyNo ([Facility]AgedDebtorBreaks;3))+1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;4)+" "+Get localized string("Days")
+aFieldNames{8}:="> "+GetKeyNo ([Facility]AgedDebtorBreaks;4)+" "+Get localized string("Days")
+aFieldNames{9}:=Get localized string("In Credit")
+aFieldNames{10}:=Get localized string("Rent in Adv")
+aFieldNames{11}:=Get localized string("Paid in Adv")
+vpTable:=->[Customer]
+CreateExcelReport (11;Records in selection([Customer]);"MethodOnLoadAgedReceivables";[Facility]FacilityName;Get localized string("Aged Receivables List as at ")+String(vMthDate;6))//no of columns on report, no of rows, lines to execute, header 1, header 2, footer
+Else 
+BREAK LEVEL(0)
+ACCUMULATE(vAmt1;vAmt2;vAmt3;vAmt4;vAmt5;vAmt6;vAmt7;vAmt8)
+FORM SET OUTPUT([Customer];"AgedDebtors")
+PrintSelection ("L")
+FORM SET OUTPUT([Customer];"Output")
+End if 
+ARRAY TEXT(aCustCode;0)
+ARRAY REAL(aTotals;0;0)
+End if 
+End if 
+LogAction (True;"Aged Receivables Report ended.")// records the report being started in the eventlog

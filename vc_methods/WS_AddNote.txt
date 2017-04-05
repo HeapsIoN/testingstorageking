@@ -1,0 +1,183 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 01/03/11, 14:46:00
+// ----------------------------------------------------
+// Method: WS_AddNote
+// Description
+// Add a note to a customer or sales enquiry, also allows alerting of notes
+//
+// Parameters
+// ----------------------------------------------------
+// Standardized
+// Documented
+// Unit Test
+// WSChangeLog
+
+
+SOAP DECLARATION(WS_NoteID;Is text;SOAP input)// Contact No, Agreement No, Customer Code
+SOAP DECLARATION(WS_Note;Is text;SOAP input)
+SOAP DECLARATION(WS_NoteAlert;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_NoteCategory;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+//WS_OLD=SOAP DECLARATION(WS_Edit;Is Boolean;SOAP Output)
+SOAP DECLARATION(WS_NoteReturnID;Is text;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_OLD=WS_Edit:=False
+
+$String:="Start WS_AddNote"+Char(13)
+$String:=$String+"WS_NoteID: "+WS_NoteID+Char(13)
+$String:=$String+"WS_Note: "+WS_Note+Char(13)
+$String:=$String+"WS_NoteAlert: "+String(WS_NoteAlert)+Char(13)
+$String:=$String+"WS_NoteCategory: "+WS_NoteCategory+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+READ WRITE([Customer])
+READ WRITE([Contacts])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Reservation])
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_NoteID;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+//16/08/13 DAM Added option to search and add note if passing agreement number
+Case of 
+: (Length(WS_NoteID)=15)// Contact number
+QUERY([Contacts];[Contacts]ContactNo=WS_NoteID)
+If (Records in selection([Contacts])=1) & (Locked([Contacts])=False)
+CREATE RECORD([NotesHistory])
+[NotesHistory]ContactNo:=WS_NoteID
+[NotesHistory]Note:=WS_Note
+[NotesHistory]Category:=WS_NoteCategory
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+
+If (WS_NoteAlert=True)
+[Contacts]Alerts:=True
+[Contacts]Comments:=WS_Note+Char(13)+[Contacts]Comments
+SAVE RECORD([Contacts])
+End if 
+//WS_OLD=WS_Edit:=True
+WS_NoteReturnID:=[Contacts]ContactNo
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Note successfully added to Contact in database Storman."
+Else 
+//WS_OLD=WS_Edit:=False
+//WS_OLD=WS_NoteReturnID:="Locked= "+String(Locked([Contacts]))+" Records in Selection= "+String(Records in selection([Contacts]))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1017
+WS_ORErrorDescription:="Contact record locked in database Storman. Please try again later."
+End if 
+: (Length(WS_NoteID)=14)// Agreement number
+QUERY([Agreement];[Agreement]RAgreeNo=WS_NoteID)
+RELATE ONE([Agreement]CustomerCode)
+If (Records in selection([Customer])=1) & (Locked([Customer])=False) & (Locked([Reservation])=False) & (Locked([Agreement])=False)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]Note:=WS_Note
+[NotesHistory]Category:=WS_NoteCategory
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+If (WS_NoteAlert=True)
+APPLY TO SELECTION([Agreement];[Agreement]AlertNotesMsg:=True)
+APPLY TO SELECTION([Reservation];[Reservation]AlertNote:=True)
+[Customer]Notes:=WS_Note+Char(13)+[Customer]Notes
+SAVE RECORD([Customer])
+End if 
+//WS_OLD=WS_Edit:=True
+WS_NoteReturnID:=[Customer]CustomerCode
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Note successfully added to Agreement in database Storman."
+Else 
+//WS_OLD=WS_Edit:=False
+//WS_OLD=WS_NoteReturnID:="Locked= "+String(Locked([Customer]))+" Records in Selection= "+String(Records in selection([Customer]))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1018
+WS_ORErrorDescription:="Agreement record locked in database Storman. Please try again later."
+End if 
+
+Else 
+QUERY([Customer];[Customer]CustomerCode=WS_NoteID)
+RELATE MANY([Customer]CustomerCode)
+If (Records in selection([Customer])=1) & (Locked([Customer])=False) & (Locked([Reservation])=False) & (Locked([Agreement])=False)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=WS_NoteID
+[NotesHistory]Note:=WS_Note
+[NotesHistory]Category:=WS_NoteCategory
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+If (WS_NoteAlert=True)
+APPLY TO SELECTION([Agreement];[Agreement]AlertNotesMsg:=True)
+APPLY TO SELECTION([Reservation];[Reservation]AlertNote:=True)
+[Customer]Notes:=WS_Note+Char(13)+[Customer]Notes
+SAVE RECORD([Customer])
+End if 
+//WS_OLD=WS_Edit:=True
+WS_NoteReturnID:=[Customer]CustomerCode
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Note successfully added to Customer in database Storman."
+Else 
+//WS_OLD=WS_Edit:=False
+//WS_OLD=WS_NoteReturnID:="Locked= "+String(Locked([Customer]))+" Records in Selection= "+String(Records in selection([Customer]))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1019
+WS_ORErrorDescription:="Customer record locked in database Storman. Please try again later."
+End if 
+End case 
+
+Else 
+//WS_OLD=WS_NoteReturnID:="Incorrect Password"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Customer])
+READ ONLY([Contacts])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Reservation])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Contacts])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Reservation])
+
+$String:="End WS_AddNote"+Char(13)
+$String:=$String+"WS_NoteReturnID: "+WS_NoteReturnID+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

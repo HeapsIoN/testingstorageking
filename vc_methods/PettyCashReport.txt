@@ -1,0 +1,56 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 11/04/11, 14:57:01
+// ----------------------------------------------------
+// Method: PettyCashReport
+// Description
+// Report for the new Petty Cash module listing transactions between two dates
+//
+// ----------------------------------------------------
+LogAction (False;"Petty Cash Report started.")// records the report being started in the eventlog
+If (<>tBatch=False)
+vLastDate:=RequestDate (Get localized string("Please enter Date From:");GetDate (1;Month of(Current date);Year of(Current date)))
+vDate:=RequestDate (Get localized string("Please enter Date To:");Current date)
+Else 
+vDate:=vMthDate
+vLastDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+OK:=1
+End if 
+
+If (OK=1)
+DEFAULT TABLE([Trxs])
+SetFacility 
+BREAK LEVEL(0)
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"PETTY")
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vLastDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vDate)
+
+
+
+If (Records in selection([Trxs])>0) & (Records in selection([Agreement])>0)
+vTitle:=Get localized string("Petty Cash Report")
+vBusinessName:=[Facility]BusinessName
+vOpenBalText:=Get localized string("Opening balance as at")+" "+String(vLastDate)
+vCloseBalText:=Get localized string("Closing balance as at")+String(vDate)
+vOpenBal:=0
+vCloseBal:=0
+vOpenBal:=BalanceDateCalc (0;vLastDate;True;[Agreement]RAgreeNo;True)
+vCloseBal:=BalanceDateCalc (0;vDate;False;[Agreement]RAgreeNo;True)
+
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+
+FORM SET OUTPUT([Trxs];"PettyCashReport")
+PrintSelection ("L")
+FORM SET OUTPUT([Trxs];"Output")
+Else 
+If (<>tBatch=False)
+AlertMessage (Get localized string("There are no records to print for this report"))
+End if 
+End if 
+
+End if 
+LogAction (True;"Petty Cash Report ended.")

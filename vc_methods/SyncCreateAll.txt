@@ -1,0 +1,221 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method to prompt and receive user choices before exporting the datafile to MV via a .txt. file or via the Internet
+//Called by either the Menu or by LogMonitor
+
+//When called from the Menu the user is prompted for their choices for each of the options
+//When called from LogMonServer the options are predetermined and no prompts are displayed.
+
+
+C_BOOLEAN($2;$3;$4;$5;$6;$SetRecordsToSynced;$SendLettersAndContacts;$UploadToFTP;$ImportAtMV;$CalledByLogMon)//Set Existing EL records to Synced
+C_LONGINT($1)//0=all tables, non-zero=specific table
+
+C_LONGINT($Table;$Proc)
+C_BOOLEAN($Sort;$SendWrite;$SendFile)
+
+//Default settings for key settings
+$StorePassword:=<>sCurrentUser//When called from Menu the user has to have permission, but when called from LogMonServer it has to be overridden - This stores the current user whatever it is for restoration afterwards
+$SetRecordsToSynced:=False
+$SendWrite:=False
+$UploadToFTP:=True
+$ImportAtMV:=False
+$CalledByLogMon:=False
+$Table:=0
+$Sort:=False
+$SendFile:=True
+$Nonsync:=False
+
+//If called from LogMonServer the local variables are set to what has been passed in
+If (Count parameters>=1)
+<>sCurrentUser:="AdminSupport"
+$Table:=$1
+If (Count parameters>=2)
+$SetRecordsToSynced:=$2
+If (Count parameters>=3)
+$SendLettersAndContacts:=$3
+If (Count parameters>=4)
+$UploadToFTP:=$4
+If (Count parameters>=5)
+$ImportAtMV:=$5
+If (Count parameters>=6)
+$CalledByLogMon:=$6
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+
+If ($CalledByLogMon=False)
+$Window:=Open window((Screen width/2)-200;(Screen height/2)-206;(Screen width/2)+200;(Screen height/2)+206;5;"Send to Remote Site")
+DIALOG([Facility];"SyncCreate")
+CLOSE WINDOW($Window)
+If (OK=1)
+If (bNext=1)
+$SetRecordsToSynced:=True
+Else 
+$SetRecordsToSynced:=False
+End if 
+If (bDel=1)
+$SendWrite:=True
+Else 
+$SendWrite:=False
+End if 
+If (bCheckMatch=1)
+$UploadToFTP:=True
+Else 
+$UploadToFTP:=False
+End if 
+If (bDelete=1)
+$ImportAtMV:=True
+Else 
+$ImportAtMV:=False
+End if 
+If (bAdd=1)
+$Sort:=True
+Else 
+$Sort:=False
+End if 
+
+If (bPrev=1)
+$Nonsync:=True
+Else 
+$Nonsync:=False
+End if 
+
+
+If (rRefund1=1)
+$SendFile:=True
+Else 
+$SendFile:=False
+End if 
+
+Case of 
+: (atTables<=1)
+$Table:=0
+: (atTables=2)
+$Table:=-1
+Else 
+$Table:=atTables-2
+End case 
+End if 
+Else 
+OK:=1
+End if 
+
+If (OK=1)
+If (VerifyPrimaryKeyValues =True)
+
+//Checks for a valid Table Number when called from LogMonitor
+If (Is table number valid($Table)=False) & ($CalledByLogMon=True)
+<>sCurrentUser:=$StorePassword
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Invalid Table number entered!")+" "+String($Table))
+End if 
+
+
+If (<>sCurrentUser="AdminSupport") | (<>sCurrentUser="Designer")
+<>sCurrentUser:=$StorePassword
+QUERY([EventLog];[EventLog]SyncStatus=0;*)
+QUERY([EventLog]; & ;[EventLog]FacilityCode=<>sFacility)
+If (Records in selection([EventLog])>0)
+If ($SetRecordsToSynced=True)
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]SyncStatus:=1)
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+End if 
+End if 
+
+
+//If (Count parameters=0)  //A Table number has Not been passed - Ask
+//ConfirmTwo (Get localized string("Send all data for facility")+" : "+<>sFacility+" ?";Get localized string("Yes");Get localized string("No"))
+//Else 
+//If ($Table#0)
+//OK:=0
+//End if 
+//End if 
+//$SendFile:=True
+//$Search:=False
+//If (OK=1)
+//If (Shift down) & ($CalledByLogMon=False)  //Only available if called from Menu, otherwise uses passed value and continues without prompt
+//ConfirmTwo (Get localized string("Don't send Facility record?");Get localized string("Don't");Get localized string("Yes"))
+//If (OK=1)
+//$Table:=-1
+//End if 
+//End if 
+//Else 
+//If ($CalledByLogMon=False)  //Only available if called from Menu, otherwise uses passed value and continues without prompt
+//$Table:=Num(RequestMessage (Get localized string("Send specific table?");"1"))
+//Else 
+//OK:=1
+//End if 
+//If (OK=1) & ($Table>=1) & ($Table<=35)
+//If ($CalledByLogMon=False)  //Only available if called from Menu, otherwise uses passed value and continues without prompt
+//ConfirmTwo (Get localized string("Method to send?");Get localized string("Text File");Get localized string("Internet"))
+//Else 
+//OK:=1
+//End if 
+//$SendFile:=(OK=1)
+//OK:=1
+//End if 
+//End if 
+
+//If (OK=1)
+OK:=1
+$File:=<>sBackupPath+<>sFacility+String($Table;"00")+".dat"
+If (Test path name($File)=Is a document)
+If ($CalledByLogMon=False)//Only available if called from Menu, otherwise uses passed value and continues without prompt
+ConfirmTwo (Get localized string("The")+" "+Get localized string("File")+" "+$File+" "+Get localized string("already exists. Must Delete to continue!");Get localized string("Delete");Get localized string("Cancel Sync"))
+Else 
+OK:=1
+End if 
+If (OK=1)
+DELETE DOCUMENT($File)
+End if 
+End if 
+If (OK=1)
+//$Sort:=False
+//If (Shift down) & ($CalledByLogMon=False)  //Only available if called from Menu, otherwise uses passed value and continues without prompt
+//ConfirmTwo (Get localized string("Create new SeqNo (Inv Nos) on Transaction table?");Get localized string("Yes");Get localized string("No"))
+//$Sort:=(OK=1)
+//End if 
+//$SendWrite:=False
+//If ($Table<=0) | ($Table=11) | ($Table=12)
+//If ($SendLettersAndContacts=False)  //Only available if called from Menu, otherwise uses passed value and continues without prompt
+//ConfirmTwo (Get localized string("Send 4D Write Areas for Letters & Contacts?");Get localized string("Yes");Get localized string("No"))
+//Else 
+//OK:=1
+//End if 
+//$SendWrite:=(OK=1)
+//End if 
+//
+//If ($CalledByLogMon=False)  //Only available if called from Menu, otherwise uses passed value and continues without prompt
+//ConfirmTwo (Get localized string("Upload datafile export file to FTP server (if configured at MV)?");Get localized string("Yes");Get localized string("No"))
+//$UploadToFTP:=(OK=1)
+//If ($UploadToFTP=True)  //Only available if called from Menu, otherwise uses passed value and continues without prompt
+//ConfirmTwo (Get localized string("Instruct MV to automatically download export file from FTP server and import?"))
+//$ImportAtMV:=(OK=1)
+//End if 
+//End if 
+
+//ConfirmTwo (Get localized string("Export records from Non-syncing tables to the 'Backups' folder?");Get localized string("Yes");Get localized string("No"))
+If ($Nonsync=True)
+ExportNonSyncingTables 
+End if 
+
+If (Application type=4D Remote mode)
+$Proc:=Execute on server("SyncCreateAllProc";64000;"SyncCreateAll";$Table;<>sFacility;$Sort;$SendWrite;$SendFile;$UploadToFTP;$ImportAtMV;$CalledByLogMon)
+AlertMessage (Get localized string("Process number")+" : "+String($Proc)+" "+Get localized string("has been started on the server to export the records!"))
+Else 
+SyncCreateAllProc ($Table;<>sFacility;$Sort;$SendWrite;$SendFile;$UploadToFTP;$ImportAtMV;$CalledByLogMon)
+End if 
+End if 
+//End if 
+Else 
+AlertMessage (Get localized string("You need to be logged in as AdminSupport to use this feature!"))
+End if 
+Else 
+AlertMessage (Get localized string("Datafile Export cancelled!"))
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Problems with Primary Key values for facility")+" "+$Facility+" "+Get localized string("were found!");0)
+End if 
+End if 

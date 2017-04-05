@@ -1,0 +1,107 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0;$1;$HostAddress)//Host Address
+C_TEXT($2;$HostPort)//Host Port Number
+C_TEXT($3;$HostFolder)//Host Folder / Path
+C_TEXT($4;$TCPRequest;$TCPHeader;$TCPResponse)
+C_LONGINT($TCPID;$TCPError)
+
+$TCPID:=0
+$Status:=0
+$Buffer:=""
+$cr:=Char(13)+Char(10)
+$HostAddress:=$1
+$HostPort:=$2
+$HostFolder:=$3
+$TCPRequest:=$4
+$TCPResponse:=""
+
+
+//Build the HTTP Header
+$TCPHeader:=""
+$TCPHeader:=$TCPHeader+"POST "+$HostFolder+" HTTP/1.1"+$cr
+$TCPHeader:=$TCPHeader+"Host: "+$HostAddress+":"+$HostPort+$cr
+$TCPHeader:=$TCPHeader+"content-type: application/x-www-form-urlencoded"+$cr
+$TCPHeader:=$TCPHeader+"Connection: close"+$cr
+
+//$TCPHeader:=$TCPHeader+"Accept: "+"*/*"+$cr
+//$TCPHeader:=$TCPHeader+"Pragma: no-cache"+$cr
+//$TCPHeader:=$TCPHeader+"Connection: Keep-Alive"+$cr
+//$TCPHeader:=$TCPHeader+"Extension: Security/Remote-Passphrase"+$cr
+
+//$TCPHeader:=$TCPHeader+"POST "+$HostFolder+" HTTP/1.1"+$cr
+//$TCPHeader:=$TCPHeader+"Host: "+$HostAddress+":"+$HostPort+$cr
+//$TCPHeader:=$TCPHeader+"Accept: "+"*/*"+$cr
+//$TCPHeader:=$TCPHeader+"Pragma: no-cache"+$cr
+//$TCPHeader:=$TCPHeader+"Connection: Keep-Alive"+$cr
+//$TCPHeader:=$TCPHeader+"Extension: Security/Remote-Passphrase"+$cr
+
+
+$TCPHeader:=$TCPHeader+"Content-length: "+String(Length($TCPRequest))+$cr
+//LoadSystemRecord(False)
+ON ERR CALL("ErrorNone")
+$TCPError:=IT_SetTimeOut (10)
+SyncRecordLog ("TCP Open";"SMSLog")
+If ($HostPort="443")
+$TCPError:=TCP_Open ($HostAddress;Num($HostPort);$TCPID;3)
+Else 
+$TCPError:=TCP_Open ($HostAddress;Num($HostPort);$TCPID;1)
+End if 
+
+If ($TCPError=0)
+SyncRecordLog ("TCP Send Start";"SMSLog")
+//SyncRecordLog ("SMS Header + Request: "+$TCPHeader+$cr+$TCPRequest;"SMSLog")
+MaskSMSLog ("SMS Header + Request: "+$TCPHeader+$cr+$TCPRequest;"SMSLog")
+$TCPError:=TCP_Send ($TCPID;$TCPHeader+$cr+$TCPRequest+$cr+$cr)
+SyncRecordLog ("TCP Send Finished";"SMSLog")
+$WaitTime:=Current time+?00:00:05?//Timeout after 5 seconds
+Repeat 
+IDLE
+Until (Current time>$WaitTime)
+
+$WaitTime:=Current time+?00:00:10?//Timeout after 10 seconds
+$Count:=0
+SyncRecordLog ("TCP Receive Start";"SMSLog")
+Repeat //While a single HTTP response is being received
+$TCPError:=TCP_Receive ($TCPID;$Buffer)
+$TCPError:=TCP_State ($TCPID;$Status)
+$TCPResponse:=$TCPResponse+$Buffer
+If ($Buffer="") & ($TCPResponse>"")
+$Count:=$Count+1
+End if 
+Until ($Status=0) | ($TCPError>0) | (Current time>$WaitTime) | ($Count>60)//if 60 times and no more response then assumed finished - Advam problem
+SyncRecordLog ("TCP Receive Finished";"SMSLog")
+SyncRecordLog ("TCP Response: "+$TCPResponse;"SMSLog")
+
+$TCPError:=TCP_Close ($TCPID)
+SyncRecordLog ("TCP Close";"SMSLog")
+Else 
+AlertMessage (Get localized string("The TCP connection could not be opened. Error")+" #"+String($TCPError))
+$TCPResponse:="ERR4IC"
+End if 
+ON ERR CALL("ErrorLog")
+$HTTPResponseCode:=Get localized string("No response")
+Case of 
+: ($TCPError#0)
+$TCPResponse:="4DIC TCP Error # "+String($TCPError)
+: ($Status=0)
+Repeat //While a complete transaction request and response is being received
+$HTTPResponse:=Substring($TCPResponse;1;Position($cr+$cr;$TCPResponse)-1)
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($TCPResponse;Position(" ";$TCPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$TCPResponse:=Substring($TCPResponse;Position($cr+$cr;$TCPResponse)+Length($cr+$cr))
+Else 
+//If not an HTTPResponse Header then must be the Verisign Payment Response message content
+Case of 
+: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$TCPResponse:=Substring($TCPResponse;Position($cr+$cr;$TCPResponse)+Length($cr+$cr))
+Else 
+$TCPResponse:=Get localized string("Error")+" "+$HTTPResponseCode
+End case 
+End if 
+Until ($TCPResponse#"")
+Else 
+//All is well, the response is in $TCPResponse variable
+End case 
+
+$0:=$TCPResponse
+$TCPError:=IT_SetTimeOut (30)

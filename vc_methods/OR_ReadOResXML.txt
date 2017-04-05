@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//No parameters supplied - returns "True" if XML file present, "False" if XML file not present
+//One parameter supplied - returns the 'default' value as defined in the XML file, if not present then returns ""
+//Two paramaters supplied, first is section, second is subsection - if section or subsection not found then "" returned
+
+
+C_TEXT($0;$1;$2)//Return with value; Section; SubSection
+C_TEXT($XMLContents;$XMLContents;$SubSection;$SectionText)
+C_TIME($DocRef)
+C_LONGINT($StartTagLength;$StartTagPos;$EndTagPos)
+
+$XMLContents:=""
+$SubSection:=""
+$SectionText:=""
+$StartTagLength:=0
+$StartTagPos:=0
+$EndTagPos:=0
+
+
+$MethodCalledOnError:=Method called on error
+ON ERR CALL("ErrorNone")
+
+Case of 
+: (Count parameters=0)//Return True or False if the file is present or not
+If (Test path name(<>sPreferencesPath+"ORes.xml")=Is a document)
+$0:="True"//XML file found
+Else 
+$0:="False"//XML file not found
+End if 
+
+: (Count parameters>=1)//Return the 'default' value for the setting supplied
+If (Test path name(<>sPreferencesPath+"ORes.xml")=Is a document)
+$DocRef:=Open document(<>sPreferencesPath+"ORes.xml")
+RECEIVE PACKET($DocRef;$XMLContents;32000)
+CLOSE DOCUMENT($DocRef)
+$StartTagLength:=Length("<"+$1+">")
+$StartTagPos:=Position("<"+$1+">";$XMLContents)
+$EndTagPos:=Position("</"+$1+">";$XMLContents)
+$SectionText:=Substring($XMLContents;$StartTagPos+$StartTagLength;$EndTagPos-$StartTagPos-$StartTagLength)
+
+//If only one parameter (section) supplied then return the 'default' value, else return the value for the subsection
+If (Count parameters=1)
+$SubSection:="default"
+Else 
+$SubSection:=$2
+End if 
+
+//Find the position of the Start and End Tags
+$StartTagPos:=Position("<"+$SubSection+">";$SectionText)
+$EndTagPos:=Position("</"+$SubSection+">";$SectionText)
+$StartTagLength:=Length("<"+$SubSection+">")
+
+//If defined Start Tag is present then return the value, otherwise return the default value if specified
+If ($StartTagPos#0) & ($EndTagPos#0)
+$0:=Substring($SectionText;$StartTagPos+$StartTagLength;$EndTagPos-$StartTagPos-$StartTagLength)//Subsection value
+Else 
+$StartTagPos:=Position("<default>";$SectionText)
+$EndTagPos:=Position("</default>";$SectionText)
+$StartTagLength:=Length("<default>")
+If ($StartTagPos#0) & ($EndTagPos#0)//If defined Start Tag is present then return the value, otherwise return nothing
+$0:=Substring($SectionText;$StartTagPos+$StartTagLength;$EndTagPos-$StartTagPos-$StartTagLength)//Default value
+Else 
+$0:=""//Can't find the default value
+End if 
+End if 
+Else 
+$0:="False"//XML file not found
+End if 
+Else 
+//Do Nothing
+End case 
+ON ERR CALL($MethodCalledOnError)

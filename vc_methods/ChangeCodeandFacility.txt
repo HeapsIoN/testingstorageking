@@ -1,0 +1,116 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Works like ChangeCode but can only be called from Execute and can change facility (i.e. ChangeCodeandFacility("STUKD000008025";"STEUR000008025")
+
+C_TEXT($1;$2;$NewCust;$NewAgree)//Code to Change, Code to change to
+READ WRITE(*)
+$OK:=True
+QUERY([Agreement];[Agreement]RAgreeNo=$2)
+If (Records in selection([Agreement])>0)
+BEEP
+AlertMessage (Get localized string("There is already an agreement with number")+" "+[Agreement]AgreeNo)
+$OK:=False
+End if 
+QUERY([Agreement];[Agreement]RAgreeNo=$1)
+If (Records in selection([Agreement])#1)
+BEEP
+AlertMessage (Get localized string("No such agreement on file."))
+$OK:=False
+Else 
+If (Locked([Agreement])=True)
+$OK:=False
+AlertMessage (Get localized string("This agreement is being edited by another process. Quit that process first."))
+Else 
+RELATE MANY([Agreement]RAgreeNo)
+End if 
+End if 
+//Following code could be modified for reservations
+//QUERY([Reservation];[Reservation]RReserveNo=$2)
+//If (Records in selection([Reservation])>0)
+//BEEP
+//AlertMessage (Get localized string("There is already a reservation with number")+" "+[Reservation]ReserveNo)
+//$OK:=False
+//End if 
+//QUERY([Reservation];[Reservation]RReserveNo=$1)
+//If (Records in selection([Reservation])#1)
+//BEEP
+//AlertMessage (Get localized string("No such reservation on file."))
+//$OK:=False
+//Else 
+//If (Locked([Reservation])=True)
+//$OK:=False
+//AlertMessage (Get localized string("This reservation is being edited by another process. Quit that process first."))
+//Else 
+//RELATE MANY([Reservation]RReserveNo)
+//End if 
+//End if 
+If ($OK=True)
+BEEP
+ConfirmTwo (Get localized string("Change")+" "+$1+" "+Get localized string("to2")+" "+$2+"?")
+If (OK=1)
+$NewAgree:=$2
+//Case of 
+//: (bAgree=1)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Unit]))
+[Unit]AgreeNo:=$2
+[Unit]RUnitNo:=Substring($2;1;5)+[Unit]UnitNo
+[Unit]UnitTypeCode:=Substring($2;1;5)+Substring([Unit]UnitTypeCode;6)
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([UnitHistory]))
+[UnitHistory]AgreeNo:=$2
+[UnitHistory]UnitNo:=Substring($2;1;5)+Substring([UnitHistory]UnitNo;6)
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+$NewCust:=Substring($2;1;5)+Substring([Customer]CustomerCode;6)
+[Customer]CustomerCode:=$NewCust
+SAVE RECORD([Customer])
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Agreement]CustomerCode)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$NewCust)
+QUERY([GateLog];[GateLog]CustCode=[Agreement]CustomerCode)
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$NewCust)
+QUERY([PhotosCards];[PhotosCards]Code=[Agreement]CustomerCode)
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=$NewCust)
+
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$NewAgree)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AgreeNo:=$NewAgree)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Trxs]))
+[Trxs]AgreeNo:=$2
+[Trxs]CustomerCode:=$NewCust
+[Trxs]AnalysisCode:=Substring($2;1;5)+Substring([Trxs]AnalysisCode;6)
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]AgreeNo:=$NewAgree)
+QUERY([PromotionHistory];[PromotionHistory]RefAgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]RefAgreeNo:=$NewAgree)
+[Agreement]RAgreeNo:=$2
+[Agreement]AgreeNo:=Substring([Agreement]RAgreeNo;6)
+[Agreement]BillingPlanCode:=Substring($2;1;5)+Substring([Agreement]BillingPlanCode;6)
+[Agreement]CustomerCode:=$NewCust
+SAVE RECORD([Agreement])
+//: (bResv=1)
+//QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+//QUERY([Letters];[Letters]AgreeNo=[Reservation]RReserveNo)
+//APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=<>sFacility+vNewCode)
+//APPLY TO SELECTION([Letters];[Letters]AgreeNo:=<>sFacility+vNewCode)
+//APPLY TO SELECTION([Unit];[Unit]ReservedTo:=<>sFacility+vNewCode)
+//[Reservation]ReserveNo:=vNewCode
+//[Reservation]RReserveNo:=<>sFacility+vNewCode
+//SAVE RECORD([Reservation])
+//Else 
+//  //Do Nothing
+//End case 
+End if 
+End if 
+READ ONLY(*)
+UnloadAll 

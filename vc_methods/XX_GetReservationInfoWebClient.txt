@@ -1,0 +1,148 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_vtReservationNumber;Is text;SOAP input;"WS_vtReservationNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+SOAP DECLARATION(WS_ReservedDate;Is date;SOAP output;"WS_ReservedDate")
+SOAP DECLARATION(WS_ExpMoveIn;Is date;SOAP output;"WS_ExpMoveIn")
+SOAP DECLARATION(WS_ExpectedMoveInTime;Is time;SOAP output;"WS_ExpectedMoveInTime")
+SOAP DECLARATION(WS_Outcome;Is text;SOAP output;"WS_Outcome")
+SOAP DECLARATION(WS_CallTakenBy;Is text;SOAP output;"WS_CallTakenBy")
+SOAP DECLARATION(WS_ReasonDeclined;Is text;SOAP output;"WS_ReasonDeclined")
+SOAP DECLARATION(WS_CustType;Is text;SOAP output;"WS_CustType")
+SOAP DECLARATION(WS_Weekly;Is Boolean;SOAP output;"WS_Weekly")
+
+SOAP DECLARATION(WS_asReasonDeclinedList;Text array;SOAP output;"WS_asReasonDeclinedList")
+SOAP DECLARATION(WS_asCustTypeList;Text array;SOAP output;"WS_asCustTypeList")
+SOAP DECLARATION(WS_asUnitNo;Text array;SOAP output;"WS_asUnitNo")
+SOAP DECLARATION(WS_asUnitTypeCode;Text array;SOAP output;"WS_asUnitTypeCode")
+SOAP DECLARATION(WS_adReservedDate;Date array;SOAP output;"WS_adReservedDate")
+SOAP DECLARATION(WS_arReserveDeposit;Real array;SOAP output;"WS_arReserveDeposit")
+SOAP DECLARATION(WS_arWeeklyRate;Real array;SOAP output;"WS_arWeeklyRate")
+SOAP DECLARATION(WS_arMonthlyRate;Real array;SOAP output;"WS_arMonthlyRate")
+SOAP DECLARATION(WS_arQuotedRate;Real array;SOAP output;"WS_arQuotedRate")
+
+
+
+$String:="Start WS_GetReservationInfoWebClient"+Char(13)
+$String:=$String+"WS_vtReservationNumber: "+WS_vtReservationNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtReservationNumber)
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+Case of 
+: (Records in selection([Reservation])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No reservation found"
+: (Records in selection([Reservation])=1)
+RELATE ONE([Reservation]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+WS_ReservedDate:=[Reservation]ReservedDate
+WS_ExpMoveIn:=[Reservation]ExpMoveIn
+WS_ExpectedMoveInTime:=[Reservation]ExpectedMoveInTime
+WS_Outcome:=[Reservation]Outcome
+WS_CallTakenBy:=[Reservation]CallTakenBy
+WS_ReasonDeclined:=[Reservation]ReasonDeclined
+WS_CustType:=[Customer]CustType
+WS_Weekly:=[Reservation]Weekly
+
+QUERY([Unit];[Unit]AgreeNo=[Reservation]RReserveNo)
+For ($j;1;Records in selection([Unit]))
+RELATE ONE([Unit];[Unit]UnitTypeCode)
+APPEND TO ARRAY(WS_asUnitNo;[Unit]UnitNo)
+APPEND TO ARRAY(WS_asUnitTypeCode;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(WS_adReservedDate;[Unit]ReservedDate)
+APPEND TO ARRAY(WS_arReserveDeposit;[Unit]ReserveDeposit)
+APPEND TO ARRAY(WS_arWeeklyRate;[UnitType]WeeklyRate)
+APPEND TO ARRAY(WS_arMonthlyRate;[UnitType]MonthlyRate)
+APPEND TO ARRAY(WS_arQuotedRate;[Unit]QuotedRate)
+NEXT RECORD([Unit])
+End for 
+$facility:=Substring(vtReservationNumber;1;5)
+QUERY([MarketingTypes];[MarketingTypes]Facility=$facility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="RD";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;WS_asReasonDeclinedList)
+INSERT IN ARRAY(WS_asReasonDeclinedList;1)
+WS_asReasonDeclinedList{1}:="<None>"
+QUERY([MarketingTypes];[MarketingTypes]Facility=$facility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;WS_asCustTypeList)
+INSERT IN ARRAY(WS_asCustTypeList;1)
+WS_asCustTypeList{1}:="<None>"
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=4//There is a duplicate of agreement. 
+WS_ORErrorDescription:="There are duplicate agreements."
+
+End case 
+End if 
+
+$String:="End WS_GetReservationInfoWebClient"+Char(13)
+$String:=$String+"WS_ReservedDate: "+String(WS_ReservedDate)+Char(13)
+$String:=$String+"WS_ExpMoveIn: "+String(WS_ExpMoveIn)+Char(13)
+$String:=$String+"WS_ExpectedMoveInTime: "+String(WS_ExpectedMoveInTime)+Char(13)
+$String:=$String+"WS_Outcome: "+WS_Outcome+Char(13)
+$String:=$String+"WS_CallTakenBy: "+WS_CallTakenBy+Char(13)
+$String:=$String+"WS_ReasonDeclined: "+WS_ReasonDeclined+Char(13)
+$String:=$String+"WS_CustType: "+WS_CustType+Char(13)
+
+$sizeofarray:=Size of array(WS_asUnitNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUnitNo("+String($vlElem)+"):"+WS_asUnitNo{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asUnitTypeCode)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUnitTypeCode("+String($vlElem)+"):"+WS_asUnitTypeCode{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_adReservedDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adReservedDate("+String($vlElem)+"):"+String(WS_adReservedDate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arReserveDeposit)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arReserveDeposit("+String($vlElem)+"):"+String(WS_arReserveDeposit{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arWeeklyRate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arWeeklyRate("+String($vlElem)+"):"+String(WS_arWeeklyRate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arWeeklyRate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arMonthlyRate("+String($vlElem)+"):"+String(WS_arMonthlyRate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arQuotedRate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arQuotedRate("+String($vlElem)+"):"+String(WS_arQuotedRate{$vlElem})+Char(13)
+End for 
+
+ReadOnlyAll 
+UnloadAll 
+WSRECORDLOG ($String)

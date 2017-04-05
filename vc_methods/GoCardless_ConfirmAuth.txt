@@ -1,0 +1,356 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//13/06/14 DAM Added for Receiving a call from GoCardless and creating a new page
+
+C_TEXT($1;$2)// $1 - URL, $2 - http body
+C_TEXT($State;$Resource_ID;$ResType;$Code;$FacilityCode;$httpbody)
+C_BOOLEAN($Bill)
+vtGoCardless:=""
+$cr:=Char(13)+Char(10)
+$URL:=$1
+$httpbody:=$2
+SyncRecordLog ("GoCardless URL: "+$URL)
+SyncRecordLog ("GoCardless HTTP BODY: "+$httpbody)
+$SignPos:=Position("state";$URL)
+$State:=Substring($URL;$SignPos+6;10)
+//Check the signature exist and search for customer
+QUERY([Customer];[Customer]CustomerCode=$State)
+If (Records in selection([Customer])=1)//Read the values and return a success page
+$Pos:=Position("resource_type";$URL)
+$PosCon:=Position("&";$URL;$Pos+1)
+$ResType:=Substring($URL;$Pos+14;$PosCon-$Pos-14)
+
+$Pos:=Position("resource_id";$URL)
+$PosCon:=Position("&";$URL;$Pos+1)
+$Resource_ID:=Substring($URL;$Pos+12;$PosCon-$Pos-12)
+
+//Confirm Pre Auth
+ARRAY TEXT($ArrivedBoxes;0)
+C_TEXT($Message;$Header;$Response;$Buffer)
+C_LONGINT($TCPID;$Error;$Pos;$TCP_ReceiveError)
+C_TIME($vhDocRef;$WaitTime)
+C_TEXT($t)
+C_LONGINT($Status)
+
+$t:=Char(9)
+$TransactionResponse:=""
+$Batch:=""
+$Content:=""
+$Hash:=""
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+
+//Server Details
+//For sandbox account
+QUERY([Facility];[Facility]FacilityCode=Substring([Customer]CustomerCode;1;5))
+$MerchantID:=GetTextNo ([Facility]DDAccountDetails;1;",")
+$AppID:=GetTextNo ([Facility]DDAccountDetails;2;",")
+$AppSecret:=GetTextNo ([Facility]DDAccountDetails;3;",")
+$AccessToken:=GetTextNo ([Facility]DDAccountDetails;4;",")
+
+If ([Facility]TestAccount)
+$ServerAddress:="sandbox.gocardless.com"
+Else 
+$ServerAddress:="gocardless.com"
+End if 
+
+
+$RequestURL:="/api/v1/confirm"
+$ServerPort:="443"
+
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+
+C_TEXT($Result)
+$Success:=PHP Execute("";"base64_encode";$Result;$AppID+":"+$AppSecret)
+
+//Confirm Pre Auth
+$Message:="resource_id="+$Resource_ID+"&resource_type="+$ResType
+$Message:=Replace string($Message;"+";"%20")
+
+$Header:=$Header+"POST "+"https://"+$ServerAddress+$RequestURL+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr
+$Header:=$Header+"Accept: "+"*/*"+$cr
+$Header:=$Header+"Authorization: Basic "+$Result+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr+$cr
+$Header:=$Header+$Message+$cr+$cr
+SyncRecordLog ("Gocardless_ConfirmAuth Customer Code:"+[Customer]CustomerCode)
+SyncRecordLog ("Gocardless_ConfirmAuth Header:"+$Header)
+
+$Error:=TCP_Open ($ServerAddress;443;$TCPID;2)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header)
+$Reply:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 15 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10))
+$Message:=$Reply
+SyncRecordLog ("Gocardless_ConfirmAuth Message:"+$Message)
+$Error:=TCP_Close ($TCPID)
+If ($Message="")
+$0:="ERRTCP"
+Else 
+$HTTPResponseCode:=""
+Repeat //While a complete HTTP request and response is being received
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else //If not an HTTPResponse Header then must be the Verisign Payment Response message content
+Case of 
+: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$TransactionResponse:=$Message
+Else 
+$TransactionResponse:=" "//To Break out of the Until loop
+$Error:=Num($HTTPResponseCode)
+End case 
+End if 
+Until ($TransactionResponse#"")
+End if 
+$Error:=TCP_Close ($TCPID)
+Else 
+$0:="ERRTCP"
+End if 
+READ WRITE([Customer])
+[Customer]DDProfileID:=$Resource_ID
+SAVE RECORD([Customer])
+$SuccessPos:=Position("success";$Message)
+$TruePos:=Position("true";$Message;$SuccessPos)
+If ($TruePos>0)
+vtGoCardless:="You have successfully authorized "+[Facility]BusinessName+" to process Direct Debits."+$cr
+vtGoCardless:=vtGoCardless+"Resource ID: "+$Resource_ID+$cr
+Else 
+vtGoCardless:="Authorization wasn't successfull, please contact facility "+[Facility]BusinessName
+vtGoCardless:=vtGoCardless+"Resource ID: "+$Resource_ID+$cr
+READ WRITE([NotesHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]Note:=vtGoCardless
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="GoCardless"
+SAVE RECORD([NotesHistory])
+READ ONLY([NotesHistory])
+End if 
+UNLOAD RECORD([Customer])
+REDUCE SELECTION([Facility];0)
+UNLOAD RECORD([Facility])
+Else 
+
+Case of 
+: (<>sHOFacility="STHOF")// Billing Receive + Send Data
+//1 Call from Storman
+$Pos:=Position("FacilityCode=";$httpbody)
+If ($Pos>0)
+$FacilityCode:=Substring($httpbody;$Pos+13;5)
+$Pos:=0
+$Pos:=Position("StormanURL=";$httpbody)
+$Code:=Substring($httpbody;$Pos+11)
+//Save URL 
+
+QUERY([Authenticate];[Authenticate]ReferenceID=$FacilityCode)
+
+READ WRITE([Authenticate])
+If (Records in selection([Authenticate])#0)
+DELETE SELECTION([Authenticate])
+End if 
+
+CREATE RECORD([Authenticate])
+[Authenticate]DateAuth:=Current date
+[Authenticate]IPAddress:=$Code
+[Authenticate]TimeAuth:=Current time
+[Authenticate]RAgreeNo:="GoCardless"
+[Authenticate]ReferenceID:=$FacilityCode
+SAVE RECORD([Authenticate])
+REDUCE SELECTION([Authenticate];0)
+UNLOAD RECORD([Authenticate])
+End if 
+$Pos:=0
+
+//2 Call from GoCardless to Billing
+$Pos:=Position("code=";$URL)
+If ($Pos>0)
+$Code:=Substring($URL;$Pos+5)
+
+READ WRITE([Authenticate])
+QUERY([Authenticate];[Authenticate]RAgreeNo="@GoCardless@")
+If (Records in selection([Authenticate])=1)// Make call back to Storman
+
+ARRAY TEXT($HeaderNames;0)
+ARRAY TEXT($HeaderValues;0)
+C_LONGINT($Request)
+C_TEXT($response;$contents;$Address)
+APPEND TO ARRAY($HeaderNames;"Content-Type")
+APPEND TO ARRAY($HeaderValues;"application/x-www-form-urlencoded")
+
+$contents:="Facility="+[Authenticate]ReferenceID+"&code="+$Code
+
+$Address:=Replace string([Authenticate]IPAddress;"%2F";"/")
+$Address:=Replace string($Address;"%3A";":")
+SyncRecordLog ($Address)
+SyncRecordLog ($contents)
+
+$response:=""
+$Request:=HTTP Request(HTTP POST method;$Address;$contents;$response;$HeaderNames;$HeaderValues)
+
+SyncRecordLog ("HTTP Body: "+$contents)
+SyncRecordLog ("HTTP Request when calling Storman: "+String($Request))
+SyncRecordLog ("HTTP Response for calling Storman: "+String($response))
+
+DELETE SELECTION([Authenticate])
+
+// Billing to show a web page
+vtGoCardless:="Your Access Code has been sent to Storman"+$cr
+
+End if 
+READ ONLY([Authenticate])
+End if 
+
+: (<>sHOFacility#"STHOF") & ($httpbody#"")// Receive & Send data from Storman
+$Pos:=Position("Facility=";$httpbody)
+If ($Pos>0)
+
+$FacilityCode:=Substring($httpbody;$Pos+9;5)
+
+$Pos:=Position("code=";$httpbody)
+$Code:=Substring($httpbody;$Pos+5)
+$Code:=URLEncode ($Code)
+
+QUERY([Facility];[Facility]FacilityCode=$FacilityCode)
+
+If (Records in selection([Facility])=1)
+$MerchantID:=GetTextNo ([Facility]DDAccountDetails;1;",")
+$AppID:=GetTextNo ([Facility]DDAccountDetails;2;",")
+$AppSecret:=GetTextNo ([Facility]DDAccountDetails;3;",")
+$AccessToken:=GetTextNo ([Facility]DDAccountDetails;4;",")
+$StormanAppID:=GetTextNo ([Facility]DDAccountDetails;5;",")
+$StormanAppSecret:=GetTextNo ([Facility]DDAccountDetails;6;",")
+
+If ([Facility]TestAccount)
+$ServerAddress:="sandbox.gocardless.com"
+Else 
+$ServerAddress:="gocardless.com"
+End if 
+
+$RequestURL:="/oauth/access_token"
+$ServerPort:="443"
+
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+
+C_TEXT($Result;$AccesstokenNew)
+C_LONGINT($TypePos;$AccessPos)
+ARRAY TEXT($ArrivedBoxes;0)
+C_TEXT($Message;$Header;$Response;$Buffer)
+C_LONGINT($TCPID;$Error;$Pos;$TCP_ReceiveError)
+C_TIME($vhDocRef;$WaitTime)
+C_TEXT($t)
+C_LONGINT($Status)
+
+$t:=Char(9)
+$TransactionResponse:=""
+$Batch:=""
+$Content:=""
+$Hash:=""
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+
+$Success:=PHP Execute("";"base64_encode";$Result;$StormanAppID+":"+$StormanAppSecret)
+
+StormanURL:=[Facility]ExternalIP+"/4DCGI/gocardless"
+StormanURLEncoded:=URLEncode ("https://billing.storman.com:443/4DCGI/gocardless")
+$Message:="client_id="+$StormanAppID+"&code="+$Code+""+"&redirect_uri="+StormanURLEncoded+"&grant_type=authorization_code"
+$Message:=Replace string($Message;"+";"%20")
+
+$Header:=$Header+"POST "+"https://"+$ServerAddress+$RequestURL+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr
+$Header:=$Header+"Accept: "+"*/*"+$cr
+$Header:=$Header+"Authorization: Basic "+$Result+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr+$cr
+$Header:=$Header+$Message+$cr+$cr
+SyncRecordLog ("Gocardless_ReceiveToken Customer Code:"+[Customer]CustomerCode)
+SyncRecordLog ("Gocardless_ReceiveToken Header:"+$Header)
+
+$Error:=TCP_Open ($ServerAddress;443;$TCPID;2)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header)
+$Reply:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 15 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10))
+$Message:=$Reply
+SyncRecordLog ("Gocardless_ConfirmAuth Message:"+$Message)
+$Error:=TCP_Close ($TCPID)
+If ($Message="")
+$0:="ERRTCP"
+Else 
+$HTTPResponseCode:=""
+Repeat //While a complete HTTP request and response is being received
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else //If not an HTTPResponse Header then must be the Verisign Payment Response message content
+Case of 
+: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$TransactionResponse:=$Message
+Else 
+$TransactionResponse:=" "//To Break out of the Until loop
+$Error:=Num($HTTPResponseCode)
+End case 
+End if 
+Until ($TransactionResponse#"")
+End if 
+$Error:=TCP_Close ($TCPID)
+Else 
+$0:="ERRTCP"
+End if 
+
+$AccessPos:=Position("access_token";$Message)
+If ($AccessPos>0)
+$TypePos:=Position("token_type";$Message)
+$AccesstokenNew:=Substring($Message;$AccessPos+16;$TypePos-$AccessPos-19)
+SyncRecordLog ("Gocardless_ReceiveToken Token:"+$AccesstokenNew)
+[Facility]DDAccountDetails:=$MerchantID+","+$AppID+","+$AppSecret+","+$AccesstokenNew+","+$StormanAppID+","+$StormanAppSecret+","+"GoCardless"+","
+vtGoCardless:="Storman has been authorized"+$cr
+Else 
+SyncRecordLog ("Gocardless_ReceiveToken Error - Please check the message")
+vtGoCardless:="Storman hasn't been authorized. Please check synclog for error."+$cr
+End if 
+SAVE RECORD([Facility])
+REDUCE SELECTION([Facility];0)
+UNLOAD RECORD([Facility])
+End if 
+
+End if 
+Else 
+vtGoCardless:="Customer Cannot be found."+$cr
+vtGoCardless:=vtGoCardless+"Please contact facility "+[Facility]BusinessName+$cr
+End case 
+
+End if 
+SyncRecordLog (vtGoCardless)
+WEB SEND FILE("gocardless.shtml")

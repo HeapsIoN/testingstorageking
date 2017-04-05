@@ -1,0 +1,241 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$k)
+C_LONGINT(hlList;$hSubList)
+$ItemText:=""
+$ItemRef:=0
+QUERY([MarketingTypes];[MarketingTypes]ListCode="AC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+If (Records in selection([MarketingTypes])>0)
+Case of 
+: (Form event=On Load)
+hlList:=New list
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+For ($i;1;Records in selection([MarketingTypes]))
+$addToList:=False
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]AnalysisCategory=[MarketingTypes]Description;*)
+//QUERY([Analysis]; & ;[Analysis]KeyStatsCategory=Get localized string("Merchandise");*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#1;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#2;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#4)
+If (Records in selection([Analysis])>0)
+$addToList:=True
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+$hSubList:=New list
+For ($j;1;Records in selection([Analysis]))
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+APPEND TO LIST($hSubList;[Analysis]Description;$k)
+NEXT RECORD([Analysis])
+End for 
+//APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+End if 
+
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=True;*)
+QUERY([MerchPlan]; & ;[MerchPlan]AnalysisCategory=[MarketingTypes]Description)
+If (Records in selection([MerchPlan])>0)
+
+If ($addToList=False)
+$hSubList:=New list
+End if 
+
+$addToList:=True
+For ($j;1;Records in selection([MerchPlan]))
+$k:=Record number([MerchPlan])
+//If ($k=0)
+//$k:=32000
+//Else 
+$k:=$k+270000//Based on the theory they will not have more than 27000 Analysis Codes
+//End if 
+APPEND TO LIST($hSubList;[MerchPlan]Description;$k)
+NEXT RECORD([MerchPlan])
+End for 
+End if 
+
+If ($addToList)
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+End if 
+
+
+
+NEXT RECORD([MarketingTypes])
+End for 
+SELECT LIST ITEMS BY POSITION(hlList;1)
+: (Form event=On Unload)
+CLEAR LIST(hlList;*)
+: (Form event=On Clicked)
+$i:=Selected list items(hlList)
+If ($i#0)
+GET LIST ITEM(hlList;*;$ItemRef;$ItemText)
+If ($ItemRef>0)
+If ($ItemRef=32000)
+$ItemRef:=0
+End if 
+
+If ($ItemRef>=270000)
+GOTO RECORD([MerchPlan];($ItemRef-270000))
+vAnalysisCode:=[MerchPlan]MerchPlanID+"IP"
+Else 
+GOTO RECORD([Analysis];$ItemRef)
+vAnalysisCode:=[Analysis]Code
+End if 
+
+$stockAvail:=False
+If ([MerchPlan]MerchPlanID#"")
+
+$planItems:=[MerchPlan]AnalysisCodes
+$stockAlert:=""
+While ($planItems#"")
+$aCode:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$aCode+",";"";1)
+$qAmount:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$qAmount+",";"";1)
+
+QUERY([Analysis];[Analysis]Code=$aCode)
+If (([Analysis]InvItem) & (([Analysis]InvQtyonHand-Num($qAmount))<0))
+$stockAlert:=$stockAlert+Char(Carriage return)+Char(Line feed)+[Analysis]Description+" - quantity on hand: "+String([Analysis]InvQtyonHand)
+End if 
+End while 
+
+
+If ($stockAlert#"")
+AlertMessage ("Cannot sell Inventory Pack: "+[MerchPlan]Description+"."+Char(Carriage return)+Char(Line feed)\
++"Insufficient stock on hand for:"+$stockAlert)
+$OK:=False
+Else 
+$OK:=True
+End if 
+
+Else 
+
+If ([Analysis]InvItem) & ([Analysis]InvQtyonHand<1)
+AlertMessage (Get localized string("You cannot sell item")+" "+[Analysis]Description+" "+Get localized string("as there are no units on hand."))
+$OK:=False
+Else 
+$OK:=True
+End if 
+
+End if 
+
+//If ([Analysis]InvItem) & ([Analysis]InvQtyonHand<1)
+//AlertMessage (Get localized string("You cannot sell item")+" "+[Analysis]Description+" "+Get localized string("as there are no units on hand."))
+//$OK:=False
+//Else 
+If ($OK)
+If (vAnalysisCode=(<>sFacility+"@"))
+//POST KEY(9;0;Current process)  //Post Tab to force stop of editing
+//POST KEY(9;0;Current process)  //Post Tab to force stop of editing
+//POST KEY(9;0;Current process)  //Post Tab to force stop of editing
+
+
+If ([MerchPlan]MerchPlanID#"")
+APPEND TO ARRAY(asAnalysis;[MerchPlan]MerchPlanID+"IP")
+APPEND TO ARRAY(adDesc;[MerchPlan]Description)
+If ([Facility]TaxAddtoAmt=True)
+APPEND TO ARRAY(aNet;[MerchPlan]FixedDiscount)
+APPEND TO ARRAY(aTax;CalcTaxAmt ([MerchPlan]FixedDiscount;[MerchPlan]DiscountAnalysis;Current date;Current date;4))//SDD shouldn't this be the date of the transaction
+$loc:=Size of array(aTot)+1
+APPEND TO ARRAY(aTot;aNet{$loc}+aTax{$loc})
+Else 
+APPEND TO ARRAY(aTot;[MerchPlan]FixedDiscount)
+APPEND TO ARRAY(aTax;CalcTaxAmt ([MerchPlan]FixedDiscount;[MerchPlan]DiscountAnalysis;Current date;Current date;4))
+$loc:=Size of array(aNet)+1
+APPEND TO ARRAY(aNet;aTot{$loc}-aTax{$loc})
+End if 
+
+Else 
+APPEND TO ARRAY(asAnalysis;[Analysis]Code)
+APPEND TO ARRAY(adDesc;[Analysis]Description)
+If ([Facility]TaxAddtoAmt=True)
+APPEND TO ARRAY(aNet;[Analysis]DfltSellAmt)
+APPEND TO ARRAY(aTax;CalcTaxAmt ([Analysis]DfltSellAmt;[Analysis]Code;Current date;Current date;4))//SDD shouldn't this be the date of the transaction
+$loc:=Size of array(aTot)+1
+APPEND TO ARRAY(aTot;aNet{$loc}+aTax{$loc})
+Else 
+APPEND TO ARRAY(aTot;[Analysis]DfltSellAmt)
+APPEND TO ARRAY(aTax;CalcTaxAmt ([Analysis]DfltSellAmt;[Analysis]Code;Current date;Current date;4))
+$loc:=Size of array(aNet)+1
+APPEND TO ARRAY(aNet;aTot{$loc}-aTax{$loc})
+End if 
+End if 
+
+
+
+APPEND TO ARRAY(aDate;Current date)
+APPEND TO ARRAY(aDateFrom;Current date)
+APPEND TO ARRAY(aDateTo;Current date)
+
+APPEND TO ARRAY(aQuantity;1)
+aQuantity:=Size of array(aQuantity)//SDD 23/08/13 Added this line so that Object method for Quantity at On Before Data Entry works correctly for Adding a new line
+APPEND TO ARRAY(aOrigQuantity;0)
+
+
+
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+
+$loc:=Size of array(aTot)
+If ([Facility]TaxAddtoAmt=True)
+APPEND TO ARRAY(aCost;aTot{$loc}-aTax{$loc})
+Else 
+APPEND TO ARRAY(aCost;aTot{$loc})
+End if 
+
+//APPEND TO ARRAY(aFullAmt;aTot{$loc})
+vrTotal:=vrTotal+aTot{$loc}
+[Trxs]TotAmt:=vrTotal
+
+If ([Analysis]InvItem=True)
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-1;0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-1;2)
+End if 
+vPrevQty:=1
+SAVE RECORD([Analysis])
+READ ONLY([Analysis])
+LOAD RECORD([Analysis])
+End if 
+
+
+
+EDIT ITEM(aQuantity;Size of array(aQuantity))//SDD New command to try and position cursor in the Quantity column
+
+Else 
+AlertMessage (Get localized string("The selected Analysis code does not match the selected Facility."))
+End if 
+End if 
+
+End if 
+End if 
+End case 
+OBJECT SET VISIBLE(*;"Field17";True)
+Else 
+OBJECT SET VISIBLE(*;"Field17";False)
+End if 
+bDiscount:=True

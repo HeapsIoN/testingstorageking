@@ -1,0 +1,39 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//06/08/14 DAM Added for fix to EventLog table
+C_BOOLEAN($1;$CheckVersion)
+$CheckVersion:=False
+
+If (Count parameters=1)
+$CheckVersion:=$1
+End if 
+
+If ($CheckVersion)
+OK:=1
+Else 
+ConfirmTwo ("Are you sure you want to set PK for EventLog table?";"Yes";"No")
+End if 
+
+ALL RECORDS([EventLog])
+$NewPK:=Sequence number([EventLog])
+$NewPK:=$NewPK+1
+SyncRecordLog ("EventLog Sequence Number Start - "+String($NewPK))
+If (OK=1)
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+$OldPK:=[EventLog]PrimaryKey
+For ($i;1;Records in selection([EventLog]))
+GOTO XY(2;2)
+MESSAGE("Processing EventLog Record"+" : "+String($i)+" from: "+String(Records in selection([EventLog])))
+
+$OldPK:=[EventLog]PrimaryKey
+$Pos:=Find in field([EventLog]PrimaryKey;$OldPK)
+If ($Pos>-1)
+[EventLog]PrimaryKey:=$NewPK
+SAVE RECORD([EventLog])
+$NewPK:=$NewPK+1
+End if 
+NEXT RECORD([EventLog])
+End for 
+End if 
+SET DATABASE PARAMETER([EventLog];Table sequence number;$NewPK)
+SyncRecordLog ("EventLog Sequence Number End - "+String($NewPK))

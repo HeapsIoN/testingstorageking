@@ -1,0 +1,83 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+LoadGradients 
+End if 
+If (Form event=On Double Clicked)
+FILTER EVENT
+End if 
+If (Form event=On Display Detail)
+RELATE ONE([Unit]UnitTypeCode)
+If ([Notices]UseAgrDaysPrior)//if true UseUnitPrice
+If (CalculateBaseRate (2;0)>[Unit]NewRentAmt)
+[Unit]NewRentAmt:=CalculateBaseRate (2;0)
+End if 
+$UnitRate:=[Unit]NewRentAmt
+End if 
+$UnitTot:=0
+$UnitFixed:=[Unit]RentedValue+[Notices]MinimumCharge// Fixed increase amt
+$UnitPerc:=[Unit]RentedValue*(1+([Notices]MinimumPCent/100))//% increase)
+If ([Notices]MinimumCharge=0)
+$FixedInc:=False
+Else 
+$FixedInc:=True
+End if 
+If ([Notices]MinimumPCent=0)
+$PCentInc:=False
+Else 
+$PCentInc:=True
+End if 
+Case of 
+: ($FixedInc=True)
+If ($PCentInc=True)
+If ([Notices]BillNextRent)//if take the highest value of % and fixed
+If ($UnitFixed>=$UnitPerc)
+$UnitTot:=$UnitFixed
+Else 
+$UnitTot:=$UnitPerc
+End if 
+Else //take the lowest value
+If ($UnitFixed<=$UnitPerc)
+$UnitTot:=$UnitFixed
+Else 
+$UnitTot:=$UnitPerc
+End if 
+End if 
+Else 
+$UnitTot:=$UnitFixed
+End if 
+: ($PCentInc=True)
+$UnitTot:=$UnitPerc
+Else 
+//Do Nothing
+End case 
+If ([Notices]UseAgrDaysPrior)//if checking the unit rate
+If ([Notices]BillNextRent)
+If ($UnitRate>$UnitTot)
+$UnitTot:=$UnitRate
+End if 
+Else 
+If ($UnitRate<$UnitTot)
+$UnitTot:=$UnitRate
+End if 
+End if 
+End if 
+$UnitTot:=RoundAmt ($UnitTot)
+If ($UnitTot#[Unit]RentedValue) & ([Unit]IncreaseFrom=!00-00-00!) & ([Unit]RUnitNo>"")//do not overwrite an existing rent increase!
+RELATE ONE([Unit]AgreeNo)
+[Unit]NewRentAmt:=RoundAmt ($UnitTot;<>iRoundMethod;[Notices]DaysAfter)
+$t:=1
+If ([Agreement]RAgreeNo>"")
+Repeat 
+Case of 
+: ($t=1)
+[Unit]IncreaseFrom:=[Agreement]NextBillDate
+: ($t>2)
+[Unit]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv*($t-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+[Unit]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End case 
+$t:=$t+1
+Until ([Unit]IncreaseFrom>=[Notices]DateFrom) | ($t>100)
+End if 
+End if 
+End if 

@@ -1,0 +1,51 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BLOB($0)
+C_POINTER($1)
+C_LONGINT($Letter)
+C_LONGINT($Table;$Field;$Type;$DateFormat;$TimeFormat;$3;$Contact)
+C_TEXT($Name;$NumFormat)
+C_BOOLEAN($2;$GenerateHTML)
+$GenerateHTML:=False
+$Contact:=0
+If (Count parameters>1)
+$GenerateHTML:=$2
+If (Count parameters>2)
+$Contact:=$3
+End if 
+End if 
+$Name:=""
+$Table:=0
+$Field:=0
+$Type:=0
+$NumFormat:=""
+$DateFormat:=0
+$TimeFormat:=0
+//Freeze the letter
+$Letter:=WR New offscreen area 
+WR BLOB TO AREA ($Letter;$1->)
+WR EXECUTE COMMAND ($Letter;wr cmd compute references)//Reqd for RentIncrease
+For ($i;WR Count ($Letter;wr nb objects);1;-1)//Reverse order as ref no changes as freezes happen
+WR SELECT ($Letter;1;$i)//Select reference
+WR GET REFERENCE ($Letter;$Table;$Field;$Name;$Type;$NumFormat;$DateFormat;$TimeFormat)
+If ($Table#29)//Freeze everything except pictures
+WR EXECUTE COMMAND ($Letter;wr cmd freeze references)
+Else 
+End if 
+End for 
+//For ($i;1;WR Count ($Letter;wr nb pictures in text flow))  //Remove any static pictures
+//WR SELECT ($Letter;4;1)
+//WR DELETE SELECTION ($Letter)
+//End for 
+$0:=WR Area to blob ($Letter;1)
+vLeg:=WR Get text ($Letter;0;32000)
+If ($GenerateHTML=True)
+Case of 
+: ($Contact=2)
+WR SAVE DOCUMENT ($Letter;<>sTutPath+"Email"+[Customer]CustomerCode;wr HTML 3 document)
+: ($Contact=1)
+WR SAVE DOCUMENT ($Letter;<>sTutPath+"Email"+[Letters]ContactNo;wr HTML 3 document)
+Else 
+WR SAVE DOCUMENT ($Letter;<>sTutPath+"Email"+[Letters]AgreeNo;wr HTML 3 document)
+End case 
+End if 
+WR DELETE OFFSCREEN AREA ($Letter)

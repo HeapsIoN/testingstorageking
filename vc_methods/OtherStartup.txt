@@ -1,0 +1,177 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+C_BOOLEAN($Compact)
+C_TEXT($Facility)
+If (<>sCurrentUser="")
+ALL RECORDS([UserLogins])
+If (Records in selection([UserLogins])>1)
+NEXT RECORD([UserLogins])//Take the second level for Manager
+End if 
+<>sCurrentUser:=[UserLogins]Name
+<>iCurrentLevel:=[UserLogins]AccessLevel
+End if 
+If (Records in table([UnitHistory])=0) & ([Facility]ProductCode#"M@")
+READ WRITE([UnitHistory])
+QUERY([Unit];[Unit]Vacant=False;*)
+QUERY([Unit]; & ;[Unit]AgreeNo>"";*)
+QUERY([Unit]; & ;[Unit]MoveIn#!00-00-00!)
+For ($i;1;Records in selection([Unit]))
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([UnitHistory])
+ALL RECORDS([UnitHistory])
+End if 
+QUERY([Agreement];[Agreement]CustomerCode="")
+If (Records in selection([Agreement])>0)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+APPLY TO SELECTION([Agreement];[Agreement]CustomerCode:="BLANK")
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+End if 
+QUERY([UnitType];[UnitType]RentAnalysis="")
+If (Records in selection([UnitType])>0)
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+ALL RECORDS([UnitType])
+For ($i;1;Records in selection([UnitType]))
+$Facility:=Substring([UnitType]RUnitType;1;5)
+QUERY([Analysis];[Analysis]Code=$Facility+[UnitType]RentAnalysis)
+If (Records in selection([Analysis])=0)
+QUERY([Analysis];[Analysis]Code=$Facility+"RF")
+If (Records in selection([Analysis])>0)
+[UnitType]RentAnalysis:=Substring([Analysis]Code;6)
+Else 
+[UnitType]RentAnalysis:="RF"
+End if 
+SAVE RECORD([UnitType])
+End if 
+NEXT RECORD([UnitType])
+End for 
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+End if 
+QUERY([UnitType];[UnitType]OrgAnalysis="")
+If (Records in selection([UnitType])>0)
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+ALL RECORDS([UnitType])
+For ($i;1;Records in selection([UnitType]))
+$Facility:=Substring([UnitType]RUnitType;1;5)
+QUERY([Analysis];[Analysis]Code=$Facility+[UnitType]OrgAnalysis)
+If (Records in selection([Analysis])=0)
+QUERY([Analysis];[Analysis]Code=$Facility+"RF")
+If (Records in selection([Analysis])>0)
+[UnitType]OrgAnalysis:=Substring([Analysis]Code;6)
+Else 
+[UnitType]OrgAnalysis:="RF"
+End if 
+SAVE RECORD([UnitType])
+End if 
+NEXT RECORD([UnitType])
+End for 
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+End if 
+ALL RECORDS([UnitType])
+UNLOAD RECORD([RCHistory])
+//Test to see if 4D Tools has compacted
+$Compact:=False
+ALL RECORDS([Facility])
+If (False)//(Record number([Facility])#1) & (Records in table([Facility])<=1)
+//Check MISCL links in case of Compact
+//This does not appear to pick up Recover by TAGS which is a problem
+//This should not now be necessary in v3.3 as all based on seq no
+Open window(20;100;300;200;0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Checking links after compacting")+"..."+"    ")
+
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+If (Records in selection([Facility])=1)
+DUPLICATE RECORD([Facility])
+[Facility]PrimaryKeyMin:=0
+[Facility]PrimaryKeyMax:=0
+SAVE RECORD([Facility])
+ALL RECORDS([Facility])
+DELETE RECORD([Facility])
+End if 
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+READ WRITE([EventLog])
+QUERY([EventLog];[EventLog]Processed=False)
+APPLY TO SELECTION([EventLog];[EventLog]Processed:=True)//May refer to record which doesn't now exist so set to Processed
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+CLOSE WINDOW
+If (Records in selection([Trxs])>500)//To try and avoid compact when doing import from email
+$Compact:=True
+End if 
+End if 
+If (Windows Alt down) | (Macintosh option down) | ($Compact)
+QUERY([Trxs];[Trxs]SeqNo=0)
+If (Records in selection([Trxs])>0)
+READ WRITE([Trxs])
+SET QUERY DESTINATION(3;$j)
+$Occup:=0
+FIRST RECORD([Trxs])
+For ($i;1;Records in selection([Trxs]))
+QUERY([Trxs];[Trxs]SeqNo=(Record number([Trxs])+1))
+If ($j>0)
+Repeat 
+$Occup:=$Occup+1
+QUERY([Trxs];[Trxs]SeqNo=$Occup)
+Until ($j=0)
+[Trxs]SeqNo:=$Occup
+Else 
+[Trxs]SeqNo:=Record number([Trxs])+1
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+SET QUERY DESTINATION(0)
+RELATE ONE SELECTION([Trxs];[Agreement])
+CheckMatching (True;2;True;!00-00-00!;[Facility]FacilityCode)
+End if 
+End if 
+QUERY([Notices];[Notices]DaysAfter>0;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]RefDateField=0)
+If (Records in selection([Notices])>0)
+READ WRITE([Notices])
+FIRST RECORD([Notices])
+APPLY TO SELECTION([Notices];[Notices]RefDateField:=44)
+READ ONLY([Notices])
+UNLOAD RECORD([Notices])
+End if 
+READ WRITE([Customer])
+QUERY([Customer];[Customer]CustomerCode="")
+If (Records in selection([Customer])>0)
+DELETE RECORD([Customer])
+End if 
+READ ONLY([Customer])
+If (Windows Alt down) | (Macintosh option down)
+READ WRITE([EventLog])
+QUERY([EventLog];[EventLog]EventDate=!00-00-00!;*)
+QUERY([EventLog]; & ;[EventLog]EventTime=?00:00:00?)
+DELETE SELECTION([EventLog])
+READ ONLY([EventLog])
+QUERY([Agreement];[Agreement]MoveIn=!00-00-00!)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Agreement]))+" "+Get localized string("Agreements with blank MoveIn dates!"))
+QUERY([Trxs];[Trxs]TrxDate=!00-00-00!)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Trxs]))+" "+Get localized string("Transactions with blank dates!"))
+QUERY([Letters];[Letters]DateSent=!00-00-00!)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Letters]))+" "+Get localized string("Letters with blank dates!"))
+QUERY([UnitHistory];[UnitHistory]MoveIn=!00-00-00!)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([UnitHistory]))+" "+Get localized string("UnitHistory's with blank MoveIn dates!"))
+End if 

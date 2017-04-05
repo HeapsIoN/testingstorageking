@@ -1,0 +1,61 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+Case of 
+: (Form event=On Load)
+C_TEXT(vName;vFacility;vAgree)
+C_REAL(vRegularRent;vRentAmt)
+: (Form event=On Printing Detail)
+C_LONGINT($Pos)
+vUnitCount:=vUnitCount+1
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+
+If ([Unit]UnitNo=vFacility) & ([Customer]CustomerName=vName)
+[Agreement]RentAmt:=0
+[Agreement]RegularRent:=0
+Else 
+vFacility:=[Unit]UnitNo
+$Pos:=Find in array(aUnit;[Unit]UnitNo)
+
+If ($Pos>0)
+[Agreement]RentAmt:=aAmount{$Pos}
+[Agreement]RegularRent:=aOtherAmount{$Pos}
+Else 
+[Agreement]RentAmt:=0
+[Agreement]RegularRent:=0
+End if 
+End if 
+If ([Customer]CustomerName=vName)
+[Customer]CustomerName:=""
+Else 
+vName:=[Customer]CustomerName
+vAgree:=aNAAgreeNo{$Pos}
+vLastBillDate:=aNALastBillDate{$Pos}
+End if 
+
+[Unit]UnitNo:="SK"+Substring([Unit]UnitNo;2;3)
+
+: (Form event=On Printing Break)
+vRentAmt:=Subtotal([Agreement]RentAmt)
+vRegularRent:=Subtotal([Agreement]RegularRent)
+If (vNADiff)
+If (vUnitCount#-1)
+//Find transactions that are not rent at national accounts
+
+QUERY([Trxs];[Trxs]AgreeNo=vAgree;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vNANextBillDate-14;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>vLastBillDate-14;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#"@RF")
+
+vRegularRent:=vRegularRent-Sum([Trxs]TotAmt)
+vOtherTotal:=vOtherTotal+vRegularRent
+Else 
+vRegularRent:=vOtherTotal
+End if 
+End if 
+If (vUnitCount=vUnitSelect)
+vUnitCount:=-1
+End if 
+Else 
+//Do Nothing
+End case 

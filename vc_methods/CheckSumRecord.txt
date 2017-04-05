@@ -1,0 +1,73 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 17/03/11, 11:08:58
+// ----------------------------------------------------
+// Method: CheckSumRecord
+// Description
+// Calculates an md5 checksum for a record for comparison between site and head office
+// StructureArray
+// Parameters
+//$1 - Table number to use
+// ----------------------------------------------------
+
+C_LONGINT($1;$i;$Type;$Length)
+C_BOOLEAN($Valid;$Index;$Unique;$Invisible;$MD5Exists)
+C_TEXT($Record;$FieldName;$TableName)
+C_POINTER($vlFieldPointer;$vlCheckSumPointer;$vatFlagPointer)
+
+$TableName:=Table name($1)
+$vatFlagPointer:=Get pointer("<>asFlags"+$TableName)
+$MD5Exists:=False
+For ($i;1;Get last field number($1))
+$Valid:=Is field number valid($1;$i)
+If ($Valid=True)
+$vlFieldPointer:=Field($1;$i)
+GET FIELD PROPERTIES($1;$i;$Type;$Length;$Index;$Unique;$Invisible)
+$FieldName:=Field name($vlFieldPointer)
+If ($FieldName#"MD5CheckSum")
+
+//Is Alpha Field Longint 0
+//Is BLOB Longint 30
+//Is Boolean Longint 6
+//Is Date Longint 4
+//Is Float Longint 35
+//Is Integer Longint 8
+//Is Integer 64 bits Longint 25
+//Is LongInt Longint 9
+//Is Picture Longint 3
+//Is Real Longint 1
+//Is Subtable Longint 7
+//Is Text Longint 2
+//Is Time Longint 11
+//Is Undefined Longint 5
+
+Case of 
+: ($FieldName="CheckSumFlag") | ($FieldName="PrimaryKey") | (Substring($vatFlagPointer->{$i};3;1)="x")
+//Ignore these fields
+// Modified by: nicholas.wykes (18/04/2012) Added excluding non-syncing fields to the checksum
+: ($Type=Is subtable) | ($Type=Is picture) | ($Type=Is undefined)
+//Ignore sub-tables, pictures, & undefined
+: ($Type=Is BLOB)
+$Record:=$Record+Convert to text($vlFieldPointer->;"UTF-8")
+: ($Type=Is alpha field) | ($Type=Is text)
+$Record:=$Record+$vlFieldPointer->
+: ($Type=Is Boolean)//Cant do string on booleans - gives error
+If ($vlFieldPointer->)
+$Record:=$Record+"T"
+Else 
+$Record:=$Record+"F"
+End if 
+Else 
+$Record:=$Record+String($vlFieldPointer->)
+End case 
+Else 
+$vlCheckSumPointer:=Field($1;$i)
+$MD5Exists:=True
+End if 
+End if 
+End for 
+If ($MD5Exists)
+$vlCheckSumPointer->:=GetMD5 ($Record)//MD5 checksums are 128 bits 32 hex alpha
+End if 

@@ -1,0 +1,212 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(vDaysLate)
+C_DATE(vDateInvoice)
+
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+SOAP DECLARATION(WS_IsAgreement;Is Boolean;SOAP input;"WS_IsAgreement")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+SOAP DECLARATION(WS_adDateSent;Date array;SOAP output;"WS_adDateSent")
+SOAP DECLARATION(WS_abIsEmailNotice;Boolean array;SOAP output;"WS_abIsEmailNotice")
+SOAP DECLARATION(WS_asDescription;Text array;SOAP output;"WS_asDescription")
+SOAP DECLARATION(WS_DaysLate;Is longint;SOAP output;"WS_DaysLate")
+SOAP DECLARATION(WS_LateCycleStartDate;Is date;SOAP output;"WS_LateCycleStartDate")
+SOAP DECLARATION(WS_LastRentIncreaseDate;Is date;SOAP output;"WS_LastRentIncreaseDate")
+SOAP DECLARATION(WS_DisableAutoIncreases;Is Boolean;SOAP output;"WS_DisableAutoIncreases")
+SOAP DECLARATION(WS_LienNoticeDate;Is date;SOAP output;"WS_LienNoticeDate")
+SOAP DECLARATION(WS_LastNotice;Is integer;SOAP output;"WS_LastNotice")
+SOAP DECLARATION(WS_NewBillingPlan;Is text;SOAP output;"WS_NewBillingPlan")
+SOAP DECLARATION(WS_DateInvoice;Is date;SOAP output;"WS_DateInvoice")
+SOAP DECLARATION(WS_SendNotices;Is Boolean;SOAP output;"WS_SendNotices")
+SOAP DECLARATION(WS_ReceiveNoticesDays;Is integer;SOAP output;"WS_ReceiveNoticeDays")
+SOAP DECLARATION(WS_SendOptionalInvoices;Is Boolean;SOAP output;"WS_SendOptionalInvoices")
+SOAP DECLARATION(WS_SendOptionalStatements;Is Boolean;SOAP output;"WS_SendOptionalStatements")
+SOAP DECLARATION(WS_SendNoticesEmail;Is Boolean;SOAP output;"WS_SendNoticesEmail")
+SOAP DECLARATION(WS_SendNoticesSMS;Is Boolean;SOAP output;"WS_SendNoticesSMS")
+SOAP DECLARATION(WS_AutopayValidFrom;Is date;SOAP output;"WS_AutopayValidFrom")
+SOAP DECLARATION(WS_AutopayValidTo;Is date;SOAP output;"WS_AutopayValidTo")
+SOAP DECLARATION(WS_UseAutopay;Is Boolean;SOAP output;"WS_UseAutopay")
+SOAP DECLARATION(WS_AutopayAmt;Is real;SOAP output;"WS_AutopayAmt")
+SOAP DECLARATION(WS_CCName;Is text;SOAP output;"WS_CCName")
+SOAP DECLARATION(WS_CCNo;Is text;SOAP output;"WS_CCNo")
+SOAP DECLARATION(WS_CCValidFrom;Is text;SOAP output;"WS_CCValidFrom")
+SOAP DECLARATION(WS_CCExpiry;Is text;SOAP output;"WS_CCExpiry")
+SOAP DECLARATION(WS_CCInfo;Is text;SOAP output;"WS_CCInfo")
+SOAP DECLARATION(WS_AutoEmailCC;Is Boolean;SOAP output;"WS_AutoMailCC")
+SOAP DECLARATION(WS_customerProfileID;Is text;SOAP output;"WS_customerProfileID")
+SOAP DECLARATION(WS_customerPaymentProfID;Is text;SOAP output;"WS_customerPaymentProfID")
+SOAP DECLARATION(WS_BankAccountName;Is text;SOAP output;"WS_BankAccountName")
+SOAP DECLARATION(WS_BankAcct;Is text;SOAP output;"WS_BankAcct")
+SOAP DECLARATION(WS_BankName;Is text;SOAP output;"WS_BankName")
+SOAP DECLARATION(WS_AccountType;Is integer;SOAP output;"WS_AccountType")
+
+SOAP DECLARATION(WS_CCName;Is text;SOAP output;"WS_CCName")
+SOAP DECLARATION(WS_CCNo;Is text;SOAP output;"WS_CCNo")
+SOAP DECLARATION(WS_CCValidFrom;Is date;SOAP output;"WS_CCValidFrom")
+SOAP DECLARATION(WS_CCExpiry;Is date;SOAP output;"WS_CCExpiry")
+
+$String:="Start WS_GetAutoPayNotices"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRecordLog ($String)
+
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+If (WS_IsAgreement=True)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtAgreementNumber)
+End if 
+
+Case of 
+: (Records in selection([Agreement])=0) & (Records in selection([Agreement])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement found"
+: (Records in selection([Agreement])=1) | (Records in selection([Reservation])=1)
+If (WS_IsAgreement=True)
+RELATE ONE([Agreement]CustomerCode)
+Else 
+RELATE ONE([Reservation]CustomerCode)
+End if 
+
+If ([Customer]Password=WS_vtPassword)
+
+QUERY([Letters];[Letters]AgreeNo=WS_vtAgreementNumber)
+For ($j;1;Records in selection([Letters]))
+APPEND TO ARRAY(WS_adDateSent;[Letters]DateSent)
+APPEND TO ARRAY(WS_abIsEmailNotice;[Letters]SentViaEmail)
+APPEND TO ARRAY(WS_asDescription;[Letters]LetterDesc)
+
+NEXT RECORD([Letters])
+End for 
+
+If ([Agreement]BalanceOwing>0) & ([Agreement]TotRentUnpaid>0)
+If ([Agreement]LateCycleStDate#!00-00-00!)
+vDaysLate:=Current date-[Agreement]LateCycleStDate
+
+If (vDaysLate<0)
+vDaysLate:=0
+End if 
+
+End if 
+Else 
+vDaysLate:=0
+End if 
+If ([Agreement]SendNotices=True) & ([Agreement]AutoPay=False) & (vUseAgreementSend=True)
+vDateInvoice:=[Agreement]NextBillDate-[Agreement]NoticeDaysPrior
+Else 
+If ([Agreement]AutoPay=False) & ((vSendtoAll=True) | ([Agreement]SendNotices=True))
+vDateInvoice:=[Agreement]NextBillDate-vNoticeBefore
+Else 
+vDateInvoice:=[Agreement]NextBillDate
+End if 
+End if 
+
+WS_DaysLate:=vDaysLate
+WS_LateCycleStartDate:=[Agreement]LateCycleStDate
+WS_LastRentIncreaseDate:=[Agreement]LastRentIncrDate
+WS_DisableAutoIncreases:=[Agreement]DisableAutoIncr
+WS_LienNoticeDate:=[Agreement]LienDate
+WS_NewBillingPlan:=[Agreement]NewBillingPlan
+WS_DateInvoice:=vDateInvoice
+WS_SendNotices:=[Agreement]SendNotices
+WS_ReceiveNoticeDays:=[Agreement]NoticeDaysPrior
+WS_SendOptionalInvoices:=[Agreement]SendInvoices
+WS_SendOptionalStatements:=[Agreement]SendStatements
+WS_SendNoticesEmail:=[Agreement]SendNoticesEmail
+WS_SendNoticesSMS:=[Agreement]SendNoticeSMS
+WS_AutopayValidFrom:=[Agreement]AuthCCSigned
+WS_AutopayValidTo:=[Agreement]AuthCCExpiry
+WS_UseAutopay:=[Agreement]AutoPay
+WS_AutopayAmt:=[Agreement]AutoPayAmt
+WS_AutopayTypeI:=[Agreement]AutoPayType
+WS_CCName:=[Customer]CCName
+//WS_CCNo:=Tokenizer ([Customer]CCNo;False)
+WS_CCNo:=Decode256 
+
+WS_CCValidFrom:=[Customer]CCValidFrom
+WS_CCExpiry:=[Customer]CCExpiry
+WS_CCInfo:=[Customer]CCInfo
+WS_AutoEMailCC:=[Customer]AutoEmailCC
+WS_customerProfileID:=[Customer]customerProfileID
+WS_customerPaymentProfID:=[Customer]custPaymentProfID
+WS_BankAccountName:=[Customer]BankAccountName
+WS_BankAcct:=[Customer]BankAcct
+WS_BankName:=[Customer]BankName
+WS_AccountType:=[Customer]AccountType
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+
+
+End case 
+End if 
+
+ReadOnlyAll 
+UnloadAll 
+
+$String:="End WS_GetAutopayNoticesInfo"+Char(13)
+
+$sizeofarray:=Size of array(WS_adDateSent)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adDateSent("+String($vlElem)+"):"+String(WS_adDateSent{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiDaytoBill)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_abIsEmailNotice("+String($vlElem)+"):"+String(WS_abIsEmailNotice{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiDaytoBill)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asDescription("+String($vlElem)+"):"+String(WS_asDescription{$vlElem})+Char(13)
+End for 
+
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_DaysLate: "+String(WS_DaysLate)+Char(13)
+$String:=$String+"WS_LateCycleStartDate: "+String(WS_LateCycleStartDate)+Char(13)
+$String:=$String+"WS_LastRentIncreaseDate: "+String(WS_LastRentIncreaseDate)+Char(13)
+$String:=$String+"WS_DisableAutoIncreases: "+String(WS_DisableAutoIncreases)+Char(13)
+$String:=$String+"WS_LienNoticeDate: "+String(WS_LienNoticeDate)+Char(13)
+$String:=$String+"WS_NewBillingPlan: "+WS_NewBillingPlan+Char(13)
+$String:=$String+"WS_DateInvoice: "+String(WS_DateInvoice)+Char(13)
+$String:=$String+"WS_SendNotices: "+String(WS_DisableAutoIncreases)+Char(13)
+$String:=$String+"WS_ReceiveNoticeDays: "+String(WS_ReceiveNoticeDays)+Char(13)
+$String:=$String+"WS_SendOptionalInvoices: "+String(WS_SendOptionalInvoices)+Char(13)
+$String:=$String+"WS_SendOptionalStatements: "+String(WS_SendOptionalStatements)+Char(13)
+$String:=$String+"WS_SendNoticesEmail: "+String(WS_SendNoticesEmail)+Char(13)
+$String:=$String+"WS_AutopayValidFrom: "+String(WS_AutopayValidFrom)+Char(13)
+$String:=$String+"WS_AutopayValidTo: "+String(WS_AutopayValidTo)+Char(13)
+$String:=$String+"WS_UseAutopay: "+String(WS_UseAutopay)+Char(13)
+$String:=$String+"WS_AutopayAmt: "+String(WS_AutopayAmt)+Char(13)
+$String:=$String+"WS_AutopayType: "+String(WS_AutopayType)+Char(13)
+$String:=$String+"WS_CCName: "+WS_CCName+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_CCValidFrom: "+WS_CCValidFrom+Char(13)
+$String:=$String+"WS_CCExpiry: "+WS_CCExpiry+Char(13)
+$String:=$String+"WS_CCInfo: "+WS_CCInfo+Char(13)
+$String:=$String+"WS_AutoEmailCC: "+String(WS_AutoEmailCC)+Char(13)
+$String:=$String+"WS_customerProfileID: "+WS_customerProfileID+Char(13)
+$String:=$String+"WS_customerPaymentProfID: "+WS_customerPaymentProfID+Char(13)
+$String:=$String+"WS_BankAccountName: "+WS_BankAccountName+Char(13)
+$String:=$String+"WS_BankAcct: "+WS_BankAcct+Char(13)
+$String:=$String+"WS_BankName: "+WS_BankName+Char(13)
+$String:=$String+"WS_AccountType: "+String(WS_AccountType)+Char(13)
+
+WSRecordLog ($String)

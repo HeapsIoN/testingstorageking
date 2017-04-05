@@ -1,0 +1,164 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0;$1)//;$2;$3;$4;$5;$6)
+C_TEXT(vtErrorMessage;$q;$cr;vtFacilityNameMenu;vtTransactions)
+$q:=Char(34)
+$cr:=Char(13)
+C_LONGINT($Index)
+
+$Index:=0
+
+$AgreementNumber:=vtFacilityName+vtWebUsername
+
+// /4DCGI/Account/Login
+
+Case of 
+: ($1="/4DCGI/Account/Main")
+Case of 
+: (vtFunction="Transactions")
+C_TEXT($vtNet;$vtPay;$vtTax;$vtTot)
+QUERY([Agreement];[Agreement]RAgreeNo=$AgreementNumber)
+RELATE MANY([Agreement]RAgreeNo)
+ORDER BY([Trxs];[Trxs]SeqNo;>)
+FIRST RECORD([Trxs])
+vtTransactions:="<table border="+$q+"1"+$q+" cellspacing="+$q+"2"+$q+" cellpadding="+$q+"0"+$q+">"+$cr
+vtTransactions:=vtTransactions+"<tr><td>Date</td><td>Description</td><td>Invoice</td><td>Net Amount</td><td>Tax</"+"td><td>Charges</td><td>Payments</td><td>Balance</td></tr>"+$cr
+For ($TransactionCount;1;Records in selection([Trxs]))
+If ([Trxs]Charge=True)
+$vtNet:=String([Trxs]TotAmt-[Trxs]TaxAmt)
+$vtPay:=""
+vtTransactions:=vtTransactions+"<tr><td>"+String([Trxs]TrxDate)+"</td><td>"+[Trxs]Description+"</td><td>"+String([Trxs]SeqNo)+"</td><td>"+$vtNet+"</td><td>"+String([Trxs]TaxAmt)+"</td><td>"+String([Trxs]TotAmt)+"</td><td>"+$vtPay+"</td><td>"+String([Trxs]Balance)+"</td></tr>"+$cr
+Else 
+$vtPay:=String([Trxs]TotAmt)
+$vtTot:=""
+$vtTax:=""
+$vtNet:=""
+vtTransactions:=vtTransactions+"<tr><td>"+String([Trxs]TrxDate)+"</td><td>"+[Trxs]Description+"</td><td>"+String([Trxs]SeqNo)+"</td><td>"+$vtNet+"</td><td>"+$vtTax+"</td><td>"+$vtTot+"</td><td>"+$vtPay+"</td><td>"+String([Trxs]Balance)+"</td></tr>"+$cr
+End if 
+NEXT RECORD([Trxs])
+End for 
+vtTransactions:=vtTransactions+"</Table>"+$cr
+WEB SEND FILE("Account/Transactions.html")
+
+
+: (vtFunction="CreateReservation")
+AlertMessage (Get localized string("Creating Main Reservation"))
+
+
+
+
+Else 
+WEB SEND FILE("Account/error.html")
+End case 
+
+
+: ($1="/4DCGI/Account/Start")
+
+Case of 
+: (vtFunction="Login")
+QUERY([Facility];[Facility]SortOrder>0)
+ORDER BY([Facility];[Facility]FacilityName;>)
+FIRST RECORD([Facility])
+vtFacilityNameMenu:="<select name="+$q+"vtFacilityName"+$q+"size="+$q+"1"+$q+">"
+If (vtWebPassword="") | (vtWebUsername="")//If Logging in for the first time in this session
+For ($FacilityCounter;1;Records in selection([Facility]))
+vtFacilityNameMenu:=vtFacilityNameMenu+"<option value="+$q+[Facility]FacilityCode+$q+">"+[Facility]FacilityName+"</option>"
+NEXT RECORD([Facility])
+End for 
+WEB SEND FILE("Account/login.html")
+Else //Test the Login Details and either Login again or progress to the 'Main' screen
+QUERY([Agreement];[Agreement]RAgreeNo=$AgreementNumber)
+RELATE ONE([Agreement]CustomerCode)
+If ([Customer]Password=vtWebPassword)//The Login details are correct
+WEB SEND FILE("Account/main.html")
+Else //The Login details are NOT correct
+For ($FacilityCounter;1;Records in selection([Facility]))
+If (vtFacilityName=[Facility]FacilityCode)
+vtFacilityNameMenu:=vtFacilityNameMenu+"<option selected value="+$q+[Facility]FacilityCode+$q+">"+[Facility]FacilityName+"</option>"
+Else 
+vtFacilityNameMenu:=vtFacilityNameMenu+"<option value="+$q+[Facility]FacilityCode+$q+">"+[Facility]FacilityName+"</option>"
+End if 
+NEXT RECORD([Facility])
+End for 
+WEB SEND FILE("Account/login.html")
+vtErrorMessage:=Get localized string("Incorrect Agreement Number or Password")
+End if 
+End if 
+
+
+: (vtFunction="CreateReservation")
+
+Case of 
+: (vtSubFunction="FindAvailableUnits") | (vtSubFunction="ReSelectUnitType")
+WEB SEND FILE("Account/selectunittype.shtml")
+: (vtSubFunction="Re-Enter Contact Details")
+WEB SEND FILE("Account/enteruserdetails.shtml")
+: (vtSubFunction="EnterContactDetails")
+If (vtUnitType#"")
+WEB SEND FILE("Account/enteruserdetails.shtml")
+Else 
+WEB SEND FILE("Account/selectunittype.shtml")
+End if 
+: (vtSubFunction="ConfirmReservation")
+WEB SEND FILE("Account/confirm.shtml")
+: (vtSubFunction="ProcessReservation")
+
+//C_TEXT(vName)
+
+vName:=Substring(vtUsername;1;50)
+QUERY([Facility];[Facility]ShortName=vtFacilityShortName)
+//CreateCustCode (True;True)
+//[Customer]CustomerName:=vtUserCustomerName
+//[Customer]UserName:=vtUserName
+//[Customer]FirstName:=vtUserFirstName
+//[Customer]EmailAddress:=vtUserEmail
+//[Customer]FaxNo:=vtUserFax
+//[Customer]MailAddress:=vtUserAddress
+//[Customer]MailCity:=vtUserCity
+//[Customer]MailPostZIPCode:=vtUserPostZipCode
+//[Customer]MailState:=vtUserState
+//[Customer]MobilePhone:=vtUserMobile
+//[Customer]PhonePrivate:=vtUserPhone
+//[Customer]MarketSrce:=vtMSMarketingTypes
+//[Customer]CustType:=vtCTMarketingTypes
+//[Customer]BusType:=vtBTMarketingTypes
+//[Customer]ReasonRenting:=vtMWMarketingTypes
+//[Customer]CarRego:=vtUserRegistration
+//[Customer]LicenceNo:=vtUserDriversLicense
+
+SAVE RECORD([Customer])
+//WWW_AccountReservationCreate 
+
+WEB SEND FILE("Account/summary.shtml")
+
+
+
+
+
+
+
+
+: (vtaWebFormValues{$Index}="Return to Website")
+WEB SEND HTTP REDIRECT("http://www.storman.com")
+Else 
+//Do nothing
+End case 
+
+
+
+
+
+
+
+
+
+
+Else 
+//Do nothing
+End case 
+
+: ($1="/4DCGI/Account")
+WEB SEND FILE("Account/index.html")//This is the page that the user will initially nagivate to
+Else 
+WEB SEND FILE("Account/index.html")//If the user attempts to an incorrect page then they will be sent to the start.
+
+End case 

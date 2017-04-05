@@ -1,0 +1,122 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//------------------------------------------
+//eMatters' Direct Debit Request via XML API
+//------------------------------------------
+C_TEXT($valRootRef;$valElemRef;$response;$Content;$valueElmRes;$URLHost;$strResult)
+C_TEXT($0)
+C_TEXT($1)//readers -mandatory
+C_TEXT($2)//CustomerName -mandatory
+C_TEXT($3)//CustomerEmail -mandatory
+C_TEXT($4)//CompanyName 
+C_LONGINT($5)//BillingDay
+C_TEXT($6)//NextProcess -mandatory
+C_TEXT($7)//CDeleteFlag -mandatory
+C_TEXT($8)//BSB -mandatory
+C_TEXT($9)//BankName
+C_TEXT($10)//AccountNumber -mandatory
+C_REAL($11)//Amount -mandatory
+C_LONGINT($12)//Qty -mandatory
+C_TEXT($13)//UID -mandatory
+C_TEXT($14)//Action -mandatory
+
+$URLHost:="https://merchant.ematters.com.au/emattersddr.nsf/Add?OpenAgent"
+$valRootRef:=DOM Create XML Ref("emattersddr")
+DOM SET XML DECLARATION($valRootRef;"ISO-8859-1")
+
+$valxmlPath:="/emattersddr/Readers"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+$valxmlPath:="/emattersddr/CustomerName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;Replace string($2;"&";"and"))
+
+$valxmlPath:="/emattersddr/CustomerEmail"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$3)
+
+If ($4#"")
+$valxmlPath:="/emattersddr/CompanyName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;Replace string($4;"&";"and"))
+End if 
+
+If ($5#0)
+$valxmlPath:="/emattersddr/BillingDay"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$5)
+End if 
+
+$valxmlPath:="/emattersddr/NextProcess"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$6)
+
+$valxmlPath:="/emattersddr/DeleteFlag"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$7)
+
+If ($9#"")
+$valxmlPath:="/emattersddr/BankName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$9)
+End if 
+
+$valxmlPath:="/emattersddr/BSB"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$8)
+
+$valxmlPath:="/emattersddr/AccountNumber"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$10)
+$valxmlPath:="/emattersddr/Amount"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$11)
+$valxmlPath:="/emattersddr/Qty"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+If ($12#0)
+DOM SET XML ELEMENT VALUE($valElemRef;$12)
+Else 
+DOM SET XML ELEMENT VALUE($valElemRef;"")
+End if 
+$valxmlPath:="/emattersddr/UID"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$13)
+$valxmlPath:="/emattersddr/Action"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$14)
+
+DOM EXPORT TO VAR($valRootRef;$Content)
+//  ALERT($Content)  // check point , delete this code at the end
+SyncRecordLog ($Content)
+// HTTP Request , send request xml to eMatters' server
+$httpStatus_l:=HTTP Request(HTTP POST method;$URLHost;$Content;$response)
+
+//ALERT($response)  // check point , delete this code at the end
+
+If ($httpStatus_l=200)
+$xml_Struct_Ref:=DOM Parse XML variable($response)
+SyncRecordLog ($response)
+$documentRef:=DOM Get XML document ref($xml_Struct_Ref)
+
+$valFound:=DOM Find XML element($documentRef;"emattersddr/response")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+$strResult:=$valueElmRes
+$0:="Ok"
+
+Case of // Checking emattersRcode
+: ($strResult="01")
+//ALERT("Ok")
+//do something
+Else 
+$0:=$strResult
+//ALERT("Unexpected erroe from eMatters' occure! The value of the error is: \""+$strResult+"\"")
+End case 
+$valFound:=DOM Find XML element($documentRef;"emattersddr/text")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+$PROCESS_VAR_text:=$valueElmRes
+
+DOM CLOSE XML($valRootRef)//Close Request XML
+DOM CLOSE XML($xml_Struct_Ref)//Close Response XML
+Else 
+$0:=$strResult
+End if 

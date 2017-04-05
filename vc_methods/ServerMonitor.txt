@@ -1,0 +1,22 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 19/7/11 Modified to stop web server while LogMonServer relaunches
+READ ONLY(*)
+ALL RECORDS([Facility])
+C_LONGINT($No)
+$No:=0
+Repeat 
+If (Process state(Abs(Process number("LogMonServer")))<0)
+SyncRecordLog (Get localized string("Process 'LogMonServer' on Storman Server at state")+" "+String(Process state(Process number("LogMonServer")))+". Aborted!")
+WEB STOP SERVER
+DELAY PROCESS(Current process;60*15)//Wait 15 seconds for webserver to stop
+<>iLogMonitor:=New process("LogMonServer";400000;"LogMonServer";False)// This should relaunch webserver
+SyncRecordLog (Get localized string("Process 'LogMonServer' on Storman Server restarted")+" "+String(Process state(Process number("LogMonServer")))+"!")
+If ($No<3)
+$No:=$No+1
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Server Restart");Get localized string("LogMonServer process restarted at")+" "+[Facility]FacilityCode+".  "+Get localized string("Please check operation!"))
+Else 
+SendEmail ("urgent@storman.com";"LogMon could not be started after 3 attempts at"+" "+[Facility]FacilityCode+".")
+End if 
+End if 
+DELAY PROCESS(Current process;60*15)//15 seconds
+Until (<>tLoggingOn=False)

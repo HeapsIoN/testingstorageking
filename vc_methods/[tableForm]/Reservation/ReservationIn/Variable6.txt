@@ -1,0 +1,120 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$x)
+C_DATE($Date)
+$x:=Selected record number([Unit])
+If ($x>0) | ($x<=Records in selection([Unit]))
+//READ WRITE([Unit])
+LOAD RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+If (Locked([Unit])=False)
+
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("Remove Berth")+" "+[Unit]UnitNo+" "+Lowercase(Get localized string("From"))+" "+[Reservation]ReserveNo)
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("Remove Appliance")+" "+[Unit]UnitNo+" "+Lowercase(Get localized string("From"))+" "+[Reservation]ReserveNo)
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("Remove Unit")+" "+[Unit]UnitNo+" "+Lowercase(Get localized string("From"))+" "+[Reservation]ReserveNo)
+Else 
+ConfirmTwo (Get localized string("Remove Unit")+" "+[Unit]UnitNo+" "+Lowercase(Get localized string("From"))+" "+[Reservation]ReserveNo)
+End case 
+If (OK=1)
+If ([Unit]AgreeNo="")//Otherwise leave status as is as it may be already rented
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+End if 
+[Unit]ReservedTo:=""
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD([Unit])
+If ([Unit]ReserveDeposit>0)
+If ([Facility]AgreeOnlyDeposit=True)
+OK:=0
+Else 
+ConfirmTwo (Get localized string("Do you wish to refund the deposit of")+" "+<>sCurrency+String([Unit]ReserveDeposit)+" "+Get localized string("for this Unit?");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+Repeat 
+$Date:=RequestDate (Get localized string("Please enter Move Out date")+":";Current date)
+If ($Date<([Unit]ReservedDate))
+AlertMessage (Get localized string("The move out date cannot be less than")+" "+String([Unit]ReservedDate;6)+". "+Get localized string("Please check carefully")+".")
+End if 
+If ($Date<[Facility]CantModPrior)
+AlertMessage (Get localized string("The move out date cannot be less than")+" "+String([Facility]CantModPrior;6)+". "+Get localized string("Please check carefully")+".")
+End if 
+Until (OK=1) & ($Date>=[Unit]ReservedDate) & ($Date>=[Facility]CantModPrior)
+QUERY([Analysis];[Analysis]SortOrder=2)
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]Description:=Get localized string("Refund")+" "+[Analysis]Description+" "+Get localized string("Unit")+" "+[Unit]UnitNo
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]TotAmt:=RoundAmt ([Unit]ReserveDeposit*-1)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+End if 
+End if 
+End if 
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+FIRST RECORD([Unit])
+vTotal:=0
+vQuote:=0
+[Reservation]UnitsReserved:=""
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([Reservation]Weekly)
+vTotal:=vTotal+CalculateBaseRate (1;1)
+Else 
+vTotal:=vTotal+CalculateBaseRate (0;1)
+End if 
+vQuote:=vQuote+[Unit]QuotedRate
+[Reservation]UnitsReserved:=[Reservation]UnitsReserved+[Unit]UnitNo+", "
+NEXT RECORD([Unit])
+End for 
+If (Length([Reservation]UnitsReserved)>2)
+[Reservation]UnitsReserved:=Substring([Reservation]UnitsReserved;1;Length([Reservation]UnitsReserved)-2)
+End if 
+Else 
+AlertMessage (Get localized string("The Unit file is locked by another process. Unable to remove unit from agreement!"))
+End if 
+//READ ONLY([Unit])
+Else 
+AlertMessage (Get localized string("Please select unit to remove first"))
+End if 
+If ([Facility]UnitPerAgreement=True) & (Records in selection([Unit])>0)
+OBJECT SET VISIBLE(bSelect;False)
+OBJECT SET VISIBLE(*;"Picture33";False)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use this icon to delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use  this icon to delete appliances")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use  this icon to delete support plans")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use  this icon to delete spaces")
+Else 
+varm15:=Get localized string("Use  this icon to delete units")
+End case 
+Else 
+OBJECT SET VISIBLE(bSelect;True)
+OBJECT SET VISIBLE(*;"Picture33";True)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use these icons to add / delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use these icons to add / delete appliances")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use these icons to add / delete support plans")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use these icons to add / delete spaces")
+Else 
+varm15:=Get localized string("Use these icons to add / delete units")
+End case 
+End if 

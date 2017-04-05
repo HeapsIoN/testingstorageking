@@ -1,0 +1,1279 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 27/11/13 Called by KeyStats and WS_GetReportData
+C_DATE($1)//vMthDate
+C_LONGINT($i;$j;$Row;$InsureNew)
+C_TEXT($AreaUnit;$AreaRate)
+C_DATE($Year)
+vMthDate:=$1
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=1)
+//vReportSettings≤9≥="1"exclude tax
+If ([Analysis]Taxable) & ((([Facility]TaxAddtoAmt=False) & (vReportSettings[[9]]="1")) | (([Facility]TaxAddtoAmt) & (vReportSettings[[9]]="2")))
+vTax:=GetTaxRate (vMthDate)
+$TaxMult:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$TaxMult:=1/(1+(vTax/100))
+End if 
+$PPTax:=$TaxMult
+Else 
+vTax:=0
+$TaxMult:=1
+If ([Analysis]Taxable)
+vTax:=GetTaxRate (vMthDate)
+$PPTax:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$PPTax:=1/(1+(vTax/100))
+End if 
+Else 
+$PPTax:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$PPTax:=1/(1+(vTax/100))
+End if 
+End if 
+End if 
+//to calculate discount variance tax to be taken off (either has to be done here or in checkactivity data). Can't use Tax mult above as stuffs up when printing inclusive of tax
+If ([Analysis]Taxable)
+$DiscTaxRate:=GetTaxRate (vMthDate)
+$DiscTaxMult:=1+($DiscTaxRate/100)
+If ([Facility]TaxAddtoAmt=False)
+$DiscTaxMult:=1/(1+($DiscTaxRate/100))
+End if 
+End if 
+$Row:=Num(vReportSettings[[19]])
+If ($Row=1)
+$Row:=2
+End if 
+
+//For OVERVIEW COPY PROCEDURE FROM HERE DOWN    
+DEFAULT TABLE([Activity])
+ARRAY TEXT(aCustName;55)
+aCustName{1}:=""//Header row for Sales / Marketing
+aCustName{2}:=Get localized string("Sales Inquiries")
+aCustName{3}:=Get localized string("New Reservations")
+aCustName{4}:=Get localized string("No of MoveIns")
+aCustName{5}:=Get localized string("No of MoveOuts")
+aCustName{6}:=Get localized string("Net Change +/-")
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+aCustName{7}:=Get localized string("Marketing Emails Sent")
+aCustName{8}:=Get localized string("Marketing Letters Sent")
+Else 
+aCustName{7}:=Get localized string("Conversion Rate (%age)")
+aCustName{8}:=Get localized string("Conversion Time (Days)")
+End if 
+//End of Sales / Marketing
+aCustName{9}:=""//Header row for Occupancy
+aCustName{10}:=Get localized string("Total")
+
+
+If (<>asUnitStatus{1}="Rented")
+aCustName{11}:=Get localized string("Rented")
+Else 
+aCustName{11}:=<>asUnitStatus{1}
+End if 
+
+aCustName{12}:="Other Rented"
+
+If (<>asUnitStatus{2}="Vacant")
+aCustName{13}:=Get localized string("Vacant")
+Else 
+aCustName{13}:=<>asUnitStatus{2}
+End if 
+If (<>asUnitStatus{4}="Company") & (<>asUnitStatus{5}="Repair")
+aCustName{14}:=Get localized string("Company")+" / "+Get localized string("Repair")
+Else 
+aCustName{14}:=<>asUnitStatus{4}+" / "+<>asUnitStatus{5}
+End if 
+
+
+//aCustName{11}:=<>asUnitStatus{1}
+//aCustName{12}:=<>asUnitStatus{2}
+//aCustName{13}:=<>asUnitStatus{4}+" / "+<>asUnitStatus{5}
+aCustName{15}:=Get localized string("Rental Discounting")
+aCustName{16}:="Discounting Rented + Other Units"
+
+
+
+aCustName{17}:="Rented "+Get localized string("Occupancy Rate")
+aCustName{18}:="Rented + Other Occupancy Rate"
+aCustName{19}:=Get localized string("Yield at Full Occupancy")
+aCustName{20}:="Yield Rented Units Only"
+aCustName{21}:="Yield Rented + Other Units"
+aCustName{22}:=Get localized string("Current Occupancy Yield")
+
+
+//End of Occupancy
+aCustName{20}:=""//Header row for Income
+If ([Facility]FacilityCode="ST@")
+aCustName{21}:="Gross Support Fees"
+Else 
+aCustName{24}:=Get localized string("Gross Rental Fees")
+End if 
+aCustName{25}:=Get localized string("Less Discount Variance")
+If ([Facility]FacilityCode="KE@")
+aCustName{23}:=Get localized string("Less Bad Debts written OFF")//bad debts for kss only
+If ($Row=2)
+aCustName{24}:=Get localized string("Plus Opening Rent in Advance")
+aCustName{25}:=Get localized string("Less Closing Rent in Advance")
+$Adjust4Prepaid:=" "+Get localized string("Net")
+Else 
+$Adjust4Prepaid:=""
+End if 
+aCustName{24+$Row}:=Get localized string("Net Rental Fees")
+aCustName{25+$Row}:=Get localized string("Deposit")
+aCustName{26+$Row}:=Get localized string("Late Fees")
+aCustName{27+$Row}:=Get localized string("Insurance")+$Adjust4Prepaid
+aCustName{28+$Row}:=Get localized string("Merchandise")
+aCustName{29+$Row}:=Get localized string("Other")+$Adjust4Prepaid
+aCustName{30+$Row}:=Get localized string("Tax")
+aCustName{31+$Row}:=Get localized string("Total Income")
+aCustName{32+$Row}:=Get localized string("Cash Receipts")
+aCustName{33+$Row}:=Get localized string("Credit Receipts")
+aCustName{34+$Row}:=Get localized string("Refunds/Ret Chks")
+aCustName{35+$Row}:=Get localized string("Total Receipts")
+aCustName{36+$Row}:=Get localized string("Buybacks")//merch returns for kss
+Else 
+
+//24/10/14 DAM Added for bad debt
+If ([Facility]UseBadDebts)
+
+aCustName{26}:=Get localized string("Less Bad Debts written OFF")//bad debts for kss only
+If ($Row=2)
+aCustName{27}:=Get localized string("Plus Opening Rent in Advance")
+aCustName{28}:=Get localized string("Less Closing Rent in Advance")
+$Adjust4Prepaid:=" "+Get localized string("Net")
+Else 
+$Adjust4Prepaid:=""
+End if 
+If ([Facility]FacilityCode="ST@")
+aCustName{23+$Row}:="Net Support Fees"
+aCustName{28+$Row}:="Services & Other"+$Adjust4Prepaid
+Else 
+aCustName{27+$Row}:=Get localized string("Net Rental Fees")
+aCustName{32+$Row}:=Get localized string("Other")+$Adjust4Prepaid
+End if 
+aCustName{28+$Row}:=<>asChgCategory{2}//Get localized string("Deposit")
+aCustName{29+$Row}:=<>asChgCategory{3}//Get localized string("Late Fees")
+aCustName{30+$Row}:=<>asChgCategory{4}+$Adjust4Prepaid//Get localized string("Insurance")
+aCustName{31+$Row}:=<>asChgCategory{5}//Get localized string("Merchandise")
+aCustName{32+$Row}:=Get localized string("Tax")
+aCustName{34+$Row}:=Get localized string("Total Income")
+aCustName{35+$Row}:=Get localized string("Cash Receipts")
+aCustName{36+$Row}:=Get localized string("Credit Receipts")
+aCustName{37+$Row}:=Get localized string("Refunds/Ret Chks")
+aCustName{38+$Row}:=Get localized string("Total Receipts")
+aCustName{39+$Row}:=""
+
+Else 
+
+If ($Row=2)
+aCustName{26}:=Get localized string("Plus Opening Rent in Advance")
+aCustName{27}:=Get localized string("Less Closing Rent in Advance")
+$Adjust4Prepaid:=" "+Get localized string("Net")
+Else 
+$Adjust4Prepaid:=""
+End if 
+If ([Facility]FacilityCode="ST@")
+aCustName{26+$Row}:="Net Support Fees"
+aCustName{31+$Row}:="Services & Other"+$Adjust4Prepaid
+Else 
+aCustName{26+$Row}:=Get localized string("Net Rental Fees")
+aCustName{31+$Row}:=Get localized string("Other")+$Adjust4Prepaid
+End if 
+aCustName{27+$Row}:=<>asChgCategory{2}//Get localized string("Deposit")
+aCustName{28+$Row}:=<>asChgCategory{3}//Get localized string("Late Fees")
+aCustName{29+$Row}:=<>asChgCategory{4}+$Adjust4Prepaid//Get localized string("Insurance")
+aCustName{30+$Row}:=<>asChgCategory{5}//Get localized string("Merchandise")
+aCustName{32+$Row}:=Get localized string("Tax")
+aCustName{33+$Row}:=Get localized string("Total Income")
+aCustName{34+$Row}:=""//Blank row
+aCustName{35+$Row}:=Get localized string("Cash Receipts")
+aCustName{36+$Row}:=Get localized string("Credit Receipts")
+aCustName{37+$Row}:=Get localized string("Refunds/Ret Chks")
+aCustName{38+$Row}:=Get localized string("Total Receipts")
+aCustName{39+$Row}:=""
+End if 
+
+
+End if 
+If ($Row=0)
+aCustName{40}:=Get localized string("Rent Billed / Paid in Advance")
+aCustName{41}:=""
+End if 
+aCustName{42}:=Get localized string("Deposits Held")
+aCustName{43}:=Get localized string("No of Active Agreements")
+Case of 
+: (<>sProduct="@B")
+aCustName{44}:=Get localized string("New/Agree/ Units with InsB")
+aCustName{20}:=Get localized string("Yield RentedB")
+: (<>sProduct="@R")
+aCustName{44}:=Get localized string("New/Agree/ Units with InsC")
+aCustName{20}:=Get localized string("Yield RentedC")
+: (<>sProduct="@C")
+aCustName{44}:=Get localized string("New/Agree/ Spaces with Ins")
+aCustName{20}:=Get localized string("Yield Rented Space")
+Else 
+aCustName{44}:=Get localized string("New/Agree/ Units with InsA")
+aCustName{20}:=Get localized string("Yield RentedA")
+End case 
+//End of Income
+aCustName{45}:=""//Header row for Arrears
+aCustName{46}:=Get localized string("Over")+" "+String(GetPrefNo ([Facility]AgedDebtorBreaks;4))+" "+Get localized string("Days")
+aCustName{47}:=String(GetPrefNo ([Facility]AgedDebtorBreaks;3)+1)+"-"+String(GetPrefNo ([Facility]AgedDebtorBreaks;4))+" "+Get localized string("Days")
+aCustName{48}:=String(GetPrefNo ([Facility]AgedDebtorBreaks;2)+1)+"-"+String(GetPrefNo ([Facility]AgedDebtorBreaks;3))+" "+Get localized string("Days")
+aCustName{49}:=Get localized string("Subtotal")
+aCustName{50}:="1-"+String(GetPrefNo ([Facility]AgedDebtorBreaks;2))+" "+Get localized string("Days")
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+aCustName{51}:=Get localized string("Inactive Customers")
+Else 
+aCustName{51}:=Get localized string("Total Arrears")
+End if 
+aCustName{52}:=Get localized string("Late Fees Waived")
+//End of Arrears
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+aCustName{15}:=Get localized string("Discounting Rented")+" "+<>vtUnitsCap
+aCustName{22}:=Get localized string("Current Occupancy")
+
+
+If ([Facility]UseBadDebts)
+//aCustName{24+$Row}:=""
+aCustName{34+$Row}:=""
+aCustName{33+$Row}:=Get localized string("Total Income (Excl GST)")
+aCustName{37+$Row}:=Get localized string("Total Receipts (Excl GST)")
+aCustName{38+$Row}:=Get localized string("Refunds/Ret Chks")
+Else 
+aCustName{27+$Row}:=""
+aCustName{32+$Row}:=""
+aCustName{33+$Row}:=Get localized string("Total Income (Excl GST)")
+aCustName{37+$Row}:=Get localized string("Total Receipts (Excl GST)")
+aCustName{38+$Row}:=Get localized string("Refunds/Ret Chks")
+End if 
+
+End if 
+
+$Year:=<>dYearStart
+While (vMthDate>=Add to date($Year;1;0;0))
+$Year:=Add to date($Year;1;0;0)
+End while 
+While (vMthDate<$Year)
+$Year:=Add to date($Year;-1;0;0)
+End while 
+$InsureNew:=0
+ARRAY TEXT(asData;4;55)//52-55 are not printed on the report, but used to keep track of net late, insurance and other ppaid
+For ($i;1;4)
+For ($j;1;51)
+asData{$i}{$j}:=""
+End for 
+If ($Row=2)
+Case of 
+: ($i=1)
+$Date:=vMthDate-1//Yesterday
+: ($i=2)
+QUERY([Activity];[Activity]ActivityWeek=GetWeekMonthNo (1;vMthDate);*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+ORDER BY([Activity];[Activity]ActivityDate;>)
+$Date:=[Activity]ActivityDate-1//End Last Week
+: ($i=3)
+$Date:=GetDate (1;Month of(vMthDate);Year of(vMthDate))-1//End Last Month
+: ($i=4)
+$Date:=$Year-1//End Last Year
+Else 
+//Do Nothing
+End case 
+QUERY([Activity];[Activity]ActivityDate=$Date;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+If ([Facility]FacilityCode="KE@")
+asData{$i}{23}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+Else 
+//24/10/14 DAM Added for bad debt
+If ([Facility]UseBadDebts)
+asData{$i}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+Else 
+asData{$i}{26}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+End if 
+
+End if 
+asData{$i}{53}:=String(Round([Activity]AdvBillLateValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{$i}{54}:=String(Round([Activity]AdvBillInsValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{$i}{55}:=String(Round([Activity]AdvanceBillOtherValue*$PPTax;0);<>sCurrency+"###,###,##0")
+End if 
+End for 
+If (vReportSettings[[10]]="2")
+If ([Facility]FacilityCode="KE@")
+asData{1}{27}:=asData{2}{27}
+asData{2}{27}:=asData{3}{27}
+asData{3}{27}:=""
+asData{4}{27}:=""
+Else 
+
+//24/10/14 DAM Added for bad debt
+If ([Facility]UseBadDebts)
+asData{1}{27}:=asData{2}{27}
+asData{2}{27}:=asData{3}{27}
+asData{3}{27}:=""
+asData{4}{27}:=""
+Else 
+asData{1}{26}:=asData{2}{26}
+asData{2}{26}:=asData{3}{26}
+asData{3}{26}:=""
+asData{4}{26}:=""
+End if 
+End if 
+End if 
+
+
+
+QUERY([Activity];[Activity]ActivityDate=vMthDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+vCurrPrepaidLate:=Round([Activity]AdvBillLateValue*$PPTax;0)
+vCurrPrepaidOther:=Round([Activity]AdvanceBillOtherValue*$PPTax;0)
+vCurrPrepaidIns:=Round([Activity]AdvBillInsValue*$PPTax;0)
+$Week:=[Activity]ActivityWeek
+$Month:=[Activity]ActivityMonth
+If (<>bMetric=False)
+$AreaUnit:=" "+Get localized string("s.ft")
+$AreaRate:=" "+Get localized string("psf")
+Else 
+$AreaUnit:=" "+Get localized string("sq.m")
+$AreaRate:=" "+Get localized string("psm")
+End if 
+asData{1}{1}:=Get localized string("Today")
+asData{2}{1}:=Get localized string("This Week")
+asData{3}{1}:=Get localized string("Month")
+asData{4}{1}:=Get localized string("Year")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{2}{1}:=Get localized string("WTD")
+asData{3}{1}:=Get localized string("MTD")
+asData{4}{1}:=Get localized string("YTD")
+End if 
+
+If (<>vtUnitsCap="Unit")
+asData{1}{9}:=Get localized string("Units")
+Else 
+asData{1}{9}:=<>vtUnitsCap+"s"
+End if 
+///////asData{1}{9}:=<>vtUnitsCap+"s"
+If (<>sProduct="@R")
+asData{2}{9}:=""
+Else 
+asData{2}{9}:=Get localized string("Area")
+End if 
+asData{3}{9}:=Get localized string("Full Value")
+asData{4}{9}:=Get localized string("Actual value")
+asData{1}{10}:=String([Activity]TotUnitNo;"###,##0")
+If (<>sProduct="@R")
+asData{2}{10}:=""
+Else 
+asData{2}{10}:=String([Activity]TotUnitArea;"###,##0"+$AreaUnit)
+End if 
+asData{3}{10}:=String([Activity]TotValue*$TaxMult;<>sCurrency+"###,###,##0")
+asData{4}{10}:=String([Activity]TotValue*$TaxMult;<>sCurrency+"###,###,##0")
+
+
+//Calculations
+asData{1}{11}:=String([Activity]OccupUnitNo;"###,##0")
+If (<>sProduct="@R")
+asData{2}{11}:=""
+Else 
+asData{2}{11}:=String([Activity]OccupArea;"###,###,##0"+$AreaUnit)
+End if 
+asData{3}{11}:=String([Activity]OccupValue*$TaxMult;<>sCurrency+"###,###,##0")
+asData{4}{11}:=String([Activity]OccupValActual*$TaxMult;<>sCurrency+"###,###,##0")
+
+asData{1}{12}:=String([Activity]OtherRentedUnitNo;"###,##0")
+If (<>sProduct="@R")
+asData{2}{12}:=""
+Else 
+asData{2}{12}:=String([Activity]OtherRentedArea;"###,###,##0"+$AreaUnit)
+End if 
+asData{3}{12}:=String([Activity]OtherRentedValue*$TaxMult;<>sCurrency+"###,###,##0")
+asData{4}{12}:=String([Activity]OtherRentedValActual*$TaxMult;<>sCurrency+"###,###,##0")
+
+asData{1}{13}:=String([Activity]VacantUnitNo;"###,##0")
+If (<>sProduct="@R")
+asData{2}{13}:=""
+Else 
+asData{2}{13}:=String([Activity]VacantArea;"###,###,##0"+$AreaUnit)
+End if 
+asData{3}{13}:=String([Activity]VacantValue*$TaxMult;<>sCurrency+"###,###,##0")
+
+asData{1}{14}:=String([Activity]OtherUnitNo;"###,##0")
+If (<>sProduct="@R")
+asData{2}{14}:=""
+Else 
+asData{2}{14}:=String([Activity]OtherArea;"###,###,##0"+$AreaUnit)
+End if 
+asData{3}{14}:=String([Activity]OtherValue*$TaxMult;<>sCurrency+"###,###,##0")
+asData{1}{15}:=String([Activity]DiscUnitNo;"###,##0")
+If (<>sProduct="@R")
+asData{2}{15}:=""
+Else 
+asData{2}{15}:=String([Activity]DiscArea;"###,###,##0"+$AreaUnit)
+End if 
+asData{3}{15}:=String(([Activity]OccupValue-[Activity]OccupValActual)*$TaxMult;<>sCurrency+"###,###,##0")
+
+asData{1}{16}:=String(([Activity]OtherDiscUnitNo+[Activity]DiscUnitNo);"###,##0")
+If (<>sProduct="@R")
+asData{2}{16}:=""
+Else 
+asData{2}{16}:=String(([Activity]OtherDiscArea+[Activity]DiscArea);"###,###,##0"+$AreaUnit)
+End if 
+asData{3}{16}:=String((([Activity]OtherRentedValue+[Activity]OccupValue)-([Activity]OtherRentedValActual+[Activity]OccupValActual))*$TaxMult;<>sCurrency+"###,###,##0")
+
+If ([Activity]TotUnitNo>0)
+asData{1}{17}:=String(Round([Activity]OccupUnitNo*100/([Activity]TotUnitNo-[Activity]OtherRentedUnitNo);2);"##0.00%")
+End if 
+If ([Activity]TotUnitArea>0)
+If (<>sProduct="@R")
+asData{2}{17}:=""
+Else 
+asData{2}{17}:=String(Round([Activity]OccupArea*100/([Activity]TotUnitArea-[Activity]OtherRentedArea);2);"##0.00%")
+End if 
+End if 
+If ([Activity]TotValue>0)
+asData{3}{17}:=String(Round([Activity]OccupValue*100/([Activity]TotValue-[Activity]OtherRentedValue);2);"##0.00%")
+asData{4}{17}:=String(Round([Activity]OccupValActual*100/([Activity]TotValue-[Activity]OtherRentedValActual);2);"##0.00%")
+End if 
+
+If ([Activity]TotUnitNo>0)
+asData{1}{18}:=String(Round(([Activity]OccupUnitNo+[Activity]OtherRentedUnitNo)*100/[Activity]TotUnitNo;2);"##0.00%")
+End if 
+If ([Activity]TotUnitArea>0)
+If (<>sProduct="@R")
+asData{2}{18}:=""
+Else 
+asData{2}{18}:=String(Round(([Activity]OccupArea+[Activity]OtherRentedArea)*100/[Activity]TotUnitArea;2);"##0.00%")
+End if 
+End if 
+If ([Activity]TotValue>0)
+asData{3}{18}:=String(Round(([Activity]OccupValue+[Activity]OtherRentedValue)*100/[Activity]TotValue;2);"##0.00%")
+asData{4}{18}:=String(Round(([Activity]OccupValActual+[Activity]OtherRentedValActual)*100/[Activity]TotValue;2);"##0.00%")
+End if 
+
+// Need to do calculations here
+asData{1}{19}:="100.00%"
+If ([Activity]TotValue>0)
+asData{1}{22}:=String(Round(([Activity]OccupValActual+[Activity]OtherRentedValActual)/([Activity]TotValue)*100;2);"##0.00%")
+End if 
+If ([Activity]TotUnitNo>0) & ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{1}{22}:=String(Round(([Activity]OccupUnitNo+[Activity]OtherRentedUnitNo)/([Activity]TotUnitNo)*100;2);"##0.00%")
+End if 
+
+If ([Activity]OccupValue>0)
+asData{4}{15}:=String(Round(([Activity]OccupValue-[Activity]OccupValActual)/[Activity]OccupValue*100;2);"##0.00%")
+asData{4}{16}:=String(Round((([Activity]OtherRentedValue+[Activity]OccupValue)-([Activity]OtherRentedValActual+[Activity]OccupValActual))/([Activity]OtherRentedValue+[Activity]OccupValue)*100;2);"##0.00%")
+
+//New Calculation
+asData{1}{20}:=String(Round([Activity]OccupValActual/([Activity]OccupValue)*100;2);"##0.00%")
+asData{1}{21}:=String(Round(([Activity]OccupValActual+[Activity]OtherRentedValActual)/([Activity]OccupValue+[Activity]OtherRentedValue)*100;2);"##0.00%")
+
+End if 
+If ([Activity]TotUnitArea>0)
+If (<>sProduct="@R")
+asData{3}{19}:=""
+asData{3}{22}:=""
+asData{4}{19}:=""
+asData{4}{22}:=""
+asData{2}{22}:=""
+Else 
+asData{3}{19}:=String([Activity]TotValue/[Activity]TotUnitArea*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+asData{3}{22}:=String(([Activity]OccupValActual+[Activity]OtherRentedValActual)/[Activity]TotUnitArea*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+asData{4}{19}:=String(([Activity]TotValue/[Activity]TotUnitArea)*12*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+asData{4}{22}:=String((([Activity]OccupValActual+[Activity]OtherRentedValActual)/[Activity]TotUnitArea)*12*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{2}{22}:=String(Round(([Activity]OccupArea+[Activity]OtherRentedArea)/([Activity]TotUnitArea)*100;2);"###,##0.00%")
+End if 
+End if 
+End if 
+If ([Activity]OccupArea>0)
+If (<>sProduct="@R")
+asData{3}{20}:=""
+asData{4}{20}:=""
+Else 
+asData{3}{20}:=String([Activity]OccupValActual/[Activity]OccupArea*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+asData{4}{20}:=String([Activity]OccupValActual/([Activity]OccupArea)*12*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+asData{3}{21}:=String(([Activity]OccupValActual+[Activity]OtherRentedValActual)/([Activity]OccupArea+[Activity]OtherRentedArea)*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+asData{4}{21}:=String(([Activity]OccupValActual+[Activity]OtherRentedValActual)/([Activity]OccupArea+[Activity]OtherRentedArea)*12*$TaxMult;<>sCurrency+"###,##0.00"+$AreaRate)
+End if 
+End if 
+
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+If (Num(asData{4}{19})>0)
+asData{4}{22}:=String(100-(Round(Num(asData{4}{21})*100/Num(asData{4}{19});2));"##0.00%")
+asData{3}{22}:=Get localized string("Disc Rate")
+End if 
+End if 
+
+//Occupancy part end
+
+If (vReportSettings[[10]]="2")
+If ([Facility]ShowRecKeyStats)
+asData{1}{23}:=Get localized string("Charges WTD")
+asData{2}{23}:=Get localized string("Charges MTD")
+asData{3}{23}:=Get localized string("Receipts WTD")
+asData{4}{23}:=Get localized string("Receipts MTD")
+Else 
+asData{1}{23}:=Get localized string("Charges Today")
+asData{2}{23}:=Get localized string("Charges YTD")
+asData{3}{23}:=Get localized string("Receipts Today")
+asData{4}{23}:=Get localized string("Receipts YTD")
+End if 
+asData{1}{34+$Row}:=asData{1}{1}
+asData{2}{34+$Row}:=asData{2}{1}
+asData{3}{34+$Row}:=asData{3}{1}
+asData{4}{34+$Row}:=asData{4}{1}
+Else 
+asData{1}{23}:=asData{1}{1}
+asData{2}{23}:=asData{2}{1}
+asData{3}{23}:=asData{3}{1}
+asData{4}{23}:=asData{4}{1}
+End if 
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+If ($Row=2)
+
+//24/10/14 DAM Added for bad debt
+If ([Facility]UseBadDebts)
+asData{1}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{2}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{3}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{4}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+Else 
+asData{1}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{2}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{3}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{4}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+End if 
+
+Else 
+asData{1}{40}:=String(Round([Activity]AdvBillRntValue*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{2}{40}:=String(Round([Activity]AdvancePaidValue*$TaxMult;0);<>sCurrency+"###,###,##0")
+End if 
+Else 
+If ($Row=2)
+If ([Facility]FacilityCode="KE@")
+asData{1}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{2}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{3}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{4}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+Else 
+
+//24/10/14 DAM Added for bad debt
+If ([Facility]UseBadDebts)
+asData{1}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{2}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{3}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{4}{28}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+Else 
+asData{1}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{2}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{3}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+asData{4}{27}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);<>sCurrency+"###,###,##0")
+End if 
+
+End if 
+Else 
+asData{1}{40}:=String(Round([Activity]AdvBillRntValue;0);<>sCurrency+"###,###,##0")
+asData{2}{40}:=String(Round([Activity]AdvancePaidValue;0);<>sCurrency+"###,###,##0")
+End if 
+End if 
+If ($Row=2) & (vReportSettings[[10]]="2")
+If ([Facility]FacilityCode="KE@")
+asData{3}{28}:=""
+asData{4}{28}:=""
+Else 
+
+//24/10/14 DAM Added for bad debt
+If ([Facility]UseBadDebts)
+asData{3}{28}:=""
+asData{4}{28}:=""
+Else 
+asData{3}{27}:=""
+asData{4}{27}:=""
+End if 
+
+End if 
+End if 
+asData{1}{42}:=String([Activity]DepositsHeld;<>sCurrency+"###,###,##0")
+asData{1}{43}:=String([Activity]ActiveAgreemts;"###,###,##0")
+If ([Facility]FacilityCode="KE@")
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]MoveIn>=Date("1/"+String(Month of(vMthDate))+"/"+String(Year of(vMthDate)));*)
+If (Month of(vMthDate)=12)
+QUERY([Agreement]; & ;[Agreement]MoveIn<Date("1/1/"+String(Year of(vMthDate)+1)))
+Else 
+QUERY([Agreement]; & ;[Agreement]MoveIn<Date("1/"+String(Month of(vMthDate)+1)+"/"+String(Year of(vMthDate))))
+End if 
+QUERY SELECTION([Agreement];[Agreement]RAgreeNo#([Facility]FacilityCode+"#@"))
+$AgreementsSelection:=Records in selection([Agreement])
+If ($AgreementsSelection>0)
+asData{1}{44}:=String(Round((([Activity]InsureNew/$AgreementsSelection)*100);2))+"%"
+Else 
+asData{1}{44}:="0%"
+End if 
+Else 
+asData{1}{44}:=String([Activity]InsureNew;"###,###,##0")
+End if 
+asData{2}{44}:=String([Activity]InsureAgreemts;"###,###,##0")
+asData{3}{44}:=String([Activity]InsureUnits;"###,###,##0")//InsureUnits  MktgEmailSent  MktgLetterSent
+asData{4}{44}:=String([Activity]InsureValue;"###,###,##0")//InsureValue  ArrearsInactiveNo ArrearsInactiveValue
+//asData{1}{39}:=String([Activity]InsureNew;"###,##0")
+//asData{1}{40}:=String([Activity]InsureCancel;"###,##0")
+asData{1}{45}:=Get localized string("#")
+asData{2}{45}:=Get localized string("KeyStatMethodAgreement")
+asData{3}{45}:=Get localized string("KeyStatMethodAmount")
+asData{4}{45}:=Get localized string("KeyStatMethod%rent")
+asData{1}{46}:=String([Activity]Arrears4No;"###,###,##0")
+asData{1}{47}:=String([Activity]Arrears3No;"###,###,###,##0")
+asData{1}{48}:=String([Activity]Arrears2No;"###,##0")
+$Total:=[Activity]Arrears2No+[Activity]Arrears3No+[Activity]Arrears4No
+asData{1}{49}:=String($Total;"###,###,##0")
+asData{1}{50}:=String([Activity]Arrears1No;"###,###,##0")
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+asData{1}{51}:=String([Activity]ArrearsInactiveNo;"###,###,##0")
+Else 
+asData{1}{51}:=String($Total+[Activity]Arrears1No;"###,###,##0")
+End if 
+asData{3}{52}:=String([Activity]LateFeeWaived;<>sCurrency+"###,###,##0")
+//asData{1}{48}:=String([Activity]LateFeeWaived/;"###,###,##0")
+If ([Activity]ActiveAgreemts>0)
+asData{2}{46}:=String([Activity]Arrears4No/[Activity]ActiveAgreemts*100;"##0.00%")
+asData{2}{47}:=String([Activity]Arrears3No/[Activity]ActiveAgreemts*100;"##0.00%")
+asData{2}{48}:=String([Activity]Arrears2No/[Activity]ActiveAgreemts*100;"##0.00%")
+asData{2}{49}:=String($Total/[Activity]ActiveAgreemts*100;"##0.00%")
+asData{2}{50}:=String([Activity]Arrears1No/[Activity]ActiveAgreemts*100;"##0.00%")
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+asData{2}{51}:=String([Activity]ArrearsInactiveNo/[Activity]ActiveAgreemts*100;"##0.00%")
+Else 
+asData{2}{51}:=String(($Total+[Activity]Arrears1No)/[Activity]ActiveAgreemts*100;"##0.00%")
+End if 
+End if 
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")//Remove Tax
+asData{3}{46}:=String(Round([Activity]Arrears4Value*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{3}{47}:=String(Round([Activity]Arrears3Value*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{3}{48}:=String(Round([Activity]Arrears2Value*$TaxMult;0);<>sCurrency+"###,###,##0")
+$Total:=[Activity]Arrears2Value+[Activity]Arrears3Value+[Activity]Arrears4Value
+asData{3}{49}:=String(Round($Total*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{3}{50}:=String(Round([Activity]Arrears1Value*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{3}{51}:=String(Round(([Activity]Arrears1Value+$Total)*$TaxMult;0);<>sCurrency+"###,###,##0")
+Else 
+asData{3}{46}:=String(Round([Activity]Arrears4Value;0);<>sCurrency+"###,###,##0")
+asData{3}{47}:=String(Round([Activity]Arrears3Value;0);<>sCurrency+"###,###,##0")
+asData{3}{48}:=String(Round([Activity]Arrears2Value;0);<>sCurrency+"###,###,##0")
+$Total:=[Activity]Arrears2Value+[Activity]Arrears3Value+[Activity]Arrears4Value
+asData{3}{49}:=String(Round($Total;0);<>sCurrency+"###,###,##0")
+asData{3}{50}:=String(Round([Activity]Arrears1Value;0);<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+asData{3}{51}:=String(Round([Activity]ArrearsInactiveValue;0);<>sCurrency+"###,###,##0")
+Else 
+asData{3}{51}:=String(Round([Activity]Arrears1Value+$Total;0);<>sCurrency+"###,###,##0")
+End if 
+End if 
+For ($i;1;4)
+asData{$i}{2}:=String(Sum([Activity]InquiriesTaken);"###,##0")
+asData{$i}{3}:=String(Sum([Activity]ResvtnsTaken);"###,##0")
+asData{$i}{4}:=String(Sum([Activity]MoveIns);"###,##0")
+asData{$i}{5}:=String(Sum([Activity]MoveOuts);"###,##0")
+asData{$i}{6}:=String(Sum([Activity]MoveIns)-Sum([Activity]MoveOuts);"+##,##0;-##,##0;0")
+asData{$i}{7}:="0.00"
+asData{$i}{8}:="0.00"
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+asData{$i}{7}:=String(Sum([Activity]MktgEmailSent);"###,##0")
+asData{$i}{8}:=String(Sum([Activity]MktgLetterSent);"###,##0")
+Else 
+If (Sum([Activity]InquiriesTaken)>0)
+asData{$i}{7}:=String(Sum([Activity]Conversions)*100/Sum([Activity]InquiriesTaken);"###0.00")
+End if 
+If (Sum([Activity]Conversions)>0)
+asData{$i}{8}:=String(Sum([Activity]ConvertTime)/Sum([Activity]Conversions);"###0.00")
+End if 
+End if 
+If (vReportSettings[[10]]="2")
+If ($i=2)
+If ([Facility]FacilityCode="KE@")
+asData{1}{24}:=String(Round(Sum([Activity]RentChg);0);<>sCurrency+"###,###,##0")
+asData{1}{25}:=String(Round(Sum([Activity]DiscChg);0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtChg);0)*(-1)//bad debts for kss only
+asData{1}{25+$Row}:=String($Tot9;<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg);0)-$Tot9//minus bad debts for kss only
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg)+Num(asData{1}{23})-Num(asData{1}{24});0)-$Tot9
+End if 
+asData{1}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{1}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{1}{53})-vCurrPrepaidLate;0)
+End if 
+asData{1}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{1}{54})-vCurrPrepaidIns;0)
+End if 
+asData{1}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{1}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{1}{55})-vCurrPrepaidOther;0)
+End if 
+asData{1}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{1}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+asData{1}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+$Tot8:=Abs(Round(Sum([Activity]MerchReturnChg)*$PPTax;0))//merch returns for kss
+asData{1}{39+$Row}:=String($Tot8;<>sCurrency+"###,###,##0")
+asData{3}{24}:=String(Round(Sum([Activity]RentRec)+Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+asData{3}{25}:=String(Round(Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtRec);0)*(-1)//bad debts for Kss only
+asData{3}{26}:=String($Tot9;<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentRec);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentRec)+Num(asData{3}{24})-Num(asData{3}{25});0)-$Tot9
+End if 
+asData{3}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositRec);0)
+asData{3}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeRec);0)
+asData{3}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureRec);0)
+asData{3}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchRec);0)
+asData{3}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherRec);0)
+asData{3}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxRec);0)
+asData{3}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+asData{3}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+$Tot8:=Abs(Round(Sum([Activity]MerchReturnRec);0))//merch returns for kss
+asData{3}{39+$Row}:=String($Tot8;<>sCurrency+"###,###,##0")
+Else 
+//24/10/14 DAM Added for bad debt
+If ([Facility]UseBadDebts)
+asData{1}{24}:=String(Round(Sum([Activity]RentChg)+(Sum([Activity]DiscChg)*$PPTax);0);<>sCurrency+"###,###,##0")
+asData{1}{25}:=String(Round(Sum([Activity]DiscChg)*$PPTax;0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtChg);0)*(-1)
+asData{1}{26+$Row}:=String($Tot9;<>sCurrency+"###,###,##0")
+
+//13/11/14 DAM Added removed dicsount amount
+//$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg);0)-$Tot9
+$Tot1:=Round(Sum([Activity]RentChg);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)+Num(asData{1}{27})-Num(asData{1}{28});0)-$Tot9
+End if 
+asData{1}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{1}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{1}{53})-vCurrPrepaidLate;0)
+End if 
+asData{1}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{1}{54})-vCurrPrepaidIns;0)
+End if 
+asData{1}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{1}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{1}{51})-vCurrPrepaidOther;0)
+End if 
+asData{1}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{1}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+//asData{1}{24+$Row}:=""
+asData{1}{34+$Row}:=""
+$Tot7:=0
+asData{1}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+Else 
+asData{1}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+End if 
+//asData{1}{30+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+asData{3}{24}:=String(Round(Sum([Activity]RentRec)+Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+asData{3}{25}:=String(Round(Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentRec);0)
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentRec)+Num(asData{3}{24})-Num(asData{3}{25});0)
+End if 
+asData{3}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositRec);0)
+asData{3}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeRec);0)
+asData{3}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureRec);0)
+asData{3}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchRec);0)
+asData{3}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherRec);0)
+asData{3}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxRec);0)
+asData{3}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+//asData{3}{24+$Row}:=""
+asData{3}{33+$Row}:=""
+asData{3}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+$Tot7:=0
+Else 
+asData{3}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+End if 
+//asData{3}{30+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+
+Else 
+asData{1}{24}:=String(Round(Sum([Activity]RentChg)+(Sum([Activity]DiscChg)*$PPTax);0);<>sCurrency+"###,###,##0")
+asData{1}{25}:=String(Round(Sum([Activity]DiscChg)*$PPTax;0);<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentChg);0)
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)+Num(asData{1}{23})-Num(asData{1}{24});0)
+End if 
+asData{1}{26+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{1}{27+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{1}{53})-vCurrPrepaidLate;0)
+End if 
+asData{1}{28+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{1}{54})-vCurrPrepaidIns;0)
+End if 
+asData{1}{29+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{1}{30+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{1}{55})-vCurrPrepaidOther;0)
+End if 
+asData{1}{31+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{1}{32+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{1}{27+$Row}:=""
+asData{1}{32+$Row}:=""
+$Tot7:=0
+End if 
+asData{1}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+asData{3}{24}:=String(Round(Sum([Activity]RentRec)+Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+asData{3}{25}:=String(Round(Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentRec);0)
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentRec)+Num(asData{3}{22})-Num(asData{3}{23});0)
+End if 
+asData{3}{26+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositRec);0)
+asData{3}{27+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeRec);0)
+asData{3}{28+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureRec);0)
+asData{3}{29+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchRec);0)
+asData{3}{30+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherRec);0)
+asData{3}{31+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxRec);0)
+asData{3}{32+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{3}{27+$Row}:=""
+asData{3}{32+$Row}:=""
+$Tot7:=0
+End if 
+asData{3}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+End if 
+End if 
+End if 
+
+
+
+If ($i=3)
+If ([Facility]FacilityCode="KE@")
+asData{2}{24}:=String(Round(Sum([Activity]RentChg);0);<>sCurrency+"###,###,##0")
+asData{2}{25}:=String(Round(Sum([Activity]DiscChg);0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtChg);0)*(-1)//bad debts for kss only
+asData{2}{26}:=String($Tot9;<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg)+Num(asData{2}{27})-Num(asData{2}{25});0)-$Tot9
+End if 
+asData{2}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{2}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{2}{53})-vCurrPrepaidLate;0)
+End if 
+
+asData{2}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{2}{54})-vCurrPrepaidIns;0)
+End if 
+asData{2}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{2}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{2}{55})-vCurrPrepaidOther;0)
+End if 
+asData{2}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{2}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+$Tot8:=Round(Sum([Activity]MerchReturnChg)*$PPTax;0)//merch returns for kss
+asData{2}{39+$Row}:=String($Tot8;<>sCurrency+"###,###,##0")
+asData{2}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+asData{4}{24}:=String(Round(Sum([Activity]RentRec)+Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+asData{4}{25}:=String(Round(Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtRec);0)*(-1)//bad debts for kss only
+asData{4}{26}:=String($Tot9;<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentRec);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentRec)+Num(asData{4}{27})-Num(asData{4}{28});0)-$Tot9
+End if 
+asData{4}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositRec);0)
+asData{4}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeRec);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{2}{53})-vCurrPrepaidLate;0)
+End if 
+asData{4}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureRec);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{2}{54})-vCurrPrepaidIns;0)
+End if 
+asData{4}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchRec);0)
+asData{4}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherRec);0)
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{2}{55})-vCurrPrepaidOther;0)
+End if 
+asData{4}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxRec);0)
+asData{4}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+$Tot8:=Abs(Round(Sum([Activity]MerchReturnRec);0))//merch returns for kss
+asData{4}{39+$Row}:=String($Tot8;<>sCurrency+"###,###,##0")
+asData{4}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+Else 
+
+If ([Facility]UseBadDebts)
+
+asData{2}{24}:=String(Round(Sum([Activity]RentChg)+(Sum([Activity]DiscChg)*$PPTax);0);<>sCurrency+"###,###,##0")
+asData{2}{25}:=String(Round(Sum([Activity]DiscChg)*$PPTax;0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtChg);0)*(-1)//bad debts for kss only
+asData{2}{26}:=String($Tot9;<>sCurrency+"###,###,##0")
+//13/11/14 DAM Added removed dicsount amount
+//$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg);0)-$Tot9
+$Tot1:=Round(Sum([Activity]RentChg);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)+Num(asData{2}{27})-Num(asData{2}{28});0)-$Tot9
+End if 
+asData{2}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{2}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+asData{2}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+asData{2}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{2}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+asData{2}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{2}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+//asData{2}{24+$Row}:=""
+asData{2}{34+$Row}:=""
+$Tot7:=0
+asData{2}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+Else 
+asData{2}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+End if 
+//asData{2}{30+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+asData{4}{24}:=String(Round(Sum([Activity]RentRec)+Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+asData{4}{25}:=String(Round(Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+
+$Tot9:=Round(Sum([Activity]BadDebtRec);0)*(-1)//bad debts for kss only
+asData{4}{26}:=String($Tot9;<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentRec);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentRec)+Num(asData{4}{27})-Num(asData{4}{28});0)-$Tot9
+End if 
+asData{4}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositRec);0)
+asData{4}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeRec);0)
+asData{4}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureRec);0)
+asData{4}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchRec);0)
+asData{4}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherRec);0)
+asData{4}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxRec);0)
+asData{4}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+//asData{4}{24+$Row}:=""
+asData{4}{33+$Row}:=""
+$Tot7:=0
+End if 
+asData{4}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+
+Else 
+asData{2}{24}:=String(Round(Sum([Activity]RentChg)+(Sum([Activity]DiscChg)*$PPTax);0);<>sCurrency+"###,###,##0")
+asData{2}{25}:=String(Round(Sum([Activity]DiscChg)*$PPTax;0);<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentChg);0)
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)+Num(asData{2}{26})-Num(asData{2}{27});0)
+End if 
+asData{2}{26+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{2}{27+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+
+asData{2}{28+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+asData{2}{29+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{2}{30+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+asData{2}{31+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{2}{32+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{2}{27+$Row}:=""
+asData{2}{32+$Row}:=""
+$Tot7:=0
+End if 
+asData{2}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+asData{4}{24}:=String(Round(Sum([Activity]RentRec)+Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+asData{4}{25}:=String(Round(Sum([Activity]DiscRec);0);<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentRec);0)
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentRec)+Num(asData{4}{26})-Num(asData{4}{27});0)
+End if 
+asData{4}{26+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositRec);0)
+asData{4}{27+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeRec);0)
+asData{4}{28+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureRec);0)
+asData{4}{29+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchRec);0)
+asData{4}{30+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherRec);0)
+asData{4}{31+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxRec);0)
+asData{4}{32+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{4}{27+$Row}:=""
+asData{4}{32+$Row}:=""
+$Tot7:=0
+End if 
+asData{4}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+
+End if 
+End if 
+End if 
+Else 
+If ([Facility]FacilityCode="KE@")
+asData{$i}{24}:=String(Round(Sum([Activity]RentChg);0);<>sCurrency+"###,###,##0")
+asData{$i}{25}:=String(Round(Sum([Activity]DiscChg);0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtChg);0)*(-1)//bad debts for kss only
+asData{$i}{26}:=String($Tot9;<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg)+Num(asData{$i}{27})-Num(asData{$i}{28});0)-$Tot9
+End if 
+asData{$i}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{$i}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{$i}{53})-vCurrPrepaidLate;0)
+End if 
+asData{$i}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{$i}{54})-vCurrPrepaidIns;0)
+End if 
+asData{$i}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{$i}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{$i}{54})-vCurrPrepaidOther;0)
+End if 
+asData{$i}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{$i}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+$Tot8:=Abs(Round(Sum([Activity]MerchReturnChg)*$PPTax;0))//merch returns for kss
+asData{$i}{39+$Row}:=String($Tot8;<>sCurrency+"###,###,##0")
+asData{$i}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+Else 
+
+//24/10/14 DAM Added code forbad debt
+If ([Facility]UseBadDebts)
+
+asData{$i}{24}:=String(Round(Sum([Activity]RentChg)+(Sum([Activity]DiscChg)*$PPTax);0);<>sCurrency+"###,###,##0")
+asData{$i}{25}:=String(Round(Sum([Activity]DiscChg)*$PPTax;0);<>sCurrency+"###,###,##0")
+$Tot9:=Round(Sum([Activity]BadDebtChg);0)*(-1)//bad debts for kss only
+asData{$i}{26}:=String($Tot9;<>sCurrency+"###,###,##0")
+//13/11/14 DAM Added removed dicsount amount
+//$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg);0)-$Tot9
+$Tot1:=Round(Sum([Activity]RentChg);0)-$Tot9
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)+Num(asData{$i}{27})-Num(asData{$i}{28});0)-$Tot9
+End if 
+asData{$i}{27+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{$i}{28+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{$i}{53})-vCurrPrepaidLate;0)
+End if 
+asData{$i}{29+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{$i}{54})-vCurrPrepaidIns;0)
+End if 
+asData{$i}{30+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{$i}{31+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{$i}{55})-vCurrPrepaidOther;0)
+End if 
+asData{$i}{32+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{$i}{33+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+//asData{$i}{24+$Row}:=""
+asData{$i}{34+$Row}:=""
+$Tot7:=0
+asData{$i}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+Else 
+asData{$i}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+End if 
+//asData{$i}{30+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+
+Else 
+asData{$i}{24}:=String(Round(Sum([Activity]RentChg)+(Sum([Activity]DiscChg)*$PPTax);0);<>sCurrency+"###,###,##0")
+asData{$i}{25}:=String(Round(Sum([Activity]DiscChg)*$PPTax;0);<>sCurrency+"###,###,##0")
+$Tot1:=Round(Sum([Activity]RentChg);0)
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)+Num(asData{$i}{26})-Num(asData{$i}{27});0)
+End if 
+asData{$i}{26+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{$i}{27+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+If ($Row=2)
+$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{$i}{53})-vCurrPrepaidLate;0)
+End if 
+asData{$i}{28+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+If ($Row=2)
+$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{$i}{54})-vCurrPrepaidIns;0)
+End if 
+asData{$i}{29+$Row}:=String($Tot4;<>sCurrency+"###,###,##0")
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{$i}{30+$Row}:=String($Tot5;<>sCurrency+"###,###,##0")
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+If ($Row=2)
+$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{$i}{55})-vCurrPrepaidOther;0)
+End if 
+asData{$i}{31+$Row}:=String($Tot6;<>sCurrency+"###,###,##0")
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{$i}{32+$Row}:=String($Tot7;<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{$i}{27+$Row}:=""
+asData{$i}{32+$Row}:=""
+$Tot7:=0
+End if 
+asData{$i}{33+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);<>sCurrency+"###,###,##0")
+End if 
+
+End if 
+End if 
+$Tot1:=Round(Sum([Activity]CashRec);0)
+asData{$i}{35+$Row}:=String($Tot1;<>sCurrency+"###,###,##0")
+$Tot2:=Round(Sum([Activity]CreditRec);0)
+asData{$i}{36+$Row}:=String($Tot2;<>sCurrency+"###,###,##0")
+$Tot3:=Round(Sum([Activity]Refunds);0)
+asData{$i}{37+$Row}:=String($Tot3;<>sCurrency+"###,###,##0")
+asData{$i}{38+$Row}:=String(Round($Tot1+$Tot2+$Tot3;0);<>sCurrency+"###,###,##0")
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+
+If ([Facility]UseBadDebts)
+asData{$i}{35+$Row}:=String(Round(Sum([Activity]CashRec)*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{$i}{36+$Row}:=String(Round(Sum([Activity]CreditRec)*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{$i}{37+$Row}:=String(Round((Sum([Activity]CashRec)+Sum([Activity]CreditRec))*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{$i}{38+$Row}:=String(Round(Sum([Activity]Refunds)*$TaxMult;0);<>sCurrency+"###,###,##0")
+Else 
+asData{$i}{35+$Row}:=String(Round(Sum([Activity]CashRec)*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{$i}{36+$Row}:=String(Round(Sum([Activity]CreditRec)*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{$i}{37+$Row}:=String(Round((Sum([Activity]CashRec)+Sum([Activity]CreditRec))*$TaxMult;0);<>sCurrency+"###,###,##0")
+asData{$i}{38+$Row}:=String(Round(Sum([Activity]Refunds)*$TaxMult;0);<>sCurrency+"###,###,##0")
+End if 
+
+End if 
+asData{$i}{52}:=String(Round(Sum([Activity]LateFeeWaived);0);<>sCurrency+"###,###,##0")
+If ($i=3)
+$InsureNew:=Sum([Activity]InsureNew)
+QUERY([Activity];[Activity]ActivityDate>=$Year;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=vMthDate)
+Else 
+If ($i#4)//Week & Month $i determines
+QUERY([Activity];[Activity]ActivityDate=vMthDate;*)//This to get the right month
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+$p:=Field(10;$i+1)
+QUERY([Activity];$p->=$p->;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=vMthDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+End if 
+End if 
+End for 
+$Total:=Num(asData{4}{11})
+If ($Total>0)
+asData{4}{46}:=String(Round(Num(asData{3}{46})/$Total*100;2);"##0.00%")
+asData{4}{47}:=String(Round(Num(asData{3}{47})/$Total*100;2);"##0.00%")
+asData{4}{48}:=String(Round(Num(asData{3}{48})/$Total*100;2);"##0.00%")
+asData{4}{49}:=String(Round(Num(asData{3}{49})/$Total*100;2);"##0.00%")
+asData{4}{50}:=String(Round(Num(asData{3}{50})/$Total*100;2);"##0.00%")
+asData{4}{51}:=String(Round(Num(asData{3}{51})/$Total*100;2);"##0.00%")
+asData{4}{52}:=String(Round(Num(asData{3}{52})/$Total*100;2);"##0.00%")
+End if 
+If ([Facility]FacilityCode="KE@")
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]MoveIn>=Date("1/"+String(Month of(vMthDate))+"/"+String(Year of(vMthDate)));*)
+If (Month of(vMthDate)=12)
+QUERY([Agreement]; & ;[Agreement]MoveIn<Date("1/1/"+String(Year of(vMthDate)+1)))
+Else 
+QUERY([Agreement]; & ;[Agreement]MoveIn<Date("1/"+String(Month of(vMthDate)+1)+"/"+String(Year of(vMthDate))))
+End if 
+QUERY SELECTION([Agreement];[Agreement]RAgreeNo#([Facility]FacilityCode+"#@"))
+$AgreementsSelection:=Records in selection([Agreement])
+If ($AgreementsSelection>0)
+asData{1}{44}:=String(Round((($InsureNew/$AgreementsSelection)*100);2))+"%"
+Else 
+asData{1}{44}:="0%"
+End if 
+Else 
+asData{1}{44}:=String($InsureNew;"####0")
+End if 
+If ([Facility]FacilityCode="PL@") & (vReportSettings[[16]]="1")//Specific to Planet - Delete Conversion stats
+aCustName{7}:=""
+aCustName{8}:=""
+asData{1}{7}:=""
+asData{2}{7}:=""
+asData{3}{7}:=""
+asData{4}{7}:=""
+asData{1}{8}:=""
+asData{2}{8}:=""
+asData{3}{8}:=""
+asData{4}{8}:=""
+End if 

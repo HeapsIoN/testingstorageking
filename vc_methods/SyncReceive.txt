@@ -1,0 +1,295 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Called from Menu or by LogMonServer
+//When called by Menu the user imports the datafile and has several options
+//When called by LogMonServer options are set to defaults or to values passed from LogMonServer
+
+C_LONGINT($i;$Status)
+C_BOOLEAN($1;$2;$4;$5;$DeleteExisting;$SetToSynced;$DownloadImportFromFTP;$FullRebuild;$vbUploadContinue)//Delete Existing Records; Set events waiting to be sent to site as synced
+C_TEXT($3;$FilenameTxt;$FilenameZip;$DownloadFilename)//Site Datafile text file to import
+
+//Default values
+$StorePassword:=<>sCurrentUser//If called from LogMonServer then store the current user and force to be authenticated, later restored.   When called from Menu the user is required to have permission
+$DeleteExisting:=True
+$SetToSynced:=True
+$DownloadImportFromFTP:=False
+$FilenameTxt:=""
+$vbUploadContinue:=False
+$FullRebuild:=False
+
+//If called from LogMonServer the parameters are assigned to local variables
+If (Count parameters>=1)
+<>sCurrentUser:="AdminSupport"
+$DeleteExisting:=$1
+If (Count parameters>=2)
+$SetToSynced:=$2
+If (Count parameters>=3)
+$FilenameTxt:=$3
+If (Count parameters>=4)
+$DownloadImportFromFTP:=$4
+If (Count parameters>=5)
+$FullRebuild:=$5
+End if 
+End if 
+End if 
+End if 
+End if 
+
+
+//Determine pathname / filename of archived and unarchived datafile
+$FilenameZip:=Replace string($FilenameTxt;".txt";".zip")
+$Pathname:=<>sBackupPath
+$DownloadFilename:=$FilenameZip
+
+
+//Get FTP Details for download from MV
+If ($FilenameTxt#"") & ($DownloadImportFromFTP=True)
+$vbUploadContinue:=False
+$vtFacilityCode:=Substring($FilenameTxt;1;5)
+
+$vtGetFTPDetailsResult:=WSC_ImportMVSite ($vtFacilityCode;"GetFTPDetails";0)
+$vtGetFTPDetailsReturnCode:=GetSeparatedText ($vtGetFTPDetailsResult;",";1)
+Case of 
+: ($vtGetFTPDetailsReturnCode="201")//FTP Host is not supplied
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Host not supplied");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Host not supplied"))
+: ($vtGetFTPDetailsReturnCode="202")//FTP User is not supplied
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP User not supplied");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP User not supplied"))
+: ($vtGetFTPDetailsReturnCode="203")//FTP Password is not supplied
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Password not supplied");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Password not supplied"))
+: ($vtGetFTPDetailsReturnCode="204")//FTP Path is not supplied
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Path not supplied");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Path not supplied"))
+: ($vtGetFTPDetailsReturnCode="")//No details returned from server
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("No response from MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$vtFacilityCode+" - "+Get localized string("No response from MV"))
+Else 
+//FTP details received successfully
+$vtFTPHost:=GetSeparatedText ($vtGetFTPDetailsResult;",";2)
+$vtFTPUser:=GetSeparatedText ($vtGetFTPDetailsResult;",";3)
+$vtFTPPass:=GetSeparatedText ($vtGetFTPDetailsResult;",";4)
+$vtFTPPath:=GetSeparatedText ($vtGetFTPDetailsResult;",";5)
+If ($vtFTPHost#"") & ($vtFTPUser#"") & ($vtFTPPass#"") & ($vtFTPPath#"")
+$vbUploadContinue:=True
+End if 
+End case 
+End if 
+
+
+//Download the file from the FTP server and place in the 'Backups' folder
+If ($vbUploadContinue=True) & ($DownloadImportFromFTP=True)
+If (Test path name($Pathname+$DownloadFilename)=Is a document)
+DELETE DOCUMENT($Pathname+$DownloadFilename)
+End if 
+If (Test path name($Pathname+$FilenameTxt)=Is a document)
+DELETE DOCUMENT($Pathname+$FilenameTxt)
+End if 
+
+$vbUploadContinue:=False
+$viFTPError:=IT_SetTimeOut (5)
+
+Case of 
+: (IntegerToBoolean (FTP_Login ($vtFTPHost;$vtFTPUser;$vtFTPPass;$FTPID;$FTPWelcome)))
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Download for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Server Login failed");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile Download for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Server Login failed"))
+: (IntegerToBoolean (FTP_ChangeDir ($FTPID;$vtFTPPath)))
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Download for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Server Change Directory failed");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile Download for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Server Change Directory failed"))
+: (IntegerToBoolean (FTP_Receive ($FTPID;$DownloadFilename;$Pathname+$DownloadFilename;1)))
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Download for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Server Receive failed");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile Download for Facility")+" "+$vtFacilityCode+" - "+Get localized string("FTP Server Receive failed"))
+: (Not(IntegerToBoolean (FTP_VerifyID ($FTPID))))
+$viFTPError:=FTP_Logout ($FTPID)
+
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Extracting")+" "+$Pathname+$FilenameTxt+" from "+$Pathname+$DownloadFilename)
+//Extract the .zip file to .txt
+If (<>iPlatform=3)//Windows
+If (Application type=4D Local mode) | (Application type=4D Volume desktop)
+$Command:=Char(Double quote)+<>sResourcesPath+"7za.exe"+Char(Double quote)+" e "+Char(Double quote)+$Pathname+$DownloadFilename+Char(Double quote)+" "+Char(Double quote)+$Pathname+$FilenameTxt+Char(Double quote)
+Else 
+$Command:=Char(Double quote)+<>sResourcesPath+"7za.exe"+Char(Double quote)+" e "+Char(Double quote)+$Pathname+$DownloadFilename+Char(Double quote)+" -o"+Char(Double quote)+$Pathname+Char(Double quote)
+End if 
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+$InputStream:=""
+$OutputStream:=""
+$ErrorStream:=""
+LAUNCH EXTERNAL PROCESS($Command;$InputStream;$OutputStream;$ErrorStream)
+Else 
+$UPathname:=Substring($Pathname;Position(":";$Pathname))
+$UPathname:=Replace string($UPathname;":";"/")
+$UPathname:=Replace string($UPathname;" ";"\\ ")
+$Command:="unzip -j "+$UPathname+$DownloadFilename+" -d "+$UPathname
+$InputStream:=""
+$OutputStream:=""
+$ErrorStream:=""
+LAUNCH EXTERNAL PROCESS($Command;$InputStream;$OutputStream;$ErrorStream)
+End if 
+If (OK=1) & (Test path name($Pathname+$FilenameTxt)=Is a document)
+$vbUploadContinue:=True
+Else 
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Import Archive Extract for Facility")+" "+$vtFacilityCode+" "+Get localized string("failed! - Command")+": "+$Command+", "+Get localized string("Output Stream:")+" "+$OutputStream+", "+Get localized string("Error Stream:")+" "+$ErrorStream;0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Import Archive Extract for Facility")+" "+$vtFacilityCode+" "+Get localized string("failed! - Command")+": "+$Command+", "+Get localized string("Output Stream:")+" "+$OutputStream+", "+Get localized string("Error Stream:")+" "+$ErrorStream)
+End if 
+End case 
+End if 
+
+//Import the datafile.
+If ((<>sCurrentUser="AdminSupport") & ($DownloadImportFromFTP=False)) | (($vbUploadContinue=True) & ($DownloadImportFromFTP=True))
+
+<>sCurrentUser:=$StorePassword
+$Abort:=False
+If ($FilenameTxt#"")
+SET CHANNEL(10;$Pathname+$FilenameTxt)
+$i:=Length(Document)
+$vtFacilityCode:=Substring(Document;$i-10;5)
+QUERY([Facility];[Facility]FacilityCode=$vtFacilityCode)
+Else 
+SET CHANNEL(10;"")
+End if 
+If (OK=1)
+$i:=Length(Document)
+$vtFacilityCode:=Substring(Document;$i-10;5)
+$Table:=Num(Substring(Document;$i-5;2))
+If ($vtFacilityCode=[Facility]FacilityCode)
+If (Count parameters>2)
+OK:=0
+If ($DeleteExisting)
+OK:=1
+End if 
+Else 
+ConfirmTwo (Get localized string("Delete existing records for")+" "+$vtFacilityCode+" "+Get localized string("table1")+" "+String($Table;"#0;-0;All")+" "+Get localized string("if any?");"Yes";"No")
+End if 
+If (OK=1)
+$Status:=3
+//If (Shift down)
+//ConfirmTwo ("Update Activity data on receiving from remote site?";"No";"Yes")
+//If (OK=1)
+//$Status:=3
+//End if 
+//End if 
+If ($FullRebuild#True)
+READ WRITE(*)
+READ ONLY([Facility])//SDD 19/1/11
+LOAD RECORD([Facility])//SDD 19/1/11 In case the facility record is locked
+$Name:=SetSyncUser ("Sync";$Status)
+If ([UserLogins]RecordStatus=$Status)
+Case of 
+: ($Table>1)
+
+If (<>aiFacilityField{$Table}>0)
+$pTable:=Table($Table)
+$pFacility:=Field($Table;<>aiFacilityField{$Table})
+QUERY($pTable->;$pFacility->=$vtFacilityCode+"@")
+DELETE SELECTION($pTable->)
+End if 
+
+: ($Table=0)
+
+For ($i;2;Size of array(<>aiFacilityField))
+If (<>aiFacilityField{$i}>0)
+$pTable:=Table($i)
+$pFacility:=Field($i;<>aiFacilityField{$i})
+QUERY($pTable->;$pFacility->=$vtFacilityCode+"@")
+DELETE SELECTION($pTable->)
+End if 
+End for 
+
+End case 
+Else 
+AlertMessage (Get localized string("The existing records could not be deleted because Sync status could not be set to 3!"))
+$Abort:=True
+End if 
+SetSyncUser ($Name)
+READ ONLY(*)
+End if 
+End if 
+If ($Abort=False)
+If (Application type=4D Remote mode)
+SET PROCESS VARIABLE(Process number("LogMonServer";*);<>tLoop;False)
+End if 
+$Table:=0
+$RecNo:=0
+If (Shift down)
+$Temp:=RequestMessage (Get localized string("Receive after: Table, Record Number");"11,4322")
+If (OK=1)
+$Table:=Num(GetTextNo ($Temp;1;","))
+$RecNo:=Num(GetTextNo ($Temp;2;","))
+End if 
+End if 
+READ WRITE([EventLog])
+If ($FullRebuild)
+QUERY([EventLog];[EventLog]SyncStatus=3;*)
+QUERY([EventLog]; & ;[EventLog]EventTable#1)
+DELETE SELECTION([EventLog])
+Else 
+QUERY([EventLog];[EventLog]FacilityCode=$vtFacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]SyncStatus=0)
+If (Records in selection([EventLog])>0)
+If (Count parameters>2)
+OK:=0
+If ($SetToSynced=True)
+OK:=1
+End if 
+Else 
+ConfirmTwo (Get localized string("WARNING - There are")+" "+String(Records in selection([EventLog]))+" "+Lowercase(Get localized string("Events for"))+" "+$vtFacilityCode+" "+Get localized string("waiting to be sent to site. Set these to SyncStatus=1?");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+APPLY TO SELECTION([EventLog];[EventLog]SyncStatus:=1)
+Else 
+AlertMessage (Get localized string("WARNING - Leaving these events could cause serious corruption at site. Do not turn on syncing until rectified."))
+End if 
+End if 
+End if 
+RECEIVE RECORD([EventLog])
+Open window(20;50;400;150;0;Get localized string("Progress"))
+$i:=0
+//06/08/14 DAM Added for PK EventLog table
+$NewPK:=Sequence number([EventLog])
+While (OK=1)
+$i:=$i+1
+GOTO XY(2;2)
+If ([EventLog]EventTable>$Table) | (([EventLog]EventTable=$Table) & ([EventLog]EventRecNo>$RecNo))
+[EventLog]PrimaryKey:=$NewPK
+$NewPK:=$NewPK+1
+SAVE RECORD([EventLog])
+MESSAGE(Get localized string("Receiving EventLog record")+"  - "+String($i)+"    ")
+Else 
+MESSAGE(Get localized string("Skipping EventLog record")+"  - "+String($i)+"    ")
+End if 
+RECEIVE RECORD([EventLog])
+End while 
+SET DATABASE PARAMETER([EventLog];Table sequence number;$NewPK)
+CLOSE WINDOW
+SyncRecordLog (Get localized string("Datafile for Facility")+" "+$vtFacilityCode+" "+Get localized string("was successfully imported"))
+If (Application type=4D Remote mode)
+SET PROCESS VARIABLE(Process number("LogMonServer";*);<>tLoop;True)
+End if 
+End if 
+Else 
+SyncRecordLog (Get localized string("Document for facility code")+" "+$vtFacilityCode+" "+Get localized string("does not match the selected facility code")+" "+[Facility]FacilityCode)
+End if 
+SET CHANNEL(11)
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+End if 
+If ($FilenameTxt="")//It is a manual import
+ConfirmTwo (Get localized string("Import Non Syncing table records from the 'backups' folder?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ImportNonSyncingTables 
+End if 
+End if 
+Else 
+If ($vbUploadContinue=False) & ($DownloadImportFromFTP=True)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Download for Facility")+" "+$vtFacilityCode+" "+Get localized string("failed1");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile Download for Facility")+" "+$vtFacilityCode+" "+Get localized string("failed1"))
+End if 
+End if 
+//SDD 6/1/11 It would seem to me that the following method should not be executed until the records have been processed by SyncUpdate
+If (Count parameters<2)//SDD Only do this if not called from LogMonServer
+InitNextPrimaryKeys 
+End if 
+READ ONLY(*)//SDD 12/1/12 To try and prevent locked records after importing
+UnloadAll 
+LOAD RECORD([Facility])
+LOAD RECORD([UserLogins])

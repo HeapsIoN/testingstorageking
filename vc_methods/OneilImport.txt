@@ -1,0 +1,56 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+$Doc:=Open document("")
+If (OK=1)
+ConfirmTwo ("Is this for Archive Box Storage or Archive Services?";"Box Storage";"Services")
+If (OK=1)
+$Analysis:=<>sFacility+"ABS"
+Else 
+$Analysis:=<>sFacility+"AS1"
+End if 
+READ WRITE([Trxs])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+While (Length($Buffer)>=10)
+CREATE RECORD([Trxs])
+For ($i;1;6)//Six fields
+$j:=Position(",";$Buffer)
+If ($j>1)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=2)
+[Trxs]AgreeNo:=<>sFacility+$Field
+QUERY([Agreement];[Agreement]RAgreeNo=[Trxs]AgreeNo)
+If (Records in selection([Agreement])=1)
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+Else 
+[Trxs]CustomerCode:=Substring([Trxs]AgreeNo;1;5)
+End if 
+: ($i=5)
+[Trxs]TrxDate:=Date($Field)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Trxs]TrxDate
+Else 
+//Do nothing
+End case 
+Else 
+$Field:=$Buffer
+If ($i=6)
+[Trxs]Charge:=True
+[Trxs]TotAmt:=Num($Field)
+End if 
+End if 
+End for 
+[Trxs]AnalysisCode:=$Analysis
+[Trxs]TaxAmt:=Round(CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode);2)
+[Trxs]UserLogin:=<>sCurrentUser
+SAVE RECORD([Trxs])
+bFromMoveIn:=False
+vLateResetCycle:=False
+vNewReceipt:=True
+UpdateReceipt ("Web")
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+CLOSE DOCUMENT($Doc)
+End if 

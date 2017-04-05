@@ -1,0 +1,269 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 17/08/12 Gone back to using the old code which is in the True statement.  The one that currently doesnt work is in the Else part at the bottom, and can be removed later
+//SDD 21/08/12 This is not working correctly in all situations and we need to conduct a full test.
+//Possible matching scenarios:
+//1. Is Matched One Receipt & one or more Charges
+//2. Is Matched with more than one Receipt and several charges
+//3. Is Matched with negative charges
+//4. Is matched but no charges (i.e. A positive and a negative receipt matched together)
+//5. Is not matched with charges
+//6. Is not matched without charges
+
+//28/07/14 DAM Added for WS_GetReportData
+C_BOOLEAN($1;$Web)
+$Web:=False
+If (Count parameters=1)
+$Web:=$1
+End if 
+
+If (True)
+C_LONGINT($i;$x)
+ARRAY TEXT(aAnlys;0)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+SELECTION TO ARRAY([Analysis]Code;aAnlys)
+ARRAY REAL(aTaxs;Size of array(aAnlys))
+ARRAY REAL(aTotal;Size of array(aAnlys))
+ARRAY BOOLEAN(aUsed;Size of array(aAnlys))
+For ($i;1;Size of array(aAnlys))
+aTaxs{$i}:=0
+aTotal{$i}:=0
+aUsed{$i}:=False
+End for 
+If ($Web=False)
+$Winref:=Open window(20;150;500;250;0;"Progress")
+End if 
+CREATE SET([Trxs];"ToPrint")
+For ($i;1;Records in set("ToPrint"))
+USE SET("ToPrint")
+GOTO SELECTED RECORD([Trxs];$i)
+If ($Web=False)
+GOTO XY(2;2)
+MESSAGE("Calculating Analysis of Charges for "+String($i)+" of "+String(Records in set("ToPrint"))+" transactions"+"    ")
+End if 
+If ([Trxs]AgreeNo=(<>sFacility+"@"))
+If (GetArrayfromMiscDetls )
+For ($j;1;Size of array(aAnalysisCode))
+$x:=Find in array(aAnlys;aAnalysisCode{$j})
+If ($x>0)
+aTaxs{$x}:=aTaxs{$x}+aTaxAmt{$j}
+aTotal{$x}:=aTotal{$x}+aTotAmt{$j}
+aUsed{$x}:=True
+Else 
+If ($Web=False)
+AlertMessage ("WARNING - The analysis report will be incorrect, because the analysis code for ch"+"arges :"+aAnalysisCode{$j}+" is not on file!")
+End if 
+End if 
+End for 
+Else 
+If ($Web=False)
+AlertMessage ("WARNING - The analysis report will be incorrect as transactions for "+[Trxs]AgreeNo+" do not match for matchcode:"+String([Trxs]Match))
+End if 
+End if 
+End if 
+End for 
+CLEAR SET("ToPrint")
+If ($Web=False)
+CLOSE WINDOW($WinRef)
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+QUERY SELECTION([Analysis];[Analysis]Code=<>sFacility+"RF";*)
+For ($i;1;Size of array(aAnlys))
+If (aUsed{$i}=True)
+QUERY SELECTION([Analysis]; | ;[Analysis]Code=aAnlys{$i};*)
+End if 
+End for 
+QUERY SELECTION([Analysis])
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+BREAK LEVEL(0)
+ACCUMULATE(vAmt1;vAmt2;vAmt3)
+If ($Web)
+C_REAL($TotalTax;$TotalNet;$Total)
+$TotalTax:=0
+$TotalNet:=0
+$Total:=0
+For ($z;1;Records in selection([Analysis]))
+
+APPEND TO ARRAY(aCustName;Substring([Analysis]Code;6))
+APPEND TO ARRAY(asData1;[Analysis]Description)
+If ([Analysis]Taxable)
+APPEND TO ARRAY(asData2;Get localized string("Yes"))
+Else 
+APPEND TO ARRAY(asData2;Get localized string("No"))
+End if 
+
+$i:=Find in array(aAnlys;[Analysis]Code)
+If ($i>0)
+APPEND TO ARRAY(asData3;String(aTaxs{$i}))
+$TotalTax:=$TotalTax+aTaxs{$i}
+APPEND TO ARRAY(asData4;String(Round(aTotal{$i}-aTaxs{$i};2)))
+$TotalNet:=$TotalNet+(Round(aTotal{$i}-aTaxs{$i};2))
+APPEND TO ARRAY(asData5;String(Round(aTotal{$i};2)))
+$Total:=$Total+Round(aTotal{$i};2)
+End if 
+
+NEXT RECORD([Analysis])
+End for 
+
+APPEND TO ARRAY(aCustName;"Subtotal:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String($TotalTax))
+APPEND TO ARRAY(asData4;String($TotalNet))
+APPEND TO ARRAY(asData5;String($Total))
+
+APPEND TO ARRAY(aCustName;"Plus Tax Charged:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;String($TotalTax))
+APPEND TO ARRAY(asData5;"0.00")
+
+APPEND TO ARRAY(aCustName;"Total Banked:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;String($TotalNet+$TotalTax))
+APPEND TO ARRAY(asData5;String($Total))
+
+
+Else 
+FORM SET OUTPUT([Analysis];"ChargeAnalysis")
+PrintSelection ("P";->[Analysis])
+FORM SET OUTPUT([Analysis];"Output")
+End if 
+
+Else 
+C_LONGINT($i;$x;$j)
+ARRAY TEXT(aAnlys;0)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+SELECTION TO ARRAY([Analysis]Code;aAnlys)
+ARRAY REAL(aTaxs;Size of array(aAnlys))
+ARRAY REAL(aTotal;Size of array(aAnlys))
+ARRAY LONGINT(aUsedTranPri;Size of array(aAnlys))
+ARRAY BOOLEAN(aUsed;Size of array(aAnlys))
+ARRAY LONGINT(aRecNo;0)
+//ARRAY LONGINT(aSeqNo;0)
+ARRAY LONGINT(aSelection;0)
+
+For ($i;1;Size of array(aAnlys))
+aTaxs{$i}:=0
+aTotal{$i}:=0
+aUsed{$i}:=False
+End for 
+If (Records in selection([Trxs])>0)
+FIRST RECORD([Trxs])
+vCustCode:=""
+ARRAY LONGINT(aUsedTransPri;0)
+ARRAY REAL(aUsedTransVal;0)
+ARRAY REAL(aUsedTransTax;0)
+Repeat 
+ORDER BY([Trxs]CustomerCode)
+If (vCustCode#[Trxs]CustomerCode)
+vCustCode:=[Trxs]CustomerCode
+End if 
+vAgreeNo:=[Trxs]AgreeNo
+$TrxDate:=[Trxs]TrxDate
+vRecNo:=Record number([Trxs])
+$ReceiptAmt:=[Trxs]TotAmt
+REMOVE FROM SET([Trxs];"Report")
+vNew:=True
+If ([Trxs]Match>0)
+QUERY([Trxs];[Trxs]Match=[Trxs]Match;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=vAgreeNo)
+If (vAgreeNo="@MISCL")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate)
+End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+Else 
+MatchIncomeReceived (False)//false = not from Check Activity 
+End if 
+If (vNew=True)
+For ($j;1;Records in selection([Trxs]))
+
+Case of 
+: ([Trxs]Charge=True)
+$x:=Find in array(aAnlys;[Trxs]AnalysisCode)
+If ($x>0)
+$pos:=Find in array(aUsedTranPri;[Trxs]PrimaryKey)
+If ($pos>0)
+$existingValue:=aUsedTransVal{$pos}
+$existingTax:=aUsedTransTax{$pos}
+Else 
+APPEND TO ARRAY(aUsedTransPri;[Trxs]PrimaryKey)
+APPEND TO ARRAY(aUsedTransVal;[Trxs]TotAmt)
+APPEND TO ARRAY(aUsedTransTax;[Trxs]TaxAmt)
+$pos:=Size of array(aUsedTransPri)
+$existingValue:=aUsedTransVal{$pos}
+$existingTax:=aUsedTransTax{$pos}
+End if 
+
+Case of 
+: ($ReceiptAmt>$existingValue)
+$ReceiptAmt:=$ReceiptAmt-$existingValue
+$Tax:=[Trxs]TaxAmt
+$TotAmt:=$existingValue
+aUsedTransVal{$pos}:=0
+aUsedTransTax{$pos}:=0
+: ($ReceiptAmt<$existingValue) & ($ReceiptAmt>0)
+$TotAmt:=$ReceiptAmt
+$Tax:=CalcTaxAmt ($ReceiptAmt;[Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;2)
+$ReceiptAmt:=0
+$j:=Records in selection([Trxs])
+aUsedTransVal{$pos}:=$existingValue-$TotAmt
+aUsedTransTax{$pos}:=$existingTax-$Tax
+: ($ReceiptAmt=[Trxs]TotAmt)//receiptamt=[Trx]Totamt
+$Tax:=[Trxs]TaxAmt
+$TotAmt:=[Trxs]TotAmt
+$ReceiptAmt:=0
+aUsedTransVal{$pos}:=0
+aUsedTransTax{$pos}:=0
+$j:=Records in selection([Trxs])
+End case 
+aTaxs{$x}:=aTaxs{$x}+$Tax
+aTotal{$x}:=aTotal{$x}+$TotAmt
+aUsed{$x}:=True
+Else 
+AlertMessage (Get localized string("WARNING - The analysis report will be incorrect, because the analysis code for charges")+" :"+[Trxs]AnalysisCode+" "+Get localized string("is not on file!"))
+End if 
+: ([Trxs]Match=0)
+$x:=Find in array(aAnlys;<>sFacility+"RF")
+If ($x>0)
+aTaxs{$x}:=aTaxs{$x}+CalcTaxAmt ([Trxs]TotAmt;<>sFacility+"RF";[Trxs]TrxDate;[Trxs]TrxDate;2)
+aTotal{$x}:=aTotal{$x}+[Trxs]TotAmt
+aUsed{$x}:=True
+Else 
+AlertMessage (Get localized string("WARNING - The analysis report will be incorrect, because the analysis code for charges")+" :"+[Trxs]AnalysisCode+" "+Get localized string("is not on file!"))
+End if 
+Else 
+//if more than one
+If (Is in set("Report")=True)
+REMOVE FROM SET([Trxs];"Report")//if already in set then it needs to be matched off against these charges
+Else 
+//need to do anything here?
+End if 
+End case 
+
+NEXT RECORD([Trxs])
+End for 
+End if 
+USE SET("Report")
+Until (Records in selection([Trxs])=0)
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"RF";*)
+For ($i;1;Size of array(aAnlys))
+If (aUsed{$i}=True)
+QUERY([Analysis]; | ;[Analysis]Code=aAnlys{$i};*)
+End if 
+End for 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+BREAK LEVEL(0)
+ACCUMULATE(vAmt1;vAmt2;vAmt3)
+FORM SET OUTPUT([Analysis];"ChargeAnalysis")
+PrintSelection ("P";->[Analysis])
+FORM SET OUTPUT([Analysis];"Output")
+CLEAR SET("Report")
+End if 

@@ -1,0 +1,60 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Cust;$Agreemt;$Analysis)
+C_DATE($Date)
+C_REAL($Amt)
+$Cust:=Substring([Trxs]CustomerCode;6)
+$Agreemt:=Substring([Trxs]AgreeNo;6)
+$Date:=Current date
+Repeat 
+If ([Reservation]RReserveNo>"")
+$Date:=RequestDate (Get localized string("Customer")+" :"+$Cust+" "+Get localized string("Reservation")+" :"+$Agreemt+".";$Date;Get localized string("OK");Get localized string("Cancel");"";Get localized string("Please enter the reversal payment date")+":")
+Else 
+$Date:=RequestDate (Get localized string("Customer")+" :"+$Cust+" "+Get localized string("Agreement")+" :"+$Agreemt+".";$Date;Get localized string("OK");Get localized string("Cancel");"";Get localized string("Please enter the reversal payment date")+":")
+End if 
+If (OK=1) & (($Date<[Facility]CantModPrior) | ($Date<[Trxs]TrxDate))
+Case of 
+: ($Date<[Facility]CantModPrior)
+AlertMessage (Get localized string("Date cannot be earlier than the Cant Modify Prior To date of")+" "+String([Facility]CantModPrior)+".")
+$Date:=[Facility]CantModPrior
+: ($Date<[Trxs]TrxDate)
+AlertMessage (Get localized string("Date cannot be earlier than the original transaction date of")+" "+String([Trxs]TrxDate)+".")
+$Date:=[Trxs]TrxDate
+Else 
+//Do Nothing
+End case 
+OK:=2
+End if 
+Until (OK<=1)
+If (OK=1)
+$Analysis:=[Trxs]AnalysisCode
+$Amt:=[Trxs]TotAmt
+RELATE ONE([Trxs]CustomerCode)
+[Customer]Balance:=[Customer]Balance+$Amt
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+//Create negative receipt
+CREATE RECORD([Trxs])
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]TrxDate:=$Date
+[Trxs]Charge:=False
+QUERY([Analysis];[Analysis]Code=$Analysis;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+If ([Analysis]SetBankedDate=True)
+[Trxs]DateBanked:=[Trxs]TrxDate
+End if 
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" Reversal"
+[Trxs]TotAmt:=$Amt*-1
+[Trxs]Confirmed:=True
+SAVE RECORD([Trxs])
+SAVE RECORD([Customer])
+End if 

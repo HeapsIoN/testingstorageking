@@ -1,0 +1,92 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($vRef;$vXML)
+ARRAY TEXT($aRef;0)
+ARRAY TEXT($aTypes;0)
+ARRAY TEXT($namesArray;0)
+ARRAY TEXT($valuesArray;0)
+C_POINTER($pRef;$pTypes;$namesArrayPointer;$valuesArrayPointer)
+
+Case of 
+: ($1=1)
+EXPAND BLOB([Facility]InvHeader_)
+BLOB TO VARIABLE([Facility]InvHeader_;$vXML)
+COMPRESS BLOB([Facility]InvHeader_)
+: ($1=2)
+EXPAND BLOB([Facility]InvFooter_)
+BLOB TO VARIABLE([Facility]InvFooter_;$vXML)
+COMPRESS BLOB([Facility]InvFooter_)
+: ($1=3)
+EXPAND BLOB([Facility]Receipt_)
+BLOB TO VARIABLE([Facility]Receipt_;$vXML)
+COMPRESS BLOB([Facility]Receipt_)
+: ($1=4)
+EXPAND BLOB([Facility]ReportLogo_)
+BLOB TO VARIABLE([Facility]ReportLogo_;$vXML)
+COMPRESS BLOB([Facility]ReportLogo_)
+End case 
+
+$vRef:=DOM Parse XML variable($vXML)
+$NoElem:=SVG_Count_elements ($vRef)
+If ($NoElem#0)
+$pRef:=->$aRef
+$pTypes:=->$aTypes
+$namesArrayPointer:=->$namesArray
+$valuesArrayPointer:=->$valuesArray
+SVG_ELEMENTS_TO_ARRAYS ($vRef;$pRef;$pTypes)
+For ($i;1;Size of array($aTypes))
+If ($aTypes{$i}="text") | ($aTypes{$i}="textArea") | ($aTypes{$i}="tspan")
+$TextCont:=SVG_Get_text ($aRef{$i})
+
+$TextCont:=Replace string($TextCont;"[[";"<!--#")
+$TextCont:=Replace string($TextCont;"]]";"-->")
+
+//14/07/14 DAM Added to use interprocess variables in emails
+$Posit:=Position("&lt;&gt;";$TextCont)
+While ($Posit>0)
+$TextCont:=Replace string($TextCont;"&lt;&gt;";"<>")
+$Posit:=Position($TextCont;"&lt;&gt;")
+End while 
+
+PROCESS 4D TAGS($TextCont;$NewVar)
+//$NewVar:=ProcessStormanHTMLTags ($TextCont)
+
+$NewVar:=Replace string($NewVar;"&amp;";"&")
+$photoPos:=Position("\"/4DImgField/";$NewVar)
+
+If ($photoPos#0)
+$photoReplace:=Substring($NewVar;$photoPos;Position("\"";$NewVar;$photoPos+1)-$photoPos+1)
+$photoRecord:=Substring($photoReplace;14;Position("-";$photoReplace)-14)
+$photoTable:=GetTextNo ($photoRecord;1;".")
+$photoField:=GetTextNo ($photoRecord;2;".")
+$photoRecord:=GetTextNo ($photoRecord+".";3;".")
+$photoInsert:=""
+$docPath:=<>sAttachPath+"Pic"+String($photoPos)+".png"
+$tblPoint:=Table(Num($photoTable))
+GOTO RECORD($tblPoint->;Num($photoRecord))
+
+$fieldPoint:=Field(Num($photoTable);Num($photoField))
+
+WRITE PICTURE FILE($docPath;$fieldPoint->)
+READ PICTURE FILE($docPath;$Picture)
+If (OK=1)
+SVG_GET_ATTRIBUTES ($aRef{$i};$namesArrayPointer;$valuesArrayPointer)
+objectRef:=SVG_New_embedded_image ($vRef;$Picture;Num($valuesArray{16});Num($valuesArray{17}))
+SVG_SET_VISIBILITY ($aRef{$i};False)
+End if 
+End if 
+SVG_SET_TEXTAREA_TEXT ($aRef{$i};$NewVar)
+End if 
+End for 
+//PicReportLogo:=SVG_Export_to_picture (SvgAreaDomRef)
+Case of 
+: ($1=1)
+PicInvHeader:=SVG_Export_to_picture ($vRef)
+: ($1=2)
+PicInvFooter:=SVG_Export_to_picture ($vRef)
+: ($1=3)
+ReceiptPicture:=SVG_Export_to_picture ($vRef)
+: ($1=4)
+PicReportLogo:=SVG_Export_to_picture ($vRef)
+End case 
+SVG_CLEAR ($vRef)
+End if 

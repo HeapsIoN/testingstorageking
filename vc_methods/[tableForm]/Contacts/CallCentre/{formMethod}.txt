@@ -1,0 +1,661 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_LONGINT(vStartArray;vEndArray)
+C_BOOLEAN(vDistCalced;bError)
+C_TEXT(vSelectedType)
+C_TEXT(vSelectRUnitType;vPrevDistance)
+C_TEXT(vContGeo)
+<>ProgressInd:=0
+//Creating local arrays to store Facility, Site Codes, Original Sort Order and Distance to customer values
+ARRAY TEXT(asInstFacility;0)
+ARRAY TEXT(asInstSiteCode;0)
+ARRAY LONGINT(asInstSort;0)
+ARRAY REAL(asInstDistance;0)
+ARRAY TEXT(asMasterSiteCode;0)
+ARRAY REAL(asMasterDistance;0)
+ARRAY TEXT(asSQLSite;0)
+ARRAY TEXT(asSQLNote;0)
+
+OBJECT SET TITLE(*;"Text41";Get localized string("Email Address")+":")
+OBJECT SET TITLE(*;"Text";Get localized string("Stored Before")+"?")
+
+If (<>CallerID#"") & ([Contacts]ContactPhone="")
+[Contacts]ContactPhone:=<>CallerID
+vPhone:=<>CallerID
+End if 
+
+QUERY([Facility];[Facility]FacilityCode="KEHOF";*)
+QUERY([Facility]; | ;[Facility]FacilityCode="KEZHF")
+If ([Facility]SQLConnection#"")
+KSSKosmoKonnect 
+End if 
+
+
+
+
+COPY ARRAY(<>asFacilities;asInstFacility)
+COPY ARRAY(<>asSiteCodes;asInstSiteCode)
+
+For ($i;1;Size of array(asInstSiteCode))
+APPEND TO ARRAY(asInstSort;$i)
+End for 
+
+$j:=Size of array(asInstSiteCode)
+
+For ($i;1;$j)
+If ($i<=$j)
+$initialsort:=asInstSort{$i}
+If (Size of array(<>asRUnitType{$initialsort})=0)
+DELETE FROM ARRAY(asInstFacility;$i)
+DELETE FROM ARRAY(asInstSiteCode;$i)
+DELETE FROM ARRAY(asInstSort;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+ARRAY REAL(asInstPrice;Size of array(asInstSiteCode))
+For ($i;1;Size of array(asInstPrice))
+$initialsort:=asInstSort{$i}
+asInstPrice{$i}:=99999999
+For ($j;1;Size of array(<>asUTMonthlyRate{$initialsort}))
+If (<>asUTMonthlyRate{$initialsort}{$j}<asInstPrice{$i})
+asInstPrice{$i}:=<>asUTMonthlyRate{$initialsort}{$j}
+End if 
+End for 
+End for 
+
+Case of 
+: (<>sProduct="@B")
+OBJECT SET RGB COLORS(*;"List Box@";0x0000;0x00E7F2F8)
+: (<>sProduct="@R")
+OBJECT SET RGB COLORS(*;"List Box@";0x0000;0x00FDF5F3)
+: (<>sProduct="@T")
+OBJECT SET RGB COLORS(*;"List Box@";0x0000;0x00F9F7FC)
+Else 
+OBJECT SET RGB COLORS(*;"List Box@";0x0000;0x00E8F6F9)
+End case 
+
+vSelectedType:=""
+vSelectRUnitType:=""
+
+$newvalue1:=asInstSort{1}
+$newvalue2:=asInstSort{2}
+$newvalue3:=asInstSort{3}
+$newvalue4:=asInstSort{4}
+
+ARRAY TEXT(asContactFacilitySort;2)
+asContactFacilitySort{1}:="Distance"
+asContactFacilitySort{2}:="Price"
+asContactFacilitySort:=1
+
+//Set the list boxes on the Contacts screen to display the newly sorted facilities
+COPY ARRAY(<>asRUnitType{$newvalue1};asRUnitType1)
+COPY ARRAY(<>asUTDescription{$newvalue1};asUTDescription1)
+COPY ARRAY(<>asUTSpecial{$newvalue1};asUTSpecial1)
+COPY ARRAY(<>asUTMonthlyRate{$newvalue1};asUTMonthlyRate1)
+COPY ARRAY(<>asUTCategory{$newvalue1};asUTCategory1)
+COPY ARRAY(<>asRUnitType{$newvalue2};asRUnitType2)
+COPY ARRAY(<>asUTDescription{$newvalue2};asUTDescription2)
+COPY ARRAY(<>asUTSpecial{$newvalue2};asUTSpecial2)
+COPY ARRAY(<>asUTMonthlyRate{$newvalue2};asUTMonthlyRate2)
+COPY ARRAY(<>asUTCategory{$newvalue2};asUTCategory2)
+COPY ARRAY(<>asRUnitType{$newvalue3};asRUnitType3)
+COPY ARRAY(<>asUTDescription{$newvalue3};asUTDescription3)
+COPY ARRAY(<>asUTSpecial{$newvalue3};asUTSpecial3)
+COPY ARRAY(<>asUTMonthlyRate{$newvalue3};asUTMonthlyRate3)
+COPY ARRAY(<>asUTCategory{$newvalue3};asUTCategory3)
+//COPY ARRAY(<>asRUnitType{$newvalue4};asRUnitType4)
+//COPY ARRAY(<>asUTDescription{$newvalue4};asUTDescription4)
+//COPY ARRAY(<>asUTSpecial{$newvalue4};asUTSpecial4)
+//COPY ARRAY(<>asUTMonthlyRate{$newvalue4};asUTMonthlyRate4)
+//COPY ARRAY(<>asUTCategory{$newvalue4};asUTCategory4)
+
+ARRAY LONGINT(aiRowColor1;Size of array(asUTSpecial1))
+ARRAY LONGINT(aiRowColor2;Size of array(asUTSpecial2))
+ARRAY LONGINT(aiRowColor3;Size of array(asUTSpecial3))
+//ARRAY LONGINT(aiRowColor4;Size of array(asUTSpecial4))
+
+For ($i;1;Size of array(asUTSpecial1))
+If (asUTSpecial1{$i}=True)
+aiRowColor1{$i}:=0x00FFFF00
+Else 
+Case of 
+: (<>sProduct="@B")
+aiRowColor1{$i}:=0x00E7F2F8
+: (<>sProduct="@R")
+aiRowColor1{$i}:=0x00FDF5F3
+: (<>sProduct="@T")
+aiRowColor1{$i}:=0x00F9F7FC
+Else 
+aiRowColor1{$i}:=0x00E8F6F9
+End case 
+End if 
+End for 
+
+For ($i;1;Size of array(asUTSpecial2))
+If (asUTSpecial2{$i}=True)
+aiRowColor2{$i}:=0x00FFFF00
+Else 
+Case of 
+: (<>sProduct="@B")
+aiRowColor2{$i}:=0x00E7F2F8
+: (<>sProduct="@R")
+aiRowColor2{$i}:=0x00FDF5F3
+: (<>sProduct="@T")
+aiRowColor2{$i}:=0x00F9F7FC
+Else 
+aiRowColor2{$i}:=0x00E8F6F9
+End case 
+End if 
+End for 
+
+For ($i;1;Size of array(asUTSpecial3))
+If (asUTSpecial3{$i}=True)
+aiRowColor3{$i}:=0x00FFFF00
+Else 
+Case of 
+: (<>sProduct="@B")
+aiRowColor3{$i}:=0x00E7F2F8
+: (<>sProduct="@R")
+aiRowColor3{$i}:=0x00FDF5F3
+: (<>sProduct="@T")
+aiRowColor3{$i}:=0x00F9F7FC
+Else 
+aiRowColor3{$i}:=0x00E8F6F9
+End case 
+End if 
+End for 
+
+//For ($i;1;Size of array(asUTSpecial4))
+//If (asUTSpecial4{$i}=True)
+//aiRowColor4{$i}:=0x00FFFF00
+//Else 
+//Case of 
+//: (<>sProduct="@B")
+//aiRowColor4{$i}:=0x00E7F2F8
+//: (<>sProduct="@R")
+//aiRowColor4{$i}:=0x00FDF5F3
+//: (<>sProduct="@T")
+//aiRowColor4{$i}:=0x00F9F7FC
+//Else 
+//aiRowColor4{$i}:=0x00E8F6F9
+//End case 
+//End if 
+//End for 
+
+vStartArray:=1
+vEndArray:=Size of array(asInstSiteCode)
+
+vFacilityText1:=<>asSiteCodes{$newvalue1}+" "+<>asFacilities{$newvalue1}+" ()"
+vFacilityText2:=<>asSiteCodes{$newvalue2}+" "+<>asFacilities{$newvalue2}+" ()"
+vFacilityText3:=<>asSiteCodes{$newvalue3}+" "+<>asFacilities{$newvalue3}+" ()"
+//vFacilityText4:=<>asSiteCodes{$newvalue4}+" "+<>asFacilities{$newvalue4}+" ()"
+
+OBJECT SET ENABLED(bLeftArrow;False)
+If (Size of array(<>asFacilities)<=3)
+OBJECT SET ENABLED(bRightArrow;False)
+End if 
+
+ARRAY TEXT(asContactPhone;3)
+asContactPhone{1}:="Home Phone"
+asContactPhone{2}:="Work Phone"
+asContactPhone{3}:="Mobile Phone"
+asContactPhone:=1
+OBJECT SET VISIBLE(*;"Picture11";False)
+
+C_TEXT(vQuestion1;vQuestion2;vQuestion3;vQuestion4;vQuestion5;vQuestion6;vQuestion7;vQuestion8;vQuestion9;vQuestion10)
+ARRAY TEXT(asAnswer1;0)
+ARRAY TEXT(asAnswer2;0)
+ARRAY TEXT(asAnswer3;0)
+ARRAY TEXT(asAnswer4;0)
+ARRAY TEXT(asAnswer5;0)
+ARRAY TEXT(asAnswer6;0)
+ARRAY TEXT(asAnswer7;0)
+ARRAY TEXT(asAnswer8;0)
+ARRAY TEXT(asAnswer9;0)
+ARRAY TEXT(asAnswer10;0)
+vQuestion1:=""
+vQuestion2:=""
+vQuestion3:=""
+vQuestion4:=""
+vQuestion5:=""
+vQuestion6:=""
+vQuestion7:=""
+vQuestion8:=""
+vQuestion9:=""
+vQuestion10:=""
+OBJECT SET VISIBLE(*;"asAnswer@";False)
+OBJECT SET VISIBLE([Contacts]KQ1;False)
+OBJECT SET VISIBLE([Contacts]KQ2;False)
+OBJECT SET VISIBLE([Contacts]KQ3;False)
+OBJECT SET VISIBLE([Contacts]KQ4;False)
+OBJECT SET VISIBLE([Contacts]KQ5;False)
+OBJECT SET VISIBLE([Contacts]KQ6;False)
+OBJECT SET VISIBLE([Contacts]KQ7;False)
+OBJECT SET VISIBLE([Contacts]KQ8;False)
+OBJECT SET VISIBLE([Contacts]KQ9;False)
+OBJECT SET VISIBLE([Contacts]KQ10;False)
+
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="UC")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+
+SELECTION TO ARRAY([MarketingTypes]Description;asUCList)
+
+INSERT IN ARRAY(asUCList;1)
+asUCList{1}:="All"
+asUCList:=1
+
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="SC")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+
+SELECTION TO ARRAY([MarketingTypes]Description;asSCList)
+
+INSERT IN ARRAY(asSCList;1)
+asSCList{1}:="All"
+asSCList:=1
+
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="FF")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+
+$x:=Records in selection([MarketingTypes])
+
+If ($x>10)
+$x:=10
+End if 
+
+vBenefit1:=""
+vBenefit2:=""
+vBenefit3:=""
+vBenefit4:=""
+vBenefit5:=""
+vBenefit6:=""
+vBenefit7:=""
+vBenefit8:=""
+vBenefit9:=""
+vBenefit10:=""
+vRequireText1:=""
+vRequireText2:=""
+vRequireText3:=""
+vRequireText4:=""
+vRequireText5:=""
+vRequireText6:=""
+vRequireText7:=""
+vRequireText8:=""
+vRequireText9:=""
+vRequireText10:=""
+
+OBJECT SET VISIBLE(vRequire1;False)
+OBJECT SET VISIBLE(vRequire2;False)
+OBJECT SET VISIBLE(vRequire3;False)
+OBJECT SET VISIBLE(vRequire4;False)
+OBJECT SET VISIBLE(vRequire5;False)
+OBJECT SET VISIBLE(vRequire6;False)
+OBJECT SET VISIBLE(vRequire7;False)
+OBJECT SET VISIBLE(vRequire8;False)
+OBJECT SET VISIBLE(vRequire9;False)
+OBJECT SET VISIBLE(vRequire10;False)
+
+If ($x>0)
+FIRST RECORD([MarketingTypes])
+vBenefit1:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire1;[MarketingTypes]Description)
+vRequireText1:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire1;True)
+If ($x>1)
+NEXT RECORD([MarketingTypes])
+vBenefit2:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire2;[MarketingTypes]Description)
+vRequireText2:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire2;True)
+If ($x>2)
+NEXT RECORD([MarketingTypes])
+vBenefit3:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire3;[MarketingTypes]Description)
+vRequireText3:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire3;True)
+If ($x>3)
+NEXT RECORD([MarketingTypes])
+vBenefit4:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire4;[MarketingTypes]Description)
+vRequireText4:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire4;True)
+If ($x>4)
+NEXT RECORD([MarketingTypes])
+vBenefit5:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire5;[MarketingTypes]Description)
+vRequireText5:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire5;True)
+If ($x>5)
+NEXT RECORD([MarketingTypes])
+vBenefit6:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire6;[MarketingTypes]Description)
+vRequireText6:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire6;True)
+If ($x>6)
+NEXT RECORD([MarketingTypes])
+vBenefit7:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire7;[MarketingTypes]Description)
+vRequireText7:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire7;True)
+If ($x>7)
+NEXT RECORD([MarketingTypes])
+vBenefit8:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire8;[MarketingTypes]Description)
+vRequireText8:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire8;True)
+If ($x>8)
+NEXT RECORD([MarketingTypes])
+vBenefit9:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire9;[MarketingTypes]Description)
+vRequireText9:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire9;True)
+If ($x>9)
+NEXT RECORD([MarketingTypes])
+vBenefit10:=[MarketingTypes]Info
+OBJECT SET TITLE(vRequire10;[MarketingTypes]Description)
+vRequireText10:=[MarketingTypes]Description
+OBJECT SET VISIBLE(vRequire10;True)
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+
+//Check the Google map file exists
+If (Test path name(Get 4D folder(Current resources folder)+"map.htm")=Is a document)
+//Open the Google map in the Web Area WAGMap if API Code entered
+ALL RECORDS([Facility])
+If (Records in selection([Facility])>1)
+WA OPEN URL(*;"WAGMap";Get 4D folder(Current resources folder)+"map.htm")
+Else 
+OBJECT SET VISIBLE(*;"@GMap";False)
+End if 
+Else 
+OBJECT SET VISIBLE(*;"@GMap";False)
+End if 
+
+
+
+
+
+End if 
+
+
+If (Form event=On Clicked)
+QUERY([UnitType];[UnitType]RUnitType=vSelectRUnitType)
+QUERY([Facility];[Facility]FacilityCode=Substring(vSelectRUnitType;1;5))
+vSelectedType:=[UnitType]Description+" at "+[Facility]FacilityName+" for $"+String(CalculateBaseRate (0;2))+" a month."
+If ([UnitType]RCSpecial=True)
+QUERY([BillPlan];[BillPlan]Code=[UnitType]BillPlanCode)
+RELATE MANY([UnitType]RUnitType)
+ORDER BY([RCHistory];[RCHistory]RCDate;<)
+If (Records in selection([BillPlan])>0)
+vSelectedType:=vSelectedType+" On Special with a billing plan of "+[BillPlan]Description+"."
+Else 
+vSelectedType:=vSelectedType+" On Special was previously $"+String([RCHistory]RCPrevRent)+" a month."
+End if 
+End if 
+End if 
+
+ContactsInCode 
+
+If (Form event=On Validate)
+
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="SalesEnqSite")
+If (Records in selection([Notices])=1)
+//veLetter:=WR New offscreen area 
+EXPAND BLOB([Notices]Email)
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+CREATE RECORD([Message])
+[Message]Address:=$RCEmail
+[Message]Subject:=[Notices]EmailSubject
+[Message]Facility:=[Facility]FacilityCode
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Contacts]ContactNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Contacts]ContactNo
+//If ((Test path name($Document)=Is a document))
+//$vhDocRef:=Open document($Document)  // Select the document of your choice
+//CLOSE DOCUMENT($vhDocRef)
+//DOCUMENT TO BLOB(Document;$Blob74)
+//$Blobtext74:=BLOB to text($Blob74;Mac text without length)
+//$Blobtext74:=Replace string($Blobtext74;"./images/";<>sTutPath+"images\\")
+//$Blobtext74:=Replace string($Blobtext74;"<p>";"<br>")
+//$Blobtext74:=Replace string($Blobtext74;"</p>";"<br>")
+//TEXT TO BLOB($Blobtext74;[Message]EmailMsg;Mac text without length)
+//DELETE DOCUMENT($Document)
+//Else 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+//End if 
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+SAVE RECORD([Message])
+//WR DELETE OFFSCREEN AREA (veLetter)
+SendMail 
+End if 
+If (bPrintAfter=1)
+veLetter:=WR New offscreen area 
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="EnquiryNotice")
+
+If (Records in selection([Notices])=1)
+EXPAND BLOB([Notices]Letter)
+WR BLOB TO AREA (veLetter;[Notices]Letter)
+WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+If ($i=1)
+WR EXECUTE COMMAND (veLetter;wr cmd view references)
+End if 
+
+READ WRITE([Letters])
+CREATE RECORD([Letters])
+For ($i;WR Count (veLetter;wr nb objects);1;-1)//Reverse order as ref no changes as freezes happen
+WR SELECT (veLetter;1;$i)//Select reference
+WR GET REFERENCE (veLetter;$Table;$Field;$Name;$Type2;$NumFormat;$DateFormat;$TimeFormat)
+If ($Table#29)//Freeze everything except pictures
+WR EXECUTE COMMAND (veLetter;wr cmd freeze references)
+End if 
+End for 
+[Letters]ContactNo:=[Contacts]ContactNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]SentViaEmail:=False
+[Letters]LetterBLOB:=WR Area to blob (veLetter;1)
+WR SET PRINT OPTION (veLetter;wr number of copies option;1)
+WR EXECUTE COMMAND (veLetter;wr cmd print)
+[Letters]DateSent:=Current date
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+
+
+
+READ ONLY([Letters])
+UNLOAD RECORD([Letters])
+End if 
+WR DELETE OFFSCREEN AREA (veLetter)
+End if 
+If (bSMSAfter=1)
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="EnquiryNotice")
+
+If (Records in selection([Notices])=1)
+$SMSText:=[Notices]SMSMessage
+$SMSText:=Replace string($SMSText;"{firstname}";[Contacts]Firstname)
+$SMSText:=Replace string($SMSText;"{facilityphone}";[Facility]Phone)
+
+vLeg3:=RequestMore ("Enter Text to Send by SMS:";160;$SMSText)
+
+SendSMS ($Phone;vLeg3;[Contacts]ContactNo)
+End if 
+
+End if 
+If (bEmailAfter=1)
+//veLetter:=WR New offscreen area 
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="EnquiryNotice")
+
+If (Records in selection([Notices])=1)
+EXPAND BLOB([Notices]Email)
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+
+//Create the Email Message
+CREATE RECORD([Message])
+[Message]Subject:=[Notices]EmailSubject
+[Message]Address:=[Contacts]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]Facility:=[Contacts]Facility
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Contacts]ContactNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Contacts]ContactNo
+//If ((Test path name($Document)=Is a document))
+//$vhDocRef:=Open document($Document)  // Select the document of your choice
+//CLOSE DOCUMENT($vhDocRef)
+//DOCUMENT TO BLOB(Document;$Blob74)
+//$Blobtext74:=BLOB to text($Blob74;Mac text without length)
+//$Blobtext74:=Replace string($Blobtext74;"./images/";<>sTutPath+"images\\")
+//$Blobtext74:=Replace string($Blobtext74;"<p>";"<br>")
+//$Blobtext74:=Replace string($Blobtext74;"</p>";"<br>")
+//TEXT TO BLOB($Blobtext74;[Message]EmailMsg;Mac text without length)
+//DELETE DOCUMENT($Document)
+//Else 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+//End if 
+[Message]Attachments:=""
+SAVE RECORD([Message])
+
+
+//Create the Letter 
+READ WRITE([Letters])
+CREATE RECORD([Letters])
+//For ($i;WR Count (veLetter;wr nb objects);1;-1)  //Reverse order as ref no changes as freezes happen
+//WR SELECT (veLetter;1;$i)  //Select reference
+//WR GET REFERENCE (veLetter;$Table;$Field;$Name;$Type2;$NumFormat;$DateFormat;$TimeFormat)
+//If ($Table#29)  //Freeze everything except pictures
+//WR EXECUTE COMMAND (veLetter;wr cmd freeze references)
+//Else 
+//
+//End if 
+//End for
+BLOB PROPERTIES([Message]EmailMsg;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Message]EmailMsg)
+End if 
+[Letters]LetterBLOB:=[Message]EmailMsg
+[Letters]ContactNo:=[Contacts]ContactNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]SentViaEmail:=True
+
+//[Letters]LetterBLOB:=WR Area to blob (veLetter;1)
+[Letters]DateSent:=Current date
+COMPRESS BLOB([Letters]LetterBLOB)
+
+SAVE RECORD([Letters])
+
+ConfirmTwo (Get localized string("Do you wish to edit this email message?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+FORM SET INPUT([Message];"MessageEdit")
+//Open HTML Email Editor
+READ WRITE([Message])
+Test_TextBlob:=Convert to text([Message]EmailMsg;"UTF-8")
+Test_TheID:=Record number([Message])
+Test_Mailpath:=""
+$Window:=Open window((Screen width/2)-408;(Screen height/2)-338;(Screen width/2)+408;(Screen height/2)+338;4096;Get localized string("Email Message"))
+MODIFY RECORD([Message];*)
+CLOSE WINDOW($Window)
+End if 
+
+SendMail 
+
+READ ONLY([Letters])
+READ ONLY([Message])
+UNLOAD RECORD([Letters])
+UNLOAD RECORD([Message])
+
+End if 
+//WR DELETE OFFSCREEN AREA (veLetter)
+End if 
+If (bBookAfter=1)
+$Date:=RequestMessage (Get localized string("Please enter the date to book the site visit for");String(Current date+1);Get localized string("OK");Get localized string("Cancel"))
+If (OK=1)
+$Message:=RequestMessage (Get localized string("Please enter the message for the site, this may include the time for the visit");"";Get localized string("OK");Get localized string("Cancel"))
+If (OK=1)
+READ WRITE([Activity])
+LOAD RECORD([Activity])
+QUERY([Activity];[Activity]FacilityCode=[Contacts]Facility;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=$Date)
+[Activity]CalendarNotes:=$Message+Char(13)+Char(13)+[Activity]CalendarNotes
+SAVE RECORD([Activity])
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+End if 
+End if 
+End if 
+If (Length([Contacts]KCN)>0)
+QUERY([Facility];[Facility]FacilityCode=[Contacts]Facility)
+CREATE RECORD([Message])
+[Message]Subject:="Centre Notes for Sales Enquiry: "+[Contacts]ContactNo
+[Message]Address:=[Facility]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=[Contacts]KCN
+[Message]Attachments:=""
+[Message]Facility:=[Facility]FacilityCode
+SAVE RECORD([Message])
+SetFacility 
+SendMail 
+End if 
+End if 

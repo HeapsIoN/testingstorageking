@@ -1,0 +1,157 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0;$KosmoInv;$KSSNat)//True if ok=1
+C_TEXT($Temp;$Code)
+C_LONGINT($j;$k)
+$0:=False
+//SetFacility 
+$New:=True
+$Name:=Substring([Contacts]ContactName;1;5)
+QUERY([Customer];[Customer]CustomerName=$Name+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Contacts]Facility+"@")
+
+If (<>sFacility="KE@") & ([Contacts]CustType="National Accounts")
+$KSSNat:=True
+End if 
+
+
+If (Records in selection([Customer])>0) & ($KSSNat=False)
+bSales:=True
+FORM SET OUTPUT([Customer];"SelectCust")
+DISPLAY SELECTION([Customer];Single selection;*)
+FORM SET OUTPUT([Customer];"Output")
+If (OK=1)
+READ WRITE([Customer])
+LOAD RECORD([Customer])
+$0:=True
+$New:=False
+End if 
+End if 
+If ($New=True)
+$Temp:=Uppercase(Substring([Contacts]ContactName;1;10);*)
+$Temp:=RemoveSpecial ($Temp)
+$Temp:=Substring($Temp;1;5)
+SET QUERY DESTINATION(3;$j)
+$Code:=$Temp
+QUERY([Customer];[Customer]CustomerCode=[Contacts]Facility+$Code)
+$k:=0
+While ($j>0) & ($k<9)
+$k:=$k+1
+If (Length([Contacts]ContactName)>4) & ($k<5)
+$j:=Position(" ";[Contacts]ContactName)
+If ($j>2)
+$Code:=Substring([Contacts]ContactName;$j+1;10)
+Else 
+$Code:=Substring([Contacts]ContactName;1;10)
+End if 
+$Code:=Uppercase(Substring($Temp;1;(5-$k));*)+Uppercase(Substring($Code;1;$k);*)
+Else 
+$Code:=Uppercase(Substring($Temp;1;4);*)+String($k)
+End if 
+QUERY([Customer];[Customer]CustomerCode=[Contacts]Facility+$Code)
+End while 
+If ($k>=9)
+$i:=0
+Repeat 
+$j:=5-Length(String($i;"##"))
+$Code:=Substring($Temp;1;$j)+String($i;"##")
+$i:=$i+1
+QUERY([Customer];[Customer]CustomerCode=[Contacts]Facility+$Code)
+Until ($j=0)
+End if 
+SET QUERY DESTINATION(0)
+
+If (Length($Code)<5)
+$i:=0
+$Base:=Uppercase($Code)
+Repeat 
+$j:=5-Length(String($i;"#####"))
+$Code:=<>sFacility+Substring($Base;1;$j)+String($i;"#####")
+$i:=$i+1
+QUERY([Customer];[Customer]CustomerCode=$Code)
+Until ((Records in selection([Customer])=0) & (Length($Code)=10))
+$Code:=Substring($Code;6)
+End if 
+
+If (OK=1)
+READ WRITE([Customer])
+CREATE RECORD([Customer])
+[Customer]CustomerCode:=[Contacts]Facility+$Code
+[Customer]CustomerName:=[Contacts]ContactName
+[Customer]Title:=[Contacts]Title
+
+If (<>sFacility="KE@") & ([Contacts]CustType="National Account")
+//ARRAY TEXT(asSQLInvoicingType;0)
+C_TEXT(asSQLInvoicingType)
+KSSKosmoKustomers ("SelectCust";[Contacts]ContactName)
+
+If (asSQLInvoicingType="Kosmo Invoicing")
+$KosmoInv:=True
+End if 
+End if 
+
+ReadCountryCodeXML 
+$Pos:=Find in array(asCountryCodes;[Contacts]MailCountryCode)
+If ($Pos<1)
+$Pos:=Find in array(asCountryCodes;[Facility]Country)
+If ($Pos>0)
+[Customer]MailCountryCode:=asCountryCodes{$Pos}
+[Customer]CountryCode:=asCountryCodes{$Pos}
+[Customer]AltCountryCode:=asCountryCodes{$Pos}
+[Customer]MailCountry:=asCountries{$Pos}
+[Customer]Country:=asCountries{$Pos}
+[Customer]AltCountry:=asCountries{$Pos}
+End if 
+Else 
+[Customer]MailCountryCode:=asCountryCodes{$Pos}
+[Customer]CountryCode:=asCountryCodes{$Pos}
+[Customer]AltCountryCode:=asCountryCodes{$Pos}
+[Customer]MailCountry:=asCountries{$Pos}
+[Customer]Country:=asCountries{$Pos}
+[Customer]AltCountry:=asCountries{$Pos}
+End if 
+
+If ($KosmoInv)
+[Customer]AlternateName:=[Contacts]UserName
+[Customer]AlternateAddress:=[Contacts]MailAddress
+[Customer]AlternateCity:=[Contacts]MailCity
+[Customer]AlternateState:=[Contacts]MailState
+[Customer]AlternateZIPCode:=[Contacts]MailZIPCode
+[Customer]AlternatePhone:=[Contacts]ContactPhone
+[Customer]AltEmail:=[Contacts]EmailAddress
+[Customer]AltBusiness:=[Contacts]PhoneBus
+[Customer]AltMobile:=[Contacts]MobilePhone
+[Customer]AltFax:=[Contacts]FaxNumber
+[Customer]AltSuburb:=[Contacts]MailSuburb
+Else 
+[Customer]UserName:=[Contacts]UserName
+[Customer]MailAddress:=[Contacts]MailAddress
+[Customer]MailCity:=[Contacts]MailCity
+[Customer]MailCountry:=[Contacts]MailCountry
+[Customer]PhonePrivate:=[Contacts]ContactPhone
+[Customer]PhoneBus:=[Contacts]PhoneBus
+[Customer]MailState:=[Contacts]MailState
+[Customer]MailPostZIPCode:=[Contacts]MailZIPCode
+[Customer]MobilePhone:=[Contacts]MobilePhone
+[Customer]FaxNo:=[Contacts]FaxNumber
+[Customer]Notes:=[Contacts]Comments
+[Customer]EmailAddress:=[Contacts]EmailAddress
+[Customer]MailSuburb:=[Contacts]MailSuburb
+End if 
+[Customer]FirstName:=[Contacts]Firstname
+[Customer]Organization:=[Contacts]Organization
+[Customer]MarketSrce:=[Contacts]MarketSrce
+[Customer]CustType:=[Contacts]CustType
+[Customer]GateTimeZone:=[Facility]GateTimeZoneDefault
+[Customer]PrimaryPhone:=[Contacts]PrimaryPhone
+[Customer]ThreatLevel:=[Contacts]ThreatLevel
+[Customer]ThreatLevelDate:=[Contacts]ThreatLevelDate
+
+READ WRITE([NotesHistory])
+LOAD RECORD([NotesHistory])
+QUERY([NotesHistory];[NotesHistory]ContactNo=[Contacts]ContactNo)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=[Customer]CustomerCode)
+READ ONLY([NotesHistory])
+UNLOAD RECORD([NotesHistory])
+$0:=True
+End if 
+End if 

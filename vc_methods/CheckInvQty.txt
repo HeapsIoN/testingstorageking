@@ -1,0 +1,82 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+LogAction (False;"CheckInQty commenced")
+
+C_LONGINT($i;$j;$k)
+ARRAY REAL(aTotal;0)
+ARRAY LONGINT(aDataIn;0)
+vLastQtyBalance:=0
+If (Application type#4D Server)
+$WinRef:=Open window(Screen width-300;35;Screen width-20;155;-Palette form window)
+Else 
+ALL RECORDS([Facility])
+End if 
+If (Records in selection([Facility])>0)
+
+READ WRITE([Analysis])
+READ WRITE([Trxs])
+UNLOAD RECORD([Analysis])
+UNLOAD RECORD([Trxs])
+
+If (Application type#4D Server)
+GOTO XY(1;1)
+MESSAGE(Get localized string("Recalculating Inventory Qty on hand")+"..."+"    ")
+End if 
+
+FIRST RECORD([Facility])
+For ($FacilityCounter;1;Records in selection([Facility]))
+If (Application type#4D Server)
+GOTO XY(1;4)
+MESSAGE(Get localized string("Facility")+" "+String($FacilityCounter)+" "+Get localized string("of")+" "+String(Records in selection([Facility]))+"    ")
+End if 
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]InvItem=True)
+If (Records in selection([Analysis])>0)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+For ($j;1;Records in selection([Analysis]))
+If (Application type#4D Server)
+GOTO XY(1;8)
+MESSAGE(Get localized string("Analysis1")+" "+String($j)+" "+Get localized string("of")+" "+String(Records in selection([Analysis]))+"    ")
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=[Facility]StockSysStart)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]CustomerCode;>)
+vQtyBal:=0
+For ($k;1;Records in selection([Trxs]))
+[Trxs]Balance:=CalcInvBal (0)
+[Trxs]QtyBal:=vQtyBal
+If ([Analysis]CostPrice#0)
+[Trxs]Balance:=Round(vQtyBal*[Analysis]CostPrice;2)
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+If ([Analysis]InvQtyonHand#vQtyBal)
+[Analysis]InvQtyonHand:=vQtyBal
+SAVE RECORD([Analysis])
+End if 
+NEXT RECORD([Analysis])
+End for 
+End if 
+
+NEXT RECORD([Facility])
+End for 
+READ ONLY([Analysis])
+READ ONLY([Trxs])
+Else 
+AlertMessage (Get localized string("No Facility records were selected!"))
+End if 
+
+SetFacility (True;<>sFacility)
+If (Application type#4D Server)
+CLOSE WINDOW($WinRef)
+Else 
+UNLOAD RECORD([Analysis])
+UNLOAD RECORD([Trxs])
+End if 
+LogAction (True;"CheckInQty ended")

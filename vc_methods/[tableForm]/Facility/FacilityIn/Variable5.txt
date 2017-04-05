@@ -1,0 +1,28 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+ConfirmTwo (Get localized string("This must only be used where a site has restored a backup or older version of datafile and resyncing is necessary. Continue?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$SeqNo:=[Facility]EventSeqNo-1
+Repeat 
+QUERY([EventLog];[EventLog]FacilityCode=[Facility]FacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]SeqNo>=$SeqNo)
+$SeqNo:=$SeqNo-1
+Until (Records in selection([EventLog])>0)
+ORDER BY([EventLog];[EventLog]SeqNo;<)
+$SeqNo:=Num(RequestMessage (Get localized string("Enter EventLog Sequence number to restore from:");String([EventLog]SeqNo)))
+If (OK=1)
+If ($SeqNo<=[EventLog]SeqNo) & (Records in selection([EventLog])>0)
+QUERY([EventLog];[EventLog]FacilityCode=[Facility]FacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]SeqNo=$SeqNo)
+If (Records in selection([EventLog])>0)
+ConfirmTwo (Get localized string("Resync from")+" "+String([EventLog]EventDate)+" "+Get localized string("at")+" "+String([EventLog]EventTime)+" - "+Get localized string("Are you sure?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$i:=Execute on server("SyncResetEvents";128000;"SyncResetEvents";[Facility]FacilityCode;$SeqNo)
+End if 
+Else 
+AlertMessage (Get localized string("There are no events with that Sequence Number - Unable to reset!"))
+End if 
+Else 
+AlertMessage (Get localized string("Event Sequence Number must be less than highest current sequence number of")+" "+String([EventLog]SeqNo)+"!!")
+End if 
+End if 
+End if 

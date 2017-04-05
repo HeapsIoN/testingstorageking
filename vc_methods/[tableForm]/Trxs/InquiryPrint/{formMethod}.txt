@@ -1,0 +1,125 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+Case of 
+: (Form event=On Load)
+
+: (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+If ([Trxs]AgreeNo="")
+FIRST RECORD([Trxs])
+End if 
+OBJECT SET TITLE(*;"Text7";Get localized string("Agree't")+":")
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+
+vCol2:=<>tTaxName
+vLeg3:=<>tInvPrefix+Get localized string("INVOICE / RECEIPT")
+vLeg4:=<>tTaxFull+" : "+String([Facility]TaxNumber;<>tTaxFormat)
+
+If ([Trxs]AgreeNo#"@MISCL") & ([Trxs]AgreeNo#"@PETTY")
+vAddr1:=Reverse ([Customer]UserName)
+vAddr2:=Reverse ([Customer]CustomerName)
+If ([Customer]MailSuburb>"")
+vAddr3:=[Customer]MailAddress+Char(13)+[Customer]MailSuburb
+Else 
+vAddr3:=[Customer]MailAddress
+End if 
+vAddr4:=[Customer]MailCity
+vAddr5:=[Customer]MailState
+vAddr6:=[Customer]MailPostZIPCode
+vAddr7:=""
+If ([Customer]MailCountryCode#[Facility]Country) & ([Customer]MailCountryCode#"")
+vAddr7:=[Customer]MailCountry
+End if 
+End if 
+If (([Facility]Country="GB") & ([Customer]MailCountryCode="")) | ([Customer]MailCountryCode="GB")
+//Do Nothing
+Else 
+If (vAddr5>"")
+If (vAddr4>"")
+vAddr4:=vAddr4+"   "+vAddr5
+Else 
+vAddr4:=vAddr5
+End if 
+vAddr5:=""
+End if 
+If (vAddr6>"")
+If (([Facility]Country="DE") & ([Customer]MailCountryCode="")) | ([Customer]MailCountryCode="DE")
+vAddr4:=vAddr6+"   "+vAddr4
+Else 
+vAddr4:=vAddr4+"   "+vAddr6
+End if 
+vAddr6:=""
+End if 
+If (vAddr7>"")
+vAddr5:=vAddr7
+vAddr7:=""
+End if 
+End if 
+OBJECT SET FONT STYLE(*;"Address@";0)
+$i:=Position(Char(13);vAddr3;0;*)
+If ($i>0)
+vAddr7:=vAddr6
+vAddr6:=vAddr5
+vAddr5:=vAddr4
+vAddr4:=Substring(vAddr3;$i+1)
+vAddr3:=Substring(vAddr3;1;$i-1)
+$i:=Position(Char(13);vAddr4;0;*)
+If ($i>0)
+vAddr7:=vAddr6
+vAddr6:=vAddr5
+vAddr5:=Substring(vAddr4;$i+1)
+vAddr4:=Substring(vAddr4;1;$i-1)
+OBJECT SET FONT STYLE(vAddr6;[Facility]AddressStyle)
+Else 
+OBJECT SET FONT STYLE(vAddr5;[Facility]AddressStyle)
+End if 
+Else 
+OBJECT SET FONT STYLE(vAddr4;[Facility]AddressStyle)
+End if 
+If (([Customer]CustomerCode#"") & (vtInvAgree#[Agreement]RAgreeNo)) | ([Reservation]RReserveNo>"")
+OBJECT MOVE(*;"Address@";[Facility]AddressXPos;[Facility]AddressYPos)
+vtInvAgree:=[Agreement]RAgreeNo
+End if 
+: (Form event=On Printing Detail)
+[Trxs]AnalysisCode:=Substring([Trxs]AnalysisCode;6)
+If ([Trxs]Charge=True)
+vTot:=[Trxs]TotAmt
+vTax:=[Trxs]TaxAmt
+vNet:=vTot-vTax
+vPay:=0
+Else 
+vPay:=[Trxs]TotAmt
+vTot:=0
+vTax:=0
+vNet:=0
+If ([Trxs]Confirmed=False)
+[Trxs]Description:=[Trxs]Description+" •"
+End if 
+End if 
+: (Form event=On Printing Footer)
+SetFooter 
+: (Form event=On Load)
+SetFormats 
+$j:=Find in array(<>aButton;"Invoice")
+If ($j>0)
+CANCEL
+End if 
+End case 

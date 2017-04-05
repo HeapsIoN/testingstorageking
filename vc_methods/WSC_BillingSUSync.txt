@@ -1,0 +1,87 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Billing Sync - WSC_BillingSUSync Start";"BillingSync")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 25/01/16, 14:10:25
+// ----------------------------------------------------
+// Method: WSC_BillingSUSync
+// Description
+// 
+// $1 Facility ID from [Unit]SuFacilityID
+// $2 [Agreement]PaidToDate
+//
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT($TCPID;$Error)
+C_BOOLEAN(WS_ORSuccess)
+C_TEXT($0)
+
+C_LONGINT(WS_ORErrorCode)
+C_TEXT($3;WS_ORErrorDescription;$1)
+C_DATE($2)
+
+$TCPID:=0
+
+WEB SERVICE SET PARAMETER("WS_SUFacilityID";$1)
+WEB SERVICE SET PARAMETER("WS_PaidToDate";$2)
+WEB SERVICE SET PARAMETER("WS_WebServicePassword";$3)
+
+$String:=""
+
+If ($4=True)
+$String:="Start WSC_BillingSUSync RETRY"+Char(13)
+Else 
+$String:="Start WSC_BillingSUSync"+Char(13)
+End if 
+$String:=$String+"WS_SUFacilityID: "+$1+Char(13)
+$String:=$String+"WS_PaidToDate: "+String($2)+Char(13)
+C_TEXT($pass)
+$pass:=$3
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+SyncRecordLog ($String;"BillingSync")
+
+$Error:=IT_SetTimeOut (1)
+$Error:=TCP_Open (GetDNS ("SUV1");19811;$TCPID;0)
+
+If ($Error=0)
+$Error:=TCP_Close ($TCPID)
+
+If (Current machine="AFTERMATH") | (Current machine="VALKYRIE")
+WEB SERVICE CALL("http://localhost:19811/4DSOAP/";"WS_BillingSUSync#WS_BillingSUSync";"WS_BillingSUSync";"StormanUsersV2";Web Service dynamic)
+Else 
+WEB SERVICE CALL("http://"+GetDNS ("SUV1")+":19811/4DSOAP/";"WS_BillingSUSync#WS_BillingSUSync";"WS_BillingSUSync";"StormanUsersV2";Web Service dynamic)
+End if 
+
+If (OK=1)
+WEB SERVICE GET RESULT(WS_ORSuccess;"WS_ORSuccess")
+WEB SERVICE GET RESULT(WS_ORErrorCode;"WS_ORErrorCode")
+WEB SERVICE GET RESULT(WS_ORErrorDescription;"WS_ORErrorDescription";*)// Memory clean-up on the final return value.
+End if 
+
+$String:=""
+$String:="End WSC_BillingSUSync"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+SyncRecordLog ($String;"BillingSync")
+
+Case of 
+
+: (WS_ORErrorCode=7001)//data rejected
+$0:="R"
+: (WS_ORErrorCode=7002)//facility locked
+$0:="L"
+: (WS_ORErrorCode=7003)//facility does not exist
+$0:="F"
+Else 
+$0:="T"//sync'd
+End case 
+
+Else 
+
+End if 
+$Error:=IT_SetTimeOut (30)
+
+SyncRecordLog ("Billing Sync - WSC_BillingSUSync End";"BillingSync")

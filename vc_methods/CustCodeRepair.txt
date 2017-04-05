@@ -1,0 +1,131 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//CustCodeRepair
+C_TEXT($CustCode;$Base;$Code;$NewCustCode_tmp;$text_log)
+C_LONGINT($i;$vlElem;$j;$vlElem1)
+
+$WinRef:=Open window(20;50;450;150;0)
+
+
+ARRAY TEXT($OldCustCode;0)
+ARRAY TEXT($NewCustCode;0)
+ARRAY TEXT($CustName;0)
+
+READ WRITE([Customer])
+READ WRITE([Agreement])
+READ WRITE([Reservation])
+READ WRITE([Trxs])
+READ WRITE([PhotosCards])
+READ WRITE([GateLog])
+READ WRITE([NotesHistory])
+
+SetFacility 
+
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@")
+$WinRef:=Open window(20;50;450;150;0)
+For ($vlElem;1;Records in selection([Customer]))
+GOTO XY(2;3)
+MESSAGE("Read customers "+String($vlElem)+" of "+String(Records in selection([Customer])))
+
+If (CustCodeFindSpecial ([Customer]CustomerCode)=1)
+APPEND TO ARRAY($OldCustCode;[Customer]CustomerCode)
+$NewCustCode_tmp:=RemoveSpecial ([Customer]CustomerName)
+$i:=0
+$Base:=Substring(Uppercase(Replace string(Replace string($NewCustCode_tmp;" ";"";*);",";"";*);*);1;6)
+Repeat 
+$j:=5-Length(String($i;"#####"))
+$Code:=<>sFacility+Substring($Base;1;$j)+String($i;"#####")
+$i:=$i+1
+Until ((Find in array($NewCustCode;$Code)<0) & (Find in field([Customer]CustomerCode;$Code)<0) & (Length($Code)=10))
+//Until ((Find in field([Customer]CustomerCode;$Code)<0) & (Length($Code)=10))
+APPEND TO ARRAY($NewCustCode;$Code)
+APPEND TO ARRAY($CustName;[Customer]CustomerName)
+End if 
+NEXT RECORD([Customer])
+End for 
+CLOSE WINDOW($WinRef)
+
+If (Size of array($NewCustCode)>0)
+
+$WinRef:=Open window(20;50;450;150;0)
+
+For ($vlElem;1;Size of array($NewCustCode))
+
+$text_log:=""
+
+GOTO XY(2;3)
+MESSAGE("Repairing customers "+String($vlElem)+" of "+String(Size of array($NewCustCode)))
+
+QUERY([Customer];[Customer]CustomerCode=$OldCustCode{$vlElem})
+//QUERY([Customer];[Customer]CustomerCode=$NewCustCode{$vlElem})
+If ((Records in selection([Customer])=1) & (Find in field([Customer]CustomerCode;$NewCustCode{$vlElem})<0))
+[Customer]CustomerCode:=$NewCustCode{$vlElem}
+SAVE RECORD([Customer])
+
+$text_log:="CustCodeRepair: rec."+String($vlElem)+" CustomerCode changed from: "+$OldCustCode{$vlElem}+" to: "+$NewCustCode{$vlElem}+", "
+
+//agreements
+QUERY([Agreement];[Agreement]CustomerCode=$OldCustCode{$vlElem})
+For ($vlElem1;1;Records in selection([Agreement]))
+[Agreement]CustomerCode:=$NewCustCode{$vlElem}
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+$text_log:=$text_log+" Agreements: "+String($vlElem1-1)+", "
+
+//reservations
+QUERY([Reservation];[Reservation]CustomerCode=$OldCustCode{$vlElem})
+For ($vlElem1;1;Records in selection([Reservation]))
+[Reservation]CustomerCode:=$NewCustCode{$vlElem}
+SAVE RECORD([Reservation])
+NEXT RECORD([Reservation])
+End for 
+$text_log:=$text_log+" Reservation: "+String($vlElem1-1)+", "
+
+//trxs
+QUERY([Trxs];[Trxs]CustomerCode=$OldCustCode{$vlElem})
+For ($vlElem1;1;Records in selection([Trxs]))
+[Trxs]CustomerCode:=$NewCustCode{$vlElem}
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+$text_log:=$text_log+" Trxs: "+String($vlElem1-1)+", "
+
+//photocards
+QUERY([PhotosCards];[PhotosCards]Code=$OldCustCode{$vlElem})
+For ($vlElem1;1;Records in selection([PhotosCards]))
+[PhotosCards]Code:=$NewCustCode{$vlElem}
+SAVE RECORD([PhotosCards])
+NEXT RECORD([PhotosCards])
+End for 
+$text_log:=$text_log+" PhotosCards: "+String($vlElem1-1)+", "
+
+//GateLog
+QUERY([GateLog];[GateLog]CustCode=$OldCustCode{$vlElem-1})
+For ($vlElem1;1;Records in selection([GateLog]))
+[GateLog]CustCode:=$NewCustCode{$vlElem}
+SAVE RECORD([GateLog])
+NEXT RECORD([GateLog])
+End for 
+$text_log:=$text_log+" GateLog: "+String($vlElem1-1)+", "
+
+//NotesHistory
+QUERY([NotesHistory];[NotesHistory]CustomerCode=$OldCustCode{$vlElem})
+For ($vlElem1;1;Records in selection([NotesHistory]))
+[NotesHistory]CustomerCode:=$NewCustCode{$vlElem}
+SAVE RECORD([NotesHistory])
+NEXT RECORD([NotesHistory])
+End for 
+$text_log:=$text_log+" NotesHistory: "+String($vlElem1-1)//  + ", "
+
+SyncRecordLog ($text_log)
+
+Else 
+AlertMessage ("Customer: "+$OldCustCode{$vlElem}+" duplicated")
+SyncRecordLog ("Customer: "+$OldCustCode{$vlElem}+" duplicated")
+End if 
+End for 
+CLOSE WINDOW($WinRef)
+AlertMessage ("Process completed!")
+Else 
+AlertMessage ("No faullty Customer Code found!")
+End if 

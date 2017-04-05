@@ -1,0 +1,255 @@
+//%attributes = {"publishedWeb":true,"lang":"en"} comment added and reserved by 4D.
+
+C_TEXT($1;$2;$0;$Command;$cr;$q)
+ARRAY TEXT(vtaWebFormNames;0)
+ARRAY TEXT(vtaWebFormValues;0)
+WEB GET VARIABLES(vtaWebFormNames;vtaWebFormValues)
+C_LONGINT($Index)
+
+$Command:=Replace string($1;"/4DCGI/reservation";"")//e.g. /new
+$Function:=Substring($Command;2)
+$cr:=Char(13)
+$q:=Char(34)
+
+//Globally Held Data
+C_TEXT(vtFacilityShortName;vtUnitType;vtReservedDate;vtExpectedMoveInDate)
+C_TEXT(vtUserCustomerName;vtUserName;vtUserFirstName;vtUserAddress;vtUserCity;vtUserState;vtUserPhone;vtUserMobile;vtUserFax;vtUserEmail;vtUserPostZipCode;vtUserRegistration;vtUserDriversLicense)
+C_TEXT(vtFunction;vtFacilities;vtFacilityDetails;vtUnitTypeDetails;vtUnitTypes;vtMSMarketingTypes;vtCTMarketingTypes;vtBTMarketingTypes;vtMWMarketingTypes;vtRMMarketingTypes)
+
+Case of 
+: ($Function="create")
+$Index:=Find in array(vtaWebFormNames;"vtFunction")
+If ($Index#-1)
+Case of 
+: (vtaWebFormValues{$Index}="Find Available Units") | (vtaWebFormValues{$Index}="Re-Select Unit Type")
+WEB SEND FILE("reservation/selectunittype.shtml")
+: (vtaWebFormValues{$Index}="Re-Enter Contact Details")
+WEB SEND FILE("reservation/enteruserdetails.shtml")
+: (vtaWebFormValues{$Index}="Enter Contact Details")
+If (vtUnitType#"")
+WEB SEND FILE("reservation/enteruserdetails.shtml")
+Else 
+WEB SEND FILE("reservation/selectunittype.shtml")
+End if 
+: (vtaWebFormValues{$Index}="Confirm Reservation")
+WEB SEND FILE("reservation/confirm.shtml")
+: (vtaWebFormValues{$Index}="Process Reservation")
+
+//C_TEXT(vName)
+
+vName:=Substring(vtUsername;1;50)
+QUERY([Facility];[Facility]ShortName=vtFacilityShortName)
+CreateCustCode (True;True)
+[Customer]CustomerName:=vtUserCustomerName
+[Customer]UserName:=vtUserName
+[Customer]FirstName:=vtUserFirstName
+[Customer]EmailAddress:=vtUserEmail
+[Customer]FaxNo:=vtUserFax
+[Customer]MailAddress:=vtUserAddress
+[Customer]MailCity:=vtUserCity
+[Customer]MailPostZIPCode:=vtUserPostZipCode
+[Customer]MailState:=vtUserState
+[Customer]MobilePhone:=vtUserMobile
+[Customer]PhonePrivate:=vtUserPhone
+[Customer]MarketSrce:=vtMSMarketingTypes
+[Customer]CustType:=vtCTMarketingTypes
+[Customer]BusType:=vtBTMarketingTypes
+[Customer]ReasonRenting:=vtMWMarketingTypes
+[Customer]CarRego:=vtUserRegistration
+[Customer]LicenceNo:=vtUserDriversLicense
+
+SAVE RECORD([Customer])
+WWW_AccountReservationCreate 
+
+WEB SEND FILE("reservation/summary.shtml")
+
+
+: (vtaWebFormValues{$Index}="Return to Website")
+WEB SEND HTTP REDIRECT("http://www.storman.com")
+Else 
+//Do nothing
+End case 
+Else 
+WEB SEND FILE("reservation/selectunittype.shtml")
+End if 
+
+
+: ($Function="getmarketingtypes")
+vtMSMarketingTypes:=""
+vtCTMarketingTypes:=""
+vtBTMarketingTypes:=""
+vtMWMarketingTypes:=""
+vtRMMarketingTypes:=""
+
+QUERY([Facility];[Facility]ShortName=vtFacilityShortName)
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode)
+CREATE SET([MarketingTypes];"MarketingTypes")
+
+USE SET("MarketingTypes")
+QUERY SELECTION([MarketingTypes];[MarketingTypes]ListCode="CT")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+FIRST RECORD([MarketingTypes])
+vtCTMarketingTypes:=vtCTMarketingTypes+"<select name="+$q+"vtCTMarketingTypes"+$q+" size="+$q+"1"+$q+">"+$cr
+vtCTMarketingTypes:=vtCTMarketingTypes+"<option selected value="+$q+"0"+$q+"></option>"+$cr
+For ($Counter;1;Records in selection([MarketingTypes]))
+vtCTMarketingTypes:=vtCTMarketingTypes+"<option value="+$q+[MarketingTypes]Description+$q+">"+[MarketingTypes]Description+"</option>"+$cr
+NEXT RECORD([MarketingTypes])
+End for 
+vtCTMarketingTypes:=vtCTMarketingTypes+"</select>"+$cr
+
+USE SET("MarketingTypes")
+QUERY SELECTION([MarketingTypes];[MarketingTypes]ListCode="MS")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+FIRST RECORD([MarketingTypes])
+vtMSMarketingTypes:=vtMSMarketingTypes+"<select name="+$q+"vtMSMarketingTypes"+$q+" size="+$q+"1"+$q+">"+$cr
+vtMSMarketingTypes:=vtMSMarketingTypes+"<option selected value="+$q+"0"+$q+"></option>"+$cr
+For ($Counter;1;Records in selection([MarketingTypes]))
+vtMSMarketingTypes:=vtMSMarketingTypes+"<option value="+$q+[MarketingTypes]Description+$q+">"+[MarketingTypes]Description+"</option>"+$cr
+NEXT RECORD([MarketingTypes])
+End for 
+vtMSMarketingTypes:=vtMSMarketingTypes+"</select>"+$cr
+
+USE SET("MarketingTypes")
+QUERY SELECTION([MarketingTypes];[MarketingTypes]ListCode="BT")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+FIRST RECORD([MarketingTypes])
+vtBTMarketingTypes:=vtBTMarketingTypes+"<select name="+$q+"vtBTMarketingTypes"+$q+" size="+$q+"1"+$q+">"+$cr
+vtBTMarketingTypes:=vtBTMarketingTypes+"<option selected value="+$q+"0"+$q+"></option>"+$cr
+For ($Counter;1;Records in selection([MarketingTypes]))
+vtBTMarketingTypes:=vtBTMarketingTypes+"<option value="+$q+[MarketingTypes]Description+$q+">"+[MarketingTypes]Description+"</option>"+$cr
+NEXT RECORD([MarketingTypes])
+End for 
+vtBTMarketingTypes:=vtBTMarketingTypes+"</select>"+$cr
+
+USE SET("MarketingTypes")
+QUERY SELECTION([MarketingTypes];[MarketingTypes]ListCode="MW")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+FIRST RECORD([MarketingTypes])
+vtMWMarketingTypes:=vtMWMarketingTypes+"<select name="+$q+"vtMWMarketingTypes"+$q+" size="+$q+"1"+$q+">"+$cr
+vtMWMarketingTypes:=vtMWMarketingTypes+"<option selected value="+$q+"0"+$q+"></option>"+$cr
+For ($Counter;1;Records in selection([MarketingTypes]))
+vtMWMarketingTypes:=vtMWMarketingTypes+"<option value="+$q+[MarketingTypes]Description+$q+">"+[MarketingTypes]Description+"</option>"+$cr
+NEXT RECORD([MarketingTypes])
+End for 
+vtMWMarketingTypes:=vtMWMarketingTypes+"</select>"+$cr
+
+USE SET("MarketingTypes")
+QUERY SELECTION([MarketingTypes];[MarketingTypes]ListCode="RM")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+FIRST RECORD([MarketingTypes])
+vtRMMarketingTypes:=vtRMMarketingTypes+"<select name="+$q+"vtEMMarketingTypes"+$q+" size="+$q+"1"+$q+">"+$cr
+vtRMMarketingTypes:=vtRMMarketingTypes+"<option selected value="+$q+"0"+$q+"></option>"+$cr
+For ($Counter;1;Records in selection([MarketingTypes]))
+vtRMMarketingTypes:=vtRMMarketingTypes+"<option value="+$q+[MarketingTypes]Description+$q+">"+[MarketingTypes]Description+"</option>"+$cr
+NEXT RECORD([MarketingTypes])
+End for 
+vtRMMarketingTypes:=vtRMMarketingTypes+"</select>"+$cr
+
+: ($Function="selectunittypeprep")
+//Find only Non-Head Office Facilities
+QUERY([Facility];[Facility]SortOrder>0)
+ALL RECORDS([Facility])//Remove this from Production version
+ORDER BY([Facility];[Facility]FacilityName;>)
+FIRST RECORD([Facility])
+
+//Populate the Dropdown menu of Facilities
+vtFacilities:=vtFacilities+"<select name="+$q+"vtFacilityShortName"+$q+" size="+$q+"1"+$q+">"+$cr
+For ($Counter;1;Records in selection([Facility]))
+If (vtFacilityShortName=[Facility]ShortName)//If the user is refreshing the list then vtSiteName will have a value and therefore will be selected when the page is drawn.
+vtFacilities:=vtFacilities+"<option selected value="+$q+[Facility]ShortName+$q+">"+[Facility]FacilityName+"</option>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<table>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Facility</td><td>"+[Facility]FacilityName+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Address</td><td>"+[Facility]Address+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>City</td><td>"+[Facility]City+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>State</td><td>"+[Facility]State+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Post/Zip</td><td>"+[Facility]PostZIPCode+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Phone</td><td>"+[Facility]Phone+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Fax</td><td>"+[Facility]Fax+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"</table>"+$cr
+Else 
+vtFacilities:=vtFacilities+"<option value="+$q+[Facility]ShortName+$q+">"+[Facility]FacilityName+"</option>"+$cr
+End if 
+NEXT RECORD([Facility])
+End for 
+vtFacilities:=vtFacilities+"</select>"+$cr
+
+//Gather the Unit Types information
+$Index:=Find in array(vtaWebFormNames;"vtFacilityShortName")
+If ($Index#-1)
+ARRAY TEXT(WS_Types;0)
+ARRAY TEXT(WS_Desc;0)
+ARRAY REAL(WS_MonthlyRate;0)
+ARRAY REAL(WS_WeeklyRate;0)
+ARRAY LONGINT(WS_NoVacant;0)
+ARRAY TEXT(WS_UnitNos;0)
+ARRAY TEXT(WS_UnitTypes;0)
+ARRAY TEXT(WS_UnitSize;0)
+ARRAY TEXT(WS_DoorSize;0)
+ARRAY TEXT(WS_Status;0)
+ALL RECORDS([Facility])
+QUERY([Facility];[Facility]ShortName=vtFacilityShortName)
+If (Records in selection([Facility])=1)
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+"@")
+ORDER BY([UnitType];[UnitType]SortOrder;>)
+SELECTION TO ARRAY([UnitType]UnitTypeCode;WS_Types;[UnitType]Description;WS_Desc;[UnitType]MonthlyRate;WS_MonthlyRate;[UnitType]WeeklyRate;WS_WeeklyRate;[UnitType]NoVacant;WS_NoVacant)
+QUERY([Unit];[Unit]RUnitNo=[Facility]FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+SELECTION TO ARRAY([Unit]UnitNo;WS_UnitNos;[Unit]UnitTypeCode;WS_UnitTypes;[Unit]UnitSize;WS_UnitSize;[Unit]DoorSize;WS_DoorSize;[Unit]Status;WS_Status)
+End if 
+
+FIRST RECORD([UnitType])
+For ($Counter;1;Size of array(WS_Types))
+$MonthlyRate:=String(WS_MonthlyRate{$Counter};"####0.00")
+vtUnitTypeDetails:=vtUnitTypeDetails+"<tr>"+$cr
+vtUnitTypeDetails:=vtUnitTypeDetails+"<td align="+$q+"center"+$q+" width="+$q+"100"+$q+">"+WS_Desc{$Counter}+"</td>"+$cr
+vtUnitTypeDetails:=vtUnitTypeDetails+"<td></td>"+$cr
+vtUnitTypeDetails:=vtUnitTypeDetails+"<td align="+$q+"right"+$q+">$&nbsp;"+$MonthlyRate+"</td>"+$cr
+vtUnitTypeDetails:=vtUnitTypeDetails+"<td></td>"+$cr
+vtUnitTypeDetails:=vtUnitTypeDetails+"<td><input type="+$q+"radio"+$q+" name="+$q+"vtUnitType"+$q+" value="+$q+WS_Types{$Counter}+$q+"></td>"+$cr
+vtUnitTypeDetails:=vtUnitTypeDetails+"</tr>"+$cr
+NEXT RECORD([UnitType])
+End for 
+Else 
+vtUnitTypeDetails:=""
+End if 
+
+Case of 
+: (<>tDateFormat="US")
+vtDateFormat:="MM/DD/YYYY"
+: (<>tDateFormat="ISO")
+vtDateFormat:="YYYY/MM/DD"
+Else 
+vtDateFormat:="DD/MM/YYYY"
+End case 
+
+
+
+: ($Function="ConfirmPrep")
+//Find only Non-Head Office Facilities
+QUERY([Facility];[Facility]ShortName=vtFacilityShortName)
+ORDER BY([Facility];[Facility]FacilityName;>)
+FIRST RECORD([Facility])
+
+vtFacilityDetails:=vtFacilityDetails+"<table>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Facility</td><td>"+[Facility]FacilityName+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Address</td><td>"+[Facility]Address+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>City</td><td>"+[Facility]City+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>State</td><td>"+[Facility]State+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Post/Zip</td><td>"+[Facility]PostZIPCode+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Phone</td><td>"+[Facility]Phone+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"<tr><td>Fax</td><td>"+[Facility]Fax+"</td></tr>"+$cr
+vtFacilityDetails:=vtFacilityDetails+"</table>"+$cr
+
+QUERY([UnitType];[UnitType]UnitTypeCode=vtUnitType)
+$MonthlyRate:=String([UnitType]MonthlyRate;"####0.00")
+vtUnitTypes:=vtUnitTypes+"<tr>"+$cr
+vtUnitTypes:=vtUnitTypes+"<td align="+$q+"center"+$q+" width="+$q+"100"+$q+">"+[UnitType]Description+"</td>"+$cr
+vtUnitTypes:=vtUnitTypes+"<td></td>"+$cr
+vtUnitTypes:=vtUnitTypes+"<td align="+$q+"right"+$q+">$&nbsp;"+$MonthlyRate+"</td>"+$cr
+vtUnitTypes:=vtUnitTypes+"</tr>"+$cr
+Else 
+AlertMessage (Get localized string("Didn't do anything"))
+End case 
+
+
+

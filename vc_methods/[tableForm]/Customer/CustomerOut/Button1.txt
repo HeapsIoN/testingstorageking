@@ -1,0 +1,102 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+vTitle:=Get localized string("Import Reservations Data...")
+vtFormula:=Get localized string("Import Reservations Formula")
+//vtFormula:="This will import data from a TEXT (Tab Delimited) or SYLK file"+" into the Reservations file.  These files can "
+//vtFormula:=vtFormula+"be created by Excel and other spreadsheet programs.  Use the Save as "
+//vtFormula:=vtFormula+"option to create the file.  Units & Customers must be imported before Reservatio"+"ns!"+Char(13)+Char(13)
+//vtFormula:=vtFormula+"The columns need to be in the following order: (A=Alpha + Max chars)"+Char(13)
+//vtFormula:=vtFormula+"ReservnNo (A4), CustomerCode (A5), Reserved Date (Date), ExpectedMoveIn (Date), "
+//vtFormula:=vtFormula+"DepositAmt ($.cc Amt), DateDepositPaid (Date), "+Char(13)
+//vtFormula:=vtFormula+" - Don't include a header row and ensure no duplicates for ReservnNo!"
+//vtFormula:=vtFormula+" - otherwise importing will stop at duplicate code record."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"To continue select the TEXT or SYLK formatted file at the following open dialog."
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Reservations"))
+vImportDialog:=True
+vShowCancel:=True
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+If (OK=1)
+LogAction (False;"Import Reservations commenced")
+If (<>tLogging=False)
+READ WRITE([Reservation])
+ALL RECORDS([Reservation])
+If (Records in selection([Reservation])>0)
+BEEP
+ConfirmTwo (Get localized string("Delete")+" "+Get localized string("The")+" "+String(Records in selection([Reservation]))+" "+Get localized string("existing reservations before importing?"))
+If (OK=1)
+BEEP
+BEEP
+BEEP
+ConfirmTwo (Get localized string("WARNING - Delete")+" "+String(Records in selection([Reservation]))+" "+Get localized string("existing reservations. Are you absolutely certain?"))
+If (OK=1)
+DELETE SELECTION([Reservation])
+End if 
+End if 
+End if 
+FORM SET INPUT([Reservation];"Import")
+ON ERR CALL("ErrorImport")
+If (rRefund1=1)
+IMPORT TEXT([Reservation];"")
+Else 
+IMPORT SYLK([Reservation];"")
+End if 
+ON ERR CALL("ErrorLog")
+QUERY([Reservation];[Reservation]ReserveNo="";*)
+QUERY([Reservation]; | ;[Reservation]CustomerCode="")
+DELETE SELECTION([Reservation])
+FORM SET INPUT([Reservation];"ReservationIn")
+ALL RECORDS([Reservation])
+vtFormula:=""
+READ WRITE([Unit])
+For ($i;1;Records in selection([Reservation]))
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+[Reservation]UnitsReserved:=""
+If (Records in selection([Unit])>0)
+While (End selection([Unit])=False)
+If ([Unit]ReservedDate=!00-00-00!)
+[Unit]ReservedDate:=[Reservation]ReservedDate
+SAVE RECORD([Unit])
+End if 
+[Reservation]UnitsReserved:=[Reservation]UnitsReserved+", "+[Unit]UnitNo
+NEXT RECORD([Unit])
+End while 
+[Reservation]UnitsReserved:=Substring([Reservation]UnitsReserved;3)
+End if 
+SAVE RECORD([Reservation])
+NEXT RECORD([Reservation])
+End for 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([Reservation])
+If (vtFormula>"")
+vtFormula:=Get localized string("The following errors were recorded. Please check each line carefully!")+Char(13)+Char(13)+vtFormula
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Reservations"))
+vImportDialog:=True
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+End if 
+ALL RECORDS([Reservation])
+vtFormula:=Get localized string("There are now")+" "+String(Records in selection([Reservation]))+" "+Get localized string("Reservations on file.")+Char(13)
+vtFormula:=vtFormula+Get localized string("Import Reservations Errors")
+//vtFormula:=vtFormula+"Please check to ensure last row of spreadsheet is in"
+//vtFormula:=vtFormula+" Reservation file, otherwise an error has occurred and you will need to fix the "
+//vtFormula:=vtFormula+"error and import the spread sheet again."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"Errors are normally caused by either a duplicate ReservnNo or by having "
+//vtFormula:=vtFormula+"a datafield that is too long or in the wrong format.  The row after the last "
+//vtFormula:=vtFormula+"successfully imported record is generally the offending row."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"If you need to import the file again be sure to delete the existing reservations"
+//vtFormula:=vtFormula+" when asked during the import process."
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Reservations"))
+vImportDialog:=True
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+LogAction (True;"Import Reservations finished")
+Else 
+LogAction (True;"Import Reservations finished")
+End if 
+End if 

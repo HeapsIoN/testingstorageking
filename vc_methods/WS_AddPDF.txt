@@ -1,0 +1,159 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 00/00/00, 00:00:00 (old)
+// ----------------------------------------------------
+// Method: WS_AddPDF
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+// Standardized
+TRACE
+SOAP DECLARATION(WS_Picture;Is BLOB;SOAP input)
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_File_Name;Is text;SOAP input)
+SOAP DECLARATION(WS_Extension;Is text;SOAP input)
+SOAP DECLARATION(WS_Thumbnail;Is BLOB;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+//WS_OLD=SOAP DECLARATION(WS_Success;Is Boolean;SOAP Output)
+//WS_OLD=SOAP DECLARATION(WS_Error;Is Text;SOAP Output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_AddPDF"+Char(13)
+$String:=$String+"WS_Picture: "+String(BLOB size(WS_Picture))+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_File_Name: "+WS_File_Name+Char(13)
+$String:=$String+"WS_Extension: "+WS_Extension+Char(13)
+$String:=$String+"WS_Thumbnail: "+String(BLOB size(WS_Thumbnail))+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+C_PICTURE($Picture;$Thumbnail)
+C_REAL($Compression)
+C_LONGINT($Compress)
+READ WRITE([PhotosCards])
+BLOB TO PICTURE(WS_Thumbnail;$Thumbnail)
+BLOB TO PICTURE(WS_Picture;$Picture)
+WS_Success:=True
+
+If (Length(WS_Cust_Code)<6)
+//WS_OLD=WS_Success:=False
+//WS_OLD=WS_Error:="The Customer Code is not valid"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1020
+WS_ORErrorDescription:="Invalid Customer Code."
+Else 
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_Cust_Code;1;5))
+End if 
+
+If ((WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")) | ([Facility]FacilityCode="ALASA")// second condition is for iPad to work on Onehunga All Secure
+
+If (BLOB size(WS_Picture)=0)
+//WS_OLD=WS_Success:=False
+//WS_OLD=WS_Error:="Image is not found"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1021
+WS_ORErrorDescription:="Image could not be found."
+End if 
+
+If (Length(WS_Extension)=0)
+//WS_OLD=WS_Success:=False
+//WS_OLD=WS_Error:="Extension of the file is not set"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1022
+WS_ORErrorDescription:="The file extension is not defined."
+End if 
+
+If (Length(WS_File_Name)=0)
+//WS_OLD=WS_Success:=False
+//WS_OLD=WS_Error:="File name is not set"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1023
+WS_ORErrorDescription:="The filename is not defined."
+End if 
+
+If (WS_Extension#".pdf")
+$Compress:=Abs([Facility]PhotoCompression)//Value to be between 1-1000 with 1000 being no compression require slider control
+If ($Compress<20) | ($Compress>1000)
+$Compress:=1000
+End if 
+If ($Compress>0) & ($Compress<=1000)
+ON ERR CALL("ErrorPhoto")
+If ($Compress#0)
+$Compression:=0.25+((0.75/1000)*$Compress)
+Else 
+$Compression:=0.25
+End if 
+CONVERT PICTURE($Picture;".jpg";$Compression)
+End if 
+End if 
+
+If (WS_Success=True)
+QUERY([Customer];[Customer]CustomerCode=WS_Cust_Code)
+If (Records in selection([Customer])>0)
+CREATE RECORD([PhotosCards])
+[PhotosCards]Code:=[Customer]CustomerCode
+[PhotosCards]Photo:=$Picture
+[PhotosCards]Name:=WS_File_Name
+[PhotosCards]UnitAccess:=WS_Extension
+[PhotosCards]DateTaken:=Current date
+[PhotosCards]Size:=Picture size($Picture)
+[PhotosCards]Thumbnail:=$Thumbnail
+//WS_OLD=WS_Error:=""
+SAVE RECORD([PhotosCards])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Document successfully added to Customer in database Storman."
+End if 
+End if 
+Else 
+//WS_OLD=WS_Success:=False
+//WS_OLD=WS_Error:="Incorrect password"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([BillPlan])
+UNLOAD RECORD([BillPlan])
+
+$String:="End WS_AddPDF"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

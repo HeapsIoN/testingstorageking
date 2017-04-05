@@ -1,0 +1,84 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($OK)
+C_TEXT($Action)
+$OK:=True
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+If (([Trxs]CCAuthNo="") | ([Trxs]CCTransID="")) & ([Analysis]SpecialOptions>=54) & ([Analysis]SpecialOptions<=56)
+If (PermissionsControl (203;False))
+ConfirmTwo (Get localized string("The Credit Card has not been processed. Do you wish to continue?");Get localized string("Continue Anyway"))
+If (OK=1)
+$OK:=True
+Else 
+$OK:=False
+End if 
+Else 
+AlertMessage (Get localized string("The Credit Card has not been processed."))
+$OK:=False
+End if 
+End if 
+If ([Trxs]TotAmt=0)
+AlertMessage (Get localized string("You cannot create a receipt or refund for $0"))
+$OK:=False
+End if 
+If (Old([Trxs]TotAmt)#0) & ([Trxs]TotAmt=0) & (PermissionsControl (165;False)=False)
+AlertMessage (Get localized string("You cannot set the transaction to $0"))
+$OK:=False
+End if 
+If ([Trxs]TotAmt<([Facility]MaxRefund*-1)) & (PermissionsControl (164;False)=False)
+AlertMessage (Get localized string("You cannot give a refund more than $")+String([Facility]MaxRefund))
+$OK:=False
+End if 
+If ([Reservation]RReserveNo>"")
+If ([Reservation]ActiveReserve=False) & ([Reservation]Balance>=0) & (PermissionsControl (166;False)=False) & (vtReverse)
+AlertMessage (Get localized string("You cannot give a refund when the balance is not in credit"))
+$OK:=False
+End if 
+If ([Reservation]ActiveReserve=False) & ([Trxs]TotAmt<[Reservation]Balance) & (PermissionsControl (167;False)=False) & (vtReverse)
+AlertMessage (Get localized string("You cannot give a refund greater than the current credit balance!"))
+$OK:=False
+End if 
+Else 
+If ([Agreement]ActiveAgreemt=False) & ([Agreement]BalanceOwing>=0) & (PermissionsControl (166;False)=False) & (vtReverse)
+AlertMessage (Get localized string("You cannot give a refund when the balance is not in credit"))
+$OK:=False
+End if 
+If ([Agreement]ActiveAgreemt=False) & ([Trxs]TotAmt<[Agreement]BalanceOwing) & (PermissionsControl (167;False)=False) & (vtReverse)
+AlertMessage (Get localized string("You cannot give a refund greater than the current credit balance!"))
+$OK:=False
+End if 
+End if 
+If ([Analysis]MinAmt#0)
+If ([Trxs]TotAmt<[Analysis]MinAmt)
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of less than")+" "+String([Analysis]MinAmt)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+If ([Analysis]MaxAmt#0)
+If ([Trxs]TotAmt>[Analysis]MaxAmt)
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of more than")+" "+String([Analysis]MaxAmt)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+
+
+If ([Trxs]CashReceived<[Trxs]TotAmt)
+AlertMessage (Get localized string("You cannot enter an amount tendered less than the total amount."))
+[Trxs]CashReceived:=0
+vChange:=0
+$OK:=False
+End if 
+
+If ($OK)
+If ([Analysis]SetBankedDate=True)
+[Trxs]DateBanked:=[Trxs]TrxDate
+End if 
+$Action:="MOD"
+If (Old([Trxs]AgreeNo)="")
+$Action:="ADD"
+End if 
+If (WSC_AddReceiptTrx (Old([Trxs]SeqNo);[Trxs]AgreeNo;[Trxs]AnalysisCode;[Trxs]BankBranch;[Trxs]CCAuthNo;[Trxs]CCTransID;[Trxs]CustomerCode;[Trxs]Description;[Trxs]Drawer;[Trxs]TotAmt;[Trxs]TrxDate;[Trxs]UserLogin;[Trxs]DateBanked;[Trxs]OriginalReceipt))
+ACCEPT
+End if 
+End if 

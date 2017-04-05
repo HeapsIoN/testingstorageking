@@ -1,0 +1,74 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$ItemRef)
+C_TEXT(vAnalysisCode)
+C_REAL(vQtyPlus)
+If (Form event=On Unload)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="AC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+If (Records in selection([MarketingTypes])>0)//LoadAnlsArrays
+CLEAR LIST(hlList;*)
+End if 
+Else 
+$i:=Selected list items(hlList)//stuart
+$ItemRef:=0
+$ItemText:=""
+If ($i#0)
+GET LIST ITEM(hlList;*;$ItemRef;$ItemText)
+If ($ItemRef>0)
+If ($ItemRef=32000)
+$ItemRef:=0
+End if 
+
+If ($ItemRef>=270000)
+GOTO RECORD([MerchPlan];($ItemRef-270000))
+vAnalysisCode:=[MerchPlan]MerchPlanID+"IP"
+Else 
+GOTO RECORD([Analysis];$ItemRef)
+vAnalysisCode:=[Analysis]Code
+End if 
+
+
+
+End if 
+End if 
+QUERY([Analysis];[Analysis]Code=vAnalysisCode)
+If (Records in selection([Analysis])>0)
+vDescr:=[Analysis]Description
+Else 
+vDescr:=[MerchPlan]Description
+End if 
+
+
+
+If (vAnalysisCode=([Facility]FacilityCode+"RF"))
+AlertMessage (Get localized string("Warning - You should normally add rental billings using the Bill Next Charges button - otherwise the Next Bill Date will not be updated."))
+End if 
+//If (vQtyPlus=0) | (vPerciville=0)
+//$OK:=True
+//vPerciville:=vQtyPlus
+//Else 
+//$OK:=False
+//If ([Analysis]DfltSellAmt#vPlus) & ([Analysis]DfltSellAmt#0)
+//ConfirmTwo ("Adjust Amount to default for "+[Analysis]Description+" of "+String([Analysis]DfltSellAmt;<>sFormat))
+//If (OK=1)
+//$OK:=True
+//End if 
+//End if 
+//End if 
+$OK:=True
+If ($OK)
+vQtyPlus:=1
+If (Records in selection([Analysis])>0)
+vPlus:=Round([Analysis]DfltSellAmt;2)
+Else 
+vPlus:=Round([MerchPlan]FixedDiscount;2)
+End if 
+vTax:=CalcTaxAmt (vPlus;vAnalysisCode;vDateFrom;vDateTo;4)
+End if 
+If (vAnalysisCode=([Facility]FacilityCode+"IN")) & ([Agreement]NextBillDate>vDateTo)
+vDateTo:=[Agreement]NextBillDate
+Else 
+vDateTo:=vDateFrom
+End if 
+//ResetChge 
+End if 

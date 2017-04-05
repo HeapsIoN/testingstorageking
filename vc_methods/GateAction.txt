@@ -1,0 +1,884 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0;$Buffer)//Returned by Falcon
+C_TEXT($1;$16)//Action as follows: SetTime,Open,SetZone,ReadZone,CreateUser,DenyAccess,AlertUser,DeleteUser,Read1
+//Additional commands for Access Ezy = Reset,AddUnit    `S,<PIN>,<name>,<unit name>,0/1,<access level>,<activation date>,<activation `time>,<deactivation dateDDMMYY>,<deactivation timeHHMM>
+C_LONGINT($2;$Unit)//Gate No,User No,Zone No
+C_TEXT($3)//GatePIN No
+C_LONGINT($4)//Deny access 0=No 1=Yes   1=Deny
+//or for ZONE NO, 1=All Hours access, 0=Use values in [System] file
+C_TEXT($5)//User Name, Time(0345P) for Watchbox,  Time(1545) for Falcon; Messages for StorMa
+C_DATE($6;$Date)//Commencing date
+C_LONGINT($7)//Group is Timezone
+C_LONGINT($8)//MuxNo / Controller
+C_LONGINT($9)//Channel / Input No
+C_LONGINT($10)//Unit Section / Relay 1
+C_LONGINT($11)//Unit Letter / Relay 2
+C_LONGINT($14)//Digigate, Quikstor, Axcys keypad zone
+C_TEXT($12)//Unit number as is for Falcon 2000 & Access Ezy
+C_BOOLEAN($13)//A or B for Access Ezy
+C_BOOLEAN($15)//Disable Alarm for F2000 & Falcon XT
+C_TEXT($17)//Primary or Secondary PIN
+C_TEXT($Packet)
+C_TEXT($SectUnit;$Filename;$Ext)
+C_TEXT($Hold)
+C_TEXT($Char;$Char2)
+C_LONGINT($Group;$i;$Tries;$Ticks;$Count;$MuxNo;$Channel;$Section;$Letter)
+C_BOOLEAN($Locked;$Inv)
+C_DATE($Date1;$Date2)
+C_TIME($Doc;$Time1;$Time2)
+$0:="OK"
+
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("GateAction $1="+String($1)+"$2="+String($2)+"$3="+String($3)+"$4="+String($4)+"$5"+String($5)+"$6="+String($6))
+End if 
+
+$Hold:=<>sVersion
+$Group:=1
+$MuxNo:=0
+$Channel:=0
+$Section:=0
+$Letter:=0
+$Packet:=""
+$ShowGateAction:=False
+
+If (Count parameters>=7)
+$Group:=$7
+If ($Group<1)
+$Group:=1
+End if 
+If ($Group>16)
+If ([Facility]GateSysType#3)
+If ($Group>32000)
+$Group:=32000
+End if 
+Else 
+$Group:=16
+End if 
+End if 
+End if 
+If (Count parameters>=8)
+$MuxNo:=$8
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("GateAction $8="+String($8))
+End if 
+End if 
+If (Count parameters>=9)
+$Channel:=$9
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("GateAction $9="+String($9))
+End if 
+End if 
+If (Count parameters>=10)
+$Section:=$10
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("GateAction $10="+String($10))
+End if 
+End if 
+If (Count parameters>=11)
+$Letter:=$11
+If ([Facility]FacilityCode="SSPSS")
+SyncRecordLog ("GateAction $11="+String($11))
+End if 
+End if 
+//trace
+If ((<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY))
+<>sGatePath:=[Facility]GateModemInit
+Else 
+SetFacility 
+End if 
+
+
+
+If (<>tGateOn) & (<>tGateSys)
+If ($ShowGateAction=True)
+Case of 
+: (Count parameters>=4)
+ConfirmTwo (Get localized string("Action")+":"+$1+", "+Get localized string("User")+":"+String($2)+", "+Get localized string("GatePIN")+":"+$3+", "+Get localized string("Deny")+":"+String($4))
+: (Count parameters=3)
+ConfirmTwo (Get localized string("Action")+":"+$1+", "+Get localized string("User")+":"+String($2)+", "+Get localized string("GatePIN")+":"+$3)
+Else 
+ConfirmTwo (Get localized string("Action")+":"+$1+", "+Get localized string("User")+":"+String($2))
+End case 
+If (OK=0)
+ConfirmTwo (Get localized string("Quit")+" "+<>sOEMName+"?")
+If (OK=1)
+QUIT 4D
+End if 
+ABORT
+End if 
+End if 
+$Unit:=$2
+If (Length(String($Unit))>3)
+<>sVersion:=Substring($1;1;6)+Substring(String($Unit);1;4)//Display what is happening
+Else 
+<>sVersion:=Substring($1;1;6)+" "+Substring(String($Unit);1;3)//Display what is happening
+End if 
+If (Application type#4D Server)
+CALL PROCESS(<>iFloating)
+End if 
+While (Semaphore("SerialPort"))
+$Ticks:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Ticks+10))
+End while 
+CREATE RECORD([GateLog])
+[GateLog]CustCode:=[Facility]FacilityCode
+[GateLog]GateTime:=Current time
+[GateLog]GateDate:=Current date
+If (Count parameters>=12)
+[GateLog]GateActionText:=Substring($1+";"+String($2)+";"+$3+";"+String($4)+";"+$5+";"+String($6)+";"+String($Group)+";"+String($MuxNo)+";"+String($Channel)+";"+String($Section)+";"+String($Letter)+";"+$12;1;80)
+Else 
+[GateLog]GateActionText:=Substring($1+";"+String($2)+";"+$3+";"+String($4)+";"+$5+";"+String($6)+";"+String($Group)+";"+String($MuxNo)+";"+String($Channel)+";"+String($Section)+";"+String($Letter);1;80)
+End if 
+[GateLog]GateKeyed:="GateOutput"
+SAVE RECORD([GateLog])
+Case of 
+: ([Facility]GateSysType=3)//PTI Falcon
+If ($Group>8)
+$Group:=8
+End if 
+//If ([Facility]GateviaModem=False)
+If (<>tEmulate)
+SET CHANNEL(10;"GateAction")
+Else 
+If ([Facility]ModemSettings>0)
+SET CHANNEL([Facility]SerialPortNo;[Facility]ModemSettings)
+Else 
+SET CHANNEL([Facility]SerialPortNo;10+1024+16384+12288)
+End if 
+End if 
+//End if 
+SET TIMEOUT(10)
+$SectUnit:=CalcBinHex (3;CalcBinHex (1;String($Section);5)+CalcBinHex (1;String($Unit);14)+CalcBinHex (1;String($Letter);5))
+Case of 
+: ($1="SetTime")
+$Packet:=CalcBinHex (1;Substring(String(Year of($6));3;2);7)+CalcBinHex (1;String(Month of($6));4)+CalcBinHex (1;String(Day of($6));5)
+$Packet:=":"+CalcBinHex (5;"00"+CalcBinHex (3;$Packet)+$5)+Char(13)
+CommsAction (True;$Packet)
+: ($1="SetZone")
+If (Count parameters>=4)//$Unit actually has ZoneNo, and $Group is 1 to allow all access
+$Group:=$4
+Else 
+$Group:=0
+End if 
+If ($Unit<1) | ($Unit>16)
+AlertMessage (Get localized string("Can only set time zones between 1 and 16"))
+Else 
+$Packet:="01"+String(($Unit-1);"00")
+If ($Group=1)
+$Packet:=$Packet+"0000235900002359000023590000235900002359000023590000235900002359FFFFFFFF000000"//All keypads
+//Else 
+//QUERY SUBRECORDS([Facility]GateTimeZones;[Facility]GateTimeZones'TimeZoneNo=$Unit)  //Added in 4.1.1 12/4/05
+//If ([Facility]GateTimeZones'TimeZoneNo=$Unit)
+//For ($i;1;5)
+//$Packet:=$Packet+Replace string(String([Facility]GateTimeZones'WeekDayOpen;2);":";"")+Replace string(String([Facility]GateTimeZones'WeekDayClose;2);":";"")
+//End for 
+//$Packet:=$Packet+Replace string(String([Facility]GateTimeZones'SatOpen;2);":";"")+Replace string(String([Facility]GateTimeZones'SatClose;2);":";"")
+//$Packet:=$Packet+Replace string(String([Facility]GateTimeZones'SunOpen;2);":";"")+Replace string(String([Facility]GateTimeZones'SunClose;2);":";"")
+//$Packet:=$Packet+Replace string(String([Facility]GateTimeZones'HolidayOpen;2);":";"")+Replace string(String([Facility]GateTimeZones'HolidayClose;2);":";"")+"FFFFFFFF000000"  //All keypads
+//Else 
+//AlertMessage (Get localized string("Zone")+":"+String($Unit)+" "+Get localized string("could not be downloaded because it does not exist in the TimeZones!"))
+//End if 
+End if 
+$HexDec:=0//Here down calculates Checksum as it is too long for CalcBinHex
+For ($i;1;(Length($Packet)/2))
+$Hex:=Substring($Packet;(($i-1)*2)+1;2)
+$HexDec:=$HexDec+Num(CalcBinHex (4;$Hex))
+End for 
+$Hex:=CalcBinHex (2;String($HexDec))
+$Hex:=Substring($Hex;Length($Hex)-1;2)
+$HexDec:=256-Num(CalcBinHex (4;$Hex))
+CommsAction (True;":"+$Packet+CalcBinHex (2;String($HexDec);2)+Char(13))
+End if 
+: ($1="ReadZone")
+$Packet:="01"+String(($Unit-1);"00")
+CommsAction (True;":"+CalcBinHex (5;$Packet)+Char(13))
+$Buffer:=CommsAction (False)
+If (Test path name("FalconResponse.txt")=Is a document)
+$Doc:=Append document("FalconResponse.txt")
+Else 
+$Doc:=Create document("FalconResponse.txt";"TEXT")
+End if 
+SEND PACKET($Doc;$Buffer)
+CLOSE DOCUMENT($Doc)
+$0:=$Buffer
+: ($1="Open")
+$Packet:=":"+CalcBinHex (5;"06"+String($Unit;"00"))+Char(13)
+CommsAction (True;$Packet)
+$Ticks:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Ticks+10))
+If ([Facility]RemoteRelayTime<=0)
+[Facility]RemoteRelayTime:=30
+End if 
+$SectUnit:=CalcBinHex (2;String($Unit);8)
+$Packet:=":"+CalcBinHex (5;"06"+Substring($SectUnit;7;2)+String([Facility]RemoteRelayTime;"00"))+Char(13)//Send format for new 24 Channel Falcon as well
+CommsAction (True;$Packet)
+: ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+Case of 
+: ($4=1) & ((Num($3)>0) | ([Facility]AlarmVacantUnits))//Added alarm vacant units in 3.1.3
+$Packet:=$SectUnit+"22"+CalcBinHex (3;CalcBinHex (1;$3;32))+"0000"//Occupied units set alarm
+: ($4=0) & ((Num($3)>0) | ([Facility]AlarmVacantUnits))
+$Packet:=$SectUnit+"20"+CalcBinHex (3;CalcBinHex (1;$3;32))+"0000"
+: ($4=1) & (Num($3)=0)
+$Packet:=$SectUnit+"02"+CalcBinHex (3;CalcBinHex (1;$3;32))+"0000"//Vacant units not alarmed
+Else 
+$Packet:=$SectUnit+"00"+CalcBinHex (3;CalcBinHex (1;$3;32))+"0000"//Was C79F = 31/12/99
+End case 
+: ($1="Read@")
+CommsAction (True;":"+CalcBinHex (5;"03"+$SectUnit)+Char(13))
+$Ticks:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Ticks+10))
+RECEIVE BUFFER($Buffer)
+$Ticks:=Position(":";$Buffer)
+If ($Ticks>0)
+$Buffer:=Substring($Buffer;$Ticks)
+End if 
+If ($1="Read2")
+$0:=$Buffer
+Else 
+$Packet:=CalcBinHex (1;CalcBinHex (4;Substring($Buffer;4;6));24)
+//CalcBinHex (4;CalcBinHex (3;Substring($Buffer;1;Length($Buffer)-5)))
+$Count:=Num(CalcBinHex (7;Substring($Packet;6;14)))
+$Section:=Num(CalcBinHex (7;Substring($Packet;1;5)))
+$Letter:=Num(CalcBinHex (7;Substring($Packet;20;5)))
+If ($Section=0)
+$Char:=""
+Else 
+$Char:=Char($Section+64)
+End if 
+If ($Letter=0)
+$Char2:=""
+Else 
+$Char2:=Char($Letter+64)
+End if 
+$Filename:=CalcBinHex (6;Substring($Buffer;24;2);8)
+$Group:=Num(CalcBinHex (7;Substring($Filename;1;3)))+1//Zone
+$Channel:=Num(CalcBinHex (7;Substring($Filename;4)))//Mux
+AlertMessage ($Buffer+Char(13)+Get localized string("Unit")+"-"+$Char+String($Count)+$Char2+":"+Get localized string("Code")+"-"+CalcBinHex (4;Substring($Buffer;12;8))+":"+Get localized string("Lockout")+"-"+Substring($Buffer;11;1)+":Zone-"+String($Group)+":"+Get localized string("Mux")+"-"+String($Channel))
+End if 
+: ($1="DirectSend")
+CommsAction (True;":"+CalcBinHex (5;$5)+Char(13))
+$Buffer:=CommsAction (False)
+$Doc:=Create document("FalconResponse.txt";"TEXT")
+SEND PACKET($Doc;$Buffer)
+CLOSE DOCUMENT($Doc)
+AlertMessage ($Buffer+Char(13))
+: ($1="ClearData")
+CommsAction (True;":"+CalcBinHex (5;"08")+Char(13))//Clear All Data from PTI Falcon
+Else 
+//Do Nothing
+End case 
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+$Packet:=$Packet+CalcBinHex (3;CalcBinHex (1;String($Group-1);3)+CalcBinHex (1;String($MuxNo);5))//Add in the Group / Zone No
+$Packet:=$Packet+CalcBinHex (2;String($Channel);4)//Add on the Channel No
+$Packet:=":"+CalcBinHex (5;"03"+$Packet)+Char(13)
+$Tries:=0
+$OK:=False
+Repeat 
+CommsAction (True;$Packet)
+$Tries:=$Tries+1
+If ([Facility]VerifyGateDL=True)
+//If ([Facility]GateviaModem=False)
+SET CHANNEL(11)
+If (<>tEmulate)
+SET CHANNEL(10;"GateAction")
+Else 
+SET CHANNEL([Facility]SerialPortNo;10+1024+16384+12288)
+End if 
+SET TIMEOUT(10)
+//End if 
+CommsAction (True;":"+CalcBinHex (5;"03"+$SectUnit)+Char(13))
+$Ticks:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Ticks+10))
+$Buffer:=CommsAction (False)
+$i:=Position(":";$Buffer)//Sometimes this is not the first character
+If ($i>1)
+$Buffer:=Substring($Buffer;$i)
+End if 
+If (1=2) & (Length($Buffer)>30)//This not now required 2.3.1
+$Buffer:=Change string($Buffer;"0";10)//For some reason Falcon returns E0 & E2 rather than 00 & 02 for lockout codes
+If (Substring($Buffer;11;1)="4")
+$Buffer:=Change string($Buffer;"0";11)//Falcon sometimes returns 04 which seems to be as 00
+End if 
+$Buffer:=Substring($Buffer;1;Length($Buffer)-3)+"@"
+End if 
+If (Substring($Packet;2;8)=Substring($Buffer;2;8)) & (Substring($Packet;12;18)=Substring($Buffer;12;18))
+$OK:=True
+End if 
+Else 
+$OK:=True
+End if 
+Until ($OK) | ($Tries>=[Facility]VerifyLoops) | (<>tStop)
+//03 0089C0 00 7FFFFFFF 0000 00 0000 38        
+If ($OK=False)
+If (vErrors="Errors@")
+vErrors:=vErrors+Get localized string("Gate function")+" "+$1+" "+String($Unit)+" "+Get localized string("was unable to be verified")+" -"+$Packet+" - "+$Buffer+Char(13)
+GOTO XY(2;4)
+MESSAGE(Get localized string("ERROR OCCURRED")+"    ")
+Else 
+AlertMessage (Get localized string("Gate function")+" "+$1+" "+String($Unit)+" "+Get localized string("was unable to be verified. Check this action at the keypad and try again!")+Char(13)+$Packet+$Buffer)
+End if 
+End if 
+End if 
+//If ([Facility]GateviaModem=False)
+SET CHANNEL(11)
+//End if 
+: ([Facility]GateSysType=2) | ([Facility]GateSysType=4)//PTI Falcon 2000
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+If ($1="DeleteUser")
+$Buffer:="Vacant"
+$3:="0"
+$4:=0
+If ($Letter>1)
+$3:=""
+$Buffer:=""
+End if 
+Else 
+$Buffer:=Substring(RemoveCharacters ($5);1;20)
+End if 
+If ($10>0)
+$SectUnit:=Substring(String($10);1;1)
+Else 
+$SectUnit:=" "
+End if 
+$SectUnit:=$SectUnit+String($2;"0000")
+If ($11>0)
+$SectUnit:=$SectUnit+Substring(String($11);1;1)
+End if 
+$SectUnit:=String(Num($SectUnit))
+//N.B. $4 is 0=Allow Access, 1=Deny Access but in F2000 is with Alarm off
+//In v3.1.3 we changed to include 2=Allow access, 3=Deny Access with Alarms on
+$Tries:=$4
+If ((Num($3)>0) | ([Facility]AlarmVacantUnits)) & ($15=False)//Send with alarms on for occupied or if vacant alarms on
+$Tries:=$4+2
+End if 
+If ([Facility]GateSysType=2)
+If ($Letter<1)
+$Letter:=1
+End if 
+$Packet:="1"+PadString (Substring($12;1;6);6)+PadString ($3;10)+PadString (String($Group);2)+String($Tries)+PadString (String($MuxNo);2)+PadString (String($Channel);4)+"000000"+PadString ($Buffer;20)+(" "*10)+Char(9)+"1"+Char(9)+String($Letter)
+Else 
+$Packet:="1"+PadString (Substring($12;1;6);6)+PadString ($3;10)+PadString (String($Group);2)+String($Tries)+PadString (String($MuxNo);2)+PadString (String($Channel);4)+"000000"+PadString ($Buffer;20)+(" "*10)
+End if 
+End if 
+: ([Facility]GateSysType=5)//Access Ezy
+If ($1="Reset@")
+If (Substring($1;6;1)="I")
+$Packet:="I,RESET"
+Else 
+$Packet:="S,RESET"
+End if 
+End if 
+If ($1="AddUnit")
+If ($13)//Was $12
+$Buffer:="A"
+Else 
+$Buffer:="B"
+End if 
+$Packet:="I,"+$12+","+String($8)+","+String($9)+","+$Buffer+","+String($10)+","+String($11)//$12 was String($2)
+End if 
+If ($1="Open")
+$Packet:="R,"+String($Unit)
+End if 
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+If ($1="DeleteUser")
+$Buffer:="Vacant"
+Else 
+$Buffer:=Replace string($5;",";"")
+//Always delete the unit first then Create
+//$Packet:="S,0,Vacant,"+String($Unit)+",0,1"+Char(13)+Char(10)
+End if 
+$i:=$4+1
+If ($i=2)
+$i:=0//For Access Ezy 1=Valid 0=Invalidate
+End if 
+If (Num($3)>0)
+$SectUnit:=$3
+Else 
+$SectUnit:="0"
+End if 
+If ([Facility]SerialPortNo>0)
+$SectUnit:=CalcBinHex (7;CalcBinHex (1;String([Facility]SerialPortNo);16)+CalcBinHex (1;$SectUnit;16))
+End if 
+$Date:=$6//Added 4.1.0
+If ($Date<!2000-01-01!)
+$Date:=!2000-01-01!
+End if 
+If ([Facility]LockbefMovein=True)
+$Packet:="S,"+$SectUnit+","+$Buffer+","+$12+","+String($i)+","+String($Group)+","+String(Day of($Date);"00")+String(Month of($Date);"00")+Substring(String(Year of($Date);"0000");3;2)+",0600,000000,0000"
+Else 
+$Packet:="S,"+$SectUnit+","+$Buffer+","+$12+","+String($i)+","+String($Group)
+End if 
+End if 
+
+: ([Facility]GateSysType=7) | ([Facility]GateSysType=8)//Digigate  
+
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+If (Length($12)<=6)
+$Packet:=((6-Length($12))*" ")+$12
+Else 
+$Packet:=Substring($12;1;6)
+End if 
+$Packet:=$Packet+String(Num($3);"0000000000")+Substring(Replace string($5;",";"");1;19)
+If ($1="DeleteUser")
+$i:=0
+Else 
+$i:=$4+1
+End if 
+If (Count parameters<14)
+$Packet:=$Packet+(" "*(213-Length($Packet))+String($Group;"00")+(" "*14)+String($i;"0")+"000000")
+Else 
+$Packet:=$Packet+(" "*(213-Length($Packet))+String($Group;"00")+(" "*14)+String($i;"0")+String($14;"00")+"0000")
+End if 
+End if 
+: ([Facility]GateSysType=9)//Sentinel  
+If ([Facility]VerifyGateDL=True)
+If ($1="AddUnit")//New in 3.0.3
+$Packet:="1.10A"+((10-Length($12))*" ")+$12
+$Buffer:="V"
+$Packet:=$Packet+$Buffer+String(Num($3);"0000000000")+(" "*10)+String($Group;"00")+(" "*23)+Substring(Replace string($5;",";"");1;30)
+$Packet:=$Packet+(" "*(93-Length($Packet)))+String($14)
+End if 
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+If ($14=1) & ($1="DeleteUser")
+$Packet:="1.10D"+((10-Length($12))*" ")+$12
+Else 
+$Packet:="1.10E"+((10-Length($12))*" ")+$12
+End if 
+If ($1="DeleteUser")
+$Buffer:="V"
+Else 
+Case of 
+: ($4=1)
+$Buffer:="D"
+Else 
+$Buffer:="R"
+End case 
+End if 
+While (Length($16)<10)
+$16:=" "+$16
+End while 
+$UnitNo:=$16+String($11)
+If ($14=1)
+$Packet:=$Packet+$Buffer+String(Num($3);"0000000000")+(" "*10)+String($Group;"00")+(" "*11)+$UnitNo+Substring(Replace string($5;",";"");1;30)
+Else 
+$Packet:=$Packet+$Buffer+String(Num($3);"0000000000")+(" "*10)+String($Group;"00")+(" "*13)+$16+Substring(Replace string($5;",";"");1;30)
+End if 
+$Packet:=$Packet+(" "*(93-Length($Packet)))+String($14)
+End if 
+Else 
+If ($1="AddUnit")//New in 3.0.3
+$Packet:="1.00A"+((10-Length($12))*" ")+$12
+$Buffer:="V"
+$Packet:=$Packet+$Buffer+String(Num($3);"0000000000")+(" "*10)+String($Group;"00")+(" "*23)+Substring(Replace string($5;",";"");1;30)
+$Packet:=$Packet+(" "*(93-Length($Packet)))
+End if 
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+$Packet:="1.00E"+((10-Length($12))*" ")+$12
+If ($1="DeleteUser")
+$Buffer:="V"
+Else 
+//$Packet:="1.00A"
+If ($4=1)
+$Buffer:="D"
+Else 
+$Buffer:="R"
+End if 
+End if 
+While (Length($16)<10)
+$16:=" "+$16
+End while 
+$Packet:=$Packet+$Buffer+String(Num($3);"0000000000")+(" "*10)+String($Group;"00")+(" "*13)+$16+Substring(Replace string($5;",";"");1;30)
+$Packet:=$Packet+(" "*(93-Length($Packet)))
+End if 
+End if 
+: ([Facility]GateSysType=10)//Quikstor
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+If ($1="DeleteUser")
+$Packet:="1D"//
+Else 
+$Packet:="1A"//A encompasses changes as well as additions
+End if 
+$UnitNo:=String($12)
+If (Length($UnitNo)<10)
+$UnitNo:=$UnitNo+(" "*(10-Length($UnitNo)))
+End if 
+$Packet:=$Packet+$UnitNo//unit number
+$GateCode:=$3//gate code - which assume means pin code
+$Length:=Length($GateCode)
+$Length:=30-$Length
+$GateCode:=(" "*$Length)+$GateCode
+$Name:=" "*30
+$Length:=Length(String($7))
+$Length:=3-$Length
+$TimeZone:=(" "*$Length)+String($7)
+If (Count parameters>=14)
+$Length:=Length(String($14))
+$Length:=3-$Length
+$KeyPadZone:=(" "*$Length)+String($14)
+Else 
+$KeyPadZone:=" "*3
+End if 
+$Special:=" "//lock out a tenant cos manager wants to talk to them - outside of normal delinquency
+$UnitDetails:=" "*21//width, length, floor, building
+$MessPATG:=" "*53//various options for pay at the gate option, plus personal message
+If ($4=1)
+$Overlocked:="T"
+$PaidToDate:="19740727"
+Else 
+$Overlocked:="F"
+$PaidToDate:="20400407"
+End if 
+$Reserved:=" "*40// 40 spaces reserved for future use
+$Packet:=$Packet+$GateCode+$PaidToDate+$Name+$TimeZone+$KeyPadZone+$Special+$UnitDetails+$MessPATG+$Overlocked+$Reserved
+End if 
+: ([Facility]GateSysType=11)//Axcys
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+$Packet:=""
+Case of 
+: ($1="CreateUser")
+$UnitNo:=String($12)
+If (Length($UnitNo)<10)
+$UnitNo:=$UnitNo+(" "*(10-Length($UnitNo)))
+End if 
+$Packet:="MO"+(" "*32)+(" "*10)+$UnitNo+("0"*10)+$17+"U"+(" "*2)+"0"+(" "*8)+Char(13)+Char(10)//need to send a moveout when editing a gatepin - easiest option with least complications was to always send MO
+$CommandCode:="MI"
+: ($1="DeleteUser")
+$CommandCode:="MO"
+Else 
+$CommandCode:="EA"
+End case 
+$AccountName:=$5
+If (Length($AccountName)<32)
+$AccountName:=$AccountName+(" "*(32-Length($AccountName)))
+End if 
+$BldgID:=" "*10
+$UnitNo:=String($12)
+If (Length($UnitNo)<10)
+$UnitNo:=$UnitNo+(" "*(10-Length($UnitNo)))
+End if 
+$GateCode:=$3
+While (Length($GateCode)<10)
+$GateCode:="0"+$GateCode
+End while 
+If (Count parameters>16)
+$AcctType:=$17//primary /secondary PIN
+Else 
+$AcctType:="P"
+End if 
+If ($4=1)
+$AcctStatus:="L"
+Else 
+$AcctStatus:="U"
+End if 
+If (Count parameters>=14)
+$Length:=Length(String($14))
+$Length:=2-$Length
+$KeyPadZone:=("0"*$Length)+String($14)
+Else 
+$KeyPadZone:=" "*2
+End if 
+$HourCode:=String($7)
+$CustomFromHr:=" "*4
+$CustomToHr:=" "*4
+End if 
+$Packet:=$Packet+$CommandCode+$AccountName+$BldgID+$UnitNo+$GateCode+$AcctType+$AcctStatus+$KeyPadZone+$HourCode+$CustomFromHr+$CustomToHr
+//: ([Facility]GateSysType=12)  //Insight
+//
+//If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+//$Packet:=""
+//$Path:=[Facility]GateModemInit
+//  //If ([Facility]GateBatchFile>"")
+//  //$Path:=[Facility]GateModemInit
+//  //End if 
+//  //If (<>iPlatform=3)
+//  //$i:=Position(".";$Path)
+//  //If ($i>0) & ($i>=(Length($path)-3))
+//  //$Ext:=Substring($Path;$i+1)
+//  //Else 
+//  //$Ext:="dat"
+//  //End if 
+//  //If (Length($Ext)>3)
+//  //$Ext:="dat"
+//  //End if 
+//  //Else 
+//  //$Ext:="TEXT"
+//  //End if 
+//$Ext:="ini"
+//READ WRITE([Facility])
+//If (Locked([Facility]))
+//LOCKED ATTRIBUTES([Facility];$Proc;$User;$Comp;$ProcName)
+//UNLOAD RECORD([Facility])
+//QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+//LOCKED ATTRIBUTES([Facility];$Proc;$User;$Comp;$ProcName)
+//End if 
+//
+//Case of 
+//: ($1="CreateUser")
+//
+//If (<>sInsightMO#"")
+//$DelNoStr:=Substring([Facility]InsightFileName;16;5)
+//$Pos:=Position("&;&";<>sInsightMO)
+//$CustName:=Substring(<>sInsightMO;1;$Pos-1)
+//$GatePin:=Substring(<>sInsightMO;$Pos+3)
+//<>sInsightMO:=""
+//$Packet:="[DATA_DELETE]"+Char(13)+Char(10)
+//$Packet:=$Packet+"Name="+$CustName+Char(13)+Char(10)
+//$Packet:=$Packet+"Card="+$GatePin
+//
+//If ($Path>" ")
+//$Doc:=Create document($Path+"InsightDelete"+$DelNoStr;$Ext)
+//SEND PACKET($Doc;$Packet)
+//CLOSE DOCUMENT($Doc)
+//Else 
+//AlertMessage (Get localized string("Unable to create gate system file.  Please enter the Output text file name from the Access Control setup menu, via the Maintenance menu!"))
+//End if 
+//
+//$DelNo:=Num($DelNoStr)
+//$DelNo:=$DelNo+1
+//
+//If (Length(String($DelNo))#5)
+//[Facility]InsightFileName:=Substring([Facility]InsightFileName;1;15)+(5-Length(String($DelNo))*"0")+String($DelNo)
+//Else 
+//[Facility]InsightFileName:=Substring([Facility]InsightFileName;1;15)+String($DelNo)
+//End if 
+//End if 
+//
+//$AddNoStr:=Substring([Facility]InsightFileName;4;5)
+//$Packet:="[DATA_ADD]"+Char(13)+Char(10)
+//$Packet:=$Packet+"Name="+$5+Char(13)+Char(10)
+//$Packet:=$Packet+"Card="+$3+Char(13)+Char(10)
+//$Packet:=$Packet+"Room="+$12
+//
+//If ($Path>" ")
+//$Doc:=Create document($Path+"InsightAdd"+$AddNoStr;$Ext)
+//SEND PACKET($Doc;$Packet)
+//CLOSE DOCUMENT($Doc)
+//Else 
+//AlertMessage (Get localized string("Unable to create gate system file.  Please enter the Output text file name from the Access Control setup menu, via the Maintenance menu!"))
+//End if 
+//
+//$AddNo:=Num($AddNoStr)
+//$AddNo:=$AddNo+1
+//
+//If (Length(String($AddNo))#5)
+//[Facility]InsightFileName:="Add"+(5-Length(String($AddNo))*"0")+String($AddNo)+Substring([Facility]InsightFileName;9)
+//Else 
+//[Facility]InsightFileName:="Add"+String($AddNo)+Substring([Facility]InsightFileName;9)
+//End if 
+//
+//: ($1="DeleteUser")
+//
+//If (<>sInsightMO#"")
+//$DelNoStr:=Substring([Facility]InsightFileName;16;5)
+//$Pos:=Position("&;&";<>sInsightMO)
+//$CustName:=Substring(<>sInsightMO;1;$Pos-1)
+//$GatePin:=Substring(<>sInsightMO;$Pos+3)
+//<>sInsightMO:=""
+//$Packet:="[DATA_DELETE]"+Char(13)+Char(10)
+//$Packet:=$Packet+"Name="+$CustName+Char(13)+Char(10)
+//$Packet:=$Packet+"Card="+$GatePin
+//
+//If ($Path>" ")
+//$Doc:=Create document($Path+"InsightDelete"+$DelNoStr;$Ext)
+//SEND PACKET($Doc;$Packet)
+//CLOSE DOCUMENT($Doc)
+//Else 
+//AlertMessage (Get localized string("Unable to create gate system file.  Please enter the Output text file name from the Access Control setup menu, via the Maintenance menu!"))
+//End if 
+//
+//$DelNo:=Num($DelNoStr)
+//$DelNo:=$DelNo+1
+//
+//If (Length(String($DelNo))#5)
+//[Facility]InsightFileName:=Substring([Facility]InsightFileName;1;15)+(5-Length(String($DelNo))*"0")+String($DelNo)
+//Else 
+//[Facility]InsightFileName:=Substring([Facility]InsightFileName;1;15)+String($DelNo)
+//End if 
+//End if 
+//
+//: ($1="DenyAccess")
+//
+//  //If (<>sInsightMO#0)
+//$DelNoStr:=Substring([Facility]InsightFileName;16;5)
+//$Packet:="[DATA_DELETE]"+Char(13)+Char(10)
+//$Packet:=$Packet+"Name="+$5+Char(13)+Char(10)
+//$Packet:=$Packet+"Card="+$3
+//
+//If ($Path>" ")
+//$Doc:=Create document($Path+"InsightDelete"+$DelNoStr;$Ext)
+//SEND PACKET($Doc;$Packet)
+//CLOSE DOCUMENT($Doc)
+//Else 
+//AlertMessage (Get localized string("Unable to create gate system file.  Please enter the Output text file name from the Access Control setup menu, via the Maintenance menu!"))
+//End if 
+//
+//$DelNo:=Num($DelNoStr)
+//$DelNo:=$DelNo+1
+//
+//If (Length(String($DelNo))#5)
+//[Facility]InsightFileName:=Substring([Facility]InsightFileName;1;15)+(5-Length(String($DelNo))*"0")+String($DelNo)
+//Else 
+//[Facility]InsightFileName:=Substring([Facility]InsightFileName;1;15)+String($DelNo)
+//End if 
+//  //End if 
+//
+//End case 
+//
+//SAVE RECORD([Facility])
+//READ ONLY([Facility])
+//End if 
+
+: ([Facility]GateSysType=12)//BearBox    -- add by Hamid 23 Sep 2014
+
+If ($1="CreateUser") | ($1="DenyAccess") | ($1="DeleteUser")
+$strParam:=""
+$strParam:="Parameters to the BearBoxXML method:"+Char(13)
+$strParam:=$strParam+"Username: "+[Facility]GateLogFile+Char(13)
+$strParam:=$strParam+"Password: "+[Facility]GateModemInit+Char(13)
+$strParam:=$strParam+"siteID: "+[Facility]GateBatchFile+Char(13)
+$strParam:=$strParam+"Type: "+"full"+Char(13)
+$strParam:=$strParam+"pinCode: "+$3+Char(13)
+$strParam:=$strParam+"CustomerName: "+$5+Char(13)
+$strParam:=$strParam+"Move In: "+String($6)+Char(13)
+$strParam:=$strParam+"TimeZone: "+String($7)+Char(13)
+$strParam:=$strParam+"KeyPadZone: "+String($14)+Char(13)
+$strParam:=$strParam+"UnitNo: "+$12+Char(13)
+
+Case of 
+: ($1="CreateUser")
+$strParam:=$strParam+"lockedOut: 1"+Char(13)
+$strParam:=$strParam+"Unit Status: Rented"+Char(13)
+SyncRecordLog ($strParam)
+$resultXML:=BearBoxXML ([Facility]GateLogFile;[Facility]GateModemInit;[Facility]GateBatchFile;"full";"Rented";"0";$3;$5;$6;String($7);String($14);$12)
+: ($1="DenyAccess")
+$strParam:=$strParam+"lockedOut: 1"+Char(13)
+$strParam:=$strParam+"Unit Status: Locked"+Char(13)
+SyncRecordLog ($strParam)
+$resultXML:=BearBoxXML ([Facility]GateLogFile;[Facility]GateModemInit;[Facility]GateBatchFile;"full";"Locked";"1";$3;$5;$6;String($7);String($14);$12)
+Else 
+$strParam:=$strParam+"lockedOut: 0"+Char(13)
+$strParam:=$strParam+"Unit Status: Vacant"+Char(13)
+SyncRecordLog ($strParam)
+//$resultXML:=BearBoxXML ([Facility]GateLogFile;[Facility]GateModemInit;[Facility]GateBatchFile;"full";"Vacant";"";$3;$5;$6;String($7);String($14);$12) //- Commented by Hamid - 10208
+$resultXML:=BearBoxXML ([Facility]GateLogFile;[Facility]GateModemInit;[Facility]GateBatchFile;"full";"Vacant";"";"";"";!00-00-00!;"";"";$12)
+End case 
+
+//$resultXML:=BearBoxXML ([Facility]GateLogFile;[Facility]GateModemInit;[Facility]GateBatchFile;"full";$12;$16)
+Case of 
+: ($resultXML="0")
+$varResParam:=""
+$varResParam:="BearBoxXML response: Success, UnitNo: "
+$varResParam:=$varResParam+$12
+SyncRecordLog ($varResParam)
+//QUERY([Unit];[Unit]UnitNo=$12)
+//[Unit]UpdateGate:=True
+//SAVE RECORD([Unit])
+: ($resultXML="1")
+SyncRecordLog ("BearBoxXML response: Invalid login information, method or site id.")
+: ($resultXML="2")
+$varResParam:=""
+$varResParam:="BearBoxXML response: Unknown unit. UnitNo: "
+$varResParam:=$varResParam+$12
+SyncRecordLog ($varResParam)
+: ($resultXML="3")
+SyncRecordLog ("BearBoxXML response: One or more PinCodes is not valid. Customer imported with only valid pins.")
+: ($resultXML="4")
+SyncRecordLog ("BearBoxXML response: NO valid pins passed, customer NOT imported")
+: ($resultXML="5")
+SyncRecordLog ("BearBoxXML response: Invalid zone information - customer will not gain access.")
+: ($resultXML="6")
+SyncRecordLog ("BearBoxXML response: Unit that should have been updated (only possible where type=full).")
+: ($resultXML="7")
+SyncRecordLog ("BearBoxXML response: Error parsing XML child. (Invalid XML in a single units XML Child, unit number returned if possible)")
+: ($resultXML="8")
+SyncRecordLog ("BearBoxXML response: Error updating unit.")
+: (Substring($resultXML;1;4)="http")
+SyncRecordLog ("BearBoxXML response: Bad Request, can not connect to http! Error code:"+Substring($resultXML;5;Length($resultXML)-4))
+Else 
+SyncRecordLog ("BearBoxXML response: Unexpected erroe occure! The value of the error is: \""+$resultXML+"\"")
+End case 
+End if 
+Else 
+AlertMessage (Get localized string("Gate action could not be performed as")+" "+<>sOEMName+" "+Get localized string("doesn't know the type of Keypad system installed!"))
+End case 
+
+If (([Facility]GateSysType=2) | ([Facility]GateSysType=4) | ([Facility]GateSysType=5) | ([Facility]GateSysType=7) | ([Facility]GateSysType=8) | ([Facility]GateSysType=9) | ([Facility]GateSysType=10) | ([Facility]GateSysType=11) | ([Facility]GateSysType#12)) & ($Packet>"")
+$Path:=<>sGatePath
+If ([Facility]GateBatchFile>"")
+$Path:=[Facility]GateModemInit
+End if 
+If (<>iPlatform=3)
+$i:=Position(".";$Path)
+If ($i>0) & ($i>=(Length($path)-3))
+$Ext:=Substring($Path;$i+1)
+Else 
+$Ext:="dat"
+End if 
+If (Length($Ext)>3)
+$Ext:="dat"
+End if 
+Else 
+$Ext:="TEXT"
+End if 
+bConfirm:=False
+$Locked:=False
+If (Test path name($Path)=Is a document)
+$Ticks:=Tickcount
+$i:=0
+Repeat 
+$i:=$i+60
+GET DOCUMENT PROPERTIES($Path;$Locked;$Inv;$Date1;$Time1;$Date2;$Time2)
+While ($Locked) & (Tickcount<($Ticks+$i))//This loop added in 2.4.2 in case testing Document Props was too frequent
+IDLE
+End while 
+Until ($Locked=False) | (Tickcount>($Ticks+600))//Wait 10 secs
+If ($Locked=False)
+ON ERR CALL("ErrorGate")
+$Ticks:=Tickcount
+Repeat 
+bConfirm:=False
+IDLE
+$Doc:=Append document($Path;$Ext)
+Until (bConfirm=False) | (Tickcount>($Ticks+600))//Wait 10 secs
+ON ERR CALL("ErrorLog")
+End if 
+If ($Locked) | (bConfirm)
+AlertMessage (Get localized string("The Gate controller software appears to be holding the file")+" "+$Path)
+$0:="Fail"
+End if 
+Else 
+If ($Path>" ")
+$Doc:=Create document($Path;$Ext)
+Else 
+AlertMessage (Get localized string("Unable to create gate system file.  Please enter the Output text file name from the Access Control setup menu, via the Maintenance menu!"))
+End if 
+End if 
+If ($Locked=False) & (bConfirm=False)
+SEND PACKET($Doc;$Packet+Char(13)+Char(10))
+CLOSE DOCUMENT($Doc)
+End if 
+Else 
+
+//If (([Facility]GateSysType=12))
+//  //call server
+//End if 
+
+End if 
+CLEAR SEMAPHORE("SerialPort")
+End if 
+$Ticks:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Ticks+10))
+<>sVersion:=$Hold
+If (Application type#4D Server)
+CALL PROCESS(<>iFloating)
+End if 

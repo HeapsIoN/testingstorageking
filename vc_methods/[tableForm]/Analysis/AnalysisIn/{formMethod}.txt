@@ -1,0 +1,313 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_LONGINT($i)
+C_TEXT($Code;tempACodes)
+C_BOOLEAN(tempSearchACode;ShowAlertMessage)
+
+tempSearchACode:=False
+ShowAlertMessage:=False
+//Location and size of the [Analysis]Description field
+If (aAnalysis#1)
+OBJECT MOVE([Analysis]Description;160;129;395;144;*)
+OBJECT SET VISIBLE(*;"Line10";False)
+Else 
+OBJECT MOVE([Analysis]Description;160;129;345;144;*)
+OBJECT SET VISIBLE(*;"Line10";True)
+End if 
+
+If (Size of array(atReceiptAnalysis)>0)
+$Pos:=Find in array(atReceiptAnalysisCode;<>sFacility+[Analysis]ReceiptFeeAnalysis)
+If ($Pos>0)
+atReceiptAnalysis:=$Pos
+End if 
+End if 
+
+//01/07/15 DAM Added for Failed transactions 
+If (Size of array(atFailedAnalysis)>0)
+$Pos:=Find in array(atReceiptAnalysisCode;<>sFacility+[Analysis]FailedFeeAnalysis)
+If ($Pos>0)
+atFailedAnalysis:=$Pos
+End if 
+End if 
+
+OBJECT SET VISIBLE(*;"bOkNew";Add)
+
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Field6";Get localized string("Bill on Arrival"))
+OBJECT SET TITLE(*;"Field7";Get localized string("Bill on Departure"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Field6";Get localized string("Bill on Rental"))
+OBJECT SET TITLE(*;"Field7";Get localized string("Bill on Return"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Field6";Get localized string("Bill on Move In"))
+OBJECT SET TITLE(*;"Field7";Get localized string("Bill on Move Out"))
+Else 
+OBJECT SET TITLE(*;"Field6";Get localized string("Bill on Move In"))
+OBJECT SET TITLE(*;"Field7";Get localized string("Bill on Move Out"))
+End case 
+
+//SetColours 
+RELATE MANY([Analysis]Code)
+If (Records in selection([Trxs])>0)
+OBJECT SET VISIBLE(bDelete;False)
+vLeg7:=Get localized string("This Analysis Code is in use by")+" "+String(Records in selection([Trxs]))+" "+Get localized string("trxs.")
+Else 
+OBJECT SET VISIBLE(bDelete;True)
+vLeg7:=Get localized string("This Analysis Code is currently not used!")
+End if 
+If ([Analysis]Code="")
+[Analysis]WholeNumbers:=True
+[Analysis]Code:=<>sFacility
+End if 
+
+If (aAnalysis=1)
+//OBJECT SET VISIBLE(bLastPage;False)
+ARRAY TEXT(atReceiptShow;3)
+atReceiptShow{1}:=Get localized string("Charges & Credits")
+atReceiptShow{2}:=Get localized string("Charges Only")
+atReceiptShow{3}:=Get localized string("Credits Only")
+atReceiptShow:=[Analysis]ReceiptShow+1
+If ([Analysis]SortOrder=1)
+ARRAY TEXT(atChargeShow;2)
+atChargeShow{1}:=Get localized string("Everywhere")
+atChargeShow{2}:=Get localized string("Agreements & Reservations")
+If ([Analysis]ChargeShow=4)
+atChargeShow:=2
+Else 
+atChargeShow:=1
+[Analysis]ChargeShow:=0
+End if 
+Else 
+ARRAY TEXT(atChargeShow;7)
+atChargeShow{1}:=Get localized string("Everywhere")
+atChargeShow{2}:=Get localized string("Agreements Only")
+atChargeShow{3}:=Get localized string("Reservations Only")
+atChargeShow{4}:=Get localized string("Cash Sales Only")
+atChargeShow{5}:=Get localized string("Agreements & Reservations")
+atChargeShow{6}:=Get localized string("Agreements & Cash Sales")
+atChargeShow{7}:=Get localized string("Reservations & Cash Sales")
+atChargeShow:=[Analysis]ChargeShow+1
+End if 
+OBJECT SET VISIBLE([Analysis]InclBankRpt;False)
+//OBJECT SET VISIBLE([Analysis]DontShowBank;False)
+OBJECT SET TITLE(*;"Field46";Get localized string("Show as Other Regular Charge"))
+OBJECT SET VISIBLE([Analysis]SetBankedDate;False)
+OBJECT SET VISIBLE([Analysis]DontExport;False)
+OBJECT SET VISIBLE(atReceiptAnalysis;False)
+OBJECT SET VISIBLE([Analysis]ReceiptFeeFixed;False)
+OBJECT SET VISIBLE([Analysis]ReceiptFeePerc;False)
+OBJECT SET VISIBLE(atFailedAnalysis;False)
+OBJECT SET VISIBLE([Analysis]FailedFeeFixed;False)
+OBJECT SET VISIBLE([Analysis]FailedFeePerc;False)
+OBJECT SET TITLE(*;"OnlineSale";"Enable Online Sale of this item")
+<>asChgCategory:=Find in array(<>asChgCategory;[Analysis]KeyStatsCategory)
+If ([Facility]TaxRate>0)
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE([Analysis]TaxRate;False)
+OBJECT SET VISIBLE([Analysis]NewTaxRate;False)
+OBJECT SET VISIBLE([Analysis]TaxChangeDate;False)
+OBJECT SET VISIBLE(*;"Text22";False)
+OBJECT SET VISIBLE(*;"Text24";False)
+OBJECT SET VISIBLE(*;"Text25";False)
+End if 
+vLeg1:=Get localized string("GL Acct Code:")
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+vLeg2:=[ChartAccts]Description
+Else 
+//OBJECT SET VISIBLE(bLastPage;True)
+OBJECT SET VISIBLE(*;"OnlineSale";False)
+//30/12/15 DAM Added an option for Ezidebit only
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+OBJECT SET VISIBLE(*;"OnlineSale";True)
+OBJECT SET TITLE(*;"OnlineSale";"Do not check Settlement status")
+End if 
+
+ARRAY TEXT(atReceiptShow;3)
+atReceiptShow{1}:=Get localized string("Receipts and Refunds")
+atReceiptShow{2}:=Get localized string("Receipts Only")
+atReceiptShow{3}:=Get localized string("Refunds Only")
+atReceiptShow:=[Analysis]ReceiptShow+1
+ARRAY TEXT(atChargeShow;7)
+OBJECT SET VISIBLE(atChargeShow;False)
+OBJECT SET VISIBLE(*;"Line4";False)
+OBJECT SET VISIBLE(*;"Line5";False)
+OBJECT SET VISIBLE(*;"Text26";False)
+OBJECT SET VISIBLE([Analysis]BillMoveIn;False)
+OBJECT SET VISIBLE([Analysis]BillMoveOut;False)
+OBJECT SET VISIBLE([Analysis]Taxable;False)
+OBJECT SET VISIBLE([Analysis]DfltSellAmt;False)
+OBJECT SET VISIBLE([Analysis]CostPrice;False)
+OBJECT SET VISIBLE([Analysis]MinAmt;False)
+OBJECT SET VISIBLE([Analysis]MaxAmt;False)
+OBJECT SET VISIBLE([Analysis]Promotions;False)
+OBJECT SET VISIBLE(*;"Text6@";False)
+OBJECT SET VISIBLE(*;"Text36";False)
+OBJECT SET VISIBLE(*;"Text12";False)
+OBJECT SET VISIBLE(*;"Text1";False)
+OBJECT SET VISIBLE(*;"Text7";False)
+OBJECT SET VISIBLE(*;"Text3";False)
+OBJECT SET VISIBLE(*;"Line3";False)
+OBJECT SET VISIBLE(*;"Picture2";False)
+OBJECT SET VISIBLE(*;"Picture3";False)
+OBJECT SET VISIBLE(*;"Text13";False)
+OBJECT SET VISIBLE([Analysis]InvItem;False)
+OBJECT SET VISIBLE(*;"Field531";False)
+OBJECT SET VISIBLE(*;"Text8";False)
+OBJECT SET VISIBLE(*;"@Text61";False)
+OBJECT SET VISIBLE([Analysis]TaxRate;False)
+OBJECT SET VISIBLE(*;"Text9";False)
+OBJECT SET VISIBLE([Analysis]CreditPercentage;False)
+OBJECT SET VISIBLE(*;"Text20";False)
+OBJECT SET VISIBLE([Analysis]NewTaxRate;False)
+OBJECT SET VISIBLE([Analysis]TaxChangeDate;False)
+OBJECT SET VISIBLE(*;"Text22";False)
+OBJECT SET VISIBLE(*;"Text24";False)
+OBJECT SET VISIBLE(*;"Text25";False)
+<>asChgCategory:=0
+vLeg1:=Get localized string("Banking Analysis:")
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+vLeg2:=[Supplier]SupplierName
+End if 
+If ([Analysis]Code>"") & ([Analysis]SortOrder<4) & ([Analysis]SortOrder>0)
+OBJECT SET ENTERABLE([Analysis]Code;False)
+OBJECT SET ENTERABLE([Analysis]SortOrder;False)
+Else 
+OBJECT SET ENTERABLE([Analysis]Code;True)
+OBJECT SET ENTERABLE([Analysis]SortOrder;True)
+End if 
+If ([Analysis]SortOrder=0)
+If (aAnalysis=2)
+[Analysis]SortOrder:=55
+Else 
+[Analysis]SortOrder:=4
+End if 
+End if 
+If (<>sProduct="SL")
+OBJECT SET VISIBLE(*;"@Lite";False)
+End if 
+If (<>sHOFacility="@HUB")
+QUERY([Groups];[Groups]GroupID=<>sFacility+"@")
+Else 
+ALL RECORDS([Groups])
+End if 
+ORDER BY([Groups];[Groups]Name;>)
+ARRAY TEXT(asGroups;Records in selection([Groups]))
+ARRAY TEXT(asSigns;Size of array(asGroups))
+For ($i;1;Records in selection([Groups]))
+asGroups{$i}:=[Groups]Name
+$Found:=Position([Groups]GroupID+",";[Analysis]Groups)
+If ($Found>0) | ([Analysis]Groups="ALL") | (Add=True)
+asSigns{$i}:="•"
+Else 
+asSigns{$i}:=""
+End if 
+NEXT RECORD([Groups])
+End for 
+[Analysis]TriggerUpdate:=True
+
+If (PermissionsControl (211;False)=False)
+OBJECT SET ENTERABLE(*;"@";False)
+OBJECT SET ENABLED(atReceiptShow;False)
+OBJECT SET ENABLED(atChargeShow;False)
+OBJECT SET ENABLED(<>asChgCategory;False)
+OBJECT SET ENABLED(asCategory;False)
+OBJECT SET ENABLED(asChargeDescSP;False)
+OBJECT SET ENABLED(bDelete;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET ENABLED(bNextPage;False)
+OBJECT SET VISIBLE(bNextPage;False)
+OBJECT SET ENTERABLE([Analysis]DfltSellAmt;True)
+End if 
+
+End if 
+If (Form event=On Clicked)
+
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand;0)
+[Analysis]InvAlertQty:=Round([Analysis]InvAlertQty;0)
+
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand;2)
+[Analysis]InvAlertQty:=Round([Analysis]InvAlertQty;2)
+End if 
+
+If (bLastPage=1)
+
+If ([Analysis]Code=<>sFacility)
+AlertMessage (Get localized string("The Analysis code cannot be the Facility Code!"))
+REJECT([Analysis]Code)
+$OK:=False
+Else 
+tempACodes:=[Analysis]Code
+SAVE RECORD([Analysis])
+bLastPage:=0
+tempSearchACode:=True
+End if 
+
+//tempACodes:=[Analysis]Code
+//SAVE RECORD([Analysis])
+//bLastPage:=0
+//tempSearchACode:=True
+End if 
+
+End if 
+If (Form event=On Validate)
+If (aAnalysis=2) & ([Analysis]SortOrder<51)
+[Analysis]SortOrder:=55
+End if 
+
+//If (Size of array(atReceiptAnalysis)>0)   //---- By Hamid - 10/4/2015 - 8985
+//atReceiptAnalysisCode:=atReceiptAnalysis
+//[Analysis]ReceiptFeeAnalysis:=Substring(atReceiptAnalysisCode{atReceiptAnalysisCode};6)
+//End if 
+
+If ([Analysis]Code#Old([Analysis]Code)) & (Old([Analysis]Code)#"")
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]AnalysisCode=Old([Analysis]Code))
+APPLY TO SELECTION([Trxs];[Trxs]AnalysisCode:=[Analysis]Code)
+//QUERY([Transaction];[Transaction]MiscDetls'AnalysisCode=Old([Analysis]Code))`getting rid of subtables
+//For ($i;1;Records in selection([Transaction]))
+//QUERY SUBRECORDS([Transaction]MiscDetls;[Transaction]MiscDetls'AnalysisCode=Old([Analysis]Code))
+//While (End subselection([Transaction]MiscDetls)=False)
+//[Transaction]MiscDetls'AnalysisCode:=[Analysis]Code
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End while 
+//SAVE RECORD([Transaction])
+//NEXT RECORD([Transaction])
+//End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[OtherChgs]AnalysisCode=Old([Analysis]Code))
+For ($i;1;Records in selection([Agreement]))
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode=Old([Analysis]Code))
+While (End selection([OtherChgs])=False)
+[OtherChgs]AnalysisCode:=[Analysis]Code
+SAVE RECORD([OtherChgs])
+NEXT RECORD([OtherChgs])
+End while 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+READ WRITE([Notices])
+$Code:=Old([Analysis]Code)
+QUERY([Notices];[Notices]AnalysisCode=Substring($Code;6);*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+APPLY TO SELECTION([Notices];[Notices]AnalysisCode:=Substring([Analysis]Code;6))
+READ ONLY([Notices])
+UNLOAD RECORD([Notices])
+End if 
+End if 
+
+
+If (tempSearchACode)
+tempSearchACode:=False
+QUERY([Analysis];[Analysis]Code=tempACodes)
+End if 

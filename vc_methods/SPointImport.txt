@@ -1,0 +1,1167 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// 27/02/13 DAM Added Converter for SPoint Marina
+
+READ WRITE([Customer])
+READ WRITE([Agreement])
+READ WRITE([Unit])
+READ WRITE([UnitType])
+READ WRITE([Boat])
+READ WRITE([Owner])
+READ WRITE([MarketingTypes])
+READ WRITE([UnitHistory])
+READ WRITE([Trxs])
+
+ConfirmTwo ("Do you wish to delete data from Agree/Cust/Trx/Othchgs/Unit/Noteshistory/UnitType tables?";"Yes";"No")
+
+If (OK=1)
+ALL RECORDS([Unit])
+DELETE SELECTION([Unit])
+ALL RECORDS([Customer])
+DELETE SELECTION([Customer])
+ALL RECORDS([Agreement])
+DELETE SELECTION([Agreement])
+ALL RECORDS([Boat])
+DELETE SELECTION([Boat])
+ALL RECORDS([Owner])
+DELETE SELECTION([Owner])
+ALL RECORDS([MarketingTypes])
+DELETE SELECTION([MarketingTypes])
+ALL RECORDS([UnitType])
+DELETE SELECTION([UnitType])
+ALL RECORDS([UnitHistory])
+DELETE SELECTION([UnitHistory])
+ALL RECORDS([Trxs])
+DELETE SELECTION([Trxs])
+ALL RECORDS([Contacts])
+DELETE SELECTION([Contacts])
+End if 
+
+C_LONGINT($SortOrder)
+C_BOOLEAN($NewAgreement)
+$SortOrder:=1
+$NewAgreement:=False
+
+//1 tblBerth
+AlertMessage ("Please open 1 - Berth file")
+$Doc:=Open document("")
+
+ALL RECORDS([Facility])
+
+If (OK=1)
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Unit])
+For ($i;1;3)//Number of fields
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)// unit no
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="")
+$Field:="BLANK"
+End if 
+[Unit]UnitNo:=$Field
+[Unit]RUnitNo:=<>sFacility+$Field
+
+: ($i=2)// unit type
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="")
+$Field:="BLANK"
+End if 
+
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+$Field)
+If (Records in selection([UnitType])=0)
+CREATE RECORD([UnitType])
+[UnitType]RUnitType:=<>sFacility+$Field
+[UnitType]UnitTypeCode:=$Field
+[UnitType]DepositAmt:=0
+[UnitType]RentAnalysis:="RF"
+[UnitType]DispOnlineReserve:=False
+[UnitType]OrgAnalysis:="RF"
+SAVE RECORD([UnitType])
+End if 
+[Unit]UnitTypeCode:=<>sFacility+$Field
+
+End case 
+End if 
+End for 
+
+If ([Unit]UnitNo#"")
+SAVE RECORD([Unit])
+End if 
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+End if 
+CLOSE DOCUMENT($Doc)
+
+//2 Customer table
+AlertMessage ("Please open 2 - Customer file")
+$Doc:=Open document("")
+If (OK=1)
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Customer])
+$CallDate:=!00-00-00!
+$NewContact:=False
+For ($i;1;69)//Number of fields
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)// Customer ID number
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]WebID:=$Field
+$CustomerCode:=[Customer]WebID
+
+While (Length($CustomerCode)<5)
+$CustomerCode:="0"+$CustomerCode
+End while 
+[Customer]CustomerCode:=<>sFacility+$CustomerCode
+
+: ($i=11)// First Name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]FirstName:=$Field
+
+: ($i=12)// Last Name 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]CustomerName:=$Field+", "+[Customer]FirstName
+
+: ($i=13)// Title
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]Title:=$Field
+
+: ($i=14)// Address 1 line
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MailAddress:=$Field
+
+: ($i=15)// Address 2 line 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="")
+[Customer]MailAddress:=[Customer]MailAddress+" "+$Field
+End if 
+
+: ($i=16)// MailSuburb 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MailSuburb:=$Field
+
+: ($i=17)// MailPostZIPCode 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MailPostZIPCode:=$Field
+
+: ($i=18)// State
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MailState:=$Field
+
+: ($i=19)// Country
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+[Customer]Country:="AUSTRALIA"
+[Customer]CountryCode:="AU"
+[Customer]MailCountryCode:="AU"
+
+: ($i=20)// Second Name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]AlternateName:=$Field
+
+: ($i=21)// DOB
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+[Customer]DateofBirth:=Date($Field)
+End if 
+
+: ($i=26)// Home Phone
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]PhonePrivate:=$Field
+[Customer]PhonePrivate:=Replace string([Customer]PhonePrivate;" ";"")
+
+: ($i=27)// Fax
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]FaxNo:=$Field
+[Customer]FaxNo:=Replace string([Customer]FaxNo;" ";"")
+
+: ($i=28)// Mobile
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MobilePhone:=$Field
+[Customer]MobilePhone:=Replace string([Customer]MobilePhone;" ";"")
+
+: ($i=29)// Email Address
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]EmailAddress:=$Field
+
+: ($i=30)// Company name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Customer]Organization:=True
+[Customer]UserName:=$Field
+End if 
+
+: ($i=32)// Business address 1
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+[Customer]AlternateAddress:=[Customer]MailAddress
+[Customer]MailAddress:=$Field
+End if 
+
+: ($i=33)// Business address 2
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Customer]MailAddress:=[Customer]MailAddress+" "+$Field
+End if 
+
+: ($i=34)// Business Suburb
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Customer]AltSuburb:=[Customer]MailSuburb
+[Customer]MailSuburb:=$Field
+End if 
+
+: ($i=35)// Business Zip
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Customer]AlternateZIPCode:=[Customer]MailPostZIPCode
+[Customer]MailPostZIPCode:=$Field
+[Customer]AltCountryCode:=[Customer]MailCountryCode
+[Customer]AltCountry:=[Customer]Country
+End if 
+
+: ($i=38)// Business phone
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]PhoneBus:=$Field
+[Customer]PhoneBus:=Replace string([Customer]PhoneBus;" ";"")
+
+: ($i=39)// Business fax
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+[Customer]FaxNo:=$Field
+End if 
+
+: ($i=40)// Business Mobile
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]Employer:=$Field
+[Customer]Employer:=Replace string([Customer]Employer;" ";"")
+
+: ($i=51)// Enq Contact date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$CallDate:=Date($Field)
+
+: ($i=52)// Create Sale Enq to follow up
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+CREATE RECORD([Contacts])
+While (Length($CustomerCode)<10)
+$CustomerCode:="0"+$CustomerCode
+End while 
+[Contacts]ContactNo:=<>sFacility+$CustomerCode
+[Contacts]Facility:=<>sFacility
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+[Contacts]FollowUpDate:=Date($Field)
+[Contacts]FollowUpDone:=False
+[Contacts]ContactName:=[Customer]CustomerName
+[Contacts]ContactPhone:=[Customer]PhonePrivate
+[Contacts]EmailAddress:=[Customer]EmailAddress
+[Contacts]PhoneBus:=[Customer]PhoneBus
+[Contacts]MailAddress:=[Customer]MailAddress
+[Contacts]MailSuburb:=[Customer]MailSuburb
+[Contacts]MailZIPCode:=[Customer]MailPostZIPCode
+[Contacts]MailCountryCode:="AU"
+[Contacts]MobilePhone:=[Customer]MobilePhone
+[Contacts]Title:=[Customer]Title
+[Contacts]Organization:=[Customer]Organization
+[Contacts]UserName:=[Customer]UserName
+[Contacts]MailState:=[Customer]MailState
+[Contacts]PrimaryPhone:=[Customer]PrimaryPhone
+UpdateCalendar (Old([Contacts]FollowUpDate);!00-00-00!;"Contact "+[Contacts]ContactName+", Followup "+[Contacts]ContactPhone)
+If ($CallDate#!00-00-00!)
+[Contacts]CallDate:=$CallDate
+Else 
+[Contacts]CallDate:=Current date
+End if 
+$NewContact:=True
+SAVE RECORD([Contacts])
+End if 
+
+
+: ($i=54)// Mrketing Category
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+QUERY([MarketingTypes];[MarketingTypes]Description=$Field)
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:=$Field
+[MarketingTypes]SortOrder:=$SortOrder
+$SortOrder:=$SortOrder+1
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="MS"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+End if 
+[Customer]MarketSrce:=$Field
+
+If ($NewContact=True)
+[Contacts]MarketSrce:=$Field
+SAVE RECORD([Contacts])
+End if 
+
+
+: ($i=55)// Berth
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Berth"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=56)// Mooring
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Mooring"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=57)// Slip
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Slip"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=58)// WorkShop
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Workshop"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=59)// GMF
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="GMF"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=61)// Permanent
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+[Customer]CustType:="Permanent"
+If ($NewContact=True)
+[Contacts]CustType:="Permanent"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=62)// Casual
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+[Customer]CustType:="Casual"
+If ($NewContact=True)
+[Contacts]CustType:="Casual"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=63)// Peak Perm
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+[Customer]CustType:="Peak Perm"
+If ($NewContact=True)
+[Contacts]CustType:="Peak Perm"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=64)// Special Event
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+[Customer]CustType:="Special Event"
+If ($NewContact=True)
+[Contacts]CustType:="Special Event"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=65)// FlagshipMarinersApartment
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Flagship Mariners Apartment"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+: ($i=66)// FlagshipGolfVilla
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Flagship Golf Villa"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+
+: ($i=67)// FlagshipSlabStorage
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Flagship Storage"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+
+: ($i=68)// Sailing School
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="TRUE")
+If ($NewContact=True)
+[Contacts]Category:="Sailing School"
+SAVE RECORD([Contacts])
+End if 
+End if 
+
+End case 
+End if 
+End for 
+SAVE RECORD([Customer])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+End if 
+CLOSE DOCUMENT($Doc)
+
+// 3 - Boat
+AlertMessage ("Please open 3 - Boat file")
+$Doc:=Open document("")
+If (OK=1)
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Boat])
+[Boat]FacilityCode:=<>sFacility
+For ($i;1;55)//Number of fields
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=2)// Customer Code
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$CustomerCode:=$Field
+
+While (Length($CustomerCode)<5)
+$CustomerCode:="0"+$CustomerCode
+End while 
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+$CustomerCode)
+
+: ($i=7)// Berth Number 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$BerthNumber:=$Field
+[Boat]RUnitNo:=<>sFacility+$BerthNumber
+QUERY([Unit];[Unit]RUnitNo=[Boat]RUnitNo)
+
+: ($i=11)// Move In Date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & (Records in selection([Unit])=1)
+[Unit]MoveIn:=Date($Field)
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo)
+While (Length([Agreement]AgreeNo)<9)
+[Agreement]AgreeNo:="0"+[Agreement]AgreeNo
+End while 
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{1}:=[Facility]NextAgreeNo
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+[Agreement]ActiveAgreemt:=True
+[Agreement]CustomerCode:=<>sFacility+$CustomerCode
+[Agreement]MoveIn:=[Unit]MoveIn
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+[Unit]AgreeNo:=[Agreement]RAgreeNo
+[Agreement]MthsAdv:=1
+[Unit]Status:="Rented"
+[Unit]Vacant:=False
+
+If ([Unit]RUnitNo="@PT@")
+
+End if 
+
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+//[UnitHistory]RentedValue:=$RentedAmt
+SAVE RECORD([UnitHistory])
+$NewAgreement:=True
+End if 
+
+: ($i=12)// Move Out Date 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Agreement]MoveOut:=Date($Field)
+[Unit]MoveOut:=[Agreement]MoveOut
+End if 
+
+: ($i=13)// Boat name 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Name:=$Field
+
+: ($i=14)//  Boat Type
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Type:=$Field
+
+: ($i=15)// Boat Comment 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Purpose:=$Field
+
+: ($i=16)// Engine brand
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Engine:=$Field
+
+: ($i=17)// Boat Length 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Length:=Round(Num($Field);0)
+
+: ($i=31)// Rego
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Registration:=$Field
+
+: ($i=32)// Insurance com 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]InsCompany:=$Field
+
+: ($i=33)// Insurance policy
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement=True)
+[Unit]InsureCertNo:=$Field
+End if 
+
+: ($i=34)// Expiry Date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+[Agreement]InsureExpire:=Date($Field)
+End if 
+
+: ($i=35)// HIN
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+[Customer]CarRego:=$Field
+SAVE RECORD([Customer])
+End if 
+
+: ($i=39)// NBD
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement=True)
+[Agreement]NextBillDate:=Date($Field)
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+[Agreement]LastBillDate:=Add to date([Agreement]NextBillDate;0;-1;0)
+[Agreement]PriorLastBill:=Add to date([Agreement]LastBillDate;0;-1;0)
+End if 
+
+: ($i=40)// Monthly Fee
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement=True)
+[Unit]RentedValue:=Num($Field)
+[Unit]OccupRentedVal:=Num($Field)
+[UnitHistory]RentedValue:=Num($Field)
+[Agreement]RentAmt:=Num($Field)
+[Agreement]LastBillAmt:=Num($Field)
+[Agreement]RegularRent:=Num($Field)
+End if 
+
+: ($i=45)// Deposit
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"") & ($NewAgreement=True)
+[Unit]Deposit:=Num($Field)
+[Agreement]DepositAmt:=[Unit]Deposit
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=[Agreement]MoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]Description:="Deposit (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Unit]Deposit
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]DateFrom:=[Agreement]MoveIn
+[Trxs]DateTo:=[Agreement]MoveIn
+SAVE RECORD([Trxs])
+
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=[Agreement]MoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]Description:="Deposit Write OFF transaction (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Unit]Deposit*(-1)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]DateFrom:=[Agreement]MoveIn
+[Trxs]DateTo:=[Agreement]MoveIn
+SAVE RECORD([Trxs])
+End if 
+
+
+: ($i=50)// CCNo
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+//[Customer]CCNo:=$Field
+//[Customer]CCNo:=Tokenizer ($Field;True)  //FB11185
+Encode256 ($Field)
+SAVE RECORD([Customer])
+End if 
+
+
+: ($i=52)// Name on the card
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Customer]CCName:=$Field
+SAVE RECORD([Customer])
+End if 
+
+: ($i=54)// Name on the card
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+$month:=Substring($Field;3;2)
+$year:=Substring($Field;8;2)
+[Customer]CCExpiry:=$month+$year
+SAVE RECORD([Customer])
+End if 
+
+End case 
+End if 
+End for 
+SAVE RECORD([Boat])
+SAVE RECORD([Unit])
+If ($NewAgreement)
+SAVE RECORD([Agreement])
+End if 
+$NewAgreement:=False
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+End if 
+CLOSE DOCUMENT($Doc)
+
+// 4 Credit sales
+AlertMessage ("Please open 4 - sale enq file")
+$Doc:=Open document("")
+If (OK=1)
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Contacts])
+[Contacts]ContactNo:=<>sFacility+String([Facility]NextContactNo;"0000000000")
+[Contacts]Facility:=<>sFacility
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+[Contacts]CallDate:=Current date
+For ($i;1;7)//Number of fields
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)// First name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Contacts]Firstname:=$Field
+
+: ($i=2)// Last name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Contacts]ContactName:=$Field+" "+[Contacts]Firstname
+
+: ($i=3)// Company Name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Contacts]UserName:=$Field
+
+: ($i=4)// Street Address
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Contacts]MailAddress:=$Field
+
+: ($i=5)// Suburb
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Contacts]MailSuburb:=$Field
+
+: ($i=6)// Phone
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Contacts]PhoneBus:=$Field
+[Contacts]PhoneBus:=Replace string([Contacts]PhoneBus;" ";"")
+
+: ($i=7)// Email
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Contacts]EmailAddress:=$Field
+
+
+End case 
+End if 
+End for 
+
+SAVE RECORD([Contacts])
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+End if 
+CLOSE DOCUMENT($Doc)
+
+// The arrays to link the MYOB
+ARRAY TEXT($arBerth;0)
+ARRAY TEXT($arMYOB;0)
+
+// 5 Link File
+AlertMessage ("Please open 5 - link file to MYOB")
+$Doc:=Open document("")
+
+If (OK=1)
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+
+For ($i;1;4)//Number of fields
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)//Berth Number
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$BerthNumber:=$Field
+
+//: ($i=3)  //Berth Number
+//$Field:=Replace string($Field;Char(10);"")
+//$Field:=Replace string($Field;Char(13);"")
+
+
+: ($i=4)// MYOB customer name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"Not in MYOB")
+APPEND TO ARRAY($arBerth;$BerthNumber)
+APPEND TO ARRAY($arMYOB;$Field)
+End if 
+
+End case 
+End if 
+End for 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+End if 
+CLOSE DOCUMENT($Doc)
+
+// 6 MYOB File
+AlertMessage ("Please open 6 - MYOB file")
+$Doc:=Open document("")
+
+If (OK=1)
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+
+For ($i;1;5)//Number of fields
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)//
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+$CustomerName:=$Field
+$Pos:=Find in array($arMYOB;$CustomerName)
+If ($Pos>0)
+QUERY([Unit];[Unit]UnitNo=$arBerth{$Pos})
+QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+Else 
+$CustomerName:=$CustomerName+" "
+$Pos:=Find in array($arMYOB;$CustomerName)
+If ($Pos>0)
+QUERY([Unit];[Unit]UnitNo=$arBerth{$Pos})
+QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+End if 
+End if 
+End if 
+
+: ($i=2)// Transaction ID
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]TrxTime:=Current time
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]Description:=$Field
+[Trxs]Confirmed:=True
+[Trxs]Charge:=True
+End if 
+
+: ($i=3)// Trx Date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Trxs]TrxDate:=Date($Field)
+[Trxs]DateBanked:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Trxs]TrxDate
+End if 
+
+If ($Field="Total:")
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+End if 
+
+
+: ($i=4)// Total Amt
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+[Trxs]TotAmt:=Num($Field)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+End if 
+
+End case 
+End if 
+End for 
+
+If ([Trxs]CustomerCode#"") & ([Trxs]AgreeNo#"") & ([Trxs]TrxDate#!00-00-00!)
+SAVE RECORD([Trxs])
+End if 
+
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+End if 
+CLOSE DOCUMENT($Doc)
+
+
+// 7 Notes File
+AlertMessage ("Please open 7 - Notes file")
+$Doc:=Open document("")
+
+If (OK=1)
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+
+For ($i;1;6)//Number of fields
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=2)// Customer code or Contact number
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+$CustomerCode:=$Field
+While (Length($CustomerCode)<5)
+$CustomerCode:="0"+$CustomerCode
+End while 
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+$CustomerCode)
+
+If (Records in selection([Customer])#0)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=<>sFacility+$CustomerCode
+End if 
+
+: ($i=3)// Date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[NotesHistory]NoteDate:=Date($Field)
+
+: ($i=5)// Body
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[NotesHistory]Note:=$Field
+
+If ([NotesHistory]Note#"")
+SAVE RECORD([NotesHistory])
+While (Length($CustomerCode)<10)
+$CustomerCode:="0"+$CustomerCode
+End while 
+QUERY([Contacts];[Contacts]ContactNo=<>sFacility+$CustomerCode)
+If (Records in selection([Contacts])#0)
+DUPLICATE RECORD([NotesHistory])
+[NotesHistory]PrimaryKey:=0
+[NotesHistory]ContactNo:=<>sFacility+$CustomerCode
+[NotesHistory]CustomerCode:=""
+SAVE RECORD([NotesHistory])
+End if 
+End if 
+
+End case 
+End if 
+End for 
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+End if 
+CLOSE DOCUMENT($Doc)
+
+// Added for Calendar Notes
+
+QUERY([Contacts];[Contacts]FollowUpDate#!00-00-00!)
+
+For ($i;1;Records in selection([Contacts]))
+UpdateCalendar (Old([Contacts]FollowUpDate);!00-00-00!;"Contact "+[Contacts]ContactName+", Followup "+[Contacts]ContactPhone)
+NEXT RECORD([Contacts])
+End for 
+
+ALL RECORDS([Customer])
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+For ($i;1;Records in selection([Customer]))
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])=0)
+CREATE RECORD([Agreement])
+[Agreement]CustomerCode:=[Customer]CustomerCode
+[Agreement]MoveIn:=!2001-01-01!
+[Agreement]MoveOut:=[Agreement]MoveIn
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+[Agreement]ActiveAgreemt:=False
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo)
+While (Length([Agreement]AgreeNo)<9)
+[Agreement]AgreeNo:="0"+[Agreement]AgreeNo
+End while 
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{1}:=[Facility]NextAgreeNo
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+SAVE RECORD([Agreement])
+SAVE RECORD([Facility])
+End if 
+NEXT RECORD([Customer])
+End for 
+
+ConfirmTwo ("Create Cust types and categories?";"Yes";"No")
+
+If (OK=1)
+//New Categories Cust Type
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Special Event"
+[MarketingTypes]SortOrder:=4
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CT"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Peak Perm"
+[MarketingTypes]SortOrder:=3
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CT"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Casual"
+[MarketingTypes]SortOrder:=2
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CT"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Permanent"
+[MarketingTypes]SortOrder:=1
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CT"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+
+// Contacts Category
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Berth"
+[MarketingTypes]SortOrder:=1
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Mooring"
+[MarketingTypes]SortOrder:=2
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Slip"
+[MarketingTypes]SortOrder:=3
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Workshop"
+[MarketingTypes]SortOrder:=4
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="GMF"
+[MarketingTypes]SortOrder:=5
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Flagship Mariners Apartment"
+[MarketingTypes]SortOrder:=6
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Flagship Golf Villa"
+[MarketingTypes]SortOrder:=7
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Flagship Storage"
+[MarketingTypes]SortOrder:=8
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Sailing School"
+[MarketingTypes]SortOrder:=9
+[MarketingTypes]Facility:=<>sFacility
+[MarketingTypes]ListCode:="CC"
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+
+End if 
+
+[Facility]LastDaily:=Add to date(Current date;0;0;-1)
+[Facility]LastBanking:=Add to date(Current date;0;0;-1)
+[Facility]CantModPrior:=!2014-07-01!
+SAVE RECORD([Facility])
+ReCalcUnits 
+AlertMessage ("Conversion is completed")
+SAVE RECORD([Facility])
+
+READ ONLY([Customer])
+READ ONLY([Agreement])
+READ ONLY([Unit])
+READ ONLY([UnitType])
+READ ONLY([Boat])
+READ ONLY([Owner])

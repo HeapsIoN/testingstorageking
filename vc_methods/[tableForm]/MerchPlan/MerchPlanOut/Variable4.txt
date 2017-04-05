@@ -1,0 +1,85 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Copy codes to other sites
+C_LONGINT($i;$j)
+C_TEXT($FromSite)
+CREATE SET([MerchPlan];"ToDo")
+USE SET("UserSet")
+If (Records in selection([MerchPlan])=0)
+USE SET("ToDo")
+End if 
+FIRST RECORD([MerchPlan])
+If (Records in selection([MerchPlan])>0)
+$FromSite:=Substring([MerchPlan]MerchPlanID;1;5)
+ARRAY TEXT(asMerchPlan;0)
+SELECTION TO ARRAY([MerchPlan]MerchPlanID;asMerchPlan)
+OK:=ConfirmThree (Get localized string("Duplicate")+" "+String(Records in selection([MerchPlan]))+" "+Get localized string("Merchandise Discount Plans to")+" "+String(Size of array(<>asSiteCodes))+" "+Get localized string("other facilities?");Get localized string("Yes");Get localized string("Select Sites");Get localized string("No"))
+If (OK=1) | (OK=2)
+ARRAY TEXT(asFields;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSiteCodes;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSigns;Size of array(<>asSiteCodes))
+For ($i;1;Size of array(<>asSiteCodes))
+asFields{$i}:=<>asFacilities{$i}
+asSiteCodes{$i}:=<>asSiteCodes{$i}
+asSigns{$i}:=""
+End for 
+End if 
+If (OK=2)
+vTitle:=Get localized string("Select Sites")+"..."
+Open window((Screen width/2)-146;(Screen height/2)-150;(Screen width/2)+146;(Screen height/2)+150;5;Get localized string("Select Sites"))
+DIALOG([Facility];"SelectSites")
+CLOSE WINDOW
+For ($i;Size of array(asSiteCodes);1;-1)
+If (asSigns{$i}#"•")
+DELETE FROM ARRAY(asSiteCodes;$i;1)
+End if 
+End for 
+End if 
+If (OK=1)
+//Delete all existing records that are in selection
+ConfirmTwo (Get localized string("Delete all Merchandise Plans before duplication?");Get localized string("Yes");Get localized string("No"))
+$Delete:=(OK=1)
+If ($Delete)
+CREATE EMPTY SET([MerchPlan];"ToDelete")
+For ($i;1;Size of array(asSiteCodes))
+If (asSiteCodes{$i}#$FromSite)
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=asSiteCodes{$i}+"@")
+For ($j;1;Records in selection([MerchPlan]))
+ADD TO SET([MerchPlan];"ToDelete")
+NEXT RECORD([MerchPlan])
+End for 
+End if 
+End for 
+USE SET("ToDelete")
+DELETE SELECTION([MerchPlan])
+End if 
+//Pause to ensure at least 1 sec delay so that deletions occur b4 adds in replication
+$Tickcount:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+90))
+//Duplicate new codes to selection
+For ($i;1;Size of array(asSiteCodes))
+If (asSiteCodes{$i}#$FromSite)
+For ($j;1;Size of array(asMerchPlan))
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=asSiteCodes{$i}+Substring(asMerchPlan{$j};6))
+If (Records in selection([MerchPlan])=1)
+DELETE RECORD([MerchPlan])
+End if 
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=asMerchPlan{$j})
+DUPLICATE RECORD([MerchPlan])
+[MerchPlan]PrimaryKey:=0
+[MerchPlan]MerchPlanID:=asSiteCodes{$i}+Substring([MerchPlan]MerchPlanID;6)
+//[MerchPlan]DiscountAnalysis:=asSiteCodes{$i}+Substring([MerchPlan]DiscountAnalysis;6)
+If (Length([MerchPlan]AnalysisCodes)>3)
+$OldString:=Substring([MerchPlan]AnalysisCodes;1;5)
+[MerchPlan]AnalysisCodes:=asSiteCodes{$i}+Substring([MerchPlan]AnalysisCodes;6)
+[MerchPlan]AnalysisCodes:=Replace string([MerchPlan]AnalysisCodes;","+$OldString;","+asSiteCodes{$i})
+End if 
+SAVE RECORD([MerchPlan])
+End for 
+End if 
+End for 
+End if 
+Else 
+AlertMessage (Get localized string("There are no records to copy!"))
+End if 

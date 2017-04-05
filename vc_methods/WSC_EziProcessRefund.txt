@@ -1,0 +1,179 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 30/01/15, 09:27:33
+// ----------------------------------------------------
+// Method: WSC_EziProcessRefund
+// Description
+// Method for processing refund for real time credit card transactions
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($1)//Digital Key
+C_TEXT($2)//Payment ID
+C_TEXT($3)//Bank Receipt ID
+C_REAL($4)//Amount
+C_BOOLEAN($5)
+
+C_TEXT($0)
+C_TEXT($ret1;$Error;$ErrorCode)
+C_TEXT($ret2)
+C_TEXT($ret3)
+C_TEXT($ret4)
+C_TEXT($ret5)
+C_TEXT($ExpMonth)
+C_TEXT($ExpYear)
+C_TEXT($Amount)
+C_LONGINT($EziResult)
+
+C_TEXT($root)
+C_TEXT($subelem)
+C_TEXT($namespace)
+
+$oldErrMethod:=Method called on error
+
+ON ERR CALL("ERR_Ezi")
+
+$Amount:=String($4*100)
+
+$namespace:="https://px.ezidebit.com.au/"
+$root:=DOM Create XML Ref("ProcessRefund";$namespace)
+
+$subelem:=DOM Create XML element($root;"/ProcessRefund/DigitalKey")
+DOM SET XML ELEMENT VALUE($subelem;$1)
+
+$subelem:=DOM Create XML element($root;"/ProcessRefund/PaymentID")
+DOM SET XML ELEMENT VALUE($subelem;$3)
+
+$subelem:=DOM Create XML element($root;"/ProcessRefund/BankReceiptID")
+DOM SET XML ELEMENT VALUE($subelem;$2)
+
+$subelem:=DOM Create XML element($root;"/ProcessRefund/RefundAmountInCents")
+DOM SET XML ELEMENT VALUE($subelem;$Amount)
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+
+DOM EXPORT TO VAR($root;$Message)
+SET TEXT TO PASTEBOARD($Message)
+SyncRecordLog ("EziDebit Process Refund. Highlander: "+String([Facility]Highlander)+" Request: "+$Message)
+
+If ([Facility]Highlander)
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/ProcessRefund";"ProcessRefund";"https://px.ezidebit.com.au/";Web Service manual)
+
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/ProcessRefund";"ProcessRefund";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+Else 
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-3/nonpci";"https://px.ezidebit.com.au/INonPCIService/ProcessRefund";"ProcessRefund";"https://px.ezidebit.com.au/";Web Service manual)
+
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-3/nonpci";"https://px.ezidebit.com.au/INonPCIService/ProcessRefund";"ProcessRefund";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+End if 
+
+$EziResult:=Num(WEB SERVICE Get info(0))
+
+If ($EziResult=0)
+C_BLOB($blob)
+C_TEXT($resroot)
+C_TEXT($ressubelem)
+WEB SERVICE GET RESULT($blob;"XMLOut";*)
+$resroot:=DOM Parse XML variable($blob)
+DOM EXPORT TO VAR($resroot;$Message)
+SET TEXT TO PASTEBOARD($Message)
+SyncRecordLog ("EziDebit Process Refund response: "+$Message)
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessRefundResponse/ProcessRefundResult/Error")
+DOM GET XML ELEMENT VALUE($ressubelem;$Error)
+
+If ($Error#"0")
+$ressubelem:=DOM Find XML element($resroot;"/ProcessRefundResponse/ProcessRefundResult/ErrorMessage")
+DOM GET XML ELEMENT VALUE($ressubelem;$ErrorCode)
+
+If ($5) & (Not(IsAWebProcess ))
+AlertMessage ($ErrorCode)
+End if 
+
+$0:="ERR"+$Error
+vCCText:=$ErrorCode
+
+Else 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessRefundResponse/ProcessRefundResult/Data/RefundPaymentID")
+DOM GET XML ELEMENT VALUE($ressubelem;$ret1)
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessRefundResponse/ProcessRefundResult/Data/BankReceiptID")
+DOM GET XML ELEMENT VALUE($ressubelem;$ret2)
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessRefundResponse/ProcessRefundResult/Data/RefundResult")
+DOM GET XML ELEMENT VALUE($ressubelem;$ret3)
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessRefundResponse/ProcessRefundResult/Data/RefundResultCode")
+DOM GET XML ELEMENT VALUE($ressubelem;$ret4)
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessRefundResponse/ProcessRefundResult/Data/RefundResultText")
+DOM GET XML ELEMENT VALUE($ressubelem;$ret5)
+
+If ($ret3="A")
+$0:=$ret1
+
+[Trxs]CCTransID:=vOriginalReceipt
+[Trxs]OriginalReceipt:=$ret2
+[Trxs]CCAuthNo:=$ret1
+
+If ([Analysis]SetBankedDate)
+[Trxs]Confirmed:=True
+[Trxs]DateBanked:=Current date
+Else 
+[Trxs]Confirmed:=False
+End if 
+
+Else 
+If ($5) & (Not(IsAWebProcess ))
+AlertMessage ($ret5)
+End if 
+$0:="ERR"+$ret4
+vCCText:=$ret5
+End if 
+End if 
+
+DOM CLOSE XML($resroot)
+
+Else 
+C_BLOB($blob)
+C_TEXT($resroot)
+C_TEXT($ressubelem)
+vCCText:=""
+SyncRecordLog ("EziDebit Process Refund call result: "+String($EziResult)+" Message: "+gError)
+//03/06/15 DAM Added code for reading the error message from Ezidebit
+$Pos:=0
+$Pos:=Position("<s:Envelope";gError)
+
+If ($Pos>0)
+gError:=Substring(gError;$Pos)
+TEXT TO BLOB(gError;$blob)
+$resroot:=DOM Parse XML variable($blob)
+
+$ressubelem:=DOM Find XML element($resroot;"/Envelope/Body/Fault/detail/ExceptionDetail/Message")
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;vCCText)
+End if 
+End if 
+
+If (vCCText="")
+vCCText:=gError
+End if 
+
+If ($5) & (Not(IsAWebProcess ))
+AlertMessage (vCCText+$crlf+$crlf+"Customer Reference:"+$3)
+End if 
+$0:="ERROR"
+End if 
+
+DOM CLOSE XML($root)
+ON ERR CALL($oldErrMethod)
+

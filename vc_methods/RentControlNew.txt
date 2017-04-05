@@ -1,0 +1,207 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 17/10/14, 09:12:04
+// ----------------------------------------------------
+// Method: RentControlNew
+// Description
+// DRC report + allying rulles
+//
+// Parameters
+// ----------------------------------------------------
+
+//Getting records for reprot
+C_LONGINT($i)
+C_REAL(Fixed_r;Percent_r;RCNewRent_r)
+
+CREATE EMPTY SET([UnitType];"ToPrint")
+
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+QUERY([UnitType]; & ;[UnitType]RentControlOn=True)
+ORDER BY([UnitType];[UnitType]UnitTypeCode;>)
+
+For ($i;1;Records in selection([UnitType]))
+If (Current date>([UnitType]RCLastModDate+[UnitType]RCIntervalDays)) & ([UnitType]NoTotal>0) & (Abs([UnitType]RCDays)>=[UnitType]RCOccDays)
+If ((([UnitType]NoTotal-[UnitType]NoVacant)*100/[UnitType]NoTotal)>[UnitType]RCUpperActivate)//Upper
+ADD TO SET([UnitType];"ToPrint")
+End if 
+End if 
+
+If ((([UnitType]NoTotal-[UnitType]NoVacant)*100/[UnitType]NoTotal)<[UnitType]RCLowerActivate)// Lower
+ADD TO SET([UnitType];"ToPrint")
+End if 
+NEXT RECORD([UnitType])
+End for 
+DEFAULT TABLE([UnitType])
+USE SET("ToPrint")
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+
+If (Records in selection([UnitType])>0)
+
+Case of 
+: ([Facility]DRCReport=1)//Print Report only 
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+
+: ([Facility]DRCReport=3)// Email report only
+
+If ([Facility]DRCEmails#"")
+$Report:="DRCReport"+String(Current date)
+$Report:=Replace string($Report;"/";"")
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+$Filename:=<>sFacility+$Report+".pdf"
+SelectPDFDoc (2;<>sPDFDocsPath+$Filename)
+
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+
+SelectPDFDoc (4;<>sPDFDocsPath+$Filename)
+<>tPrintPDF:=False
+End if 
+: ([Facility]DRCReport=5)// Print/Email 
+//Print
+
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+
+USE SET("ToPrint")
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+
+//PDF
+If ([Facility]DRCEmails#"")
+$Report:="DRCReport"+String(Current date)
+$Report:=Replace string($Report;"/";"")
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+$Filename:=<>sFacility+$Report+".pdf"
+SelectPDFDoc (2;<>sPDFDocsPath+$Filename)
+
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+
+SelectPDFDoc (4;<>sPDFDocsPath+$Filename)
+<>tPrintPDF:=False
+End if 
+
+: ([Facility]DRCReport=2)// Print Report & Apply DRC
+
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+RentControlUpdate 
+
+: ([Facility]DRCReport=4)//Email Report & Apply DRC
+//PDF
+If ([Facility]DRCEmails#"")
+$Report:="DRCReport"+String(Current date)
+$Report:=Replace string($Report;"/";"")
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+$Filename:=<>sFacility+$Report+".pdf"
+SelectPDFDoc (2;<>sPDFDocsPath+$Filename)
+
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+
+SelectPDFDoc (4;<>sPDFDocsPath+$Filename)
+<>tPrintPDF:=False
+End if 
+
+RentControlUpdate 
+
+: ([Facility]DRCReport=6)//Print and Email Report & Apply DRC
+
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+
+USE SET("ToPrint")
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+
+//PDF
+If ([Facility]DRCEmails#"")
+$Report:="DRCReport"+String(Current date)
+$Report:=Replace string($Report;"/";"")
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+$Filename:=<>sFacility+$Report+".pdf"
+SelectPDFDoc (2;<>sPDFDocsPath+$Filename)
+
+FORM SET OUTPUT([UnitType];"DRCReport")
+PrintSelection ("P")
+
+SelectPDFDoc (4;<>sPDFDocsPath+$Filename)
+<>tPrintPDF:=False
+End if 
+
+RentControlUpdate 
+
+End case 
+
+//Send Email
+
+If ([Facility]DRCReport=3) | ([Facility]DRCReport=4) | ([Facility]DRCReport=5) | ([Facility]DRCReport=6)
+If ([Facility]DRCEmails#"")
+
+$RCEmailAddress:=[Facility]DRCEmails
+Repeat 
+$RCEmailPos:=Position(",";$RCEmailAddress)
+If ($RCEmailPos>3)
+$RCEmail:=Substring($RCEmailAddress;1;$RCEmailPos-1)
+$RCEmailAddress:=Substring($RCEmailAddress;$RCEmailPos+1)
+Else 
+$RCEmail:=$RCEmailAddress
+$RCEmailAddress:=""
+End if 
+
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="DRCReport")
+If (Records in selection([Notices])=1)
+
+BLOB PROPERTIES([Notices]Email;$comp)
+If ($comp#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+
+CREATE RECORD([Message])
+[Message]Address:=$RCEmail
+[Message]Subject:=[Notices]EmailSubject
+[Message]Facility:=<>sFacility
+
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Attachments:=<>sPDFDocsPath+$Filename
+SAVE RECORD([Message])
+Else 
+
+CREATE RECORD([Message])
+[Message]Address:=$RCEmail
+[Message]Subject:="DRC Report"
+[Message]MsgBody:="Please see attached DRC Report"
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Attachments:=<>sPDFDocsPath+$Filename
+[Message]Facility:=<>sFacility
+SAVE RECORD([Message])
+End if 
+
+SendMail 
+Until ($RCEmailPos=0)
+End if 
+End if 
+
+End if 

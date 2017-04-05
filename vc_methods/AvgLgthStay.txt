@@ -1,0 +1,135 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN(forCompleted)
+vAvgStyIn:=0
+vAvgStyOut:=0
+vLgthStyOut:=0
+vTotStyIn:=0
+$q:=0
+vNoMvOuts:=0
+forCompleted:=False
+vOccUnit:=[UnitType]NoTotal-[UnitType]NoVacant
+RELATE MANY([UnitType])
+FIRST RECORD([Unit])
+For ($i;1;Records in selection([Unit]))
+If ([Unit]MoveIn<=vRptDate) & ([Unit]MoveIn#!00-00-00!) & ([Unit]Status="Rented")
+vTotStyIn:=vTotStyIn+(vRptDate-[Unit]MoveIn)+1
+$q:=$q+1
+End if 
+If (viSplit=1)
+If (vRTRun=1)
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut=!00-00-00!) | ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=vRptDate-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+QUERY SELECTION([UnitHistory];[UnitHistory]DaysStayed>0;*)
+QUERY SELECTION([UnitHistory]; & ;[UnitHistory]DaysStayed<viSplitDays)
+
+Else 
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut>=vStDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed>0;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed<viSplitDays)
+End if 
+Else 
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut=!00-00-00!) | ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=vRptDate-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+QUERY SELECTION([UnitHistory];[UnitHistory]DaysStayed>=viSplitDays)
+
+Else 
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut>=vStDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed>=viSplitDays)
+End if 
+End if 
+Else 
+
+If (Undefined(viMovedIn))
+viMovedIn:=0
+End if 
+
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut=!00-00-00!) | ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=vRptDate-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+QUERY SELECTION([UnitHistory];[UnitHistory]DaysStayed>0)
+
+Else 
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut>=vStDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed>0)
+End if 
+End if 
+vNoMvOuts:=vNoMvOuts+Records in selection([UnitHistory])
+For ($j;1;Records in selection([UnitHistory]))
+vLgthStyOut:=vLgthStyOut+[UnitHistory]DaysStayed
+NEXT RECORD([UnitHistory])
+End for 
+NEXT RECORD([Unit])
+End for 
+vRTq:=vRTq+$q
+vRTDaysIn:=vRTDaysIn+vTotStyIn
+If ($q>0)
+vAvgStyIn:=Round(vTotStyIn/$q/30;2)
+Else 
+vAvgStyIn:=Round(vTotStyIn/30;2)
+End if 
+vRTDaysOut:=vRTDaysOut+vLgthStyOut
+If (vNoMvOuts>0)
+vAvgStyOut:=Round(vLgthStyOut/vNoMvOuts/30;2)
+Else 
+vAvgStyOut:=Round(vLgthStyOut/30;2)
+End if 
+vRTotDays:=vRTDaysOut+vRTDaysIn
+vTotAvgSty:=0
+If (($q+vNoMvOuts)>0)
+vTotAvgSty:=Round((vLgthStyOut+vTotStyIn)/($q+vNoMvOuts)/30;2)
+End if 
+vTotNoOcc:=vTotNoOcc+[UnitType]NoTotal-[UnitType]NoVacant
+vTotMvOuts:=vTotMvOuts+vNoMvOuts

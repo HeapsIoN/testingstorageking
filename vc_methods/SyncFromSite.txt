@@ -1,0 +1,73 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//IP Address
+C_TEXT($ErrorDescription)
+C_TEXT($FacilityCode;$cr;$ErrorCode;$ComputerDate)
+C_LONGINT($SeqNo;$NextSeqNo)
+C_DATE($CDate)
+$FacilityCode:=SyncCheckValidSite ($1;True)
+$NextSeqNo:=0
+$Pos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+If ($Pos>0)
+$NextSeqNo:=<>aiEventSeqNo{$Pos}+1
+End if 
+$EventCount:=Num(SyncBlobtoText (SyncTagsToBlob ("<EventCount>";->vbEventContent;->vbRecord;0)))
+$SeqNo:=Num(SyncBlobtoText (SyncTagsToBlob ("<SeqNo>";->vbEventContent;->vbRecord;0)))
+$ComputerDate:=SyncBlobtoText (SyncTagsToBlob ("<ComputerDate>";->vbEventContent;->vbRecord;0))
+$CDate:=!00-00-00!
+If (Length($ComputerDate)>5)
+$CDate:=Date($ComputerDate)
+End if 
+If (vErrors="160")//SDD 4/12/11 Added to allow site seqno to be automatically used
+$NextSeqNo:=$SeqNo
+End if 
+Case of 
+: (vErrors="3@")
+$ErrorCode:=vErrors
+$ErrorDescription:=Get localized string("Server Generated Code")
+SyncRecordLog (Get localized string("Received from Site")+" : "+$FacilityCode+" "+Get localized string("Server Generated Code")+" - "+vErrors+" - IP:"+$1)
+: (Records in selection([Facility])#1)
+$ErrorCode:="050"
+$ErrorDescription:="Invalid Facility Code"
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+" - "+Get localized string("Invalid Facility Code")+" - IP:"+$1)
+: ([Facility]CentralAddress#$1) & ([Facility]CheckIPValid)
+$ErrorCode:="040"
+$ErrorDescription:=Get localized string("Invalid IP Address")
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+" - "+Get localized string("Invalid IP Address")+" - IP:"+$1)
+: (SyncBlobtoText (SyncTagsToBlob ("<EOF>";->vbEventContent;->vbRecord;0))#"EOF")
+$ErrorCode:="100"
+$ErrorDescription:=Get localized string("File Incomplete")
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+" - "+Get localized string("File Incomplete")+" - IP:"+$1)
+: ($CDate#!00-00-00!) & ($CDate#UTCDate (Current time;True;Current date))
+$ErrorCode:="030"
+$ErrorDescription:=Get localized string("Date Mismatch - Site")+":"+String($CDate)+" & MV:"+String(UTCDate (Current time;True;Current date))
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+" - "+$ErrorDescription+" - IP:"+$1)
+: (vErrors="151") & ($SeqNo>$NextSeqNo) & ($SeqNo>3) & ($NextSeqNo>3)
+$ErrorCode:="151"
+$ErrorDescription:=Get localized string("Adjust Sequence Number Site")+":"+String($SeqNo)+" & MV:"+String($NextSeqNo)
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+" - "+$ErrorDescription+" - IP:"+$1)
+: ($SeqNo#$NextSeqNo) & ($SeqNo+1#$NextSeqNo)//Added 3rd condition 28/9/04  //SDD Removed first condition ($SeqNo>0) because of zero coming through from site
+$ErrorCode:="150"
+$ErrorDescription:=Get localized string("Sequence Number Mismatch Site")+":"+String($SeqNo)+" & MV:"+String($NextSeqNo)
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+" - "+$ErrorDescription+" - IP:"+$1)
+: (SyncDecode ($EventCount;$FacilityCode;String($NextSeqNo-$SeqNo;"###"))="200")//Added 3rd parameter 28/9/04  should be "000" instead of "###"
+$ErrorCode:="200"
+$ErrorDescription:=Get localized string("Wrong Record Count")
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+". - "+Get localized string("Wrong Record Count")+" - IP:"+$1)
+Else 
+$ErrorCode:="000"
+$ErrorDescription:="OK"
+If ($Pos>0)
+SyncRecordLog ("Setting Event Seq No to "+String($SeqNo)+" - SyncFromSite #59")
+<>aiEventSeqNo{$Pos}:=$SeqNo
+End if 
+SyncRecordLog (Get localized string("Received")+" "+String($EventCount)+" "+Get localized string("events from")+" "+$FacilityCode+" - "+Get localized string("Seq No")+" "+String($SeqNo)+" - IP:"+$1)
+End case 
+SET BLOB SIZE(vbEventContent;0)
+$cr:=Char(13)+Char(10)
+TEXT TO BLOB("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;vbResponse;Mac text without length;*)
+//CONVERT FROM TEXT("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;"UTF-8";vbResponse)
+<>iTrafficSent:=<>iTrafficSent+BLOB size(vbResponse)
+If (bConfirm)//True for Debug mode
+BLOB TO DOCUMENT("BlobOut"+Replace string(String(Current time);":";"")+".txt";vbResponse)
+End if 
+WEB SEND BLOB(vbResponse;"";False)

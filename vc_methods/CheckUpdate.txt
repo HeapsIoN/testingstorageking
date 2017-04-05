@@ -1,0 +1,434 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 22/11/16, 09:52:11
+// ----------------------------------------------------
+// Method: CheckUpdate
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+//SDD 29/4/10 Modified so this cannot be done with a Tutorial datafile
+//Check with webserver if update is available and if paid
+C_TEXT($0)
+C_TEXT($1;$Command)//If value is GETCode then return Facility Code, or if NOMSG then no alerts
+C_LONGINT($TCPID;$Status;$Error;$Pos;$Version;$Retries;$Port;$3)
+C_LONGINT($WaitTime;$x;$y;$z;$Version)
+C_TEXT($cr)
+C_TEXT($Vers)
+C_DATE($PaidUpTo)
+C_TEXT($Message;$Buffer;$IPAddr;$2)
+
+C_LONGINT($num_gate_type)
+C_TEXT($str_gate_type)
+
+//fb9848 by eugene
+$num_gate_type:=0
+$str_gate_type:=""
+ARRAY TEXT($Gate_Types;35)
+$Gate_Types{1}:="1"
+$Gate_Types{2}:="2"
+$Gate_Types{3}:="3"
+$Gate_Types{4}:="4"
+$Gate_Types{5}:="5"
+$Gate_Types{6}:="6"
+$Gate_Types{7}:="7"
+$Gate_Types{8}:="8"
+$Gate_Types{9}:="9"
+$Gate_Types{10}:="a"
+$Gate_Types{11}:="b"
+$Gate_Types{12}:="c"
+$Gate_Types{13}:="d"
+$Gate_Types{14}:="e"
+$Gate_Types{15}:="f"
+$Gate_Types{16}:="g"
+$Gate_Types{17}:="h"
+$Gate_Types{18}:="i"
+$Gate_Types{19}:="j"
+$Gate_Types{20}:="k"
+$Gate_Types{21}:="l"
+$Gate_Types{22}:="m"
+$Gate_Types{23}:="n"
+$Gate_Types{24}:="o"
+$Gate_Types{25}:="p"
+$Gate_Types{26}:="q"
+$Gate_Types{27}:="r"
+$Gate_Types{28}:="s"
+$Gate_Types{29}:="t"
+$Gate_Types{30}:="u"
+$Gate_Types{31}:="v"
+$Gate_Types{32}:="w"
+$Gate_Types{33}:="x"
+$Gate_Types{34}:="y"
+$Gate_Types{35}:="z"
+
+
+$Port:=19811
+
+
+$Download:=False
+$Command:=""
+$Version:=0
+$Auto:=""
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+
+
+
+If (Count parameters>=1)
+$Command:=$1
+End if 
+If (Count parameters>=2)
+$Getfile:=""
+$Command:="NOMSG"
+End if 
+If (Count parameters=3)
+$Version:=$3
+End if 
+
+///$tempor_facility:=[Facility]FacilityCode
+
+ALL RECORDS([Facility])//Only check for first in file!
+If ([Facility]TutorialData=True)
+AlertMessage (Get localized string("You cannot Update the Storman program with a tutorial datafile. Please change to your live data to utilize this feature!"))
+Else 
+If ($Command#"NOMSG")//PLEASE TALK TO STUART BEFORE MODIFYING/DELETING THIS
+$Win:=Open window((Screen width/2)-150;250;(Screen width/2)+150;350;0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Checking on Storman webserver")+"..."+"    ")
+End if 
+
+//Array Details for MsgParam
+//1=Control = CHK, NEW, UPD
+//2=User Code
+//3=Version
+//4=Storman Product  MV03N0N or SP01Y5N     was Max Units
+//5=Max Sites    was Modules
+//6=Max Units   was Expiry Date below all offset by one
+//7=Expiry Date
+//8=Rented
+//9=Upgrades Paid To Date
+
+//10=Facility Code
+//11=Business Name
+//12=Facility Name
+//13=Company Name
+//14=Country Code
+//15=Email Address
+//16=Phone Number
+//17=Fax Number
+//18=OS Platform Details = Platform,OpSys,Computer
+//19=Computer Date  
+ARRAY TEXT($atMsgParam;34)
+$Control:="CHK"
+$cr:=Char(13)+Char(10)//Need to send MaxSites and MaxUnits
+$Message:=$Control+":"+[Facility]UserCode+":"+String(<>iVersion)+":"+[Facility]ProductCode+String([Facility]Max4DClients;"00")
+
+//original
+$Message:=$Message+GetStringfromBoolean ([Facility]UseGateSys;"Y";"N")+String([Facility]GateSysType;"0")+GetStringfromBoolean ([Facility]UseCashBook;"Y";"N")+GetStringfromBoolean ([Facility]UseWebServer;"Y";"N")
+
+
+
+$Message:=$Message+":"+String([Facility]MaxSites;"00000")+":"+String([Facility]MaxUnits;"00000")+":"
+$Message:=$Message+GetDateString ([Facility]LicExpiryDate)+":"+GetStringfromBoolean ([Facility]LicRentExpWarn;"Y";"N")+":"+GetDateString ([Facility]UpgradesPaidTo)
+$Message:=$Message+":"+[Facility]FacilityCode+":"+[Facility]BusinessName+":"+[Facility]FacilityName+":"+[Facility]CompanyName
+$Message:=$Message+":"+String([Facility]Country)+":"+[Facility]EmailAddress+":"+[Facility]Phone+":"+[Facility]Fax
+PLATFORM PROPERTIES($x;$y;$z)
+$Message:=$Message+":"+String($x)+","+String($y)+","+String($z)+":"+GetDateString (Current date)+":"+GetDateString (<>dCompileDate)+":"
+QUERY([Unit];[Unit]Status#"Unavail")
+$Message:=$Message+String(Records in selection([Unit]))+":"
+
+//$IPAddr:=GetDNS ("SUV1")
+//$IPAddr:="code.storman.com"
+
+
+$IPAddr:=GetDNS ("SUV1")
+
+
+
+If (Test path name(<>sPreferencesPath+"Training.xml")=Is a document)
+$Go:=False
+Else 
+$Go:=True
+End if 
+
+While ($Go)
+$Go:=False
+$Error:=TCP_Open ($IPAddr;$Port;$TCPID;0)
+If ($Error=0)
+$Message:="GET /updatestorman/"+EncodeIt ($Message;True)+" HTTP/1.1"+$cr
+$Message:=$Message+"Host: "+$IPAddr+":"+String($Port)+$cr
+$Message:=$Message+"Accept: */*"+$cr
+$Message:=$Message+"Accept-Language: en"+$cr
+$Message:=$Message+"Connection: Keep-Alive"+$cr
+$Message:=$Message+$cr+$cr
+$Error:=TCP_Send ($TCPID;$Message)
+$Message:=""
+$WaitTime:=Current time+?00:00:20?//Timeout after 20 seconds
+Repeat 
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$Error:=TCP_State ($TCPID;$Status)
+$Message:=$Message+$Buffer
+Until ($Status=0) | ($Error>0) | (Current time>$WaitTime)
+$Error:=TCP_Close ($TCPID)
+
+Repeat 
+$Message:=Replace string($Message;$cr;Char(13);*)
+Until (Position($cr;$Message)=0)
+
+$Message:=Substring($Message;Position(Char(13)+Char(13);$Message;0;*)+2)//Get the page after the header
+$Message:=EncodeIt ($Message;False)
+
+Case of 
+: ($Message="Facility@")
+If ($Command#"NOMSG")
+AlertServer (Get localized string("Please contact")+" "+<>sOEMName+" "+Get localized string("Support as the following error occurred")+" - "+$Message)
+End if 
+: ($Message="UPD@") & (Length($Message)>=40)
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+If (Locked([Facility]))
+If ($Command#"NOMSG")
+AlertServer (Get localized string("The licence details could not be updated as the System record is locked by another process. Quit")+" "+<>sOEMName+" "+Get localized string("& then select Update Storman Program again from the File menu."))
+End if 
+Else 
+//Read the passed values into the array
+For ($i;1;21)
+$Pos:=Position(":";$Message)
+$atMsgParam{$i}:=Substring($Message;1;$Pos-1)
+$Message:=Substring($Message;$Pos+1)
+End for 
+//1=Control = CHK, NEW, UPD
+//2=User Code
+//3=Version
+//4=Storman Product  MV03N0NN or SP01Y5NN     was Max Units
+//5=Max Sites    was Modules
+//6=Max Units   was Expiry Date below all offset by one
+//7=Expiry Date
+//8=Rented
+//9=Upgrades Paid To Date
+
+//original
+$atMsgParam{24}:=[Facility]ProductCode+String([Facility]Max4DClients;"00")+GetStringfromBoolean ([Facility]UseGateSys;"Y";"N")+String([Facility]GateSysType;"0")+GetStringfromBoolean ([Facility]UseCashBook;"Y";"N")+GetStringfromBoolean ([Facility]UseWebServer;"Y";"N")
+
+$atMsgParam{25}:=String([Facility]MaxSites;"0000")
+$atMsgParam{26}:=String([Facility]MaxUnits;"00000")
+$atMsgParam{27}:=GetDateString ([Facility]LicExpiryDate)
+$atMsgParam{28}:=GetStringfromBoolean ([Facility]LicRentExpWarn;"Y";"N")
+$atMsgParam{29}:=GetDateString ([Facility]UpgradesPaidTo)
+$atMsgParam{30}:=[Facility]FacilityCode
+$atMsgParam{31}:=[Facility]BusinessName
+$atMsgParam{32}:=[Facility]FacilityName
+$atMsgParam{33}:=[Facility]CompanyName
+$atMsgParam{34}:=String([Facility]Country)
+[Facility]ProductCode:=Substring($atMsgParam{4};1;2)
+[Facility]Max4DClients:=Num(Substring($atMsgParam{4};3;2))
+[Facility]UseGateSys:=GetBooleanfromString (Substring($atMsgParam{4};5;1))
+
+////commented by eugene fb9848
+////[Facility]GateSysType:=Num(Substring($atMsgParam{4};6;1))
+$str_gate_type:=Substring($atMsgParam{4};6;1)
+$vlfind:=Find in array($Gate_Types;$str_gate_type)
+If ($vlfind>0)
+[Facility]GateSysType:=$vlfind
+//Else 
+//ALERT("GateSysType not found!")
+End if 
+
+
+[Facility]UseCashBook:=GetBooleanfromString (Substring($atMsgParam{4};7;1))
+[Facility]UseWebServer:=GetBooleanfromString (Substring($atMsgParam{4};8;1))
+[Facility]MaxSites:=Num($atMsgParam{5})
+[Facility]MaxUnits:=Num($atMsgParam{6})
+<>iMaxUnits:=[Facility]MaxUnits
+[Facility]LicExpiryDate:=GetDate (Num(Substring($atMsgParam{7};1;2));Num(Substring($atMsgParam{7};4;2));Num(Substring($atMsgParam{7};7;4)))//DD/MM/YY format from StormanUsers
+[Facility]LicRentExpWarn:=GetBooleanfromString ($atMsgParam{8})
+[Facility]UpgradesPaidTo:=GetDate (Num(Substring($atMsgParam{9};1;2));Num(Substring($atMsgParam{9};4;2));Num(Substring($atMsgParam{9};7;4)))
+[Facility]FacilityCode:=$atMsgParam{10}
+[Facility]BusinessName:=$atMsgParam{11}
+[Facility]FacilityName:=$atMsgParam{12}
+[Facility]CompanyName:=$atMsgParam{13}
+[Facility]Country:=$atMsgParam{14}
+$AutoBackup:=Substring($atMsgParam{15};2)
+If (Substring($atMsgParam{15};1;1)="Y")
+$AutoBackup:="1"+$AutoBackup
+Else 
+$AutoBackup:="0"+$AutoBackup
+End if 
+[Facility]BackupInfo:=Substring([Facility]BackupInfo;1;2)+$AutoBackup
+[Facility]BackupNextDate:=GetDate (Num(Substring($atMsgParam{16};1;2));Num(Substring($atMsgParam{16};4;2));Num(Substring($atMsgParam{16};7;4)))//DD/MM/YY format from StormanUsers
+[Facility]UseOnlineReservations:=GetBooleanfromString ($atMsgParam{17})
+[Facility]OResStorpayURL:=$atMsgParam{18}
+$Message:="UPD:"
+For ($i;2;34)
+$Message:=$Message+$atMsgParam{$i}+":"
+End for 
+$Go:=True
+End if 
+: ($Message="Success@")
+If (Old([Facility]FacilityCode)=[Facility]FacilityCode) & (Length([Facility]FacilityCode)=5)
+SAVE RECORD([Facility])
+If ($Command#"NOMSG")
+AlertServer (Get localized string("Licence details updated successfully!"))
+End if 
+Else 
+ConfirmTwo (Get localized string("WARNING - The Storman Server has changed your facility code from")+" "+Old([Facility]FacilityCode)+" "+Get localized string("to2")+" "+[Facility]FacilityCode+".  "+Get localized string("This will require all records in this datafile to be updated. Are you sure?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ConfirmTwo (Get localized string("Change code from")+" "+Old([Facility]FacilityCode)+" "+Get localized string("to2")+" "+[Facility]FacilityCode+".  "+Get localized string("This cannot be undone. Check with")+" "+<>sOEMName+" "+Get localized string("Support if uncertain! Are you really sure?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$OldFacility:=Old([Facility]FacilityCode)
+SAVE RECORD([Facility])
+ModFacility ($OldFacility;[Facility]FacilityCode)
+End if 
+End if 
+End if 
+: ($Message="Latest@")
+//1=Control = CHK, NEW, UPD
+//2=User Code
+//3=Version
+//4=Storman Product  MV03N0N or SP01Y5N     was Max Units
+//5=Max Sites    was Modules
+//$Message:="Latest:311:1/1/01:Storman311.exe:"+[System]UpdateMessage
+//Array Details for MsgParam
+//1=Control = Latest
+//2=Version
+//3=Paid Up to
+//4=Filename
+//5=FacilityCode
+//6=Message
+For ($i;1;9)
+$Pos:=Position(":";$Message)
+$atMsgParam{$i}:=Substring($Message;1;$Pos-1)
+$Message:=Substring($Message;$Pos+1)
+End for 
+If ($Command="GETCode")
+$0:=""
+If (Length($atMsgParam{5})=5)
+$0:=$atMsgParam{5}
+End if 
+
+Else 
+$PaidUpTo:=GetDate (Num(Substring($atMsgParam{3};1;2));Num(Substring($atMsgParam{3};4;2));Num(Substring($atMsgParam{3};7;4)))//DD/MM/YY format from StormanUsers
+If ([Facility]UpgradesPaidTo#$PaidUpTo)// & ($PaidUpTo>!01/01/2000!) & ($PaidUpTo<!01/01/2010!)
+vDate:=$PaidUpTo
+UpdateSystem (152;->vDate;Get localized string("The Upgrades PaidUpTo date could not be updated as the System record is locked by another process!"))
+//CALL PROCESS(?iFloating)
+//To update colour of UserCode - Wish it would!
+End if 
+vAutoBackup:=$atMsgParam{7}
+If (Substring($atMsgParam{7};1;1)="Y")
+vAutoBackup:="1"+Substring(vAutoBackup;2)
+Else 
+vAutoBackup:="0"+Substring(vAutoBackup;2)
+End if 
+vAutoBackup:=Substring([Facility]BackupInfo;1;2)+vAutoBackup
+If ([Facility]BackupInfo#vAutoBackup)
+UpdateSystem (148;->vAutoBackup;Get localized string("The Automatic Backup settings could not be updated as the System record is locked by another process!"))
+End if 
+vAutoBackupDate:=GetDate (Num(Substring($atMsgParam{8};1;2));Num(Substring($atMsgParam{8};4;2));Num(Substring($atMsgParam{8};7;4)))//DD/MM/YY format from StormanUsers
+If ([Facility]BackupNextDate#vAutoBackupDate)
+UpdateSystem (149;->vAutoBackupDate;Get localized string("The Automatic Backup settings could not be updated as the System record is locked by another process!"))
+End if 
+$Version:=Num($atMsgParam{2})
+Case of 
+: (Length(String($version))=3)
+$Vers:=Insert string(String($Version/10;"00.0");".";2)
+: (Position("0";String($Version))=3)
+$Vers:=Substring(String($Version);1;1)+"."+Substring(String($Version);2;1)+"."+Substring(String($Version);4;1)
+Else 
+$Vers:=Substring(String($Version);1;1)+"."+Substring(String($Version);2;1)+"."+Substring(String($Version);3;2)
+End case 
+$Getfile:=""
+If (Length($atMsgParam{4})>3)
+$Getfile:=$atMsgParam{4}
+End if 
+$FTPServerPath:=$atMsgParam{6}
+$Message:=$atMsgParam{7}
+If (Count parameters>=2)
+If ($2="Auto")
+$Download:=True
+End if 
+End if 
+If (Application type#4D Server) & ($Command#"NOMSG")
+Case of 
+: ([Facility]Version>=$Version) & ($PaidUpTo>=Current date)
+AlertMessage (Get localized string("You are using the latest version")+" "+$Vers+" "+Get localized string("and you are paid up to")+" "+String($PaidUpTo;6)+" "+Get localized string("for upgrades and support. Thank you."))
+: ([Facility]Version>=$Version) & ($PaidUpTo<Current date)
+AlertMessage (Get localized string("You are  using the latest version")+" "+$Vers+" "+Get localized string("but your entitlement to upgrades and support expired on")+" "+String($PaidUpTo;6)+".  "+Get localized string("Please contact Storman Sales for renewal!"))
+: ([Facility]Version<$Version) & ($PaidUpTo<Current date)
+AlertMessage (Get localized string("The latest version of Storman is")+" "+$Vers+" "+Get localized string("but your entitlement to upgrades and support expired on")+" "+String($PaidUpTo;6)+".  "+Get localized string("Please contact Storman Sales for renewal!"))
+: ([Facility]Version<$Version) & ($PaidUpTo>=Current date)
+$z:=ConfirmThree (Get localized string("The latest version of Storman is")+" "+$Vers+" "+Get localized string("and you are paid up to")+" "+String($PaidUpTo;6)+" "+Get localized string("for upgrades and support.")+"  "+$Message;Get localized string("Download Now");Get localized string("Remind Later");Get localized string("Cancel"))
+Case of 
+: ($z=1)
+$Download:=True
+: ($z=2)
+[Facility]LastUpdateCheck:=Current date+30
+SAVE RECORD([Facility])
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+End if 
+vDate:=Current date
+UpdateSystem (153;->vDate;"")
+$Retries:=0
+End if 
+: ($Message="Filename:@")
+If (Application type#4D Server) & ($Command#"NOMSG")
+$Pos:=Position(",";$Message)
+$Getfile:=Substring($Message;10;$Pos-10)
+If (<>tClient)
+ConfirmTwo (Get localized string("Download update to which computer:");Get localized string("Server");Get localized string("Client"))
+If (OK=1)
+$i:=Execute on server("DownloadUpdate";128000;"DownloadUpdate";$GetFile;$Version)
+AlertMessage (Get localized string("Please go to server computer and click the Download Now button!"))
+QUIT 4D
+End if 
+End if 
+ConfirmTwo (Substring($Message;$Pos+1)+" - "+Get localized string("File1")+":"+$Getfile;Get localized string("Download Now");Get localized string("Cancel"))
+If (OK=1)
+$Download:=True
+End if 
+End if 
+: ($Message>" ")
+If ($Command#"NOMSG")
+AlertServer ($Message)
+End if 
+Else 
+If ($Command#"NOMSG")
+AlertServer (Get localized string("The response received from the Storman webserver was invalid. Please try again later!"))
+End if 
+End case 
+Else 
+If ($Command#"NOMSG")
+//AlertServer (Get localized string("An error")+" "+" "+String($Error)+" "+Get localized string("occurred while trying to connect to storman.co.nz and storman.com.au - Please try again in a few hours as there may be an internet problem!"))
+AlertServer ("Storman was unable to contact the Storman Licencing Server! Please contact Storman Support.")
+End if 
+
+
+//$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";"URGENT - StormanUsers Oz Down";"Automatic Message from Storman "+[Facility]FacilityCode+":"+[Facility]UserCode+" - It appears Storman Users Oz is down!";0)
+End if 
+End while 
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+If ($Download)
+DownloadUpdate ($Getfile;$Version;$FTPServerPath)
+End if 
+If ($Command#"NOMSG")
+CLOSE WINDOW($Win)
+
+End if 
+End if 
+READ ONLY([Facility])
+SetFacility (True)
+
+
+
+

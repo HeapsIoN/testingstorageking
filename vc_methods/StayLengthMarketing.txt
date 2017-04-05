@@ -1,0 +1,372 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 23/06/14, 12:31:35
+// ----------------------------------------------------
+// Method: StayLengthMarketing
+// Description
+// Method is to be used for WS_GetReportData
+//
+// Parameters
+//$1 = True - silent mode + fill data for WS
+// ----------------------------------------------------
+
+C_BOOLEAN($1;$Silent)
+C_REAL($number)
+$number:=0
+$Silent:=$1
+
+If (viSplit=1)
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut=!00-00-00!) | ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=vRptDate-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+QUERY SELECTION([UnitHistory];[UnitHistory]DaysStayed>0;*)
+QUERY SELECTION([UnitHistory]; & ;[UnitHistory]DaysStayed<viSplitDays)
+
+Else 
+QUERY([UnitHistory];[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed>0;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed<viSplitDays;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut>=vStDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=vRptDate)
+End if 
+READ WRITE([MarketingTypes])
+QUERY([MarketingTypes];[MarketingTypes]Number#0)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Number:=0)
+QUERY([MarketingTypes];[MarketingTypes]Count#0)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Count:=0)
+
+If ($Silent=False)
+Open window(20;50;400;150;0;Get localized string("Progress"))
+End if 
+
+For ($i;1;Records in selection([UnitHistory]))
+If ($Silent=False)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" : "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"    ")
+End if 
+RELATE ONE([UnitHistory]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+QUERY([MarketingTypes];[MarketingTypes]Description=[Customer]CustType)
+If (Records in selection([MarketingTypes])=0)
+QUERY([MarketingTypes];[MarketingTypes]Description="Not Specified")
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Not Specified"
+End if 
+End if 
+[MarketingTypes]Number:=[MarketingTypes]Number+[UnitHistory]DaysStayed
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+NEXT RECORD([UnitHistory])
+End for 
+If ($Silent=False)
+CLOSE WINDOW
+End if 
+READ ONLY([MarketingTypes])
+DEFAULT TABLE([MarketingTypes])
+QUERY([MarketingTypes];[MarketingTypes]Count>0)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+If ($Silent=False)
+FORM SET OUTPUT([MarketingTypes];"LengthStayRpt")
+vLeg:=Get localized string("Customers who Moved Out between ")+String(vStDate;6)+" "+Get localized string("and")+" "+String(vRptDate;6)
+BREAK LEVEL(0)
+ACCUMULATE([MarketingTypes]Number;[MarketingTypes]Count)
+PrintSelection ("P")
+FORM SET OUTPUT([MarketingTypes];"Output")
+Else 
+viCount:=0
+$number:=0
+For ($i;1;Records in selection([MarketingTypes]))
+APPEND TO ARRAY(aCustName;[MarketingTypes]Description)
+APPEND TO ARRAY(asData1;String([MarketingTypes]Count))
+vAvgRate:=Round([MarketingTypes]Number/[MarketingTypes]Count;2)
+vAvgStyOut:=Round(vAvgRate/30;2)
+APPEND TO ARRAY(asData2;String(vAvgRate))
+APPEND TO ARRAY(asData3;String(vAvgStyOut))
+viCount:=viCount+[MarketingTypes]Count
+$number:=$number+[MarketingTypes]Number
+NEXT RECORD([MarketingTypes])
+End for 
+
+vAvgRate:=Round($number/viCount;2)
+vAvgStyOut:=Round(vAvgRate/30;2)
+
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;String(viCount))
+APPEND TO ARRAY(asData2;String(vAvgRate))
+APPEND TO ARRAY(asData3;String(vAvgStyOut))
+End if 
+
+If (viMovedIn=1)
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]DaysStayed:=0
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+End if 
+
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut=!00-00-00!) | ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=vRptDate-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+QUERY SELECTION([UnitHistory];[UnitHistory]DaysStayed>=viSplitDays)
+
+Else 
+QUERY([UnitHistory];[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed>=viSplitDays;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut>=vStDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=vRptDate)
+End if 
+READ WRITE([MarketingTypes])
+QUERY([MarketingTypes];[MarketingTypes]Number#0)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Number:=0)
+QUERY([MarketingTypes];[MarketingTypes]Count#0)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Count:=0)
+If ($Silent=False)
+Open window(20;50;400;150;0;Get localized string("Progress"))
+End if 
+
+For ($i;1;Records in selection([UnitHistory]))
+If ($Silent=False)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" : "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"    ")
+End if 
+RELATE ONE([UnitHistory]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+QUERY([MarketingTypes];[MarketingTypes]Description=[Customer]CustType)
+If (Records in selection([MarketingTypes])=0)
+QUERY([MarketingTypes];[MarketingTypes]Description="Not Specified")
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Not Specified"
+End if 
+End if 
+[MarketingTypes]Number:=[MarketingTypes]Number+[UnitHistory]DaysStayed
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+NEXT RECORD([UnitHistory])
+End for 
+If ($Silent=False)
+CLOSE WINDOW
+End if 
+READ ONLY([MarketingTypes])
+DEFAULT TABLE([MarketingTypes])
+QUERY([MarketingTypes];[MarketingTypes]Count>0)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+If ($Silent=False)
+FORM SET OUTPUT([MarketingTypes];"LengthStayRpt")
+vLeg:=Get localized string("Customers who Moved Out between ")+String(vStDate;6)+" "+Get localized string("and")+" "+String(vRptDate;6)
+BREAK LEVEL(0)
+ACCUMULATE([MarketingTypes]Number;[MarketingTypes]Count)
+PrintSelection ("P")
+FORM SET OUTPUT([MarketingTypes];"Output")
+Else 
+viCount:=0
+$number:=0
+For ($i;1;Records in selection([MarketingTypes]))
+APPEND TO ARRAY(aCustName;[MarketingTypes]Description)
+APPEND TO ARRAY(asData1;String([MarketingTypes]Count))
+vAvgRate:=Round([MarketingTypes]Number/[MarketingTypes]Count;2)
+vAvgStyOut:=Round(vAvgRate/30;2)
+APPEND TO ARRAY(asData2;String(vAvgRate))
+APPEND TO ARRAY(asData3;String(vAvgStyOut))
+viCount:=viCount+[MarketingTypes]Count
+$number:=$number+[MarketingTypes]Number
+NEXT RECORD([MarketingTypes])
+End for 
+
+vAvgRate:=Round($number/viCount;2)
+vAvgStyOut:=Round(vAvgRate/30;2)
+
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;String(viCount))
+APPEND TO ARRAY(asData2;String(vAvgRate))
+APPEND TO ARRAY(asData3;String(vAvgStyOut))
+End if 
+
+If (viMovedIn=1)
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]DaysStayed:=0
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+End if 
+
+Else 
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut=!00-00-00!) | ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=vRptDate-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+QUERY SELECTION([UnitHistory];[UnitHistory]DaysStayed>0)
+
+Else 
+QUERY([UnitHistory];[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]DaysStayed>0;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut>=vStDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=vRptDate)
+End if 
+READ WRITE([MarketingTypes])
+QUERY([MarketingTypes];[MarketingTypes]Number#0)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Number:=0)
+QUERY([MarketingTypes];[MarketingTypes]Count#0)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Count:=0)
+If ($Silent=False)
+Open window(20;50;400;150;0;Get localized string("Progress"))
+End if 
+
+For ($i;1;Records in selection([UnitHistory]))
+If ($Silent=False)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" : "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"    ")
+End if 
+RELATE ONE([UnitHistory]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+QUERY([MarketingTypes];[MarketingTypes]Description=[Customer]CustType)
+If (Records in selection([MarketingTypes])=0)
+QUERY([MarketingTypes];[MarketingTypes]Description="Not Specified")
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Description:="Not Specified"
+End if 
+End if 
+[MarketingTypes]Number:=[MarketingTypes]Number+[UnitHistory]DaysStayed
+[MarketingTypes]Count:=[MarketingTypes]Count+1
+SAVE RECORD([MarketingTypes])
+NEXT RECORD([UnitHistory])
+End for 
+If ($Silent=False)
+CLOSE WINDOW
+End if 
+READ ONLY([MarketingTypes])
+DEFAULT TABLE([MarketingTypes])
+QUERY([MarketingTypes];[MarketingTypes]Count>0)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+If ($Silent=False)
+FORM SET OUTPUT([MarketingTypes];"LengthStayRpt")
+vLeg:=Get localized string("Customers who Moved Out between ")+String(vStDate;6)+" "+Get localized string("and")+" "+String(vRptDate;6)
+BREAK LEVEL(0)
+ACCUMULATE([MarketingTypes]Number;[MarketingTypes]Count)
+PrintSelection ("P")
+FORM SET OUTPUT([MarketingTypes];"Output")
+Else 
+viCount:=0
+$number:=0
+For ($i;1;Records in selection([MarketingTypes]))
+APPEND TO ARRAY(aCustName;[MarketingTypes]Description)
+APPEND TO ARRAY(asData1;String([MarketingTypes]Count))
+vAvgRate:=Round([MarketingTypes]Number/[MarketingTypes]Count;2)
+vAvgStyOut:=Round(vAvgRate/30;2)
+APPEND TO ARRAY(asData2;String(vAvgRate))
+APPEND TO ARRAY(asData3;String(vAvgStyOut))
+viCount:=viCount+[MarketingTypes]Count
+$number:=$number+[MarketingTypes]Number
+NEXT RECORD([MarketingTypes])
+End for 
+
+vAvgRate:=Round($number/viCount;2)
+vAvgStyOut:=Round(vAvgRate/30;2)
+
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;String(viCount))
+APPEND TO ARRAY(asData2;String(vAvgRate))
+APPEND TO ARRAY(asData3;String(vAvgStyOut))
+End if 
+
+If (viMovedIn=1)
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]DaysStayed:=0
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+End if 
+
+End if 

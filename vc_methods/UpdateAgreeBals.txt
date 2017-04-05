@@ -1,0 +1,24 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]TotOthrUnpaid=999999)
+If (Records in selection([Agreement])>0)
+$WinRef:=Open window(50;50;250;100;1;Get localized string("Progress"))
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreement:")+" "+[Agreement]AgreeNo+"    ")
+RELATE MANY([Agreement]RAgreeNo)
+CREATE SET([Trxs];"All")
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+CREATE SET([Trxs];"Credits")
+$Total:=Sum([Trxs]TotAmt)
+DIFFERENCE("All";"Credits";"Debits")
+USE SET("Debits")
+[Agreement]BalanceOwing:=Round(Sum([Trxs]TotAmt)-$Total;2)
+QUERY SELECTION([Trxs];[Trxs]Match=0)
+ReCalcUnpaid 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+CLOSE WINDOW($WinRef)
+End if 

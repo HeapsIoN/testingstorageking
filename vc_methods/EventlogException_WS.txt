@@ -1,0 +1,131 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+//TRACE
+vSRptDate:=WS_ReportDate
+vRptDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+
+
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+vChar:=GetTextNo (WS_ReportSettings;2;",")
+//vChar:="@"+Substring(vString;1;1)+"@"
+//vString:=Substring(vString;2)
+REDUCE SELECTION([EventLog];0)
+CREATE EMPTY SET([EventLog];"PrintELogs")
+//QUERY([EventLog];[EventLog]EventDate>=UTCDate (?00:00:00?;False;WS_ReportDate);*)
+//QUERY([EventLog]; & ;[EventLog]EventDate<=UTCDate (?23:59:59?;False;GetTextNo (WS_ReportSettings;1;","));*)
+QUERY([EventLog];[EventLog]EventDate>=WS_ReportDate;*)
+QUERY([EventLog]; & ;[EventLog]EventDate<=GetTextNo (WS_ReportSettings;1;",");*)
+QUERY([EventLog]; & ;[EventLog]FacilityCode=[Facility]FacilityCode)
+
+CREATE SET([EventLog];"ToQuery")
+//If (vChar#"")
+USE SET("ToQuery")
+If (vChar="0")
+QUERY SELECTION([EventLog];[EventLog]EventTable=0)
+Else 
+QUERY SELECTION([EventLog];[EventLog]Code=vChar)//@ in case there is more than one char in the code -eg for trxs or agreements
+End if 
+If (Records in selection([EventLog])>0)
+CREATE SET([EventLog];"Temp")
+UNION("PrintELogs";"Temp";"PrintELogs")
+End if 
+
+QUERY SELECTION([EventLog];[EventLog]UserLogin#"None";*)
+
+If (GetTextNo (WS_ReportSettings;3;",")="False")
+QUERY SELECTION([EventLog]; & ;[EventLog]UserLogin#"AdminSupport";*)
+QUERY SELECTION([EventLog]; & ;[EventLog]UserLogin#"Designer";*)
+End if 
+If (Num(GetTextNo (WS_ReportSettings;4;","))=1)
+QUERY SELECTION([EventLog]; & ;[EventLog]DatePrinted=!00-00-00!)
+End if 
+QUERY SELECTION([EventLog]; & ;[EventLog]UserLogin#"Sync")
+ORDER BY([EventLog];[EventLog]Code;>;[EventLog]EventDate;>;[EventLog]EventTime;>;[EventLog]TrxAmount;>)
+
+
+
+
+ACCUMULATE([EventLog]TrxAmount)
+
+FIRST RECORD([EventLog])
+//Title Columns
+APPEND TO ARRAY(asData1;"Event Date")
+APPEND TO ARRAY(asData2;"Event Time")
+APPEND TO ARRAY(asData3;"AgreeNo")
+APPEND TO ARRAY(asData4;"Code")
+APPEND TO ARRAY(asData5;"Log Detail")
+
+
+// For a building
+For ($i;1;Records in selection([EventLog]))
+
+APPEND TO ARRAY(asData1;String([EventLog]EventDate))
+APPEND TO ARRAY(asData2;String([EventLog]EventTime))
+APPEND TO ARRAY(asData3;String([EventLog]AgreeNo))
+Case of 
+: ([EventLog]Code="F")
+$y:=2
+: ([EventLog]Code="P")
+$y:=3
+: ([EventLog]Code="H")
+$y:=4
+: ([EventLog]Code="B")
+$y:=5
+: ([EventLog]Code="S")
+$y:=6
+: ([EventLog]Code="M")
+$y:=7
+: ([EventLog]Code="U")
+$y:=8
+: ([EventLog]Code="A")
+$y:=9
+: ([EventLog]Code="D")
+$y:=10
+: ([EventLog]Code="+")
+$y:=11
+: ([EventLog]Code="I")
+$y:=12
+: ([EventLog]Code="N")
+$y:=13
+: ([EventLog]Code="C")
+$y:=14
+: ([EventLog]Code="T")
+$y:=15//deletion of a trx
+: ([EventLog]Code="-")
+$y:=16// trx negative amount
+: ([EventLog]Code="!")
+$y:=17//mod of TrxDate
+: ([EventLog]Code="M")
+$y:=18//mod of Amount
+: ([EventLog]Code="%")
+$y:=19//DiscAmt > 0
+: ([EventLog]Code="*")
+$y:=20//mod of datebanked
+: ([EventLog]Code="~")
+$y:=21// mod of DateFrom / To
+: ([EventLog]Code="L")
+$y:=22//add a new letter
+: ([EventLog]Code="R")
+$y:=23//mod [Reservation]ExpMoveIn
+: ([EventLog]Code="E")
+$y:=24//e-mails sent / received: not currently logged
+: ([EventLog]Code="Q")
+$y:=25// Mod of NotesHistory
+Else 
+$y:=1
+End case 
+APPEND TO ARRAY(asData4;String($y))
+APPEND TO ARRAY(asData5;String([EventLog]LogDetail))
+
+NEXT RECORD([EventLog])
+End for 
+
+READ WRITE([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]DatePrinted:=vRptDate)
+READ ONLY([EventLog])
+
+
+
+
+

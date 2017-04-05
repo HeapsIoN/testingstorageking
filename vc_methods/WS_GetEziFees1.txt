@@ -1,0 +1,206 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+//
+// ----------------------------------------------------
+// User name (OS): eugene.dorokhov
+// Date and time: 
+// ----------------------------------------------------
+// Method: WS_GetEziFees
+
+//trace
+
+SOAP DECLARATION(WS_ORFacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is string var;SOAP input)
+
+SOAP DECLARATION(WS_CCtype1;String array;SOAP output)//get tmem from WSC_EziGetCustomerFees
+SOAP DECLARATION(WS_FixedFee1;Real array;SOAP output)
+SOAP DECLARATION(WS_PercentFee1;Real array;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+ARRAY TEXT(WS_CCtype1;0)
+ARRAY REAL(WS_FixedFee1;0)
+ARRAY REAL(WS_PercentFee1;0)
+C_TEXT($String)
+C_REAL($SurchargeAmt)
+C_TEXT($DigitalKey;vXMLResponse;$DataRef)
+C_LONGINT($Count)
+
+$String:=""
+$String:="Start WS_GetEziFees"+Char(13)
+$String:=$String+"WS_ORFacilityCode: "+WS_ORFacilityCode+" "+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True
+
+QUERY([Facility];[Facility]FacilityCode=WS_ORFacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+$SurchargeAmt:=0
+$DigitalKey:=""
+vCCNo:="4987654321098769"// Set to test CC as it doesn't matter at this stage
+
+If ([Facility]Highlander) & (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+$DigitalKey:=String(GetTextNo ([Facility]MerchantDetails;2;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;3;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;4;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;5;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;6;","))
+
+$CCType:=1
+//$CalSurChargeEzidebit:=WSC_EziGetCustomerFees ($DigitalKey;"";"";"WEB";"";$CCType)
+$CalSurChargeEzidebit:=CalSurChargeEzidebit ($DigitalKey;"";"";"WEB";"";$CCType)
+
+
+$CardFixAmt:=0
+$CardPerAmt:=0
+$CardPos:=0
+$CardPos:=Position("Amex";$CalSurChargeEzidebit)
+APPEND TO ARRAY(WS_CCtype1;"Amex")
+If ($CardPos>0)
+
+//%
+$CardPosPerSt:=0
+$CardPosPerEnd:=0
+$CardPosPerSt:=Position("value=";$CalSurChargeEzidebit;$CardPos+1)
+$CardPosPerEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosPerSt+1)
+$CardPerAmt:=0
+$CardPerAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosPerSt+7);$CardPosPerEnd-($CardPosPerSt+8)));2)
+
+
+//Fixed
+$CardPosFixedSt:=0
+$CardPosFixedEnd:=0
+$CardPosFixedSt:=Position("value=";$CalSurChargeEzidebit;$CardPosPerEnd+1)
+$CardPosFixedEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosFixedSt+1)
+$CardFixAmt:=0
+$CardFixAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosFixedSt+7);$CardPosFixedEnd-($CardPosFixedSt+8)));2)
+
+APPEND TO ARRAY(WS_FixedFee1;$CardFixAmt)
+APPEND TO ARRAY(WS_PercentFee1;$CardPerAmt)
+Else 
+APPEND TO ARRAY(WS_FixedFee1;0)
+APPEND TO ARRAY(WS_PercentFee1;0)
+End if 
+
+$CardFixAmt:=0
+$CardPerAmt:=0
+$CardPos:=0
+$CardPos:=Position("Diners";$CalSurChargeEzidebit)
+APPEND TO ARRAY(WS_CCtype1;"Diners")
+If ($CardPos>0)
+//%
+$CardPosPerSt:=0
+$CardPosPerEnd:=0
+$CardPosPerSt:=Position("value=";$CalSurChargeEzidebit;$CardPos+1)
+$CardPosPerEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosPerSt+1)
+$CardPerAmt:=0
+$CardPerAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosPerSt+7);$CardPosPerEnd-($CardPosPerSt+8)));2)
+
+
+//Fixed
+$CardPosFixedSt:=0
+$CardPosFixedEnd:=0
+$CardPosFixedSt:=Position("value=";$CalSurChargeEzidebit;$CardPosPerEnd+1)
+$CardPosFixedEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosFixedSt+1)
+$CardFixAmt:=0
+$CardFixAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosFixedSt+7);$CardPosFixedEnd-($CardPosFixedSt+8)));2)
+
+APPEND TO ARRAY(WS_FixedFee1;$CardFixAmt)
+APPEND TO ARRAY(WS_PercentFee1;$CardPerAmt)
+Else 
+APPEND TO ARRAY(WS_FixedFee1;0)
+APPEND TO ARRAY(WS_PercentFee1;0)
+End if 
+
+$CardFixAmt:=0
+$CardPerAmt:=0
+$CardPos:=0
+$CardPos:=Position("Visa";$CalSurChargeEzidebit)
+APPEND TO ARRAY(WS_CCtype1;"Visa")
+If ($CardPos>0)
+//%
+$CardPosPerSt:=0
+$CardPosPerEnd:=0
+$CardPosPerSt:=Position("value=";$CalSurChargeEzidebit;$CardPos+1)
+$CardPosPerEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosPerSt+1)
+$CardPerAmt:=0
+$CardPerAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosPerSt+7);$CardPosPerEnd-($CardPosPerSt+8)));2)
+
+
+//Fixed
+$CardPosFixedSt:=0
+$CardPosFixedEnd:=0
+$CardPosFixedSt:=Position("value=";$CalSurChargeEzidebit;$CardPosPerEnd+1)
+$CardPosFixedEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosFixedSt+1)
+$CardFixAmt:=0
+$CardFixAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosFixedSt+7);$CardPosFixedEnd-($CardPosFixedSt+8)));2)
+
+APPEND TO ARRAY(WS_FixedFee1;$CardFixAmt)
+APPEND TO ARRAY(WS_PercentFee1;$CardPerAmt)
+Else 
+APPEND TO ARRAY(WS_FixedFee1;0)
+APPEND TO ARRAY(WS_PercentFee1;0)
+End if 
+
+$CardFixAmt:=0
+$CardPerAmt:=0
+$CardPos:=0
+$CardPos:=Position("Mastercard";$CalSurChargeEzidebit)
+APPEND TO ARRAY(WS_CCtype1;"Mastercard")
+If ($CardPos>0)
+//%
+$CardPosPerSt:=0
+$CardPosPerEnd:=0
+$CardPosPerSt:=Position("value=";$CalSurChargeEzidebit;$CardPos+1)
+$CardPosPerEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosPerSt+1)
+$CardPerAmt:=0
+$CardPerAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosPerSt+7);$CardPosPerEnd-($CardPosPerSt+8)));2)
+
+
+//Fixed
+$CardPosFixedSt:=0
+$CardPosFixedEnd:=0
+$CardPosFixedSt:=Position("value=";$CalSurChargeEzidebit;$CardPosPerEnd+1)
+$CardPosFixedEnd:=Position(" ";$CalSurChargeEzidebit;$CardPosFixedSt+1)
+$CardFixAmt:=0
+$CardFixAmt:=Round(Num(Substring($CalSurChargeEzidebit;($CardPosFixedSt+7);$CardPosFixedEnd-($CardPosFixedSt+8)));2)
+APPEND TO ARRAY(WS_FixedFee1;$CardFixAmt)
+APPEND TO ARRAY(WS_PercentFee1;$CardPerAmt)
+Else 
+APPEND TO ARRAY(WS_FixedFee1;0)
+APPEND TO ARRAY(WS_PercentFee1;0)
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=9999
+WS_ORErrorDescription:="Invalid Merchant Details in database Storman."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+$String:="End WS_GetEziFees"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

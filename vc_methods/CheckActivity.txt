@@ -1,0 +1,116 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+If (PermissionsControl (131))
+SetFacility 
+DEFAULT TABLE([Activity])
+READ WRITE([Activity])
+QUERY([Activity];[Activity]FacilityCode=<>sFacility)
+ORDER BY([Activity];[Activity]ActivityDate;>)
+If (Shift down) & ((<>sCurrentUser="AdminSupport") | (Current user="Designer"))
+FORM SET OUTPUT([Activity];"EditActivity")
+FORM SET INPUT([Activity];"ActivityIn")
+MODIFY SELECTION([Activity];*)//Initialise
+FORM SET OUTPUT([Activity];"Output")
+Else 
+$ToDate:=!00-00-00!
+CREATE EMPTY SET([Activity];"Duplicates")
+CREATE EMPTY SET([Activity];"Blanks")
+//Open window(20;50;400;150;5;"Progress")
+Open window((Screen width/2)-190;(Screen height/2)-50;(Screen width/2)+190;(Screen height/2)+50;5;Get localized string("Progress"))
+For ($i;1;Records in selection([Activity]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Activity]))+" ...    "+"    ")
+If ([Activity]ActivityDate=$ToDate)
+ADD TO SET([Activity];"Duplicates")
+End if 
+If ([Activity]CalendarNotes="")
+$Blank:=True
+For ($j;13;Get last field number(10))
+$p:=Field(10;$j)
+If ($p->#0)
+$Blank:=False
+$j:=Get last field number(10)+1
+End if 
+End for 
+If ($Blank) & ([Activity]ActivityDate<=Current date)
+ADD TO SET([Activity];"Blanks")
+End if 
+End if 
+$ToDate:=[Activity]ActivityDate
+NEXT RECORD([Activity])
+End for 
+CLOSE WINDOW
+USE SET("Duplicates")
+CLEAR SET("Duplicates")
+If (Records in selection([Activity])>0)
+$i:=ConfirmThree (Get localized string("There are")+" "+String(Records in selection([Activity]))+" "+Get localized string("duplicate records in the Activity file. Delete these?");Get localized string("No");Get localized string("View");Get localized string("Delete"))
+Case of 
+: ($i=1)
+AlertMessage (Get localized string("Warning - Duplicate records in activity file not deleted!"))
+: ($i=2)
+<>iTable:=10
+vpFile:=Table(<>iTable)
+FORM SET OUTPUT([Activity];"Output")
+MODIFY SELECTION([Activity];*)
+: ($i=3)
+DELETE SELECTION([Activity])
+Else 
+//Do Nothing
+End case 
+End if 
+USE SET("Blanks")
+CLEAR SET("Blanks")
+If (Records in selection([Activity])>0)
+$i:=ConfirmThree (Get localized string("There are")+" "+String(Records in selection([Activity]))+" "+Get localized string("blank records in the activity file. Would you like to delete these?");Get localized string("No");Get localized string("View");Get localized string("Delete"))
+Case of 
+: ($i=2)
+<>iTable:=10
+vpFile:=Table(<>iTable)
+FORM SET OUTPUT([Activity];"Output")
+MODIFY SELECTION([Activity];*)
+: ($i=3)
+DELETE SELECTION([Activity])
+Else 
+//Do Nothing
+End case 
+End if 
+ARRAY TEXT(asFields;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSiteCodes;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSigns;Size of array(<>asSiteCodes))
+For ($i;1;Size of array(<>asSiteCodes))
+asFields{$i}:=<>asFacilities{$i}
+asSiteCodes{$i}:=<>asSiteCodes{$i}
+asSigns{$i}:=""
+If (asSiteCodes{$i}=<>sFacility)
+asSigns{$i}:="•"
+End if 
+End for 
+//Open window(20;150;410;535;5;"Dialog")
+Open window((Screen width/2)-240;(Screen height/2)-234;(Screen width/2)+240;(Screen height/2)+234;5;Get localized string("Check Activity"))
+DIALOG([Activity];"CheckDialog")
+CLOSE WINDOW
+If (OK=1) & (vRptDate>=vDate)
+vtFormula:=""
+For ($i;1;Size of array(asSiteCodes))
+vtFormula:=vtFormula+asSiteCodes{$i}+","
+End for 
+If (bCalc=1)
+$i:=Execute on server("CheckActivityServer";64000;"CheckActivity";vtFormula;vDate;vRptDate;(bAdd=1);(bNext=1))
+Else 
+CheckActivityServer (vtFormula;vDate;vRptDate;(bAdd=1);(bNext=1))
+SetFacility (True;<>sFacility)
+If (Length(vtFormula)>30)
+vTitle:=Get localized string("Activity")+"..."
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+Else 
+AlertMessage (Get localized string("All activity data appears to be correct."))
+End if 
+End if 
+End if 
+End if 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+AlertMessage ("Check Activity complete.")
+End if 

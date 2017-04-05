@@ -1,0 +1,162 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Rent Plus payments
+//SHOW ON DISK(Get 4D folder+"4D Preferences v13.4DPreferences")
+
+
+C_REAL($1;$2)
+C_TEXT($3;$4;$5)
+C_REAL($vat;$amount)
+
+$ActionID:=$1
+$ActionTypeID:=$2
+$CustCode:=$3
+$cust_agreement:=$4
+$unit:=$5
+
+//` remove previously created 
+//$tmp:=("@R_@")
+//QUERY([Trxs];[Trxs]AgreeNo=$tmp)
+//If (Records in selection([Trxs])>0)
+//START TRANSACTION
+//SET QUERY AND LOCK(True)
+//DELETE SELECTION([Trxs])
+//SET QUERY AND LOCK(False)
+//VALIDATE TRANSACTION
+//End if 
+
+//$ActionID:=5287
+//$CustCode:="ZZZZZnopay"
+//$cust_agreement:="ZZZZZ000R_121"
+//$unit:="R_239"
+
+ARRAY REAL($set_tblEvent_EventID;0)
+ARRAY DATE($set_tblEvent_Created;0)
+
+ARRAY REAL($DREventID;0)
+
+
+ARRAY REAL($evtMoney_EvtMoneyID;0)
+ARRAY REAL($evtMoney_CREventID;0)
+ARRAY REAL($evtMoney_DREventID;0)
+ARRAY REAL($evtMoney_Amount;0)
+ARRAY INTEGER($evtMoney_TaxID;0)
+
+ARRAY DATE($set_DueDate;0)
+ARRAY TEXT($set_Description;0)
+
+DEFAULT TABLE([Trxs])
+
+
+//SQL CANCEL LOAD
+SQL LOGIN("ODBC:Rent Plus";"";"")
+If (OK=1)
+$SQLStm:="SELECT EventID, Created FROM tblEvent Where ActionID ="+String($ActionID)
+SQL EXECUTE($SQLStm;$set_tblEvent_EventID;$set_tblEvent_Created)
+SQL LOAD RECORD(SQL all records)
+
+If (Size of array($set_tblEvent_EventID)>0)
+For ($vlElemset;1;Size of array($set_tblEvent_EventID))
+$dated_created:=$set_tblEvent_Created{$vlElemset}
+
+SQL CANCEL LOAD
+$SQLStm:="SELECT Distinct DREventID FROM tblEvtMoney Where CREventID ="+String($set_tblEvent_EventID{$vlElemset})
+SQL EXECUTE($SQLStm;$DREventID)
+SQL LOAD RECORD(SQL all records)
+
+
+If (Size of array($DREventID)>0)
+For ($vlEl1;1;Size of array($DREventID))
+
+SQL CANCEL LOAD
+
+$SQLStm:="SELECT Amount FROM tblEvtMoney Where CREventID ="+String($set_tblEvent_EventID{$vlElemset})
+
+If ($DREventID{$vlEl1}=0)
+$SQLStm:=$SQLStm+" and DREventID is null"
+Else 
+$SQLStm:=$SQLStm+" and DREventID="+String($DREventID{$vlEl1})
+End if 
+$SQLStm:=$SQLStm+" and TaxID=1"
+SQL EXECUTE($SQLStm;$vat)
+SQL LOAD RECORD(SQL all records)
+
+SQL CANCEL LOAD
+
+$SQLStm:="SELECT Amount FROM tblEvtMoney Where CREventID ="+String($set_tblEvent_EventID{$vlElemset})
+//$SQLStm:=$SQLStm+" and DREventID="+String($DREventID{$vlEl1})
+If ($DREventID{$vlEl1}=0)
+$SQLStm:=$SQLStm+" and DREventID is null"
+Else 
+$SQLStm:=$SQLStm+" and DREventID="+String($DREventID{$vlEl1})
+End if 
+$SQLStm:=$SQLStm+" and TaxID is null"
+SQL EXECUTE($SQLStm;$amount)
+SQL LOAD RECORD(SQL all records)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=$cust_agreement
+[Trxs]CustomerCode:=$CustCode
+[Trxs]DateFrom:=$dated_created
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]TaxAmt:=$vat
+[Trxs]TotAmt:=$amount
+[Trxs]UnitNo:=$unit
+[Trxs]TrxDate:=$dated_created///Current date
+// [Trxs]Description:="test"
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+
+SQL CANCEL LOAD
+
+$SQLStm:="SELECT Description, DueDate FROM tblTaxInvoiceEvent Where EventID ="+String($set_tblEvent_EventID{$vlElemset})
+SQL EXECUTE($SQLStm;$set_Description;$set_DueDate)
+SQL LOAD RECORD(SQL all records)
+$a_descr:="undefined"
+If (Size of array($set_Description)>0)
+$a_descr:=$set_Description{1}
+End if 
+[Trxs]Description:=$a_descr
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+
+
+If ($DREventID{$vlEl1}#0)//`paid
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=$cust_agreement
+[Trxs]CustomerCode:=$CustCode
+[Trxs]DateFrom:=$dated_created
+[Trxs]Charge:=False
+[Trxs]Confirmed:=True
+[Trxs]TaxAmt:=$vat
+[Trxs]TotAmt:=$amount
+[Trxs]UnitNo:=$unit
+[Trxs]TrxDate:=$dated_created///Current date
+//[Trxs]Description:="test"
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+
+SQL CANCEL LOAD
+
+$SQLStm:="SELECT Description, DueDate FROM tblTaxInvoiceEvent Where EventID ="+String($set_tblEvent_EventID{$vlElemset})
+SQL EXECUTE($SQLStm;$set_Description;$set_DueDate)
+SQL LOAD RECORD(SQL all records)
+$a_descr:="undefined"
+If (Size of array($set_Description)>0)
+$a_descr:=$set_Description{1}
+End if 
+[Trxs]Description:=$a_descr
+
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End if 
+
+
+
+End for 
+End if 
+
+
+End for 
+End if 
+
+End if 
+
+SQL CANCEL LOAD

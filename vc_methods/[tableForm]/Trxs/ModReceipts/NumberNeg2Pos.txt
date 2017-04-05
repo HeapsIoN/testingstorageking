@@ -1,0 +1,61 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+[Trxs]TotAmt:=GetPlusMinusValue (True)
+
+ARRAY LONGINT($aType;3)
+$aType{1}:=-5
+$aType{2}:=-3
+$aType{3}:=8
+
+ARRAY DATE($adTrxDateUnpaid;0)
+ARRAY REAL($arTotAmtUnpaid;0)
+ARRAY TEXT($atAnalysisUnpaid;0)
+
+TextToArrays (->[Agreement]FutureTrxs;->$aType;->$adTrxDateUnpaid;->$arTotAmtUnpaid;->$atAnalysisUnpaid)
+
+$FutureAmount:=0
+
+For ($j;1;Size of array($adTrxDateUnpaid))
+If ($adTrxDateUnpaid{$j}>Current date)
+If ([Facility]LateFeeReset)
+If ($atAnalysisUnpaid{$j}="Rent") | ($atAnalysisUnpaid{$j}="Support")
+$FutureAmount:=$FutureAmount+$arTotAmtUnpaid{$j}
+End if 
+Else 
+$FutureAmount:=$FutureAmount+$arTotAmtUnpaid{$j}
+End if 
+End if 
+End for 
+
+If ([Facility]LateFeeReset)
+$BalanceCalc:=[Agreement]TotRentUnpaid-$FutureAmount
+Else 
+$BalanceCalc:=[Agreement]BalanceOwing-$FutureAmount
+End if 
+
+If ([Trxs]TotAmt<($BalanceCalc-[Facility]MinBalArrears)) & ([Agreement]LastNotice>0) & ([Facility]StopEndLateCycle)
+Case of 
+: ([Facility]LCPartPayReset=0)
+ConfirmTwo (Get localized string("You are entering a receipt of")+" "+String([Trxs]TotAmt;"###,###.00")+" "+Get localized string("with balance owing of")+" "+String([Agreement]BalanceOwing;"###,###.00")+" "+Get localized string("while on Late Notice")+" "+String([Agreement]LastNotice)+" "+Get localized string("Do you wish to reset the Late Cycle?");Get localized string("Yes");Get localized string("No"))
+If (OK#1)
+//ALERT("Transaction amount has been changed to the full balance owing!")
+//[Transaction]TotAmt:=[Agreement]BalanceOwing
+vLateResetCycle:=False
+End if 
+: ([Facility]LCPartPayReset=2)
+vLateResetCycle:=False
+: ([Facility]LCPartPayReset=3)
+AlertMessage (Get localized string("Part Payments while on the late cycle are not allowed! Transaction amount has been changed to the full balance owing!"))
+[Trxs]TotAmt:=[Agreement]BalanceOwing
+vPlus:=[Trxs]TotAmt
+Else 
+//do nothing
+End case 
+End if 
+If (Old([Trxs]TotAmt)#0) & ([Trxs]TotAmt=0) & (PermissionsControl (165;False)=False)
+AlertMessage (Get localized string("You cannot set the transaction to $0"))
+End if 
+If (Form event=On Data Change)
+If ([Trxs]AnalysisCode#(<>sFacility+"CA")) | ([Facility]DisableTender=True)
+[Trxs]CashReceived:=vPlus
+End if 
+End if 

@@ -1,0 +1,156 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+If (Form event=On Load)
+vIncludeRented:=0
+
+//03/02/15 DAM Added the code below
+If ([Facility]ShowNonVacantUnits)
+vIncludeRented:=1
+Else 
+vIncludeRented:=0
+End if 
+
+OBJECT SET TITLE(*;"Text1";Get localized string("Size or Quantity")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Price")+":")
+OBJECT SET TITLE(*;"Text10";Get localized string("Waiting List")+":")
+OBJECT SET TITLE(*;"Text5";Get localized string("Printed Note")+":")
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text2";Get localized string("Quote - Berth"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text2";Get localized string("Quote - Appliance"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text2";Get localized string("Quote - Space"))
+Else 
+OBJECT SET TITLE(*;"Text2";Get localized string("Quote - Unit"))
+End case 
+
+OBJECT SET VISIBLE(*;"@Length";False)
+
+If ([Quote]AnalysisCode="")
+[Quote]AnalysisCode:=Substring([Contacts]ContactNo;1;5)+"RF"
+[Quote]Size:=Get localized string("Please select from list")
+End if 
+If ([Quote]AnalysisCode="@RF")
+OBJECT SET ENTERABLE([Quote]Size;False)
+If (PermissionsControl (31;False)=False)
+OBJECT SET ENTERABLE([Quote]Price;False)
+End if 
+
+QUERY([UnitType];[UnitType]RUnitType=Substring([Contacts]ContactNo;1;5)+[Quote]Size)
+If ([UnitType]VariableLength)
+OBJECT SET VISIBLE(*;"@Length";True)
+End if 
+
+End if 
+If (<>sFacility="NM@") | (vIncludeRented=1)
+vIncludeRented:=1
+QUERY([UnitType];[UnitType]RUnitType=Substring([Contacts]ContactNo;1;5)+"@";*)
+QUERY([UnitType]; & ;[UnitType]NoTotal>0)
+Else 
+QUERY([UnitType];[UnitType]NoVacant>0;*)
+QUERY([UnitType]; | ;[UnitType]NoExpMoveOut>0;*)
+QUERY([UnitType]; & ;[UnitType]RUnitType=Substring([Contacts]ContactNo;1;5)+"@";*)
+QUERY([UnitType]; & ;[UnitType]NoTotal>0)
+End if 
+
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]Description;>)
+ARRAY TEXT(asUnitType;0)
+SELECTION TO ARRAY([UnitType]UnitTypeCode;asUnitType)
+ARRAY TEXT(asUnitDesc;0)
+SELECTION TO ARRAY([UnitType]Description;asUnitDesc)
+ARRAY PICTURE(asUnitSpecial;Size of array(asUnitType))
+For ($i;1;Size of array(asUnitType))
+QUERY([UnitType];[UnitType]UnitTypeCode=asUnitType{$i})
+If ([UnitType]RCSpecial=True)
+GET PICTURE FROM LIBRARY(90;asUnitSpecial{$i})
+Else 
+GET PICTURE FROM LIBRARY(27640;asUnitSpecial{$i})
+End if 
+End for 
+Case of 
+: (<>sProduct="@B")
+vsUnitType:=Get localized string("Berth Type")+": "+[UnitType]UnitTypeCode
+: (<>sProduct="@R")
+vsUnitType:=Get localized string("Appliance Type")+": "+[UnitType]UnitTypeCode
+: (<>sProduct="@C")
+vsUnitType:=Get localized string("Space Type")+": "+[UnitType]UnitTypeCode
+: (<>sFacility="ST@")
+vsUnitType:=Get localized string("Support Plan Type")+": "+[UnitType]UnitTypeCode
+Else 
+//vsUnitType:="Unit Type: "+asUnitType{vUnitTypeSelected}
+End case 
+QUERY([MarketingTypes];[MarketingTypes]ListCode="AC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([Contacts]ContactNo;1;5))
+If (Records in selection([MarketingTypes])>0)
+hlList:=New list
+OBJECT SET VISIBLE(*;"Field82";False)
+OBJECT SET VISIBLE(*;"Field8";True)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+For ($i;1;Records in selection([MarketingTypes]))
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]AnalysisCategory=[MarketingTypes]Description;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])>0)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+$hSubList:=New list
+For ($j;1;Records in selection([Analysis]))
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+APPEND TO LIST($hSubList;[Analysis]Description;$k)
+NEXT RECORD([Analysis])
+End for 
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+End if 
+NEXT RECORD([MarketingTypes])
+End for 
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+SELECT LIST ITEMS BY REFERENCE(hlList;$k)
+Else 
+hlList:=New list
+OBJECT SET VISIBLE(*;"Field82";True)
+OBJECT SET VISIBLE(*;"Field8";False)
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asCharges;0)
+ARRAY TEXT(asChargeDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asCharges;[Analysis]Description;asChargeDesc)
+asCharges:=Find in array(asCharges;[Quote]AnalysisCode)
+If (asCharges>0)
+asChargeDesc:=asCharges
+Else 
+OBJECT SET VISIBLE(asChargeDesc;False)
+End if 
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+End if 
+[Quote]ContactNo:=[Contacts]ContactNo
+If (PermissionsControl (31;False)=False)
+OBJECT SET ENTERABLE([Quote]Price;False)
+End if 
+If (Position([Quote]UnitTypeCode;[Contacts]PreferredUnits)>0)
+vWaitQuote:=True
+Else 
+vWaitQuote:=False
+End if 
+If ([Quote]UnitTypeCode="")
+OBJECT SET ENABLED(vWaitQuote;False)
+Else 
+OBJECT SET ENABLED(vWaitQuote;True)
+End if 
+End if 
+If (Form event=On Unload)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="AC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+If (Records in selection([MarketingTypes])>0)//LoadAnlsArrays
+CLEAR LIST(hlList;*)
+End if 
+End if 

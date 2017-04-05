@@ -1,0 +1,36 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Reads in ISO XML file containing Country Names and Codes, puts them in arrays for retrieving from 4DClient
+//SDD 4/12/12 Modifications to stop error on 4D CLient
+C_LONGINT($viProcess)
+$Resources:=Get 4D folder(Current resources folder)
+ARRAY TEXT(asCountries;0)
+ARRAY TEXT(asCountryCodes;0)
+If (Application type#4D Remote mode)
+If (Test path name($Resources+"iso_3166-1_list_en.xml")#Is a document)
+AlertMessage (Get localized string("The Country Codes XML file cannot be loaded!")+$Resources+"iso_3166-1_list_en.xml")
+Else 
+C_TEXT($vtElementValue;$vtElementName)
+$viDocRef:=DOM Parse XML source($Resources+"iso_3166-1_list_en.xml";False)
+$viParentRef:=DOM Get parent XML element($viDocRef;$vtElementName;$vtElementValue)
+//$viListRef:=DOM Get first child XML element($viParentRef;$vtElementName;$vtElementValue)
+$viCountryCount:=DOM Count XML elements($viParentRef;"ISO_3166-1_Entry")
+ARRAY TEXT(asCountries;$viCountryCount)
+ARRAY TEXT(asCountryCodes;$viCountryCount)
+For ($viCountryCounter;1;$viCountryCount)
+$viCountryRef:=DOM Get XML element($viParentRef;"ISO_3166-1_Entry";$viCountryCounter;$vtElementValue)
+$viCountryNameRef:=DOM Get XML element($viCountryRef;"ISO_3166-1_Country_name";1;$vtCountryName)
+$vtCountryCodeRef:=DOM Get XML element($viCountryRef;"ISO_3166-1_Alpha-2_Code_element";1;$vtCountryCode)
+asCountries{$viCountryCounter}:=$vtCountryName
+asCountryCodes{$viCountryCounter}:=$vtCountryCode
+End for 
+DOM CLOSE XML($viDocRef)
+End if 
+//SyncRecordLog ("Server read in file "+$Resources+"iso_3166-1_list_en.xml")
+Else //Is 4D Client
+ARRAY TEXT(asCountries;0)
+ARRAY TEXT(asCountryCodes;0)
+$viProcess:=Process number("LogMonServer";*)
+ON ERR CALL("ErrorNone")
+GET PROCESS VARIABLE($viProcess;asCountries;asCountries;asCountryCodes;asCountryCodes)
+ON ERR CALL("ErrorLog")
+End if 

@@ -1,0 +1,50 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 25/07/13 When converting a picture to blob it can use other codec than just .jpeg
+
+C_TEXT($0;$3)//LogBlobHeader
+C_LONGINT($1)//Table number
+C_POINTER($2)//Pointer to field to update
+C_BLOB($PictBlob)
+C_LONGINT($Doc)
+If (Length($3)<15)//Otherwise will error - so max of three letters/blobs per table
+If (Type($2->)=Is picture)
+Case of 
+: ($1=1)//commented out 25/10/06 until we get Blob to document working
+//$Sync:=DR New offscreen area 
+//DR PICTURE TO AREA ($Sync;$2->)
+//If (<>iPlatform=3)
+//DR SAVE DOCUMENT ($Sync;<>sStormanPath+"Sync";"";0)
+//Else 
+//DR SAVE DOCUMENT ($Sync;<>sStormanPath+"Sync.4dw";"4dw";0)
+//End if 
+//DR DELETE OFFSCREEN AREA ($Sync)
+//DOCUMENT TO BLOB(<>sStormanPath+"Sync.4dw";$PictBlob)
+//DELETE DOCUMENT(<>sStormanPath+"Sync.4dw")
+: ($1>=9) & ($1<=12)//Notices, Letters, Contacts are all 4D Write
+//This code should not execute now
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorNone")//To stop syntax error with old references
+WR PICTURE TO AREA ($Doc;$2->)
+ON ERR CALL("ErrorLog")
+$PictBlob:=WR Area to blob ($Doc;1)
+WR DELETE OFFSCREEN AREA ($Doc)
+Else 
+$Format:=""
+If ($1=14)
+$Format:=[PhotosCards]UnitAccess
+End if 
+If (Length($Format)<4) | ($Format#".@")
+$Format:=".jpg"
+End if 
+PICTURE TO BLOB($2->;$PictBlob;$Format)
+End case 
+COPY BLOB($PictBlob;LogBlob;0;BLOB size(LogBlob);BLOB size($PictBlob))
+$0:=$3+String(BLOB size($PictBlob);"0000000")
+SET BLOB SIZE($PictBlob;0)
+Else //it is a BLOB
+COPY BLOB($2->;LogBlob;0;BLOB size(LogBlob);BLOB size($2->))
+$0:=$3+String(BLOB size($2->);"0000000")
+End if 
+Else 
+$0:=$3
+End if 

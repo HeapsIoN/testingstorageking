@@ -1,0 +1,202 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+If (PermissionsControl (129))
+START TRANSACTION
+SetFacility 
+bButton1:=0
+bButton2:=0
+bButton3:=0
+bButton4:=0
+bButton5:=0
+vMthDate:=!00-00-00!
+Repeat 
+Open window((Screen width/2)-410;(Screen height/2)-326;(Screen width/2)+410;(Screen height/2)+326;5;"Rent Increase Wizard")
+DIALOG([Facility];"RentIncrease")
+CLOSE WINDOW
+If (OK=1)
+bButton1:=bSingle1
+bButton2:=bSingle2
+bButton3:=bSingle
+bButton4:=bSelect
+bButton5:=bSelect2
+If (bButton1=0)
+$WinRef:=Open window((Screen width/2)-405;(Screen height/2)-326;(Screen width/2)+406;(Screen height/2)+326;5;"Rent Increase Wizard")
+UnitType 
+bCancel:=0
+bButton1:=1
+Analysis 
+bCancel:=0
+bButton1:=1
+CLOSE WINDOW($WinRef)
+Else 
+If (bButton2=0)
+If (vMthDate=!00-00-00!) | (vMthDate<[Facility]LastDaily)
+vMthDate:=Current date+60
+vMthDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+vMthDate:=RequestDate (Get localized string("Please enter the rent increase effective from date");vMthDate)
+End if 
+If (vMthDate>[Facility]LastDaily)
+//$p:=Get pointer("vMthDate")
+//UpdateSystem (77;$p;"Could not update rent increase date in system. Please try again!!")
+bButton2:=1
+Else 
+AlertMessage (Get localized string("Rent increase date must be greater than Last Daily Processing date of")+" "+String([Facility]LastDaily)+"!!")
+End if 
+Else 
+If (bButton3=0)
+CalcNewRents 
+bButton3:=1
+Else 
+If (bButton4=0)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]NewRentAmt#0;*)
+QUERY([Agreement]; & ;[Agreement]NewRentFrom>Current date)
+FIRST RECORD([Agreement])
+For ($j;1;Records in selection([Agreement]))
+BillPlanReference 
+GenerateRentIncreaseFields (True)
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+ConfirmTwo (Get localized string("Apply this rent increase?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+VALIDATE TRANSACTION
+Else 
+CANCEL TRANSACTION
+End if 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]NewRentAmt#0;*)
+QUERY([Agreement]; & ;[Agreement]NewRentFrom>Current date)
+If (Records in selection([Agreement])>0)
+ORDER BY([Agreement];[Agreement]CustomerCode;>)
+READ WRITE([Notices])
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="@Rent@Increase@")
+If (Records in selection([Notices])=0)
+QUERY([Notices];[Notices]Description="Default";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+If (Records in selection([Notices])=0)
+CREATE RECORD([Notices])
+Else 
+DUPLICATE RECORD([Notices])
+[Notices]PrimaryKey:=0
+End if 
+[Notices]Description:="RentIncrease"
+SAVE RECORD([Notices])
+End if 
+RELATE ONE([Agreement]CustomerCode)
+FORM SET INPUT([Notices];"RentIncrease")
+$WinRef:=Open window((Screen width/2)-415;(Screen height/2)-332;(Screen width/2)+415;(Screen height/2)+332;5;Get localized string("Rent Increase Wizard"))
+MODIFY RECORD([Notices])
+READ ONLY([Notices])
+CLOSE WINDOW($WinRef)
+If (bPrint=1)
+Open window((Screen width/2)-153;(Screen height/2)-89;(Screen width/2)+153;(Screen height/2)+89;5;Get localized string("Print Rent Increase Letters"))
+DIALOG([Notices];"PrtLettersSelect")
+CLOSE WINDOW
+If (OK=1)
+If (bCust=1)
+vTitle:=Get localized string("Rental Increase Letters")
+vLegend:=Get localized string("Please highlight the agreements for which the rental increase letter is to be printed.")
+$WinRef:=Open window((Screen width/2)-440;(Screen height/2)-326;(Screen width/2)+440;(Screen height/2)+326;5;Get localized string("Rent Increase Wizard"))
+FORM SET OUTPUT([Agreement];"DeleteAgreemt")
+DISPLAY SELECTION([Agreement];Multiple selection)
+If (bSelect=1)
+USE SET("UserSet")
+End if 
+If (OK=1)
+ConfirmTwo (Get localized string("Print")+" "+String(Records in selection([Agreement]))+" "+Get localized string("Letters1")+"?")
+End if 
+End if 
+If (OK=1)
+ORDER BY([Agreement];[Agreement]CustomerCode;>)
+SET AUTOMATIC RELATIONS(True;False)
+EXPAND BLOB([Notices]Letter)
+veLetter:=WR New offscreen area 
+WR BLOB TO AREA (veLetter;[Notices]Letter)
+WR PRINT MERGE (veLetter;4;1)
+WR DELETE OFFSCREEN AREA (veLetter)
+SET AUTOMATIC RELATIONS(False;False)
+ORDER BY([Agreement];[Agreement]CustomerCode;>)
+For ($i;1;Records in selection([Agreement]))
+RELATE ONE([Agreement]CustomerCode)
+RELATE ONE([Agreement]BillingPlanCode)
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+[Letters]LetterBLOB:=FreezeLetter (->[Notices]Letter)
+[Letters]LetterDesc:=[Notices]Description
+[Letters]DateSent:=Current date
+SAVE RECORD([Letters])
+NEXT RECORD([Agreement])
+End for 
+End if 
+End if 
+End if 
+End if 
+bButton4:=1
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]NewRentAmt#0;*)
+QUERY([Agreement]; & ;[Agreement]NewRentFrom>Current date)
+$i:=ConfirmThree (Get localized string("Print A/P's only for customers already on A/P?");Get localized string("Existing AP");Get localized string("All Custs");Get localized string("Select Custs");Get localized string("Don't Print"))
+If ($i=1)
+QUERY SELECTION([Agreement];[Agreement]AutoPay=True;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]AutoPayType=1)
+End if 
+If ($i=3)
+vTitle:=Get localized string("AP Forms")
+vLegend:=Get localized string("Please highlight the agreements for which the A/P's are to be printed.")
+///$WinRef:=Open window((Screen width/2)-440;(Screen height/2)-326;(Screen width/2)+44;(Screen height/2)+326;5;Get localized string("Rent Increase Wizard"))
+
+$WinRef:=Open window((Screen width/2)-440;(Screen height/2)-326;(Screen width/2)+440;(Screen height/2)+326;5;Get localized string("Rent Increase Wizard"))
+
+
+FORM SET OUTPUT([Agreement];"DeleteAgreemt")
+DISPLAY SELECTION([Agreement];Multiple selection)
+If (bSelect=1)
+USE SET("UserSet")
+End if 
+If (bCancel=1)
+$i:=4
+End if 
+CLOSE WINDOW($WinRef)
+End if 
+If ($i>=1) & ($i<=3)
+ConfirmTwo (Get localized string("Print")+" "+String(Records in selection([Agreement]))+" "+Get localized string("AP's?"))
+If (OK=1)
+If ([Facility]Country="AU")
+FORM SET OUTPUT([Agreement];"AutoPayFormAust")
+Else 
+FORM SET OUTPUT([Agreement];"AutoPayFormNZ")
+End if 
+If (<>bEnglishSpelling=False)
+PAGE SETUP([Facility];"ClientSetup")//US Letter Portrait full size
+End if 
+ORDER BY([Agreement];[Agreement]CustomerCode;>)
+PRINT SETTINGS
+For ($i;1;Records in selection([Agreement]))
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+vBal:=Round([Agreement]NewRentAmt+Sum([OtherChgs]Amount);2)
+vDate:=[Agreement]NewRentFrom
+PRINT RECORD([Agreement];*)
+NEXT RECORD([Agreement])
+End for 
+FORM SET OUTPUT([Agreement];"UnitHistOut")
+End if 
+End if 
+bButton5:=1
+End if 
+End if 
+End if 
+End if 
+End if 
+Until (bButton5=1) | (bCancel=1)
+If (bCancel=1)
+CANCEL TRANSACTION
+End if 
+End if 
+CloseWindow 

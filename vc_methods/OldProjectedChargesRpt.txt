@@ -1,0 +1,108 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//  //SDD 25/06/09 Modified to exclude Agreements that are moving out
+//C_LONGINT($i;$j;$StartMth;$Mth)
+//C_DATE($NextBillDate)
+//If (PermissionsControl (152))
+//OK:=1
+//$BillingPlan:=0
+//If (<>tBatch=False)
+//ConfirmTwo (Get localized string("Do you wish to include billing plan discounts?");Get localized string("Yes");Get localized string("No"))
+//End if 
+//If (OK=1)
+//$BillingPlan:=1
+//End if 
+//SetFacility 
+//$StartMth:=((Year of([Facility]LastDaily)-2000)*100)+Month of([Facility]LastDaily)
+//QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+//QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+//ARRAY TEXT(asAnalysis;0)
+//ARRAY REAL(arAmounts;20;13)  //Sized at 20 as that is likely max number of recurring analysis codes
+//For ($i;1;20)
+//For ($j;1;13)
+//arAmounts{$i}{$j}:=0
+//End for 
+//End for 
+//Open window(50;100;300;200;0;Get localized string("Progress"))
+//For ($i;1;Records in selection([Agreement]))
+//GOTO XY(2;2)
+//MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+" - "+[Agreement]AgreeNo)
+//RELATE ONE([BillPlan])
+//$NextBillDate:=[Agreement]NextBillDate
+//$Mth:=(((Year of($NextBillDate)-2000)*100)+Month of($NextBillDate))-$StartMth+1
+//While ($Mth>88)  //88 is the difference between 812 (Dec 08) and 901 (Jan 09) moving from one year to the next
+//$Mth:=$Mth-88
+//End while 
+//While ($Mth>0) & ($Mth<14) & (([Agreement]MoveOut>$NextBillDate) | ([Agreement]MoveOut=!00/00/00!))  //SDD 25/06/09 Added this condition to stop adding in Agreements that are Moving Out
+//RELATE MANY([Agreement]RAgreeNo)
+//QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+//For ($j;1;Records in selection([Unit]))
+//RELATE ONE([Unit]UnitTypeCode)
+//QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+[UnitType]RentAnalysis)
+//If (Records in selection([Analysis])=1)
+//$Find:=Find in array(asAnalysis;[Analysis]Code)
+//If ($Find<1)
+//APPEND TO ARRAY(asAnalysis;[Analysis]Code)
+//$Find:=Size of array(asAnalysis)
+//End if 
+//If ([Unit]IncreaseFrom<=$NextBillDate) & ([Unit]IncreaseFrom#!00/00/00!)
+//If ($BillingPlan=1)
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]NewRentAmt*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt))
+//Else 
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]NewRentAmt*[Agreement]MthsAdv)
+//End if 
+//Else 
+//If ($BillingPlan=1)
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]RentedValue*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt))
+//Else 
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]RentedValue*[Agreement]MthsAdv)
+//End if 
+//End if 
+//Else 
+//AlertMessage ("Error - No analysis code for "+[UnitType]RentAnalysis+", Agreement:"+[Agreement]RAgreeNo)
+//End if 
+//NEXT RECORD([Unit])
+//End for 
+//ALL SUBRECORDS([Agreement]OtherChgs)
+//For ($j;1;Records in subselection([Agreement]OtherChgs))
+//QUERY([Analysis];[Analysis]Code=[Agreement]OtherChgs'AnalysisCode)
+//If (Records in selection([Analysis])=1)
+//$Find:=Find in array(asAnalysis;[Analysis]Code)
+//If ($Find<1)
+//APPEND TO ARRAY(asAnalysis;[Analysis]Code)
+//$Find:=Size of array(asAnalysis)
+//End if 
+//If ([Agreement]OtherChgs'IncreaseFrom<=$NextBillDate) & ([Agreement]OtherChgs'IncreaseFrom#!00/00/00!)
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[Agreement]OtherChgs'NewAmount
+//Else 
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[Agreement]OtherChgs'Amount
+//End if 
+//Else 
+//AlertMessage ("Error - No analysis code for "+[Agreement]OtherChgs'AnalysisCode+", Agreement:"+[Agreement]RAgreeNo)
+//End if 
+//NEXT SUBRECORD([Agreement]OtherChgs)
+//End for 
+//$NextBillDate:=CalcNxtBillDate ($NextBillDate;[Agreement]MthsAdv+[BillPlan]FreeMths;[Agreement]DaytoBill;[BillPlan]WeeksMonths)
+//$Mth:=(((Year of($NextBillDate)-2000)*100)+Month of($NextBillDate))-$StartMth+1
+//While ($Mth>88)
+//$Mth:=$Mth-88
+//End while 
+//End while 
+//If (Size of array(asAnalysis)>16)
+//AlertMessage ("WARNING - Too many recurring analysis codes - Exceeded 16")
+//ABORT
+//End if 
+//NEXT RECORD([Agreement])
+//End for 
+//CLOSE WINDOW
+//If ($BillingPlan=1)
+//vPCRNote:="Inclusive of Billing Plan Discounts"
+//Else 
+//vPCRNote:="Exclusive of Billing Plan Discounts"
+//End if 
+//QUERY WITH ARRAY([Analysis]Code;asAnalysis)
+//ORDER BY([Analysis];[Analysis]SortOrder;>)
+//FORM SET OUTPUT([Analysis];"ProjectedChargesRpt")
+//BREAK LEVEL(0)
+//PrintSelection ("L";->[Analysis])
+//FORM SET OUTPUT([Analysis];"Output")
+//End if 

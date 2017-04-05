@@ -1,0 +1,289 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+Case of 
+: (Form event=On Clicked)
+// 22/04/15 DAM set OK:=1  as it is broken with migration from 4D v13 to 4D 15
+OK:=1
+
+If (aDescriptions{aDescriptions}#"EziDebit") & (CCAccDetails=4)
+//ConfirmTwo (Get localized string("Are you sure you wish to change from Ezi, this procedure will wipe all locally stored Credit Card info"))
+ConfirmTwo ("Are you sure you wish to change your merchant from Ezidebit? This will clear all locally stored Credit Card information for all Customers. This cannot be undone.")
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+FORM SET OUTPUT([Customer];"MerchChangeList")
+READ WRITE([Customer])
+APPLY TO SELECTION([Customer];[Customer]customerProfileID:="")
+APPLY TO SELECTION([Customer];[Customer]custPaymentProfID:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiry:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiryDate:=!00-00-00!)
+//APPLY TO SELECTION([Customer];[Customer]CCName:="")
+//APPLY TO SELECTION([Customer];[Customer]CCNo:="")
+//APPLY TO SELECTION([Customer];[Customer]CCValidFrom:="")
+PRINT SELECTION([Customer])
+READ ONLY([Customer])
+LogAction (<>tLogging;"Merchant changed from Ezidebit. Stored Credit Card details destroyed.")
+Else 
+aDescriptions:=CCAccDetails
+End if 
+End if 
+
+If (OK=1)
+If (aDescriptions{aDescriptions}="EziDebit")
+If (<>sCurrentUser="AdminSupport")
+OBJECT SET VISIBLE([Facility]Highlander;True)
+[Facility]Highlander:=True
+OBJECT SET ENABLED([Facility]Highlander;False)
+//09/12/16 DAM commented need ability to process Direct Debit Credit Card via higlander 
+//chkEziDebit:=True
+//OBJECT SET ENABLED(chkEziDebit;False)
+End if 
+OBJECT SET VISIBLE(*;"Text57";False)
+OBJECT SET VISIBLE(*;"Text5";False)
+OBJECT SET VISIBLE(*;"Text93";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(vLeg2;False)
+OBJECT SET VISIBLE(vLeg3;False)
+OBJECT SET VISIBLE(*;"vCCKey@";True)
+OBJECT SET VISIBLE(*;"vccPBKeyStatus";True)
+OBJECT SET VISIBLE(chkEziDebit;True)
+OBJECT SET VISIBLE(ShowTrx;True)
+
+OBJECT SET VISIBLE(vLeg4;True)
+OBJECT SET VISIBLE(vLeg5;True)
+OBJECT SET VISIBLE(*;"Text95";True)
+OBJECT SET VISIBLE(*;"Text96";True)
+
+Else 
+OBJECT SET VISIBLE(*;"Text57";True)
+OBJECT SET VISIBLE(*;"Text5";True)
+OBJECT SET VISIBLE(*;"Text93";True)
+OBJECT SET VISIBLE(vLeg1;True)
+OBJECT SET VISIBLE(vLeg2;True)
+OBJECT SET VISIBLE(vLeg3;True)
+OBJECT SET VISIBLE(*;"vCCKey@";False)
+OBJECT SET VISIBLE(*;"vccPBKeyStatus";False)
+OBJECT SET VISIBLE(*;"vPBKeyStatus";False)
+OBJECT SET VISIBLE(chkEziDebit;False)
+OBJECT SET VISIBLE(ShowTrx;False)
+If (<>sCurrentUser="AdminSupport")
+If (aDescriptions{aDescriptions}="AuthorizeNet@")
+OBJECT SET VISIBLE([Facility]Highlander;False)
+Else 
+OBJECT SET VISIBLE([Facility]Highlander;False)
+End if 
+End if 
+End if 
+End if 
+
+
+If (aDescriptions=3) | (aDescriptions=5) | (aDescriptions=7) | (aDescriptions=8)
+OBJECT SET VISIBLE(*;"Text57";False)
+OBJECT SET VISIBLE(vLeg1;False)
+End if 
+OBJECT SET VISIBLE(bDelProf;False)
+
+Case of 
+: (aDescriptions=3)//the two authnet options
+vUserName:=Get localized string("Login ID")+":"
+vPassword:=Get localized string("Transaction Key:")
+vUsernameAuth:=Get localized string("Login ID")+":"
+vPasswordAuth:=Get localized string("Transaction Key:")
+OBJECT SET VISIBLE(vLeg2Auth;True)
+OBJECT SET VISIBLE(vLeg3Auth;True)
+OBJECT SET VISIBLE(vUsernameAuth;True)
+OBJECT SET VISIBLE(vPasswordAuth;True)
+OBJECT SET VISIBLE(*;"AuthnonPresent";True)
+OBJECT SET TITLE(*;"Group Box8";"Present Credit Card Account Details")
+//: (aDescriptions=6)  //cheq services
+//vUserName:="Log On ID:"
+//vPassword:="Password:"
+: (aDescriptions=5) | (aDescriptions=7)//Thinc or Thinc CM 10245
+vUserName:="Merchant ID:"
+vPassword:="Password:"
+: (aDescriptions=8)// Transaction Express
+//vUserName:=Get localized string("Merchant ID")+":"
+//vPassword:="Registration Key"
+vUserName:=Get localized string("Merchant ID")+":"
+vPassword:=Get localized string("Password")+":"
+OBJECT SET VISIBLE(*;"Text57";False)
+OBJECT SET VISIBLE(*;"Text95";False)
+OBJECT SET VISIBLE(*;"Text96";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(vLeg2;True)
+OBJECT SET VISIBLE(vLeg3;True)
+OBJECT SET VISIBLE(vLeg4;False)
+OBJECT SET VISIBLE(vLeg5;False)
+OBJECT SET VISIBLE(BUPLOAD;True)
+OBJECT SET VISIBLE(vUserName;True)
+: (aDescriptions=2) | (aDescriptions=6)//Delete button
+OBJECT SET VISIBLE(bDelProf;True)
+vPassword:=Get localized string("Password:")
+//: (aDescriptions=13)////BPoint by eugene, 21.04.2015,fb 8932
+//vUserName:=Get localized string("Username:")
+//vPassword:=Get localized string("Password:")
+
+: (aDescriptions=9)// eMatters
+vUserName:=Get localized string("Username:")
+vPassword:=Get localized string("Password:")
+//vUsernameAuth:=Get localized string("Login ID")+":"
+//vPasswordAuth:=Get localized string("Transaction Key:")
+OBJECT SET VISIBLE(vLeg2Auth;False)
+OBJECT SET VISIBLE(vLeg3Auth;False)
+OBJECT SET VISIBLE(vUsernameAuth;False)
+OBJECT SET VISIBLE(vPasswordAuth;False)
+OBJECT SET VISIBLE(BUPLOAD;True)
+OBJECT SET VISIBLE(*;"Text95";True)
+OBJECT SET TITLE(*;"Text95";Get localized string("PIN Code:"))
+OBJECT SET VISIBLE(*;"Text96";False)
+OBJECT SET VISIBLE(*;"Text57";False)
+
+OBJECT SET VISIBLE(vLeg4;True)
+OBJECT SET VISIBLE(vLeg5;False)
+OBJECT SET VISIBLE(*;"AuthnonPresent";False)
+//OBJECT SET TITLE(*;"Group Box8";"Present Credit Card Account Details")
+OBJECT SET VISIBLE(*;"vCCKeyStatus";False)
+OBJECT SET VISIBLE(*;"vCCKeyText";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(*;"vCCKeyB";False)
+
+Else 
+vUserName:="Username:"
+vPassword:="Password:"
+OBJECT SET VISIBLE(vLeg2Auth;False)
+OBJECT SET VISIBLE(vLeg3Auth;False)
+OBJECT SET VISIBLE(vUsernameAuth;False)
+OBJECT SET VISIBLE(vPasswordAuth;False)
+OBJECT SET VISIBLE(*;"AuthnonPresent";False)
+End case 
+
+If (aDescriptions{aDescriptions}#"AuthorizeNet CIM") & (CCAccDetails=3)
+ConfirmTwo (Get localized string("Are you sure you wish to change from AuthorizeNet CIM, this procedure will wipe all locally stored Credit Card info"))
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+FORM SET OUTPUT([Customer];"MerchChangeList")
+READ WRITE([Customer])
+APPLY TO SELECTION([Customer];[Customer]customerProfileID:="")
+APPLY TO SELECTION([Customer];[Customer]custPaymentProfID:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiry:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiryDate:=!00-00-00!)
+//APPLY TO SELECTION([Customer];[Customer]CCName:="")
+//APPLY TO SELECTION([Customer];[Customer]CCNo:="")
+//APPLY TO SELECTION([Customer];[Customer]CCValidFrom:="")
+PRINT SELECTION([Customer])
+READ ONLY([Customer])
+Else 
+aDescriptions:=CCAccDetails
+OBJECT SET VISIBLE(vLeg2Auth;True)
+OBJECT SET VISIBLE(vLeg3Auth;True)
+OBJECT SET VISIBLE(vUsernameAuth;True)
+OBJECT SET VISIBLE(vPasswordAuth;True)
+OBJECT SET VISIBLE(*;"AuthnonPresent";True)
+OBJECT SET TITLE(*;"Group Box8";"Present Credit Card Account Details")
+End if 
+End if 
+
+If (aDescriptions{aDescriptions}#"Advam StoredPAN") & (CCAccDetails=2)
+ConfirmTwo (Get localized string("Are you sure you wish to change from Advam StoredPAN, this procedure will wipe all locally stored Credit Card info"))
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+FORM SET OUTPUT([Customer];"MerchChangeList")
+READ WRITE([Customer])
+APPLY TO SELECTION([Customer];[Customer]customerProfileID:="")
+APPLY TO SELECTION([Customer];[Customer]custPaymentProfID:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiry:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiryDate:=!00-00-00!)
+//APPLY TO SELECTION([Customer];[Customer]CCName:="")
+//APPLY TO SELECTION([Customer];[Customer]CCNo:="")
+//APPLY TO SELECTION([Customer];[Customer]CCValidFrom:="")
+PRINT SELECTION([Customer])
+READ ONLY([Customer])
+Else 
+aDescriptions:=CCAccDetails
+OBJECT SET VISIBLE(vLeg2Auth;False)
+OBJECT SET VISIBLE(vLeg3Auth;False)
+OBJECT SET VISIBLE(vUsernameAuth;False)
+OBJECT SET VISIBLE(vPasswordAuth;False)
+OBJECT SET VISIBLE(*;"AuthnonPresent";False)
+OBJECT SET TITLE(*;"Group Box8";"Present Credit Card Account Details")
+End if 
+End if 
+If (aDescriptions{aDescriptions}="Advam StoredPAN")
+OBJECT SET VISIBLE(*;"Text57";True)
+OBJECT SET VISIBLE(*;"Text5";True)
+OBJECT SET VISIBLE(*;"Text93";True)
+vUserName:=Get localized string("Username:")
+End if 
+If (aDescriptions{aDescriptions}#"NAB CM") & (CCAccDetails=5)
+ConfirmTwo (Get localized string("Are you sure you wish to change from Thinc CM, this procedure will wipe all locally stored Credit Card info"))
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+FORM SET OUTPUT([Customer];"MerchChangeList")
+READ WRITE([Customer])
+APPLY TO SELECTION([Customer];[Customer]customerProfileID:="")
+APPLY TO SELECTION([Customer];[Customer]custPaymentProfID:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiry:="")
+//APPLY TO SELECTION([Customer];[Customer]CCExpiryDate:=!00-00-00!)
+//APPLY TO SELECTION([Customer];[Customer]CCName:="")
+//APPLY TO SELECTION([Customer];[Customer]CCNo:="")
+//APPLY TO SELECTION([Customer];[Customer]CCValidFrom:="")
+PRINT SELECTION([Customer])
+READ ONLY([Customer])
+Else 
+aDescriptions:=CCAccDetails
+End if 
+End if 
+CCAccDetails:=aDescriptions
+If (Length(vCCKey1)>0)
+vCCKeyStatus:=Get localized string("Active")
+OBJECT SET RGB COLORS(*;"vCCKeyStatus";0xCC33;-16)
+Else 
+OBJECT SET RGB COLORS(*;"vCCKeyStatus";0x00CC0000;-16)
+vCCKeyStatus:=Get localized string("Inactive")
+End if 
+If (Length(VCCKEYP1)>0)
+vccPBKeyStatus:=Get localized string("Active")
+OBJECT SET RGB COLORS(*;"vccPBKeyStatus";0xCC33;-16)
+Else 
+OBJECT SET RGB COLORS(*;"vccPBKeyStatus";0x00CC0000;-16)
+vccPBKeyStatus:=Get localized string("Inactive")
+End if 
+If (aDescriptions=10)//Realex
+vUserName:=Get localized string("MerchantID")+":"
+vPassword:=Get localized string("Shared Secret")+":"
+OBJECT SET VISIBLE(vLeg2Auth;False)
+OBJECT SET VISIBLE(vLeg3Auth;False)
+OBJECT SET VISIBLE(vUsernameAuth;False)
+OBJECT SET VISIBLE(vPasswordAuth;False)
+OBJECT SET VISIBLE(BUPLOAD;True)
+OBJECT SET VISIBLE(*;"Text95";False)
+//$titleVal:=Get localized string("Rebate Password")+":"
+//OBJECT SET TITLE(*;"Text95";$titleVal)
+$titleVal:=Get localized string("Refund Password")+":"
+OBJECT SET VISIBLE(*;"Text96";True)
+OBJECT SET TITLE(*;"Text96";$titleVal)
+OBJECT SET VISIBLE(*;"Text57";False)
+
+OBJECT SET VISIBLE(vLeg4;False)
+OBJECT SET VISIBLE(vLeg5;True)
+OBJECT SET VISIBLE(*;"AuthnonPresent";False)
+
+OBJECT SET VISIBLE(*;"vCCKeyStatus";False)
+OBJECT SET VISIBLE(*;"vCCKeyText";False)
+OBJECT SET VISIBLE(vLeg1;False)
+OBJECT SET VISIBLE(*;"vCCKeyB";False)
+End if 
+
+If (aDescriptions=10)//Realex
+OBJECT SET FONT(vLeg5;"%password")
+Else 
+OBJECT SET FONT(vLeg5;"Segoe UI")
+End if 
+
+End case 

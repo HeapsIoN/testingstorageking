@@ -1,0 +1,38 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+tBoolean:=False
+If (UpdateSystem (60;->tBoolean;Get localized string("Unable to stop sending data as Facility record is locked!")))
+$CurrentUser:=SetSyncUser ("Sync";3)
+If ([UserLogins]RecordStatus=3)
+Open window(20;50;300;150;0;Get localized string("Progress"))
+READ WRITE([PhotosCards])
+QUERY([PhotosCards];[PhotosCards]Name="";*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0;*)//No photo
+QUERY([PhotosCards]; & ;[PhotosCards]PINCardNo="")//and no PIN number
+DELETE SELECTION([PhotosCards])
+ALL RECORDS([PhotosCards])
+ORDER BY([PhotosCards];[PhotosCards]Code;>)
+$j:=1
+$OldCode:=[PhotosCards]Code
+For ($i;1;Records in selection([PhotosCards]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("PhotoCards")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([PhotosCards]))+"     ")
+[PhotosCards]SeqNo:=$j
+SAVE RECORD([PhotosCards])
+NEXT RECORD([PhotosCards])
+$j:=$j+1
+If ([PhotosCards]Code#$OldCode)
+$OldCode:=[PhotosCards]Code
+$j:=1
+End if 
+End for 
+CLOSE WINDOW
+READ ONLY([PhotosCards])
+UNLOAD RECORD([PhotosCards])
+End if 
+SetSyncUser ("Sync";2)
+SetSyncUser ($CurrentUser)
+tBoolean:=True
+UpdateSystem (60;->tBoolean;Get localized string("Unable to resume sending data as Facility record is locked!"))
+Else 
+AlertMessage (Get localized string("WARNING - Sequencing of Photocards was not completed successfully in the update process - Please contact Technical Support."))
+End if 

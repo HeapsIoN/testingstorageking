@@ -1,0 +1,107 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 26/04/16, 11:53:02
+// ----------------------------------------------------
+// Method: DailySummary
+// Description
+// 
+// Triggers the Daily Summary Report. Accounting > Daily Summary Report.
+// Will also reprocess autopay transactions for the same daily date.
+//
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT($i)
+
+If (PermissionsControl (134))
+DEFAULT TABLE([Agreement])
+SetFacility 
+vDate:=RequestDate (Get localized string("Date to print Daily Summary");[Facility]LastDaily)
+If (OK=1)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]NoticeBilled#"")
+APPLY TO SELECTION([Agreement];[Agreement]NoticeBilled:="")
+QUERY([Letters];[Letters]AgreeNo=(<>sFacility+"@");*)
+QUERY([Letters]; & ;[Letters]DateSent=vDate)
+CREATE EMPTY SET([Agreement];"Notices")
+For ($i;1;Records in selection([Letters]))
+RELATE ONE([Letters]AgreeNo)
+If (Records in selection([Agreement])=1)
+[Agreement]NoticeBilled:=[Letters]LetterDesc
+[Agreement]NoticeDate:=[Letters]DateSent
+[Agreement]NoticeSent:=True
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description=[Agreement]NoticeBilled)
+If (Records in selection([Notices])=1)
+[Agreement]NoticeAmtToBill:=[Notices]MinimumCharge
+End if 
+SAVE RECORD([Agreement])
+ADD TO SET([Agreement];"Notices")
+End if 
+NEXT RECORD([Letters])
+End for 
+QUERY([Agreement];[Agreement]RAgreeNo=(<>sFacility+"@");*)
+QUERY([Agreement]; & ;[Agreement]LastBillDate=vDate)
+For ($i;1;Records in selection([Agreement]))
+[Agreement]NoticeBilled:="AARecurring Rent"
+[Agreement]NoticeAmtToBill:=RoundAmt ([Agreement]LastBillAmt)
+[Agreement]NoticeBillRent:=True
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+CREATE SET([Agreement];"Rent")
+UNION("Notices";"Rent";"Rent")
+USE SET("Rent")
+CLEAR SET("Rent")
+CLEAR SET("Notices")
+ORDER BY([Agreement];[Agreement]NoticeBilled;>;[Agreement]AgreeNo;>)
+BREAK LEVEL(1)
+ACCUMULATE([Agreement]LastBillAmt;[Agreement]BalanceOwing)
+If ([Facility]UseSmallDailySum)
+FORM SET OUTPUT([Agreement];"DailySummarySmall")
+Else 
+FORM SET OUTPUT([Agreement];"DailySummary")
+End if 
+vTitleDaily:=Get localized string("Daily Processing Summary for")+" "+String(vDate;6)
+PrintSelection ("L";->[Agreement])
+CREATE SET([Agreement];"Temp")
+If ([Facility]PrintListAP=True)
+vTitle:=Get localized string("Daily Processing Summary for")+" "+String(vDate;6)
+DailyAutoPay (True)//10648
+QUERY([Message];[Message]OutIn=True;*)
+QUERY([Message]; & ;[Message]SentRead=False;*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+If (Records in selection([Message])>0)
+READ WRITE([Message])
+CheckMail 
+READ ONLY([Message])
+UNLOAD RECORD([Message])
+End if 
+USE SET("Temp")
+End if 
+CLEAR SET("Temp")
+FIRST RECORD([Agreement])
+For ($i;1;Records in selection([Agreement]))
+[Agreement]NoticeBilled:=""
+[Agreement]NoticeDate:=!00-00-00!
+[Agreement]NoticeSent:=False
+[Agreement]NoticeAmtToBill:=0
+[Agreement]NoticeBillRent:=False
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+End if 
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+READ ONLY([Trxs])//FB10618
+READ ONLY([Customer])//FB10618
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Trxs])//FB10618
+UNLOAD RECORD([Customer])//FB10618
+End if 
+

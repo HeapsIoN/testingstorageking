@@ -1,0 +1,95 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE(vSDate;vEDate)
+C_REAL(vBankBalFwd;vBalFwd;vAmt1;vAmt2;vBal;vBankDebitFwd;vBankCreditFwd)
+DEFAULT TABLE([ChartAccts])
+vBankDebitFwd:=0
+vBankCreditFwd:=0
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vMthDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vMthDate)
+If (OK=1)
+SetFacility 
+vStartDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+If (vStartDate>=[Facility]YearStartDate)
+$WinRef:=Open window(20;50;350;150;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Receipts")+"..."+"    ")
+CreateRecJrnls (vStartDate;vMthDate;6)
+MESSAGE(Get localized string("Creating revenue journal...")+"    ")
+CreateRevJrnls (vMthDate;3)
+CLOSE WINDOW($WinRef)
+QUERY([CashBookTrxs];[CashBookTrxs]TrxDate>=vStartDate;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]TrxDate<=vMthDate)
+ALL RECORDS([ChartAccts])
+If (<>sProduct="M@")
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position(<>sFacility;[CashBookTrxs]Description)>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+CREATE SET([CashBookTrxs];"Test")
+//DISTINCT VALUES([CashBookTrxs]AcctNo;aAccts)
+//CREATE EMPTY SET([ChartAccts];"ChartAccts")
+//For ($x;1;Size of array(aAccts))
+//QUERY([ChartAccts];[ChartAccts]AcctNo=aAccts{$x})
+//If (Records in selection([ChartAccts])>1)
+//QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=◊sFacility)
+//End if 
+//ADD TO SET([ChartAccts];"ChartAccts")
+//End for 
+//USE SET("ChartAccts")
+SetFacility 
+QUERY([ChartAccts];[ChartAccts]AcctType="B@")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+QUERY([CashBookTrxs];[CashBookTrxs]AcctNo=[ChartAccts]AcctNo)//needed to set this earlier as was stuffing debtors
+If (<>sProduct="M@")
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position(<>sFacility;[CashBookTrxs]Description)>1)
+End if 
+QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate>=[Facility]YearStartDate)
+QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate<vStartDate)
+//QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate<vStartDate)
+//If (Records in selection([CashBookTrxs])>0)
+//For ($s;1;Records in selection([CashBookTrxs]))
+//If ([CashBookTrxs]Amount>0)
+//vAmt1:=vAmt1+[CashBookTrxs]Amount
+//Else 
+//vAmt2:=vAmt2+([CashBookTrxs]Amount*(-1))
+//End if 
+//NEXT RECORD([CashBookTrxs])
+//End for 
+//End if 
+For ($x;1;Records in selection([CashBookTrxs]))
+If ([CashBookTrxs]Amount>0)
+vBankDebitFwd:=vBankDebitFwd+[CashBookTrxs]Amount
+Else 
+vBankCreditFwd:=vBankCreditFwd+([CashBookTrxs]Amount*(-1))
+End if 
+NEXT RECORD([CashBookTrxs])
+End for 
+//DISTINCT VALUES([CashBookTrxs]AcctNo;aAccts)
+//CREATE EMPTY SET([ChartAccts];"ChartAccts")
+//For ($x;1;Size of array(aAccts))
+//QUERY([ChartAccts];[ChartAccts]AcctNo=aAccts{$x})
+//If (Records in selection([ChartAccts])>1)
+//QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=◊sFacility)
+//End if 
+//ADD TO SET([ChartAccts];"ChartAccts")
+//End for 
+//USE SET("ChartAccts")
+ALL RECORDS([ChartAccts])
+If (<>sProduct="M@")
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+ORDER BY([ChartAccts];[ChartAccts]AcctNo;>;[ChartAccts]AcctType;>)
+ACCUMULATE(vBalFwd;vAmt1;vAmt2;vBal)
+BREAK LEVEL(0)
+FORM SET OUTPUT([ChartAccts];"TrialBalance")
+vTitle:=Get localized string("Trial Balance1")+" "+String(vStartDate)+" "+Get localized string("to")+" "+String(vMthDate)
+vLegend:=""
+SetFacility 
+PrintSelection ("L")
+FORM SET OUTPUT([ChartAccts];"Output")
+Else 
+AlertMessage (Get localized string("Report start date must not be less than the Financial Year Start Date!"))
+End if 
+CLEAR SET("Test")
+End if 

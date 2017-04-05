@@ -1,0 +1,504 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 10/12/10, 11:52:54
+// ----------------------------------------------------
+// Method: MonthlyEnq
+// Description
+// A report to show comparisons of Sales Enquiry data for specified time periods
+// and Types & Categories
+//
+// 
+// ----------------------------------------------------
+LogAction (False;"Sales Enquiry Report started.")// records the report being started in the eventlog
+ARRAY TEXT(rpt2D;0;0)
+
+ARRAY TEXT(footerTotals;0)
+ARRAY TEXT(selectedTypes;0)
+ARRAY TEXT(dateRanges;0)
+
+C_LONGINT($rowcount;$halfDay;$Period;rowNumber;excelRow)
+C_DATE($startDate;$endDate;dStartDate;dEndDate)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+
+DEFAULT TABLE([Contacts])
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+
+ARRAY TEXT(asContactsList;4)
+asContactsList{1}:=Get localized string("All Contacts")
+asContactsList{2}:=Get localized string("Converted Contacts")
+asContactsList{3}:=Get localized string("Declined Contacts")
+asContactsList{4}:=Get localized string("Open Contacts")
+asContactsList:=1
+
+vReportSettings:=[Facility]ReportSettings
+If (Length(vReportSettings)<40)
+$Period:=40-Length(vReportSettings)
+vReportSettings:=vReportSettings+(" "*$Period)
+$Period:=0
+End if 
+If (<>tBatch=False)
+$Win:=Open window((Screen width/2)-192;(Screen height/2)-220;(Screen width/2)+192;(Screen height/2)+220;Movable dialog box)
+DIALOG([Contacts];"MonthlyEnqOpts")
+CLOSE WINDOW($Win)
+
+If (vReportSettings#[Facility]ReportSettings)
+UpdateSystem (128;->vReportSettings;Get localized string("KeyStatsDialogMethod"))
+End if 
+Else 
+btnOK:=1
+If (vReportSettings[[29]]="1")
+b6P:=0
+b12P:=1
+Else 
+b6P:=1
+b12P:=0
+End if 
+If (vReportSettings[[30]]#" ")
+asPeriodList:=Num(vReportSettings[[30]])
+Else 
+asPeriodList:=1
+End if 
+If (vReportSettings[[31]]#" ")
+cMarketSource:=Num(vReportSettings[[31]])
+Else 
+cMarketSource:=1
+End if 
+
+If (vReportSettings[[32]]#" ")
+cCustomerType:=Num(vReportSettings[[32]])
+Else 
+cCustomerType:=0
+End if 
+
+If (vReportSettings[[33]]#" ")
+cContactCategory:=Num(vReportSettings[[33]])
+Else 
+cContactCategory:=0
+End if 
+
+If (vReportSettings[[34]]#" ")
+cReasonDecline:=Num(vReportSettings[[34]])
+Else 
+cReasonDecline:=0
+End if 
+
+If (vReportSettings[[35]]#" ")
+cStoredBefore:=Num(vReportSettings[[35]])
+Else 
+cStoredBefore:=0
+End if 
+
+If (vReportSettings[[36]]#" ")
+cSizeQuoted:=Num(vReportSettings[[36]])
+Else 
+cSizeQuoted:=0
+End if 
+
+If (vReportSettings[[37]]#" ")
+cShowUnquoted:=Num(vReportSettings[[37]])
+Else 
+cShowUnquoted:=0
+End if 
+
+MonthlyEnqMisc (2)
+
+End if 
+If (btnOK=1)
+
+If (<>tBatch=False)
+<>ProgressInd:=0
+Open window(20;50;600;150;0)
+End if 
+
+
+If (cMarketSource=1)
+INSERT IN ARRAY(selectedTypes;Size of array(selectedTypes)+1)
+selectedTypes{Size of array(selectedTypes)}:="MS"
+End if 
+If (cCustomerType=1)
+INSERT IN ARRAY(selectedTypes;Size of array(selectedTypes)+1)
+selectedTypes{Size of array(selectedTypes)}:="CT"
+End if 
+If (cContactCategory=1)
+INSERT IN ARRAY(selectedTypes;Size of array(selectedTypes)+1)
+selectedTypes{Size of array(selectedTypes)}:="CC"
+End if 
+If (cReasonDecline=1)
+INSERT IN ARRAY(selectedTypes;Size of array(selectedTypes)+1)
+selectedTypes{Size of array(selectedTypes)}:="RD"
+End if 
+If (cStoredBefore=1)//Not in Types & Categories - just Yes/No/Blank
+INSERT IN ARRAY(selectedTypes;Size of array(selectedTypes)+1)
+selectedTypes{Size of array(selectedTypes)}:="SB"
+End if 
+
+
+If (cMarketSource=1) | (cCustomerType=1) | (cContactCategory=1) | (cReasonDecline=1) | (cStoredBefore=1)
+INSERT IN ARRAY(selectedTypes;Size of array(selectedTypes)+1)
+selectedTypes{Size of array(selectedTypes)}:="TotEnq"
+End if 
+
+
+
+If (cSizeQuoted=1)//Not in Types & Categories - just Yes/No/Blank
+INSERT IN ARRAY(selectedTypes;Size of array(selectedTypes)+1)
+selectedTypes{Size of array(selectedTypes)}:="SQ"
+End if 
+
+$rowcount:=1//Which array element and thus which line in the report
+
+If (b6P=1)
+$Period:=6
+Else 
+$Period:=12
+End if 
+
+$startDate:=dStartDate
+$endDate:=!00-00-00!
+$halfDay:=0//0 = 00:00:00-11:59:59   1 = 12:00:00 - 23:59:59
+For ($i;1;$Period)
+GOTO XY(2;2)
+MESSAGE("Generating Report")
+
+INSERT IN ARRAY(dateRanges;Size of array(dateRanges)+1)
+Case of 
+: (asPeriodList=1)
+dateRanges{Size of array(dateRanges)}:=String(Year of($startDate))
+: (asPeriodList=2)
+dateRanges{Size of array(dateRanges)}:=String(Month of($startDate))+"/"+Substring(String(Year of($startDate));3)
+: (asPeriodList=3)
+dateRanges{Size of array(dateRanges)}:=String($startDate;Internal date short special)
+: (asPeriodList=4)
+dateRanges{Size of array(dateRanges)}:=String($startDate;Internal date short special)
+: (asPeriodList=5)
+
+If ($halfDay=0)
+Case of 
+: (<>tDateFormat="US")
+dateRanges{Size of array(dateRanges)}:="AM "+String(Month of($startDate))+"/"+String(Day of($startDate))
+: (<>tDateFormat="ISO")
+dateRanges{Size of array(dateRanges)}:="AM "+String(Year of($startDate))+"/"+String(Month of($startDate))+"/"+String(Day of($startDate))
+Else 
+dateRanges{Size of array(dateRanges)}:="AM "+String(Day of($startDate))+"/"+String(Month of($startDate))
+End case 
+Else 
+Case of 
+: (<>tDateFormat="US")
+dateRanges{Size of array(dateRanges)}:="PM "+String(Month of($startDate))+"/"+String(Day of($startDate))
+: (<>tDateFormat="ISO")
+dateRanges{Size of array(dateRanges)}:="PM "+String(Year of($startDate))+"/"+String(Month of($startDate))+"/"+String(Day of($startDate))
+Else 
+dateRanges{Size of array(dateRanges)}:="PM "+String(Day of($startDate))+"/"+String(Month of($startDate))
+End case 
+End if 
+End case 
+
+
+
+Case of 
+: (asContactsList=2)
+QUERY([Contacts];[Contacts]Outcome="Rented";*)
+QUERY([Contacts]; | ;[Contacts]Outcome="Reserved";*)
+QUERY([Contacts]; & ;[Contacts]Facility=<>sFacility;*)
+: (asContactsList=3)
+QUERY([Contacts];[Contacts]Outcome="Declined";*)
+QUERY([Contacts]; & ;[Contacts]Facility=<>sFacility;*)
+: (asContactsList=4)
+QUERY([Contacts];[Contacts]Outcome="";*)
+QUERY([Contacts]; & ;[Contacts]Facility=<>sFacility;*)
+Else 
+QUERY([Contacts];[Contacts]Facility=<>sFacility;*)
+End case 
+QUERY([Contacts]; & ;[Contacts]CallDate>=$startDate;*)
+Case of 
+: (asPeriodList=1)
+$endDate:=Add to date($startDate;1;0;-1)
+QUERY([Contacts]; & ;[Contacts]CallDate<=$endDate;*)
+: (asPeriodList=2)
+$endDate:=Add to date($startDate;0;1;-1)
+QUERY([Contacts]; & ;[Contacts]CallDate<=$endDate;*)
+: (asPeriodList=3)
+$endDate:=Add to date($startDate;0;0;6)
+QUERY([Contacts]; & ;[Contacts]CallDate<=$endDate;*)
+: (asPeriodList=4)
+$endDate:=$startDate
+QUERY([Contacts]; & ;[Contacts]CallDate<=$endDate;*)
+: (asPeriodList=5)
+$endDate:=$startDate
+QUERY([Contacts]; & ;[Contacts]CallDate<=$endDate;*)
+End case 
+
+If (asPeriodList#5)
+QUERY([Contacts]; & ;[Contacts]CallTime>=?00:00:00?;*)
+QUERY([Contacts]; & ;[Contacts]CallTime<=?23:59:59?)
+Else 
+If ($halfDay=0)
+QUERY([Contacts]; & ;[Contacts]CallTime>=?00:00:00?;*)
+QUERY([Contacts]; & ;[Contacts]CallTime<=?11:59:59?)
+$halfDay:=1
+Else 
+QUERY([Contacts]; & ;[Contacts]CallTime>=?12:00:00?;*)
+QUERY([Contacts]; & ;[Contacts]CallTime<=?23:59:59?)
+$halfDay:=0
+End if 
+End if 
+
+CREATE SET([Contacts];"$ContactSet"+String($i))
+INSERT IN ARRAY(footerTotals;Size of array(footerTotals)+1)
+footerTotals{Size of array(footerTotals)}:=String(Records in selection([Contacts]))
+
+If ($halfDay=0)
+$startDate:=Add to date($endDate;0;0;1)
+End if 
+End for 
+
+If (Size of array(selectedTypes)>0)
+For ($i;1;Size of array(selectedTypes))
+GOTO XY(2;2)
+//MESSAGE("Generating Report")
+
+Case of 
+: (selectedTypes{$i}="TotEnq")//Add the Enquiries total line
+MonthlyEnqMisc (1)
+rpt2D{$rowcount}{1}:=Get localized string("Total Enquiries:")
+
+For ($j;1;Size of array(footerTotals))
+rpt2D{$rowcount}{$j+1}:=footerTotals{$j}
+End for 
+
+MonthlyEnqMisc (1)
+$rowcount:=$rowcount+2
+: (selectedTypes{$i}="SB")//For Stored Before item
+MonthlyEnqMisc (1)
+If (<>sProduct="@R")
+rpt2D{$rowcount}{1}:=Get localized string("Rented Before")
+Else 
+rpt2D{$rowcount}{1}:=Get localized string("Stored Before")
+End if 
+rpt2D{$rowcount}{2}:=Get localized string("Subhead")
+$rowcount:=$rowcount+1
+
+//Yes
+MonthlyEnqMisc (1)
+rpt2D{$rowcount}{1}:=Get localized string("Yes")
+
+For ($k;1;$Period)
+USE SET("$ContactSet"+String($k))
+$total:=Records in selection([Contacts])
+
+QUERY SELECTION([Contacts];[Contacts]StoredBefore=1)
+
+rpt2D{$rowcount}{$k+1}:=String(Records in selection([Contacts]))+" ("+String(Round((Records in selection([Contacts])/$total)*100;1))+"%)"
+End for 
+
+$rowcount:=$rowcount+1
+
+//No
+MonthlyEnqMisc (1)
+rpt2D{$rowcount}{1}:=Get localized string("No")
+
+For ($k;1;$Period)
+USE SET("$ContactSet"+String($k))
+$total:=Records in selection([Contacts])
+
+QUERY SELECTION([Contacts];[Contacts]StoredBefore=2)
+
+rpt2D{$rowcount}{$k+1}:=String(Records in selection([Contacts]))+" ("+String(Round((Records in selection([Contacts])/$total)*100;1))+"%)"
+End for 
+
+$rowcount:=$rowcount+1
+
+//Blank
+MonthlyEnqMisc (1)
+rpt2D{$rowcount}{1}:="<"+Get localized string("None")+">"
+
+For ($k;1;$Period)
+USE SET("$ContactSet"+String($k))
+$total:=Records in selection([Contacts])
+
+QUERY SELECTION([Contacts];[Contacts]StoredBefore=0)
+
+rpt2D{$rowcount}{$k+1}:=String(Records in selection([Contacts]))+" ("+String(Round((Records in selection([Contacts])/$total)*100;1))+"%)"
+End for 
+
+$rowcount:=$rowcount+1
+MonthlyEnqMisc (1)//Adding blank line
+$rowcount:=$rowcount+1
+: (selectedTypes{$i}="SQ")//For Size Quoted item
+MonthlyEnqMisc (1)
+rpt2D{$rowcount}{1}:=Get localized string("Size Quoted")
+rpt2D{$rowcount}{2}:=Get localized string("Subhead")
+$rowcount:=$rowcount+1
+
+For ($j;1;Size of array(footerTotals))
+footerTotals{$j}:="0"
+End for 
+
+
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@")
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+MonthlyEnqMisc (1)
+For ($j;1;Records in selection([UnitType]))
+$hasQuotes:=False
+
+rpt2D{$rowcount}{1}:=[UnitType]Description
+
+For ($k;1;$Period)
+USE SET("$ContactSet"+String($k))
+
+
+RELATE MANY SELECTION([Quote]ContactNo)
+$total:=Records in selection([Quote])
+footerTotals{$k}:=String($total)
+
+QUERY SELECTION([Quote];[Quote]UnitTypeCode=[UnitType]RUnitType)
+
+rpt2D{$rowcount}{$k+1}:=String(Records in selection([Quote]))+" ("+String(Round((Records in selection([Quote])/$total)*100;1))+"%)"
+
+If (Records in selection([Quote])>0) | (cShowUnquoted=1)
+$hasQuotes:=True
+End if 
+
+End for 
+
+If ($hasQuotes=True)
+$rowcount:=$rowcount+1
+MonthlyEnqMisc (1)
+End if 
+
+NEXT RECORD([UnitType])
+
+End for 
+MonthlyEnqMisc (1)
+
+MonthlyEnqMisc (1)
+$rowcount:=$rowcount+2
+rpt2D{$rowcount}{1}:=Get localized string("Total Quotes:")
+
+For ($j;1;Size of array(footerTotals))
+rpt2D{$rowcount}{$j+1}:=footerTotals{$j}
+End for 
+$rowcount:=$rowcount+1
+
+
+Else //All the items with MarketingTypes entries
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode=selectedTypes{$i})
+
+If (Records in selection([MarketingTypes])>0)
+MonthlyEnqMisc (1)
+
+Case of 
+: (selectedTypes{$i}="MS")
+//rptCol1{$rowcount}:=[Facility]MarketingTypeTitle
+rpt2D{$rowcount}{1}:=[Facility]MarketingTypeTitle
+: (selectedTypes{$i}="CT")
+rpt2D{$rowcount}{1}:=[Facility]CustomerTypeTitle
+: (selectedTypes{$i}="CC")
+rpt2D{$rowcount}{1}:=Get localized string("Contact Categories")
+: (selectedTypes{$i}="RD")
+rpt2D{$rowcount}{1}:=Get localized string("Reason for Declining")
+End case 
+rpt2D{$rowcount}{2}:="Subhead"
+$rowcount:=$rowcount+1
+
+For ($j;1;Records in selection([MarketingTypes]))
+MonthlyEnqMisc (1)
+rpt2D{$rowcount}{1}:=[MarketingTypes]Description
+
+For ($k;1;$Period)
+USE SET("$ContactSet"+String($k))
+If (selectedTypes{$i}="RD")
+QUERY SELECTION([Contacts];[Contacts]Outcome="Declined")
+End if 
+$total:=Records in selection([Contacts])
+
+Case of 
+: (selectedTypes{$i}="MS")
+QUERY SELECTION([Contacts];[Contacts]MarketSrce=[MarketingTypes]Description)
+: (selectedTypes{$i}="CT")
+QUERY SELECTION([Contacts];[Contacts]CustType=[MarketingTypes]Description)
+: (selectedTypes{$i}="CC")
+QUERY SELECTION([Contacts];[Contacts]Category=[MarketingTypes]Description)
+: (selectedTypes{$i}="RD")
+QUERY SELECTION([Contacts];[Contacts]ReasonDeclined=[MarketingTypes]Description)
+End case 
+
+rpt2D{$rowcount}{$k+1}:=String(Records in selection([Contacts]))+" ("+String(Round((Records in selection([Contacts])/$total)*100;1))+"%)"
+End for 
+
+$rowcount:=$rowcount+1
+NEXT RECORD([MarketingTypes])
+End for 
+
+//Add for <None>
+MonthlyEnqMisc (1)
+rpt2D{$rowcount}{1}:="<"+Get localized string("None")+">"
+
+For ($k;1;$Period)
+USE SET("$ContactSet"+String($k))
+
+$total:=Records in selection([Contacts])
+
+Case of 
+: (selectedTypes{$i}="MS")
+QUERY SELECTION([Contacts];[Contacts]MarketSrce="")
+: (selectedTypes{$i}="CT")
+QUERY SELECTION([Contacts];[Contacts]CustType="")
+: (selectedTypes{$i}="CC")
+QUERY SELECTION([Contacts];[Contacts]Category="")
+: (selectedTypes{$i}="RD")
+QUERY SELECTION([Contacts];[Contacts]ReasonDeclined="")
+End case 
+//SDD 12/12/12 Changed rounding to zero decimal places instead of 1 as it wont fit on report
+rpt2D{$rowcount}{$k+1}:=String(Records in selection([Contacts]))+" ("+String(Round((Records in selection([Contacts])/$total)*100;0))+"%)"
+End for 
+
+$rowcount:=$rowcount+1
+End if 
+MonthlyEnqMisc (1)
+$rowcount:=$rowcount+1
+End case 
+End for 
+If (<>tBatch=False)
+<>ProgressInd:=100
+End if 
+
+ALL RECORDS([Contacts])
+REDUCE SELECTION([Contacts];Size of array(rpt2D))
+
+vTitle:=Get localized string("Sales Enquiry Report")
+If (<>iPrinttoFile=3)
+
+ARRAY TEXT(aFieldNames;$Period+1)
+aFieldNames{1}:=Get localized string("OnDetail")
+
+excelRow:=1
+vpTable:=->[Contacts]
+For ($j;1;Size of array(dateRanges))
+aFieldNames{$j+1}:=dateRanges{$j}
+End for 
+CreateExcelReport ($Period+1;Size of array(rpt2D);"MethodMonthlyEnqExcel";vTitle;[Facility]FacilityName)
+Else 
+rowNumber:=1
+vLegend:=""
+If (b6P=1)
+FORM SET OUTPUT([Contacts];"MonthlyEnqRpt")
+PrintSelection ("P")
+Else 
+FORM SET OUTPUT([Contacts];"MonthlyEnqRptL")
+PrintSelection ("L")
+End if 
+
+FORM SET OUTPUT([Contacts];"Output")
+
+For ($k;1;$Period)
+CLEAR SET("$ContactSet"+String($k))
+End for 
+End if 
+End if 
+End if 
+LogAction (True;"Sales Enquiry Report ended.")

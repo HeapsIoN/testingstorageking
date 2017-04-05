@@ -1,0 +1,60 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+READ WRITE([Trxs])
+QUERY SELECTION([Trxs];[Trxs]SetMatch=True)
+If (Records in selection([Trxs])<2)
+AlertMessage (Get localized string("Please select more than one transaction"))
+Else 
+$Total:=0
+$j:=[Trxs]Match
+$AllSame:=True
+For ($i;1;Records in selection([Trxs]))
+If ([Trxs]Charge=True)
+$Total:=$Total+[Trxs]TotAmt
+Else 
+$Total:=$Total-[Trxs]TotAmt
+End if 
+If ($j#[Trxs]Match)
+$AllSame:=False
+End if 
+NEXT RECORD([Trxs])
+End for 
+If (Round($Total;2)=0)
+If ($AllSame)
+If ($j=0)
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+$i:=[Customer]NextMatch
+Else 
+$i:=0
+End if 
+APPLY TO SELECTION([Trxs];[Trxs]Match:=$i)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+CREATE RECORD([QueueLog])//read write not necessary for Create Record
+[QueueLog]GateActionText:=[Agreement]RAgreeNo
+[QueueLog]GateUnit:=$i
+[QueueLog]Order:=-1
+SAVE RECORD([QueueLog])
+UNLOAD RECORD([QueueLog])
+Else 
+AlertMessage (Get localized string("The selected trxs do not have the same Match code!!"))
+End if 
+Else 
+FIRST RECORD([Trxs])
+$i:=[Trxs]Match
+If ($i>0)
+USE SET("Display")
+QUERY SELECTION([Trxs];[Trxs]Match=$i)
+If (Records in selection([Trxs])>0)
+ConfirmTwo (Get localized string("Clear match code")+" "+String([Trxs]Match)+" "+Get localized string("for")+" "+String(Records in selection([Trxs]))+" "+Get localized string("transactions")+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("The selected trxs do not add to zero!!"))
+End if 
+End if 
+End if 
+ReCalc 

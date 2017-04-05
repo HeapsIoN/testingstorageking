@@ -1,0 +1,37 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//This is used by MatchTrx & MiscReceipts'bAccept to deal with subrecords
+C_LONGINT($0;$i)//Error passed back
+C_TEXT($1)//SubAnalysisCode
+C_DATE($2)//TrxDate
+C_REAL($3;$4)//TaxAmt & TotAmt
+C_POINTER($p)
+$0:=0
+If ([Trxs]Match>-50)
+$i:=Find in array(<>asCharges;$1)
+If ($i<1) | ($i>Size of array(<>asCharges))
+$p:=->[Activity]OtherRec
+Else 
+Case of 
+: (<>asChargeCat{$i}="Rent") | (<>asChargeCat{$i}="Upg & Support")
+$p:=->[Activity]RentChg
+: (<>asChargeCat{$i}="Deposit") | (<>asChargeCat{$i}="Licences")
+$p:=->[Activity]DepositChg
+: (<>asChargeCat{$i}="Late Fees") | (<>asChargeCat{$i}="MV Hosting")
+$p:=->[Activity]LateFeeChg
+: (<>asChargeCat{$i}="Insurance") | (<>asChargeCat{$i}="Internet Trxs")
+$p:=->[Activity]InsureChg
+: (<>asChargeCat{$i}="Merchandise") | (<>asChargeCat{$i}="Access Control")
+$p:=->[Activity]MerchChg
+//If (<>sFacility="KE@") & ([Transaction]TotAmt<0) & ([Transaction]AnalysisCode#(<>sFacility+"MD")) & ([Transaction]AgreeNo#<>sFacility) & ([Transaction]Charge=True)
+//LogActivity (Substring([Transaction]AgreeNo;1;5);$2;->[Activity]MerchReturnChg;Round($4-$3;2);->[Activity]TaxChg;$3;->[Activity]DiscChg;$5)
+//End if 
+: (<>asChargeCat{$i}="Bad Debts")
+$p:=->[Activity]BadDebtChg
+: (<>asChargeCat{$i}="Discounts")
+$p:=->[Activity]DiscChg
+Else 
+$p:=->[Activity]OtherChg
+End case 
+End if 
+$0:=LogActivity (Substring([Trxs]AgreeNo;1;5);$2;$p;Round($4-$3;2);->[Activity]TaxRec;$3)
+End if 

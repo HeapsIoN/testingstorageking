@@ -1,0 +1,73 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$LastRec)
+C_BOOLEAN($1;$IsWebCall)// True call from web
+C_TEXT($FacilityOldCode)
+If (Count parameters>0)//Added by Hamid - 26/07/2016
+$IsWebCall:=$1
+End if 
+
+If ($IsWebCall=False)
+LogAction (False;"List of Waived Late Fees Report started.")// records the report being started in the eventlog
+Else 
+$FacilityOldCode:=<>sFacility
+<>sFacility:=WS_FacilityCode
+End if 
+
+
+If (PermissionsControl (73))
+DEFAULT TABLE([EventLog])
+SetFacility 
+OK:=1
+
+If ($IsWebCall=False)
+If (<>tBatch=False)
+vEdDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vEdDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vEdDate)
+Else 
+vEdDate:=vMthDate
+End if 
+Else 
+OK:=1
+End if 
+
+
+If (OK=1)
+vStDate:=GetDate (1;Month of(vEdDate);Year of(vEdDate))
+QUERY([EventLog];[EventLog]EventDate>=UTCDate (?00:00:00?;False;vStDate);*)
+QUERY([EventLog]; & ;[EventLog]EventTable=6;*)
+QUERY([EventLog]; & ;[EventLog]BillPAnlys=<>sFacility+"LF";*)
+QUERY([EventLog]; & ;[EventLog]TrxDate<=vEdDate;*)
+QUERY([EventLog]; & ;[EventLog]TrxDate>=vStDate)
+QUERY SELECTION([EventLog];[EventLog]EventType="DEL";*)
+QUERY SELECTION([EventLog]; | ;[EventLog]TrxAmount<=0)
+ORDER BY([EventLog];[EventLog]EventRecNo;>;[EventLog]EventDate;<;[EventLog]EventTime;<)
+CREATE SET([EventLog];"TooMany")
+CREATE EMPTY SET([EventLog];"ToDelete")
+$LastRec:=0
+For ($i;1;Records in selection([EventLog]))
+If ([EventLog]EventRecNo=$LastRec)
+ADD TO SET([EventLog];"ToDelete")
+End if 
+$LastRec:=[EventLog]EventRecNo
+NEXT RECORD([EventLog])
+End for 
+DIFFERENCE("TooMany";"ToDelete";"TooMany")
+USE SET("TooMany")
+CLEAR SET("TooMany")
+CLEAR SET("ToDelete")
+ORDER BY([EventLog];[EventLog]TrxDate;>;[EventLog]AgreeNo;>)
+If ($IsWebCall=False)
+BREAK LEVEL(0)
+ACCUMULATE([EventLog]TrxAmount)
+FORM SET OUTPUT([EventLog];"WaivedLFRpt")
+//SET PRINT OPTION(12;"List of Waived Late Fees")
+PrintSelection ("P")
+FORM SET OUTPUT([EventLog];"Output")
+End if 
+End if 
+End if 
+If ($IsWebCall=False)
+LogAction (True;"List of Waived Late Fees Report ended.")
+Else 
+<>sFacility:=$FacilityOldCode
+End if 

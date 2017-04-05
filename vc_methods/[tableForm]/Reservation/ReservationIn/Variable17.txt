@@ -1,0 +1,114 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+If ([Facility]FacilityCode="KE@") & ((Test path name(<>sPreferencesPath+"Training.xml")#Is a document))
+//05/08/14 DAM Added KSS Check
+$Failed:=False
+$Message:=""
+If ([Customer]CustomerName="")
+$Failed:=True
+$Message:="Customer Name"
+End if 
+
+If ([Reservation]ExpMoveIn<Current date)
+If ($Failed=True)
+$Message:=$Message+", Expected Move In Date"
+Else 
+$Message:="Expected Move In Date"
+End if 
+$Failed:=True
+End if 
+
+If ([Customer]FirstName="")
+If ($Failed=True)
+$Message:=$Message+", Contact First Name"
+Else 
+$Message:="Customer First Name"
+End if 
+$Failed:=True
+End if 
+
+If ([Customer]EmailAddress="")
+If ($Failed=True)
+$Message:=$Message+", Customer Email Address"
+Else 
+$Message:="Customer Email Address"
+End if 
+$Failed:=True
+End if 
+
+If (Records in selection([Unit])=0)
+If ($Failed=True)
+$Message:=$Message+", No Reserved Units"
+Else 
+$Message:="No Reserved Units"
+End if 
+$Failed:=True
+End if 
+
+If ($Failed=False)
+KSScurl (True)
+If (<>sProduct#"M@")
+AlertMessage ("Your eReservation to "+[Customer]CustomerName+" is being processed, a copy of the eReservation will be available for reference in Notice History once the reservation has synced with Central")
+Else 
+AlertMessage ("Your eReservation to "+[Customer]CustomerName+" is being processed, once you OK and close a copy of the eReservation will be available for reference in Notice History")
+End if 
+OBJECT SET ENABLED(bAbort;False)
+QUERY([Letters];[Letters]AgreeNo=[Reservation]RReserveNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+Else 
+AlertMessage ("To send this eReservation, you must complete/correct the following customer information: "+$Message)
+End if 
+Else 
+If ([Customer]EmailAddress>"")
+ResLetterRef 
+FORM SET INPUT([Letters];"EmailIn")
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Reservation]RReserveNo
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="Default")
+If (Records in selection([Notices])=1)
+[Letters]LetterBLOB:=[Notices]Email
+[Letters]LetterDesc:=[Notices]Description
+
+If ([Notices]EmailSubject#"")
+[Letters]Custom1:=[Notices]EmailSubject
+Else 
+[Letters]Custom1:=[Letters]LetterDesc
+End if 
+Else 
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; | ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]EmailBlank=False;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+ORDER BY([Notices];[Notices]DaysAfter;>;[Notices]Description;>)
+LOAD RECORD([Notices])
+[Letters]LetterBLOB:=[Notices]Email
+[Letters]LetterDesc:=[Notices]Description
+
+If ([Notices]EmailSubject#"")
+[Letters]Custom1:=[Notices]EmailSubject
+Else 
+[Letters]Custom1:=[Letters]LetterDesc
+End if 
+End if 
+[Letters]DateSent:=Current date
+SAVE RECORD([Letters])
+vboolOld:=False
+Test_TextBlob:=Convert to text([Letters]LetterBLOB;"UTF-8")
+Test_TheID:=Record number([Letters])
+Test_Mailpath:=""
+$WinRef:=Open window((Screen width/2)-425;(Screen height/2)-325;(Screen width/2)+425;(Screen height/2)+325;4096;Get localized string("Email"))
+MODIFY RECORD([Letters];*)//No scroll bars
+CLOSE WINDOW($WinRef)
+If (bCancel=1)
+DELETE RECORD([Letters])
+End if 
+QUERY([Letters];[Letters]AgreeNo=[Reservation]RReserveNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+
+Else 
+AlertMessage ("You need to enter the customer email address.")
+End if 
+End if 

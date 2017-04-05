@@ -1,0 +1,205 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Not used in this version
+C_LONGINT($i;$Set;$MatchAmt)
+C_TEXT($LastTenant)
+
+$MatchAmt:=0
+
+SET AUTOMATIC RELATIONS(False;False)
+DEFAULT TABLE([Trxs])
+QUERY([Trxs]TrxDate>(Current date+31))
+If (Records in selection>0)
+AlertMessage (Get localized string("WARNING - There are transactions with dates past")+" "+String(Current date+31)+".  "+Get localized string("These will be displayed and should be checked!"))
+FORM SET OUTPUT([Trxs];"Output")
+DISPLAY SELECTION([Trxs];Single selection;*)
+ConfirmTwo (Get localized string("Stop matching so that you can correct transaction dates?"))
+If (OK=1)
+ABORT
+End if 
+End if 
+LogAction (False;"Matching commenced")
+If (<>tLogging=False)
+READ WRITE([Trxs])
+READ WRITE([Customer])
+QUERY([Trxs];[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Confirmed=False)
+APPLY TO SELECTION([Trxs];[Trxs]Confirmed:=True)
+If (<>tBatch=True)
+$MonthEnd:=vMthDate
+Else 
+$MonthEnd:=RequestDate (Get localized string("Please enter month end date");GetDate (1;Month of(Current date);Year of(Current date))-1)
+End if 
+If (OK=1) | (<>tBatch)
+$MonthStart:=GetDate (1;Month of($MonthEnd);Year of($MonthEnd))
+If (<>tBatch=True)
+$MiscDate:=Add to date($MonthStart;0;-18;0)//go back eighteen months
+OK:=1
+Else 
+$MiscDate:=RequestDate (Get localized string("Clear MISCL receipts prior to:");Add to date($MonthStart;0;-18;0))
+End if 
+If ($MiscDate>[Facility]StockSysStart)
+$MiscDate:=[Facility]StockSysStart//Don't allow deletion after stock system start date
+End if 
+If (OK=1) & ($MiscDate<$MonthStart)
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<$MiscDate)
+If (<>tBatch=False)
+BEEP
+AlertMessage (String(Records in selection)+" "+Get localized string("cash sales were deleted."))
+End if 
+DELETE SELECTION([Trxs])
+End if 
+NewMatch ($MonthEnd)
+vDoc:=Append document("Match Log File")
+Open window(20;50;300;150;0)
+For ($i;1;4)
+Case of 
+: ($i=2)
+SEND PACKET(vDoc;"Total matches in loop 1 = "+String($MatchAmt)+Char(13))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Matching by amount in current month")+".      ")
+: ($i=1)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Matching by date in current month")+".      ")
+: ($i=4)
+SEND PACKET(vDoc;"Total matches in loop 3 = "+String($MatchAmt)+Char(13))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Matching by amount for all months")+".      ")
+: ($i=3)
+SEND PACKET(vDoc;"Total matches in loop 2 = "+String($MatchAmt)+Char(13))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Matching by date for all months")+".      ")
+Else 
+//Do Nothing
+End case 
+$MatchAmt:=0
+If ($i<3)
+//Matching of transactions within the current month      
+QUERY([Trxs];[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Confirmed=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$MonthEnd;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$MonthStart)
+Else 
+QUERY([Trxs];[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Confirmed=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$MonthEnd)
+CREATE SET("All")
+QUERY([Trxs];[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>$MonthEnd)
+CREATE SET("Charges")
+UNION("All";"Charges";"All")
+USE SET("All")
+CLEAR SET("All")
+CLEAR SET("Charges")
+End if 
+If ($i=2) | ($i=4)
+ORDER BY([Trxs]CustomerCode;>;[Trxs]AgreeNo;>;[Trxs]TotAmt;>)
+Else 
+ORDER BY([Trxs]CustomerCode;>;[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]Charge;>)
+End if 
+FIRST RECORD
+$LastTenant:=""
+//   $Total:=0  This line changed 16/11/93 to stop matching of single trx
+$Total:=1//If $Total =1 then [Trx]Match s/not be set to -1 on first loop
+Repeat 
+If ([Trxs]CustomerCode#$LastTenant) | (Round($Total;2)=0)
+If (Round($Total;2)=0)
+[Trxs]Match:=-1
+Else 
+[Trxs]Match:=-2
+End if 
+SAVE RECORD
+$LastTenant:=[Trxs]CustomerCode
+$Total:=0
+End if 
+If ([Trxs]Charge=True)
+$Total:=$Total+[Trxs]TotAmt
+Else 
+$Total:=$Total-[Trxs]TotAmt
+End if 
+NEXT RECORD
+Until (End selection)
+LAST RECORD
+If (Round($Total;2)=0)
+RELATE ONE([Trxs]CustomerCode)
+If (Records in selection([Customer])=1)
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+If (Records in selection([Trxs])>0)
+SEND PACKET(vDoc;"Customer:"+[Trxs]CustomerCode+", Agreement:"+[Trxs]AgreeNo+", Match:"+String([Customer]NextMatch)+Char(13))
+$MatchAmt:=$MatchAmt+1
+End if 
+$Match:=True
+Else 
+$Match:=False
+End if 
+Else 
+$Match:=False
+End if 
+$Set:=0
+Repeat 
+If ([Trxs]Match=-1)
+$Set:=1
+End if 
+If ([Trxs]Match=-2)
+$Set:=2
+End if 
+If ($Match=True)
+[Trxs]Match:=[Customer]NextMatch
+Else 
+[Trxs]Match:=0
+End if 
+SAVE RECORD([Trxs])
+PREVIOUS RECORD
+If ($Set=1)
+RELATE ONE([Trxs]CustomerCode)
+If (Records in selection([Customer])=1)
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+If (Records in selection([Trxs])>0)
+If (Before selection=True)
+FIRST RECORD
+End if 
+SEND PACKET(vDoc;"Customer:"+[Trxs]CustomerCode+", Agreement:"+[Trxs]AgreeNo+", Match:"+String([Customer]NextMatch)+Char(13))
+$MatchAmt:=$MatchAmt+1
+End if 
+$Match:=True
+Else 
+$Match:=False
+End if 
+End if 
+If ($Set=2)
+$Match:=False
+End if 
+$Set:=0
+Until (Before selection)
+NEXT RECORD
+If ([Trxs]Match<0)
+[Trxs]Match:=0
+SAVE RECORD
+End if 
+End for 
+CLOSE WINDOW
+//Write Log File
+SEND PACKET(vDoc;"Total matches in loop 4 = "+String($MatchAmt)+Char(13))
+SEND PACKET(vDoc;"MatchTrxs procedure completed at "+String(Current time)+" on "+String(Current date)+Char(13))
+SEND PACKET(vDoc;Char(13))
+CLOSE DOCUMENT(vDoc)
+
+QUERY([Trxs];[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$MonthEnd)
+If (Records in selection>0) & (<>tBatch=False)
+ORDER BY([Trxs]TrxDate;>;[Trxs]TotAmt;>)
+FORM SET OUTPUT([Trxs];"Unmatched")
+DISPLAY SELECTION([Trxs];Single selection;*)
+FORM SET OUTPUT([Trxs];"Output")
+End if 
+End if 
+READ ONLY(*)
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Trxs])
+LogAction (True;"Matching completed")
+End if 
+LogAction (True;"Matching ended")

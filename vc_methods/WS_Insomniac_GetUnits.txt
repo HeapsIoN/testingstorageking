@@ -1,0 +1,76 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_TypeID;Is text;SOAP input)
+SOAP DECLARATION(WS_Type_Desc;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_GetUnits"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_TypeID: "+WS_TypeID+Char(13)
+$String:=$String+"WS_Type_Desc: "+WS_Type_Desc+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_InternalUnitID;Text array;SOAP output)
+SOAP DECLARATION(WS_ExternalUnitID;Text array;SOAP output)
+SOAP DECLARATION(WS_MonthlyRate;Real array;SOAP output)
+SOAP DECLARATION(WS_Available;Text array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_InternalUnitID;0)
+ARRAY TEXT(WS_ExternalUnitID;0)
+ARRAY REAL(WS_MonthlyRate;0)
+ARRAY TEXT(WS_Available;0)
+
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+"@";*)//Don't need
+QUERY([Unit]; & ;[Unit]UnitTypeCode=WS_FacilityID+WS_TypeID)
+ORDER BY([Unit];[Unit]UnitNo;>)
+
+If (Records in selection([Unit])=0)
+WS_RET_CODE:=False
+WS_ERROR:="Facility Not Found"
+Else 
+FIRST RECORD([Unit])
+For ($i;1;Records in selection([Unit]))
+INSERT IN ARRAY(WS_InternalUnitID;Size of array(WS_InternalUnitID)+1)
+INSERT IN ARRAY(WS_ExternalUnitID;Size of array(WS_ExternalUnitID)+1)
+INSERT IN ARRAY(WS_MonthlyRate;Size of array(WS_MonthlyRate)+1)
+INSERT IN ARRAY(WS_Available;Size of array(WS_Available)+1)
+WS_RET_CODE:=True
+WS_InternalUnitID{$i}:=[Unit]UnitNo
+WS_ExternalUnitID{$i}:=[Unit]UnitNo
+If ([Unit]Vacant=True) & (([Unit]Status="Vacant") | ([Unit]Status="ToClean"))
+WS_Available{$i}:="Y"
+Else 
+WS_Available{$i}:="N"
+End if 
+QUERY([UnitType];[UnitType]RUnitType=WS_FacilityID+WS_TypeID)
+WS_MonthlyRate{$i}:=[UnitType]MonthlyRate
+
+NEXT RECORD([Unit])
+End for 
+End if 
+
+$String:="End WS_Insomniac_GetUnits"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$sizeofarray:=Size of array(WS_InternalUnitID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_InternalUnitID("+String($vlElem)+"):"+WS_InternalUnitID{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ExternalUnitID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ExternalUnitID("+String($vlElem)+"):"+WS_ExternalUnitID{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_MonthlyRate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MonthlyRate("+String($vlElem)+"):"+String(WS_MonthlyRate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_Available)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_Available("+String($vlElem)+"):"+WS_Available{$vlElem}+Char(13)
+End for 
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)

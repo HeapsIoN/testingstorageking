@@ -1,0 +1,164 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 26/03/16, 10:11:37
+// ----------------------------------------------------
+// Method: SendEmail
+// Description
+// This method is used to send an emaiul address out of storman
+// $1=addressto   $2=subject   $3=message   $4=if attachment
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($0;$4)//If $4 is true then attachments are in array aText
+C_TEXT($1;$2;$3;$Host;$From;$Login;$Pass)//$Address`$Subject`$Message
+C_LONGINT($smtp_id;$pop3_id;$i;$ssl)
+$smtp_id:=0
+$pop3_id:=0
+$0:=False
+$Attach:=False
+If (Count parameters>3)
+$Attach:=$4
+End if 
+$PortPos:=Position(":";[Facility]SmtpHostName)
+If ($PortPos>0)
+$Host:=Substring([Facility]SmtpHostName;1;$PortPos-1)
+Else 
+$Host:=[Facility]SmtpHostName
+End if 
+$From:=[Facility]EmailAddress
+$Login:=[Facility]SMTPLogin
+$Pass:=[Facility]SMTPPassword
+$smtpssl:=[Facility]SMTPSSL
+$POP3SSL:=[Facility]POP3SSL
+
+If ($From="")
+$From:=[Facility]FacilityCode+" <noemailaddress@storman.com>"
+End if 
+vtEmail:=$1
+$PortPos:=Position(":";[Facility]POPHostName)
+If ($PortPos>0)
+$PortString:=Substring([Facility]POPHostName;$PortPos+1)
+$Address:=Substring([Facility]POPHostName;1;$PortPos-1)
+Else 
+$PortString:="110"
+$Address:=[Facility]POPHostName
+End if 
+$Port:=Num($PortString)
+If ($POP3SSL=1)
+$err:=IT_SetPort (13;$Port)
+Else 
+$err:=IT_SetPort (3;$Port)
+End if 
+
+If ([Facility]POPAuthForSMTP=True) & (($Login="") | ($Pass=""))//Require POP Login for Sending verification if SMTP Auth not used
+If (ErrorMail ("POP3_Login";POP3_Login ($Address;[Facility]POPMailBox;[Facility]POPPassword;0;$pop3_id;$POP3SSL)))
+ErrorMail ("POP3_Logout";POP3_Logout ($pop3_id))
+End if 
+End if 
+
+$PortPos:=Position(":";[Facility]SmtpHostName)
+If ($PortPos>0)
+$PortString:=Substring([Facility]SmtpHostName;$PortPos+1)
+Else 
+$PortString:="25"
+End if 
+$Port:=Num($PortString)
+
+
+If ($Host="")
+$Host:="reports.storman.com"
+$Port:=587
+$SMTPSSL:=0
+$Login:="reports"
+$Pass:="k2ZEQnYNrTznhs6NfS8k"
+End if 
+
+If ($SMTPSSL=1)
+$err:=IT_SetPort (12;$Port)
+Else 
+$err:=IT_SetPort (2;$Port)
+End if 
+
+Case of 
+: (Not(ErrorMail ("SMTP_New";SMTP_New ($smtp_id))))//Creates a new message envelope assigned to $smtp_id
+: (Not(ErrorMail ("SMTP_Host";SMTP_Host ($smtp_id;$Host;0))))//point to a smtp server that will handle our mail delivery
+: (Not(ErrorMail ("SMTP_From";SMTP_From ($smtp_id;$From;0))))
+: (Not(ErrorMail ("SMTP_ReplyTo";SMTP_ReplyTo ($smtp_id;$From;0))))
+: (Not(ErrorMail ("SMTP_To";SMTP_To ($smtp_id;$1;0))))//primary recipient{s} of the message
+: (Not(ErrorMail ("SMTP_Subject";SMTP_Subject ($smtp_id;$2;0))))//the topic 
+: (Not(ErrorMail ("SMTP_Body";SMTP_Body ($smtp_id;$3;0))))//add our body text to the message
+: (Not(ErrorMail ("SMTP_Auth";SMTP_Auth ($smtp_id;$Login;$Pass;0))))
+: (Not(ErrorMail ("SMTP_Date";SMTP_Date ($smtp_id;Current date;Current time;1;0;0))))
+Else 
+If ($Attach)
+For ($i;1;Size of array(aText))
+ErrorMail ("SMTP_Attachment";SMTP_Attachment ($smtp_id;aText{$i};2;0))//Encoding 2 = Base64
+End for 
+End if 
+$0:=ErrorMail ("SMTP_Send";SMTP_Send ($smtp_id;$smtpssl))//were done, so let's send it...
+End case 
+If ($smtp_id#0)//If a Message Envelope was created we should clear it now
+ErrorMail ("SMTP_Clear";SMTP_Clear ($smtp_id))//clear our message from memory and free up space
+End if 
+
+
+If ($0=False) & ($Host#"reports.storman.com")
+
+$Host:="reports.storman.com"
+$Port:=587
+$SMTPSSL:=0
+$Login:="reports"
+$Pass:="k2ZEQnYNrTznhs6NfS8k"
+
+If ($SMTPSSL=1)
+$err:=IT_SetPort (12;$Port)
+Else 
+$err:=IT_SetPort (2;$Port)
+End if 
+
+Case of 
+: (Not(ErrorMail ("SMTP_New";SMTP_New ($smtp_id))))//Creates a new message envelope assigned to $smtp_id
+: (Not(ErrorMail ("SMTP_Host";SMTP_Host ($smtp_id;$Host;0))))//point to a smtp server that will handle our mail delivery
+: (Not(ErrorMail ("SMTP_From";SMTP_From ($smtp_id;$From;0))))
+: (Not(ErrorMail ("SMTP_ReplyTo";SMTP_ReplyTo ($smtp_id;$From;0))))
+: (Not(ErrorMail ("SMTP_To";SMTP_To ($smtp_id;$1;0))))//primary recipient{s} of the message
+: (Not(ErrorMail ("SMTP_Subject";SMTP_Subject ($smtp_id;$2;0))))//the topic 
+: (Not(ErrorMail ("SMTP_Body";SMTP_Body ($smtp_id;$3;0))))//add our body text to the message
+: (Not(ErrorMail ("SMTP_Auth";SMTP_Auth ($smtp_id;$Login;$Pass;0))))
+: (Not(ErrorMail ("SMTP_Date";SMTP_Date ($smtp_id;Current date;Current time;1;0;0))))
+Else 
+If ($Attach)
+For ($i;1;Size of array(aText))
+ErrorMail ("SMTP_Attachment";SMTP_Attachment ($smtp_id;aText{$i};2;0))//Encoding 2 = Base64
+End for 
+End if 
+$0:=ErrorMail ("SMTP_Send";SMTP_Send ($smtp_id;$smtpssl))//were done, so let's send it...
+End case 
+If ($smtp_id#0)//If a Message Envelope was created we should clear it now
+ErrorMail ("SMTP_Clear";SMTP_Clear ($smtp_id))//clear our message from memory and free up space
+End if 
+
+End if 
+
+
+$UrgentEmail:=""
+
+If (Test path name(<>sPreferencesPath+"Overnight.XML")=Is a document) & ($1="urgent@storman.com")
+ON ERR CALL("ErrorNone")
+DOCUMENT TO BLOB(<>sPreferencesPath+"Overnight.xml";$Overnight)
+$xmlref:=DOM Parse XML variable($Overnight)
+
+$statement_xpath:="/Preferences4D/UrgentEmail"
+$xmlnode:=DOM Find XML element($xmlref;$statement_xpath)
+If ($xmlnode#"0000000000000000")
+DOM GET XML ELEMENT VALUE($xmlnode;$value_t)
+$UrgentEmail:=$value_t
+End if 
+ON ERR CALL("ErrorLog")
+If ($UrgentEmail#"") & ($UrgentEmail#"urgent@storman.com")
+SendEmail ($UrgentEmail;$2;$3;$Attach)
+End if 
+End if 

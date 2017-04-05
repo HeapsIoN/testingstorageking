@@ -1,0 +1,163 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+LogAction (False;"Unit Activity Report started.")// records the report being started in the eventlog
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 22/09/16, 13:43:05
+// ----------------------------------------------------
+// Method: Activity
+// Description
+// 
+// Unit Activity Report
+// 
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT($j;$Pixils)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+
+If (PermissionsControl (56))
+DEFAULT TABLE([Unit])
+SetFacility 
+OK:=1
+Case of 
+: (<>sProduct="@B")
+vTitle:=Get localized string("BerthActivity")
+vLegend:=Get localized string("ActivityLegendBerth")
+OBJECT SET TITLE(*;"Text1";Get localized string("Berth No"))
+: (<>sProduct="@R")
+vTitle:=Get localized string("ApplianceActivity")
+vLegend:=Get localized string("ActivityLegendAppliance")
+OBJECT SET TITLE(*;"Text1";Get localized string("Appl No"))
+: (<>sProduct="@C")
+vTitle:=Get localized string("SpaceActivity")
+vLegend:=Get localized string("ActivityLegendSpace")
+OBJECT SET TITLE(*;"Text1";Get localized string("Space No"))
+Else 
+vTitle:=Get localized string("MenuReportunitActivityReport")
+vLegend:=Get localized string("UnitActivityReport1")
+OBJECT SET TITLE(*;"Text1";Get localized string("Unit No"))
+End case 
+
+If (<>tBatch=False)
+
+vRptDate:=Current date+[Facility]WeekEndDay-Day number(Current date)
+$WinRef:=Open window((Screen width/2)-200;(Screen height/2)-196;(Screen width/2)+200;(Screen height/2)+196;5;Get localized string("MenuReportunitActivityReport"))
+DIALOG([Unit];"ActivityDialog")
+CLOSE WINDOW($WinRef)
+
+Else 
+vRptDate:=vMthDate
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+End if 
+If (OK=1)
+If (<>tBatch=False)
+CalcRentedValues (<>sFacility)
+End if 
+vTitle:=vTitle+" "+Get localized string("from")+" "+String(vDate;6)+" "+Get localized string("to")+" "+String(vRptDate;6)
+If (<>tWinLetterFormat#"A4")
+PAGE SETUP([Facility];"ClientSetup")//US Letter full size
+Else 
+PAGE SETUP([Unit];"ActivityHdr")
+End if 
+If (<>tBatch=False)
+PRINT SETTINGS
+End if 
+If (OK=1)
+Print form([Unit];"ActivityHdr")
+$Pixils:=75
+vAmt2:=0
+Repeat 
+QUERY([UnitHistory];[UnitHistory]UnitNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn=vDate)
+CREATE SET([UnitHistory];"Moveins")
+QUERY([UnitHistory];[UnitHistory]UnitNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut=vDate)
+CREATE SET([UnitHistory];"Moveouts")
+UNION("Moveins";"Moveouts";"All")
+USE SET("All")
+vAmt1:=0
+If (Records in selection([UnitHistory])>0)
+If ($Pixils>650)
+PAGE BREAK(>)
+Print form([Unit];"ActivityHdr")
+$Pixils:=75
+End if 
+vAmt3:=0
+vLegend:=String(vDate;3)
+OBJECT SET FONT STYLE(vLegend;5)
+Print form([Unit];"ActivityLeg")
+$Pixils:=$Pixils+20
+OBJECT SET FONT STYLE(vLegend;0)
+//      vLegend:=" "
+//      PRINT LAYOUT([Unit];"ActivityLeg")
+Case of 
+: (<>sProduct="@B")
+vLegend:=Get localized string("Arrivals")
+: (<>sProduct="@R")
+vLegend:=Get localized string("Rentals")
+: (<>sProduct="@C")
+vLegend:=Get localized string("Move-Ins")
+Else 
+vLegend:=Get localized string("Move-Ins")
+End case 
+Print form([Unit];"ActivityLeg")
+$Pixils:=$Pixils+20
+USE SET("Moveins")
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>)
+For ($j;1;Records in selection([UnitHistory]))
+Print form([UnitHistory];"ActivityDet")
+$Pixils:=$Pixils+15
+vAmt1:=vAmt1+[UnitHistory]RentedValue
+NEXT RECORD([UnitHistory])
+End for 
+//      vLegend:=" "
+//      PRINT LAYOUT([Unit];"ActivityLeg")
+Case of 
+: (<>sProduct="@B")
+vLegend:=Get localized string("Departures")
+: (<>sProduct="@R")
+vLegend:=Get localized string("Returns")
+: (<>sProduct="@C")
+vLegend:=Get localized string("Move-Outs")
+Else 
+vLegend:=Get localized string("Move-Outs")
+End case 
+
+Print form([Unit];"ActivityLeg")
+$Pixils:=$Pixils+20
+USE SET("Moveouts")
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>)
+For ($j;1;Records in selection([UnitHistory]))
+[UnitHistory]RentedValue:=[UnitHistory]RentedValue*(-1)
+Print form([UnitHistory];"ActivityDet")
+$Pixils:=$Pixils+15
+vAmt1:=vAmt1+[UnitHistory]RentedValue
+NEXT RECORD([UnitHistory])
+End for 
+vAmt3:=vAmt1
+vLegend:=Get localized string("Net Gains/(Losses)")
+Print form([Unit];"ActivityLeg")
+$Pixils:=$Pixils+20
+vAmt2:=vAmt2+vAmt1
+vAmt3:=0
+vLegend:=" "
+Print form([Unit];"ActivityLeg")
+$Pixils:=$Pixils+20
+End if 
+vDate:=vDate+1
+Until (vDate>vRptDate)
+vAmt3:=vAmt2
+vLegend:=Get localized string("Total Net Gains/(Losses)")
+Print form([Unit];"ActivityLeg")
+$Pixils:=$Pixils+20
+PAGE BREAK
+CLEAR SET("Moveins")
+CLEAR SET("Moveouts")
+CLEAR SET("All")
+End if 
+End if 
+End if 
+LogAction (True;"Unit Activity Report ended.")// records the report being started in the eventlog

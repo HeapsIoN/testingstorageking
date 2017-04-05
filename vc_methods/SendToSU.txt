@@ -1,0 +1,195 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Billing Sync - SendToSU Start";"BillingSync")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 15/06/16, 08:43:18
+// ----------------------------------------------------
+// Method: SendToSU
+// Description
+// 
+// $1 = where this is being called from
+//    Daily - Send active agreements that are in the facility selected (<>sFacility)
+//    Single - single agreement, IE: closing a customers agreement
+//    Overnight - Send ALL active agreements from billing
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($1)
+C_DATE($Date)
+C_TEXT($Unit;$Syncd)
+
+SetFacility 
+
+If (<>sFacility="ST@") & (Is compiled mode=True)
+
+$WinRef:=Open window(20;50;450;150;0)
+
+SyncRecordLog ("Billing Sync - SendToSURetry From: "+String($1);"BillingSync")
+
+Case of 
+: ($1="Daily")
+
+QUERY([Agreement];[Agreement]CustomerCode=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+For ($a;1;Records in selection([Agreement]))
+
+//GOTO XY(2;2)
+//MESSAGE("Updating Storman Licencing "+String($a)+" of "+String(Records in selection([Agreement])))
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+$Date:=[Agreement]PaidToDate
+
+For ($b;1;Records in selection([Unit]))
+
+SyncRecordLog ("Billing Sync - SendToSU Unit: "+String([Unit]SUFacilityID);"BillingSync")
+
+GOTO XY(2;2)
+MESSAGE("Updating Storman Licencing Agreement "+String($a)+" of "+String(Records in selection([Agreement]))+" Unit "+String($b)+" of "+String(Records in selection([Unit])))
+
+$Unit:=String([Unit]SUFacilityID)
+
+$Result:=WSC_BillingSUSync ($Unit;$Date;[Facility]ODBCPassword;False)
+
+SyncRecordLog ("Billing Sync - SendToSU Result: "+$Result;"BillingSync")
+
+If (Locked([Unit]))
+SyncRecordLog ("Billing Sync - SendToSURetry LOCKED";"BillingSync")
+End if 
+
+Case of 
+
+: ($Result="R") | ($Result="F")
+//overnight process do nothing
+
+: ($Result="L")
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=Current time
+SAVE RECORD([Unit])
+
+Else 
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=?00:00:00?
+SAVE RECORD([Unit])
+
+End case 
+NEXT RECORD([Unit])
+End for 
+NEXT RECORD([Agreement])
+End for 
+
+
+: ($1="Overnight")
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True)
+
+For ($a;1;Records in selection([Agreement]))
+
+GOTO XY(2;2)
+//MESSAGE("Updating Storman Licencing Agreement "+String($a)+" of "+String(Records in selection([Agreement]))+" Unit "+String($b)+" of "+String(Records in selection([Unit])))
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+$Date:=[Agreement]PaidToDate
+
+For ($b;1;Records in selection([Unit]))
+
+SyncRecordLog ("Billing Sync - SendToSU Unit: "+String([Unit]SUFacilityID);"BillingSync")
+
+//GOTO XY(2;2)
+MESSAGE("Updating Storman Licencing Agreement "+String($a)+" of "+String(Records in selection([Agreement]))+" Unit "+String($b)+" of "+String(Records in selection([Unit])))
+
+$Unit:=String([Unit]SUFacilityID)
+
+$Result:=WSC_BillingSUSync ($Unit;$Date;[Facility]ODBCPassword;False)
+
+SyncRecordLog ("Billing Sync - SendToSU Result: "+$Result;"BillingSync")
+
+If (Locked([Unit]))
+SyncRecordLog ("Billing Sync - SendToSURetry LOCKED";"BillingSync")
+End if 
+
+Case of 
+
+: ($Result="R") | ($Result="F")
+//overnight process do nothing
+
+: ($Result="L")
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=Current time
+SAVE RECORD([Unit])
+
+Else 
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=?00:00:00?
+SAVE RECORD([Unit])
+
+End case 
+NEXT RECORD([Unit])
+End for 
+
+NEXT RECORD([Agreement])
+
+End for 
+
+
+: ($1="Single")
+
+If (Records in selection([Agreement])=1)
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+$Date:=[Agreement]PaidToDate
+
+For ($c;1;Records in selection([Unit]))
+
+SyncRecordLog ("Billing Sync - SendToSURetry Unit: "+String([Unit]SUFacilityID);"BillingSync")
+
+GOTO XY(2;2)
+MESSAGE("Updating Storman Licencing "+String($c)+" of "+String(Records in selection([Unit])))
+
+$Unit:=String([Unit]SUFacilityID)
+
+$Result:=WSC_BillingSUSync ($Unit;$Date;[Facility]ODBCPassword;False)
+
+SyncRecordLog ("Billing Sync - SendToSU Result: "+$Result;"BillingSync")
+
+If (Locked([Unit]))
+SyncRecordLog ("Billing Sync - SendToSU LOCKED";"BillingSync")
+End if 
+
+Case of 
+
+: ($Result="R")
+AlertMessage ("The facility "+$Unit+" could not be updated in Storman Licencing as syncing has been disabled.")
+
+: ($Result="L")
+AlertMessage ("The facility "+$Unit+" could not be updated in Storman Licencing as the record is locked. This will be automatically retried.")
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=Current time
+SAVE RECORD([Unit])
+
+: ($Result="F")
+AlertMessage ("The facility "+$Unit+" could not be found in Storman Licencing! Please check this manually!")
+
+Else 
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=?00:00:00?
+SAVE RECORD([Unit])
+
+End case 
+
+NEXT RECORD([Unit])
+End for 
+
+End if 
+
+Else 
+//do nothing
+End case 
+
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+CLOSE WINDOW($WinRef)
+End if 
+
+SyncRecordLog ("Billing Sync - SendToSU End";"BillingSync")

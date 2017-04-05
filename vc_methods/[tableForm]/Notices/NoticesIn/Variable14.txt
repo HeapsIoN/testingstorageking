@@ -1,0 +1,75 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+C_BOOLEAN($bCompress)
+//Checking whether the BLOB is still uncompressed. If so, compress and save.
+BLOB PROPERTIES([Notices]Letter;$Compressed)
+If ($Compressed=0)
+COMPRESS BLOB([Notices]Letter)
+$bCompress:=True
+End if 
+BLOB PROPERTIES([Notices]Email;$Compressed)
+If ($Compressed=0)
+COMPRESS BLOB([Notices]Email)
+$bCompress:=True
+End if 
+If (Modified record([Notices])) | ($bCompress)
+SAVE RECORD([Notices])
+VALIDATE TRANSACTION
+End if 
+PREVIOUS RECORD([Notices])
+If (Before selection([Notices]))
+FIRST RECORD([Notices])
+End if 
+
+//Enable / Disable the Previous / Next buttons depending on which record in the selection is being viewed.
+OBJECT SET ENABLED(*;"bNoticesNext";True)
+If (Selected record number([Notices])=1)
+OBJECT SET ENABLED(*;"bNoticesPrev";False)
+End if 
+
+
+
+//Load the Letter and Email previews, calculate the 'size' values and activate a few settings
+If (BLOB size([Notices]Letter)>0)
+DecompressBlob (->[Notices]Letter)
+End if 
+If (BLOB size([Notices]Email)>0)
+DecompressBlob (->[Notices]Email)
+End if 
+vPage:=BLOB size([Notices]Email)
+vNumber:=BLOB size([Notices]Letter)
+
+//If the size is 0 then clear the write area, get blank picture for preview, otherwise load from record and build preview
+If (vNumber=0)
+WR EXECUTE COMMAND (veLetter;wr cmd new)
+GET PICTURE FROM LIBRARY(2069;vpLetter)
+Else 
+WR BLOB TO AREA (veLetter;[Notices]Letter)
+vpLetter:=WR Build preview (veLetter;1)
+End if 
+//If (vPage=0)
+//WR EXECUTE COMMAND (veEmail;wr cmd new)
+//GET PICTURE FROM LIBRARY(2069;vpEmail)
+//Else 
+//WR BLOB TO AREA (veEmail;[Notices]Email)
+//vpEmail:=WR Build preview (veEmail;1)
+//End if 
+
+Test_TextBlob:=Convert to text([Notices]Email;"UTF-8")
+WA OPEN URL(waEmailPrev;"about:blank")
+firstLoad:=1
+
+
+For ($i;310;311)//Turn on menu & ruler
+WR GET COMMAND INFO (veLetter;$i;$j;$Name;$Type;$Count)
+If ($j=0)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if on
+End if 
+End for 
+For ($i;331;334)//Turn back on all toolbars
+WR GET COMMAND INFO (veLetter;$i;$j;$Name;$Type;$Count)
+If ($j=0)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if on
+End if 
+End for 
+End if 

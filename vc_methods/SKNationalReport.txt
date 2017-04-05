@@ -1,0 +1,148 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): Robert.Richardson
+// Date and time: 02/05/16, 14:05:32
+// ----------------------------------------------------
+// Method: SKNationalReport
+// Description
+// Generates report describing transactions for a given next bill date for national accounts
+//
+// Parameters
+// ----------------------------------------------------
+C_DATE(vNANextBillDate;$LastBillDate)
+C_LONGINT($i;$j)
+C_TEXT($Facility;$Name)
+C_REAL($SiteOther;$SiteAmount;vOtherTotal)
+C_BOOLEAN(vNADiff)
+C_LONGINT(vUnitSelect;vUnitCount)
+ARRAY TEXT(aUnit;0)
+ARRAY TEXT(aCustomer;0)
+ARRAY REAL(aAmount;0)
+ARRAY REAL(aOtherAmount;0)
+ARRAY TEXT(aNAAgreeNo;0)
+ARRAY DATE(aNALastBillDate;0)
+ARRAY TEXT($aAgreeNo;0)
+
+ConfirmTwo ("Do you want to just the differences or all data?";"Differences";"All")
+
+If (OK=1)
+vNADiff:=True
+Else 
+vNADiff:=False
+End if 
+
+
+vNANextBillDate:=[Facility]LastDaily+15
+vNANextBillDate:=RequestDate ("Please enter the next bill date you wish to run the report for";vNANextBillDate)
+If (OK=1)
+// Find active national account agreements due to be billed
+QUERY([Agreement];[Agreement]RAgreeNo="SKNAT@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]NextBillDate=vNANextBillDate)
+
+
+If (Records in selection([Agreement])>0)
+
+SELECTION TO ARRAY([Agreement]RAgreeNo;$aAgreeNo)
+
+For ($i;1;Size of array($aAgreeNo))
+//Get agreement
+QUERY([Agreement];[Agreement]RAgreeNo=$aAgreeNo{$i})
+
+// Get master unit
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Unit]; & ;[Unit]UnitNo#"Z@")
+
+$Name:=[Unit]UnitNo
+$LastBillDate:=[Agreement]LastBillDate
+
+// Get facility units
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Unit]; & ;[Unit]UnitNo="Z@")
+
+DISTINCT VALUES([Unit]UnitNo;$aUnitNo)
+
+For ($j;1;Size of array($aUnitNo))
+$Facility:="SK"+Substring($aUnitNo{$j};2;3)
+
+//Find customers for national account at site
+
+QUERY([Customer];[Customer]CustomerCode=$Facility+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerName=$Name+"@")
+
+$SiteOther:=0
+$SiteAmount:=0
+
+For ($k;1;Records in selection([Customer]))
+//Get active agreement rent amount from site
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+$SiteAmount:=$SiteAmount+Sum([Agreement]RentAmt)
+
+//Find transactions that are not rent at site
+
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vNANextBillDate-[Agreement]NoticeDaysPrior;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>$LastBillDate-[Agreement]NoticeDaysPrior;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#"@RF")
+
+$SiteOther:=$SiteOther+Sum([Trxs]TotAmt)
+
+NEXT RECORD([Customer])
+End for 
+
+QUERY([Unit];[Unit]UnitNo=$aUnitNo{$j})
+
+If (vNADiff)
+//Get unit rent amount from national accounts
+$SiteAmount:=$SiteAmount-Sum([Unit]RentedValue)
+End if 
+
+//APPEND TO ARRAY(aUnit;$Facility)
+APPEND TO ARRAY(aUnit;[Unit]UnitNo)
+APPEND TO ARRAY(aCustomer;$Name)
+APPEND TO ARRAY(aAmount;$SiteAmount)
+APPEND TO ARRAY(aOtherAmount;$SiteOther)
+APPEND TO ARRAY(aNAAgreeNo;$aAgreeNo{$i})
+APPEND TO ARRAY(aNALastBillDate;$LastBillDate)
+
+End for 
+End for 
+
+// Print report
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Unit];[Unit]Vacant=False;*)
+QUERY([Unit]; & ;[Unit]RUnitNo="SKNATZ@";*)
+QUERY([Unit]; & ;[Agreement]NextBillDate=vNANextBillDate)
+SET AUTOMATIC RELATIONS(False;False)
+
+vUnitSelect:=Records in selection([Unit])
+vUnitCount:=0
+vOtherTotal:=0
+
+DEFAULT TABLE([Unit])
+
+ORDER BY([Unit]AgreeNo;>;[Unit]RUnitNo;>)
+BREAK LEVEL(1)
+ACCUMULATE([Agreement]RentAmt;[Agreement]RegularRent)
+
+FORM SET OUTPUT([Unit];"NationalAccount")
+PrintSelection ("P")
+FORM SET OUTPUT([Unit];"Output")
+
+Else 
+AlertMessage ("No National Accounts agreements due to be billed")
+End if 
+
+End if 
+
+// Clear arrays
+CLEAR VARIABLE(aUnit)
+CLEAR VARIABLE(aCustomer)
+CLEAR VARIABLE(aAmount)
+CLEAR VARIABLE(aOtherAmount)
+CLEAR VARIABLE(aNAAgreeNo)
+CLEAR VARIABLE(aNALastBillDate)

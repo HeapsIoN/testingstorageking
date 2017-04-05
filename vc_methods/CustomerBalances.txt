@@ -1,0 +1,101 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 11/04/10 Customer Balances Report now directly runs this method - previously called from ListBalances
+//SDD Have also removed all the recalculating of balances and it doesn't seem to find anything wrong.
+C_BOOLEAN($PrintTotals;$Calc)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Customer Balances Report started.")// records the report being started in the eventlog
+If (PermissionsControl (79))
+If (<>tBatch=True)
+OK:=1
+$PrintTotals:=False
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"#@";*)
+QUERY([Agreement]; & ;[Agreement]RentAmt<1)
+If (Records in selection([Agreement])>0)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Agreement]))+Get localized string(" agreement(s) with no rent amount.  [")+[Agreement]CustomerCode+Get localized string("]  The report may be incorrect."))
+End if 
+REDUCE SELECTION([Agreement];0)
+ConfirmTwo (Get localized string("Print Totals only?");Get localized string("Yes");Get localized string("No"))
+$PrintTotals:=(OK=1)
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vMthDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vMthDate)
+End if 
+If (OK=1)
+SetFacility 
+vStartDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+If (Shift down)
+vStartDate:=RequestDate (Get localized string("Enter report start date:");vStartDate)
+End if 
+//SDD 19/10/10 Changed the condition below to false as am not yet comfortable that this can be run without Recalc Bals as too many errors that still need to be fixed
+//SDD Hopefully in the future we can change this back to True
+If (False)//The first condition contains the new code, the ELSE is the former code
+CalcCustBals (False;vMthDate)
+Else 
+Case of 
+: (Application type#4D Remote mode) | (Shift down) | (<>sProduct="M@")//Added last condition SDD 17/6/09 to avoid slowdown on MV
+$Calc:=True
+If (Shift down)
+ConfirmTwo (Get localized string("Recalculate balances?");Get localized string("Yes");Get localized string("No"))
+$Calc:=(OK=1)
+End if 
+If ($Calc)
+CalcBalance (True;False;False;True)//Suppress dialogs
+End if 
+CalcCustBals (False;vMthDate)//LogMonServer
+: (ExecuteOnServer =False)
+CalcBalance (True;False;False;True)//Suppress dialogs
+CalcCustBals (False;vMthDate)
+Else 
+ARRAY TEXT(aCustCode;0)
+ARRAY REAL(aOBal;0)
+ARRAY REAL(aChgs;0)
+ARRAY REAL(aRecs;0)
+ARRAY REAL(aCBal;0)
+vAmt1:=Process number("LogMonServer";*)
+GET PROCESS VARIABLE(vAmt1;aCustCode;aCustCode;aOBal;aOBal;aChgs;aChgs;aRecs;aRecs;aCBal;aCBal)
+QUERY WITH ARRAY([Customer]CustomerCode;aCustCode)
+End case 
+End if 
+DEFAULT TABLE([Customer])
+QUERY SELECTION([Customer];[Customer]CustomerCode#<>sFacility+"PETTY")
+If ([Facility]UnitNoRpts)
+SortbyUnits 
+Else 
+ORDER BY([Customer]CustomerCode;>)
+End if 
+BREAK LEVEL(0)
+ACCUMULATE([Customer]Balance;vAmt1;vAmt2;vAmt3;vAmt4)
+vTotal:=0
+vTotAmt:=0
+vNet:=0
+vNegAmt:=0
+If ($PrintTotals)
+FORM SET OUTPUT([Customer];"ListBalsTotal")
+Else 
+FORM SET OUTPUT([Customer];"ListBalances")
+End if 
+PrintSelection ("P")
+SetFacility 
+If ([Facility]CantModPrior#!00-00-00!) & (vMthDate>[Facility]CantModPrior) & (vMthDate<GetDate (1;Month of(Current date);Year of(Current date)))
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]CantModPrior:=vMthDate+1
+[Facility]CantModUpdated:=Current date
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+SetFacility (True)
+End if 
+ARRAY REAL(aOBal;0)
+ARRAY REAL(aChgs;0)
+ARRAY REAL(aRecs;0)
+ARRAY REAL(aCBal;0)
+End if 
+If (<>tBatch=False)//SDD 26/4/10 CloseWindow has to be removed when not using the Rept1 in floating window
+//CloseWindow 
+End if 
+End if 
+LogAction (True;"Customer Balances Report ended.")

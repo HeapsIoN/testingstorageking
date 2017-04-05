@@ -1,0 +1,42 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+LogAction (False;"Stamp Duty Report started.")// records the report being started in the eventlog
+C_DATE($MonthEnd)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+
+Case of 
+: (<>sProduct="@R")
+DepSchedule 
+: (<>sProduct="@B")
+DockWalkReport 
+: (<>sFacility="KE@")
+BuybackReport 
+: (<>sFacility="SSWAR")
+Warrigal 
+Else 
+If (PermissionsControl (66))
+DEFAULT TABLE([Agreement])
+SetFacility 
+OK:=1
+If (<>tBatch=False)
+$MonthEnd:=GetDate (1;Month of(Current date);Year of(Current date))-1
+$MonthEnd:=RequestDate (Get localized string("Enter Month End Date for Report:");$MonthEnd)
+Else 
+$MonthEnd:=vMthDate
+End if 
+If (OK=1)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=$MonthEnd;*)
+vLegend:=Get localized string("For the Month Ended")+" "+String($MonthEnd;6)
+$MonthEnd:=GetDate (1;Month of($MonthEnd);Year of($MonthEnd))
+QUERY([Agreement]; & ;[Agreement]MoveIn>=$MonthEnd)
+ORDER BY([Agreement]MoveIn;>)
+BREAK LEVEL(0)
+ACCUMULATE([Agreement]RentAmt;vTotal)
+FORM SET OUTPUT([Agreement];"StampDuty")
+PrintSelection ("P")
+End if 
+End if 
+End case 
+LogAction (True;"Stamp Duty Report ended.")

@@ -1,0 +1,217 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Email the Customer a notification of the success of their Online Reservation
+//If the Facility has a Notice plan defined with the name of 'OReserve' then this will be used, otherwise a predefined plain text email will be sent.
+// IF there is only one parameter is passed - it is for BnS sending emails
+
+C_BOOLEAN($0;$OK;$7)
+C_POINTER($8)
+C_TEXT($1;$2;$3;$4;$5;$6;$9;$10;$11;$12;$13;$14;$15)
+
+C_LONGINT($i;$j;$c;$Table;$Field;$Type2;$DateFormat;$TimeFormat)
+C_TEXT($Text;$Text2;$a;$b;$Name;$NumFormat)
+C_LONGINT(veLetter;$BnS)
+
+C_TEXT($Currency)
+$Currency:=GetTextNo ([Facility]CurrencyFormat;1;";")
+
+
+$BnS:=1
+If (Count parameters>0)
+$BnS:=Num($1)//1 - default and WS_BnSCReateRes; 2 - WS_BnSSendReceive
+End if 
+$BnS:=1//jono
+
+$i:=0
+$j:=0
+$c:=0
+$Table:=0
+$Field:=0
+$Type2:=0
+$DateFormat:=0
+$TimeFormat:=0
+$Text:=""
+$Text2:=""
+$Name:=""
+$NumFormat:=""
+$a:=""
+$b:=""
+$0:=False
+$OK:=False
+
+ARRAY TEXT(Attachments;0)
+//veLetter:=WR New offscreen area 
+
+//Get the Notice
+//Notices are different for BnS
+
+Case of 
+: ($BnS=1)// Default + WS_BnSCreateRes
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="OReserve")
+: ($BnS=2)//BnSSendReceive
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="BnSSendReceive")
+: ($BnS=3)// Boxes arrived at Depot
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="v")
+: ($BnS=4)
+
+End case 
+
+
+
+If (Records in selection([Notices])=1)
+BLOB PROPERTIES([Notices]Email;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+
+//Create the Email Message
+CREATE RECORD([Message])
+[Message]Subject:=[Notices]EmailSubject
+[Message]Address:=[Customer]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+$emailContent:=Convert to text([Notices]Email;"UTF-8")
+$emailContent:=ProcessStormanHTMLTags ($emailContent)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]MsgBody:=$emailContent
+CONVERT FROM TEXT($emailContent;"UTF-8";[Message]EmailMsg)
+[Message]Attachments:=""
+SAVE RECORD([Message])
+
+
+//Create the Letter 
+READ WRITE([Letters])
+CREATE RECORD([Letters])
+//For ($i;WR Count (veLetter;wr nb objects);1;-1)  //Reverse order as ref no changes as freezes happen
+//WR SELECT (veLetter;1;$i)  //Select reference
+//WR GET REFERENCE (veLetter;$Table;$Field;$Name;$Type2;$NumFormat;$DateFormat;$TimeFormat)
+//If ($Table#29)  //Freeze everything except pictures
+//WR EXECUTE COMMAND (veLetter;wr cmd freeze references)
+//End if 
+//End for 
+[Letters]AgreeNo:=[Reservation]RReserveNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]SentViaEmail:=True
+
+[Letters]LetterBLOB:=[Message]EmailMsg
+[Letters]DateSent:=Current date
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+
+$OK:=OR_NewMailMessage ("";[Message]Address;"";"";[Message]Subject;[Message]MsgBody;False;->Attachments;"";"";"";"";"";"";"")
+If ($OK=True)
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+End if 
+READ ONLY([Letters])
+READ ONLY([Message])
+UNLOAD RECORD([Letters])
+UNLOAD RECORD([Message])
+Else 
+//Send Email To Customer Notifying of New Reservation
+$Subject:=""
+$cr:=Char(13)+Char(10)
+$MessageBody:=""
+If ($BnS#2) & ($BnS#3)
+$MessageBody:=$MessageBody+"Your Online Reservation has been created:"+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Date: "+String(Current date;5)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Time: "+String(Current time)+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Facility Name: "+[Facility]FacilityName+Char(Carriage return)
+$MessageBody:=$MessageBody+"Email Address: "+[Facility]EmailAddress+Char(Carriage return)
+$MessageBody:=$MessageBody+"Phone Number: "+[Facility]Phone+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Description: "+[UnitType]Description+Char(Carriage return)
+$MessageBody:=$MessageBody+"Reservation Deposit Cost: "+$Currency+String(Num(vtDepositAmt);"#####0.00")+Char(Carriage return)
+$MessageBody:=$MessageBody+"Date Required: "+vtDateUnitRequired+Char(Carriage return)
+If ([Reservation]Weekly=True)
+$WeeklyMonthly:="Weekly"
+Else 
+$WeeklyMonthly:="Monthly"
+End if 
+$MessageBody:=$MessageBody+"Weekly / Monthly: "+$WeeklyMonthly+Char(Carriage return)
+
+$Subject:="Your Online Reservation has been created"
+End if 
+
+
+Case of 
+: ($BnS=2)
+//Send Email To Customer Send/ Receive Step
+$MessageBody:="Send Receive Step has been completed for reservation:"+$cr
+$MessageBody:=$MessageBody+"Reservation Number: "+[Facility]FacilityCode+[Reservation]ReserveNo+$cr
+$MessageBody:=$MessageBody+"Date: "+String(Current date;5)+$cr
+$MessageBody:=$MessageBody+"Time: "+String(Current time)+$cr
+$MessageBody:=$MessageBody+"Customer Name: "+[Customer]CustomerName+$cr
+$MessageBody:=$MessageBody+"Email Address: "+[Customer]EmailAddress+$cr
+$MessageBody:=$MessageBody+"Facility: "+[Facility]FacilityName+$cr
+If ([Reservation]Weekly=True)
+$WeeklyMonthly:="Weekly"
+Else 
+$WeeklyMonthly:="Monthly"
+End if 
+$MessageBody:=$MessageBody+"Weekly / Monthly: "+$WeeklyMonthly+Char(Carriage return)
+$Subject:="Send Receive Step has been completed"
+: ($BnS=3)
+//Send Email To Customer Boxes Arrived
+$MessageBody:="Boxes Arrived to Depot for reservation:"+$cr
+$MessageBody:=$MessageBody+"Reservation Number: "+[Facility]FacilityCode+[Reservation]ReserveNo+$cr
+$MessageBody:=$MessageBody+"Date: "+String(Current date;5)+$cr
+$MessageBody:=$MessageBody+"Time: "+String(Current time)+$cr
+$MessageBody:=$MessageBody+"Customer Name: "+[Customer]CustomerName+$cr
+$MessageBody:=$MessageBody+"Email Address: "+[Customer]EmailAddress+$cr
+$MessageBody:=$MessageBody+"Facility: "+[Facility]FacilityName+$cr
+$MessageBody:=$MessageBody+"Reservation has been converted to agreement : "+[Agreement]AgreeNo+$cr
+If ([Reservation]Weekly=True)
+$WeeklyMonthly:="Weekly"
+Else 
+$WeeklyMonthly:="Monthly"
+End if 
+$Subject:="Boxes Arrived to Depot"
+: ($BnS=4)
+
+End case 
+
+
+//Create the Email Message
+CREATE RECORD([Message])
+[Message]Subject:=[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Your Online Reservation has been created."
+[Message]Address:=[Customer]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=$MessageBody
+[Message]Attachments:=""
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+$OK:=OR_NewMailMessage ("";[Customer]EmailAddress;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+$Subject;$MessageBody;False;->Attachments;"";"";"";"";"";"";"")
+If ($OK=True)
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+End if 
+READ ONLY([Message])
+UNLOAD RECORD([Message])
+End if 
+//WR DELETE OFFSCREEN AREA (veLetter)
+
+$0:=$OK

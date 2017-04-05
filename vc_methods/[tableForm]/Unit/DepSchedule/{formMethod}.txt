@@ -1,0 +1,76 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//RWFR 17-20 Do not allow Depreciation to exceed cost, added Book Value 17/11/05
+C_DATE($DDate)
+C_LONGINT($Month;$FinMonth;$ZMonth)
+C_REAL(vGSTCost;vNetCost;vDepCost;vBookValue;vCost;vRentV;vSalePrice)
+If (Form event=On Load)
+OBJECT SET TITLE(*;"Text19";Get localized string("Total")+":")
+OBJECT SET TITLE(*;"Text19";Get localized string("Subtotal")+":")
+End if 
+If (Form event=On Header)
+vTitle:=Get localized string("Depreciation Schedule on")+" "+String(vRDate)
+vLegend:=Get localized string("On a monthly basis")
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+vGSTCost:=Round(([Unit]UnitAreaSize/9);2)
+vNetCost:=Round(([Unit]UnitAreaSize-vGSTCost);2)
+$Month:=GetMonthDiff (vRDate;[Unit]StartDate)
+If ([Unit]StartDate>vDepDate)
+$DDate:=[Unit]StartDate
+Else 
+$DDate:=vDepDate
+End if 
+$FinMonth:=GetMonthDiff (vRDate;$DDate)
+If ([Unit]UnitLength=100)//depreciate full amount immediately if dep rate = 100%, as requested by RentRite
+$Denom:=1
+$FinMonth:=1
+$Month:=1
+Else 
+$Denom:=12
+End if 
+If ([Unit]StartDate=!00-00-00!) | ([Unit]UnitLength=0)
+vDepYear:=0
+vDepCost:=0
+Else 
+vDepYear:=Round(((vNetCost*(([Unit]UnitLength/$Denom)/100))*$FinMonth);2)
+vDepCost:=Round(((vNetCost*(([Unit]UnitLength/$Denom)/100))*$Month);2)
+End if 
+If (vDepCost>vNetCost)
+$ZMonth:=GetMonthDiff (vDepDate;[Unit]StartDate)
+vDepYear:=vNetCost-(Round(((vNetCost*(([Unit]UnitLength/12)/100))*$ZMonth);2))
+If (vDepYear<0)
+vDepYear:=0
+End if 
+vDepCost:=vNetCost
+End if 
+If ([Unit]UnitLength=100) & ([Unit]StartDate<vDepDate)
+vDepYear:=0
+End if 
+vBookValue:=vNetCost-vDepCost
+If ([Unit]EndDate<=vRDate)
+vDispDate:=String([Unit]EndDate)
+vDisposal:=[Unit]Status
+vSalePrice:=[Unit]UnitWidth
+Else 
+vDispDate:=""
+vDisposal:=""
+vSalePrice:=0
+End if 
+End if 
+If (Form event=On Printing Break)
+vCost:=Subtotal([Unit]UnitAreaSize)
+vGSTCost:=Subtotal(vGSTCost)
+vNetCost:=Subtotal(vNetCost)
+vRentV:=Subtotal([Unit]RentedValue)
+vDepYear:=Subtotal(vDepYear)
+vDepCost:=Subtotal(vDepCost)
+vBookValue:=Subtotal(vBookValue)
+vSalePrice:=Subtotal(vSalePrice)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

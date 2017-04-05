@@ -1,0 +1,145 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Modified by SDD on 9/5/07 to create array of arriving [Transaction]AgreeNos for checking in case records already exist
+C_TEXT($0;$3;$Check)//Return Error Code "000" = OK "200"=Record count wrong or invalid records Incoming 001 means already exists
+C_LONGINT($1;$Count;$i)//Number of records that should be in Blob
+C_TEXT($2)//Facility Code
+C_BOOLEAN($4;$Search)//If true then search EventLog table for Transaction records that belong in $aAgreeNos
+SET BLOB SIZE(vbRecord;0)
+SET BLOB SIZE(vbField;0)
+SET BLOB SIZE(vbResponse;0)
+$Check:="000"
+If (Count parameters>2)
+$Check:=$3
+End if 
+$Search:=False
+If (Count parameters>3)
+$Search:=$4
+End if 
+$Count:=0
+
+READ WRITE([EventLog])
+SyncTagsToBlob ("<EventLog>";->vbEventContent;->vbRecord;1)
+$Chk:=""
+START TRANSACTION
+While (BLOB size(vbRecord)#0)
+$Create:=True
+$EventDateString:=SyncBlobtoText (SyncTagsToBlob ("<EventDate>";->vbRecord;->vbField;0))
+$EventDate:=GetDate (Num(Substring($EventDateString;1;2));Num(Substring($EventDateString;4;2));Num(Substring($EventDateString;7)))
+$EventTime:=Time(SyncBlobtoText (SyncTagsToBlob ("<EventTime>";->vbRecord;->vbField;0)))
+$FacilityCode:=SyncBlobtoText (SyncTagsToBlob ("<FacilityCode>";->vbRecord;->vbField;0))
+$EventType:=SyncBlobtoText (SyncTagsToBlob ("<EventType>";->vbRecord;->vbField;0))
+$EventTable:=Num(SyncBlobtoText (SyncTagsToBlob ("<EventTable>";->vbRecord;->vbField;0)))
+$KeyValue:=SyncBlobtoText (SyncTagsToBlob ("<KeyValue>";->vbRecord;->vbField;0))
+$SeqNo:=Num(SyncBlobtoText (SyncTagsToBlob ("<SeqNo>";->vbRecord;->vbField;0)))
+If ($Check="001")
+QUERY([EventLog];[EventLog]EventDate=$EventDate;*)
+QUERY([EventLog]; & ;[EventLog]EventTime=$EventTime;*)
+QUERY([EventLog]; & ;[EventLog]FacilityCode=$FacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]EventType=$EventType;*)
+QUERY([EventLog]; & ;[EventLog]EventTable=$EventTable;*)
+QUERY([EventLog]; & ;[EventLog]KeyValue=$KeyValue)
+If (Records in selection([EventLog])=1)
+[EventLog]SeqNo:=$SeqNo
+SAVE RECORD([EventLog])
+$Count:=$Count+1
+$Create:=False
+End if 
+End if 
+If ($Create)
+//If ($EventTable=6) & ($Search) & ($EventType="ADD") & (Num(GetTextNo ($KeyValue;2;","))>0)
+//$AgreeNo:=GetTextNo ($KeyValue;1;",")
+//If (Find in array($aAgreeNos;$AgreeNo)<1)
+//APPEND TO ARRAY($aAgreeNos;$AgreeNo)
+//End if 
+//$EventType:="AD+"
+//End if 
+CREATE RECORD([EventLog])
+[EventLog]EventDate:=$EventDate
+[EventLog]EventTime:=$EventTime
+[EventLog]Processed:=True//Added 27/6/05 to stop slowdown of CheckLog
+If (SyncBlobtoText (SyncTagsToBlob ("<EventAlert>";->vbRecord;->vbField;0))="True")
+[EventLog]EventAlert:=True
+Else 
+[EventLog]EventAlert:=False
+End if 
+[EventLog]FacilityCode:=$FacilityCode
+[EventLog]SeqNo:=$SeqNo
+[EventLog]UserLogin:=SyncBlobtoText (SyncTagsToBlob ("<UserLogin>";->vbRecord;->vbField;0))
+[EventLog]EventType:=$EventType
+[EventLog]EventTable:=$EventTable
+[EventLog]KeyFields:=SyncBlobtoText (SyncTagsToBlob ("<KeyFields>";->vbRecord;->vbField;0))
+[EventLog]KeyValue:=$KeyValue
+[EventLog]BillPAnlys:=SyncBlobtoText (SyncTagsToBlob ("<BillPAnlys>";->vbRecord;->vbField;0))
+$EventDateString:=SyncBlobtoText (SyncTagsToBlob ("<TrxDate>";->vbRecord;->vbField;0))
+[EventLog]TrxDate:=GetDate (Num(Substring($EventDateString;1;2));Num(Substring($EventDateString;4;2));Num(Substring($EventDateString;7)))
+[EventLog]TrxAmount:=Num(SyncBlobtoText (SyncTagsToBlob ("<TrxAmount>";->vbRecord;->vbField;0)))
+[EventLog]LogDetail:=SyncBlobtoText (SyncTagsToBlob ("<LogDetail>";->vbRecord;->vbField;0))
+[EventLog]LogSubtable:=SyncBlobtoText (SyncTagsToBlob ("<LogSubtable>";->vbRecord;->vbField;0))
+[EventLog]LogBlob:=SyncTagsToBlob ("<LogBlob>";->vbRecord;->vbField;0)->
+[EventLog]Code:=SyncBlobtoText (SyncTagsToBlob ("<Code>";->vbRecord;->vbField;0))
+[EventLog]AgreeNo:=SyncBlobtoText (SyncTagsToBlob ("<AgreeNo>";->vbRecord;->vbField;0))
+If (([EventLog]EventTable=3) & ([EventLog]LogDetail="@Status@")) | (([EventLog]EventTable=12) & ([EventLog]EventType="ADD"))//To update arrays in LogMonLoopCode
+If (<>sProduct#"M@")
+[EventLog]Processed:=False
+End if 
+End if 
+[EventLog]SyncStatus:=2//Prev set to 5 if table =26
+If ([EventLog]SeqNo=-7)//SHOF
+[EventLog]SyncStatus:=102
+End if 
+If ([EventLog]FacilityCode#$2)
+$i:=0
+If ([EventLog]EventTable=6)
+$i:=Find in array(<>asSiteCodes;[EventLog]FacilityCode)
+If ($i>0)//Added by SDD on 25/1/06 to stop events arriving from another site and causing the SeqNo to be for another site
+If ([EventLog]SeqNo><>aiEventSeqNo{$i})
+[EventLog]EventRecNo:=[EventLog]SeqNo
+[EventLog]SeqNo:=<>aiEventSeqNo{$i}-2
+End if 
+End if 
+End if 
+If ($i<1)
+[EventLog]SyncStatus:=11
+SyncRecordLog (Get localized string("Received event with invalid facility code from site")+" "+$FacilityCode+" - "+Get localized string("Details")+":"+String([EventLog]EventDate)+":"+String([EventLog]EventTime)+":"+[EventLog]FacilityCode+":"+[EventLog]KeyValue)
+End if 
+End if 
+If ([EventLog]EventType#"CHK") | ([EventLog]EventDate=UTCDate (Current time;True;Current date))//If CheckSum & not today don't save
+SAVE RECORD([EventLog])
+End if 
+$Count:=$Count+1
+End if 
+SyncTagsToBlob ("<EventLog>";->vbEventContent;->vbRecord;1)
+End while 
+If ($Count=$1)
+VALIDATE TRANSACTION
+$0:="000"
+//If ($Search) & (Size of array($aAgreeNos)>0)
+//QUERY([EventLog];[EventLog]SyncStatus=0;*)
+//QUERY([EventLog]; | ;[EventLog]SyncStatus=2;*)  ` ; added after |  25/1/08 SDD
+//QUERY([EventLog]; & ;[EventLog]EventTable=6;*)  ` ;* added at end 25/1/08 SDD
+//QUERY([EventLog]; & ;[EventLog]EventType#"AD+")
+//CREATE SET([EventLog];"ToSearch")
+//$CustFix:=""
+//For ($i;1;Size of array($aAgreeNos))
+//USE SET("ToSearch")  `Line added 25/1/08 SDD as this was previously missing and is needed
+//QUERY SELECTION([EventLog];[EventLog]KeyValue=$aAgreeNos{$i}+"@")
+//If (Records in selection([EventLog])>0)
+//APPLY TO SELECTION([EventLog];[EventLog]SyncStatus:=5)  `5 = Not to now be synced or updated
+//$CustFix:=$CustFix+$aAgreeNos{$i}+","
+//End if 
+//End for 
+//If ($CustFix>"   ")
+//APPEND TO ARRAY(<>asCustFix;$CustFix)
+//End if 
+//CLEAR SET("ToSearch")
+//End if 
+Else 
+CANCEL TRANSACTION
+$0:="200"
+End if 
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+SET BLOB SIZE(vbEventContent;0)
+SET BLOB SIZE(vbRecord;0)
+SET BLOB SIZE(vbField;0)
+SET BLOB SIZE(vbResponse;0)

@@ -1,0 +1,40 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Validate)
+If (Substring([Agreement]AgreeNo;1;1)="#")
+[Agreement]AgreeNo:="#"+String(Num([Agreement]AgreeNo);"00000000")
+Else 
+[Agreement]AgreeNo:=String(Num([Agreement]AgreeNo);"000000000")
+End if 
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+[Agreement]CustomerCode:=<>sFacility+Uppercase([Agreement]CustomerCode;*)
+If ([Agreement]DaytoBill>31)
+[Agreement]DaytoBill:=31
+End if 
+If ([Agreement]MthsAdv<1)
+[Agreement]MthsAdv:=1
+End if 
+If ([Agreement]DaytoBill<1)
+[Agreement]DaytoBill:=1
+End if 
+[Agreement]ActiveAgreemt:=True
+[Agreement]BillingPlanCode:=<>sFacility+[Agreement]BillingPlanCode
+[Agreement]BillUtilities:=<>tUtilities
+RELATE ONE([Agreement]BillingPlanCode)
+If (Records in selection([BillPlan])=0)
+QUERY([BillPlan];[BillPlan]PeriodstoPay=[Agreement]MthsAdv)
+If (Records in selection([BillPlan])=0)
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+End if 
+End if 
+[Agreement]BillingPlanCode:=[BillPlan]Code
+If ([Agreement]NewRentAmt>0)//Actually is Insurance Premium
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=<>sFacility+"IN"
+[OtherChgs]Description:="Insurance"
+[OtherChgs]Amount:=[Agreement]NewRentAmt
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+[Agreement]NewRentAmt:=0
+End if 
+End if 

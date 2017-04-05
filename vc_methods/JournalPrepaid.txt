@@ -1,0 +1,35 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1)//Date of month to adjust - should be last day of month
+C_REAL($2)//Amount of prepaid rent
+C_TEXT($Acct)
+C_LONGINT($Period)
+$Period:=GetPeriod ($1)
+$Date:=GetPeriodEndDate ($Period)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"RF";*)
+QUERY([Analysis]; | ;[Analysis]SortOrder=1;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+If (Records in selection([ChartAccts])=1)
+$Acct:=[ChartAccts]AcctNo
+READ WRITE([CashBookTrxs])
+GetJournal ($Date;"PRE")
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+GetCashBookTrx ("A")
+[CashBookTrxs]Amount:=$2*(-1)
+SAVE RECORD([CashBookTrxs])
+GetCashBookTrx ("";$Acct)
+[CashBookTrxs]Amount:=$2
+SAVE RECORD([CashBookTrxs])
+GetJournal ($Date+1;"RPR")
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+GetCashBookTrx ("A")
+[CashBookTrxs]Amount:=$2
+SAVE RECORD([CashBookTrxs])
+GetCashBookTrx ("";$Acct)
+[CashBookTrxs]Amount:=$2*(-1)
+SAVE RECORD([CashBookTrxs])
+READ ONLY([CashBookTrxs])
+UNLOAD RECORD([CashBookTrxs])
+Else 
+AlertServer (<>sOEMName+" "+Get localized string("CashBook could not locate the Rental Income in the Chart of Accounts to create a prepaid rent journal!"))
+End if 

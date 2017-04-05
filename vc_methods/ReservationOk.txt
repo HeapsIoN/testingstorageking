@@ -1,0 +1,290 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Key)
+C_LONGINT($Type;$Length)
+C_BOOLEAN($Index;$Unique;$Invisible)
+If (vNoteHistBody>"")
+$Note:=ConfirmThree (Get localized string("You have typed a note without adding it to the list! Would you like to add this note now?");Get localized string("Add Note");Get localized string("Lose Note");Get localized string("Cancel"))
+Case of 
+: ($Note=1)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+If (asNotesList>0)
+If (asNotesList{asNotesList}#"<None>")
+[NotesHistory]Category:=asNotesList{asNotesList}
+End if 
+End if 
+If (Length(vNoteHistBody)>20000)
+AlertMessage (Get localized string("Your note is longer than 20000 characters and will be truncated."))
+[NotesHistory]Note:=Substring(vNoteHistBody;1;20000)
+Else 
+[NotesHistory]Note:=vNoteHistBody
+End if 
+[NotesHistory]UserLogin:=<>sCurrentUser
+QUERY([MarketingTypes];[MarketingTypes]Facility=Substring([NotesHistory]CustomerCode;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[NotesHistory]Category)
+If ([MarketingTypes]Security=True)
+[Customer]ThreatLevel:=[Customer]ThreatLevel+1
+[Customer]ThreatLevelDate:=[NotesHistory]NoteDate
+[NotesHistory]Security:=True
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+AlertMessage (Get localized string("This customer has exceeded the company threat level."))
+End if 
+End if 
+SAVE RECORD([NotesHistory])
+vNoteHistBody:=""
+: ($Note=3)
+ABORT
+End case 
+End if 
+
+If ([Customer]BSB>"") & ([Customer]BankAcct>"") & ([Customer]BankAccountName="") & ([Facility]Country="AU")
+AlertMessage (Get localized string("Please enter the Account Name"))
+ABORT
+End if 
+If ([Facility]Country="AU") & ([Customer]BSB="") & ([Customer]BankAcct>"")
+AlertMessage (Get localized string("Please enter the BSB Number"))
+ABORT
+End if 
+If (vBankSuffix>"") & ([Customer]BankAccountName="") & ([Facility]Country="NZ")
+AlertMessage (Get localized string("Please enter the Account Name"))
+ABORT
+End if 
+//Logging changes to Bank Account - custom development for KSS
+If ([Facility]FacilityCode="KE@")
+$detailString:=""
+$oldDetails:=False
+$deletedDetails:=False
+$BankAcctFull:=vBank+vBankBranch+vBankAcct+vBankSuffix
+
+If (Old([Customer]BankAccountName)#[Customer]BankAccountName)
+Case of 
+: (Old([Customer]BankAccountName)="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account Name: "+[Customer]BankAccountName
+: ([Customer]BankAccountName="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account Name removed: "+Old([Customer]BankAccountName)
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account Name from: "+Old([Customer]BankAccountName)+" to: "+[Customer]BankAccountName
+$oldDetails:=True
+End case 
+End if 
+
+If (Old([Customer]BSB)#[Customer]BSB)
+Case of 
+: (Old([Customer]BSB)="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"BSB: "+[Customer]BSB
+: ([Customer]BSB="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"BSB removed: "+Old([Customer]BSB)
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"BSB from: "+Old([Customer]BSB)+" to: "+[Customer]BSB
+$oldDetails:=True
+End case 
+End if 
+
+If (Old([Customer]BankAcct)#[Customer]BankAcct)
+Case of 
+: (Old([Customer]BankAcct)="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account: "+[Customer]BankAcct
+: ([Customer]BankAcct="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account removed: "+Old([Customer]BankAcct)
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account from: "+Old([Customer]BankAcct)+" to: "+[Customer]BankAcct
+$oldDetails:=True
+End case 
+End if 
+
+If ($BankAcctFull#"") & (([Customer]BankAcct#$BankAcctFull))
+
+Case of 
+: ([Customer]BankAcct="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account: "+$BankAcctFull
+: ($BankAcctFull="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account removed: "+[Customer]BankAcct
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account from: "+[Customer]BankAcct+" to: "+$BankAcctFull
+$oldDetails:=True
+End case 
+
+End if 
+
+If ($detailString#"")
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Category:="System"
+Case of 
+: ($oldDetails)
+[NotesHistory]Note:="Bank Account details edited"+Char(Carriage return)+Char(Line feed)+$detailString
+: ($deletedDetails)
+[NotesHistory]Note:="Bank Account details removed"+Char(Carriage return)+Char(Line feed)+$detailString
+Else 
+[NotesHistory]Note:="Bank Account details added"+Char(Carriage return)+Char(Line feed)+$detailString
+End case 
+SAVE RECORD([NotesHistory])
+End if 
+
+
+
+End if 
+
+
+If ([Customer]CustomerName>"") & ([Reservation]CustomerCode>"")
+If (Old([Reservation]RReserveNo)#[Reservation]RReserveNo) & (Find in field([Reservation]RReserveNo;[Reservation]RReserveNo)>=0)
+AlertMessage (Get localized string("The reservation number")+" "+[Reservation]RReserveNo+" "+Get localized string("has been taken by another process. Unable to accept this agreement."))
+Else 
+If ([Customer]Notes#vtAlertNote) & ([Facility]LogAlertNote=True)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]Category:="Alerts"
+[NotesHistory]Note:="Alert Note Edited: "+[Customer]Notes
+[NotesHistory]UserLogin:=<>sCurrentUser
+QUERY([MarketingTypes];[MarketingTypes]Facility=Substring([NotesHistory]CustomerCode;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[NotesHistory]Category)
+If ([MarketingTypes]Security=True)
+[Customer]ThreatLevel:=[Customer]ThreatLevel+1
+[Customer]ThreatLevelDate:=[NotesHistory]NoteDate
+[NotesHistory]Security:=True
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+AlertMessage (Get localized string("This customer has exceeded the company threat level."))
+End if 
+End if 
+SAVE RECORD([NotesHistory])
+End if 
+If ([Facility]Country="NZ")
+[Customer]BankAcct:=vBank+vBankBranch+vBankAcct+vBankSuffix
+End if 
+If (Modified record([Customer]))
+vWebNote:=""
+
+$vlLastField:=Get last field number(5)
+//Give value of elements
+For ($vlField;1;$vlLastField)
+If (Is field number valid(5;$vlField))
+$vlFieldPointer:=Field(5;$vlField)
+GET FIELD PROPERTIES($vlFieldPointer;$Type;$Length;$Index;$Unique;$Invisible)
+If (($Type#7) & ($Type#30))//code256
+//If ($Type#7)
+If ($vlFieldPointer->#Old($vlFieldPointer->))
+$Name:=Field name($vlFieldPointer)
+If ($Name=("@mail@")) | ($Name=("@street@")) | ($Name=("@alt@"))
+vWebNote:=vWebNote+Field name($vlFieldPointer)+" was "+String(Old($vlFieldPointer->))+" now "+String($vlFieldPointer->)+Char(13)
+End if 
+End if 
+End if 
+End if 
+End for 
+
+If (vWebNote>"")
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]Category:="Customer Edit"
+[NotesHistory]Note:=vWebNote
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+SAVE RECORD([NotesHistory])
+End if 
+SAVE RECORD([Customer])
+End if 
+If (vOldUser>0) & (vOldUser<5000)
+$Key:=Substring([Reservation]RReserveNo;1;5)+String(vOldUser;"00000000")
+While (Find in field([Reservation]RReserveNo;$Key)>=0)
+vOldUser:=vOldUser+1
+$Key:=Substring([Agreement]RAgreeNo;1;5)+String(vOldUser;"00000000")
+End while 
+UpdateSystem (107;->vOldUser;Get localized string("The next reservation number could not be incremented. You must increase the next reservation number in System Setup before proceeding!"))
+End if 
+//CREATE SET([Agreement];"$CurrentAgree")
+//QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+//If (Records in selection([Agreement])>0)
+//APPLY TO SELECTION([Agreement];[Agreement]CCExpiry:=Add to date((Date("01/"+Substring([Customer]CCExpiry;1;2)+"/"+Substring([Customer]CCExpiry;3;2)));0;1;-1))
+//APPLY TO SELECTION([Agreement];[Agreement]DateofBirth:=[Customer]DateofBirth)
+//End if 
+
+VALIDATE TRANSACTION
+ACCEPT
+
+vSendCustomer:=True
+
+//USE SET("$CurrentAgree")
+//CLEAR SET("$CurrentAgree")
+
+If (<>sProduct="M@") & (vConverted=True)
+QUERY([Facility];[Facility]FacilityCode=Substring([Reservation]RReserveNo;1;5))
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="ReserveSite")
+If (Records in selection([Notices])=1)
+//veLetter:=WR New offscreen area 
+EXPAND BLOB([Notices]Email)
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+CREATE RECORD([Message])
+[Message]Address:=[Facility]EmailAddress
+[Message]Subject:=[Notices]EmailSubject
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Reservation]RReserveNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Reservation]RReserveNo
+//If ((Test path name($Document)=Is a document))
+//$vhDocRef:=Open document($Document)  // Select the document of your choice
+//CLOSE DOCUMENT($vhDocRef)
+//DOCUMENT TO BLOB(Document;$Blob74)
+//$Blobtext74:=BLOB to text($Blob74;Mac text without length)
+//$Blobtext74:=Replace string($Blobtext74;"./images/";<>sTutPath+"images\\")
+//$Blobtext74:=Replace string($Blobtext74;"<p>";"<br>")
+//$Blobtext74:=Replace string($Blobtext74;"</p>";"<br>")
+//TEXT TO BLOB($Blobtext74;[Message]EmailMsg;Mac text without length)
+//DELETE DOCUMENT($Document)
+//Else 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+//End if 
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=<>sFacility
+SAVE RECORD([Message])
+WR DELETE OFFSCREEN AREA (veLetter)
+SendMail 
+End if 
+End if 
+
+End if 
+
+If ([Customer]CRN="") & ([Facility]Country="AU") & ([Facility]BillerCode #0) & ([Facility]BPay>1)
+C_TEXT($EziDebitKey;$CRN)
+$EziDebitKey:=String(GetTextNo ([Facility]BPayDigitalKey;1;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;2;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;3;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;4;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;5;","))
+READ WRITE([Customer])
+$CRN:=GetBPayCRN ($EziDebitKey;String([Customer]PrimaryKey);<>sCurrentUser)
+
+If ($CRN="S")
+SAVE RECORD([Customer])
+OBJECT SET ENABLED(*;"bBPAY";False)
+End if 
+
+End if 
+ACCEPT
+
+
+Else 
+AlertMessage (Get localized string("You must enter the Customer Name before continuing!"))
+End if 

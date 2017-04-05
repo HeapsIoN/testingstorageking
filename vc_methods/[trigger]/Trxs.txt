@@ -1,0 +1,188 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 11/6/09 Removed On Loading record portions of trigger to speed up.  This resuls in loss of functionality of CashBook which is not now being used
+//SDD 11/6/09  TriggerBank and TriggerCharge removed
+//SDD 17/6/09 Instead of loading [UserLogins] record it uses the 4D result for Current User
+//SDD 17/1/13 Added new error number -16021 and reinstated error number -16020 - see below
+
+C_LONGINT($0)//Error number -16000 returned by LogActivity if Locked  InitSites
+C_TEXT($Facility)//Error number -16001 returned if Facility doesn't exist in ◊asFacilities
+C_TEXT($Code)//Error number -16002 when FacilityCode does not agree in CustomerCode & AgreeNo
+$0:=0// Error number -16020 caused when date is !00/00/00!
+//Error number -16021 caused when AnalysisCode is less than 6 characters - must at least contain FacilityCode
+If (Trigger event#On Deleting Record Event)
+Case of 
+: (Substring([Trxs]AgreeNo;1;5)#Substring([Trxs]CustomerCode;1;5))// | (Substring([Transaction]AgreeNo;1;5)#Substring([Transaction]Analysis;1;5)))
+$0:=-16002
+: ([Trxs]TrxDate<!1980-01-01!) | ([Trxs]TrxDate>!2050-01-01!)
+$0:=-16020
+: (Length([Trxs]AnalysisCode)<6)//Must have analysis code
+$0:=-16021
+
+Else 
+$Facility:=Substring([Trxs]AgreeNo;1;5)
+$Alert:=True
+$Modified:=False
+$BillP:=[Trxs]AnalysisCode
+$TrxDate:=[Trxs]TrxDate
+$TrxAmt:=[Trxs]TotAmt
+If ([Trxs]Charge)
+$Desc:="Charge"
+If ([Trxs]AgreeNo="ST@") & ([Trxs]TotAmt<0) & ([Trxs]Drawer="") & (Old([Trxs]Drawer)#"Credit") & ([Trxs]UserLogin#"Daily")//SDD 25/03/10 Condition added to force a salesperson to display for any credit charges in Billing
+[Trxs]Drawer:="Credit"
+End if 
+Else 
+$Desc:="Receipt"
+End if 
+If ([Trxs]Charge=True)
+[Trxs]Confirmed:=True
+End if 
+Case of 
+: (Trigger event=On Saving New Record Event)
+//Save new PrimaryKey value
+If ([Trxs]PrimaryKey=0)
+[Trxs]PrimaryKey:=<>aliPrimaryKeys{Table(->[Trxs])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[Trxs])}:=<>aliPrimaryKeys{Table(->[Trxs])}-1
+Else 
+<>aliPrimaryKeys{Table(->[Trxs])}:=<>aliPrimaryKeys{Table(->[Trxs])}+1
+End if 
+End if 
+
+If ([Trxs]SeqNo=0)//So that when called after compacting it will still work
+$i:=Find in array(<>asSiteCodes;$Facility)
+If ($i>0)
+If (<>sProduct="M@")//SDD 18/5/08 Added code to reduce TrxSeqNo in MV
+<>aiTrxSeqNo{$i}:=<>aiTrxSeqNo{$i}-1
+If (<>aiTrxSeqNo{$i}>-5)
+<>aiTrxSeqNo{$i}:=-5
+End if 
+Else 
+<>aiTrxSeqNo{$i}:=<>aiTrxSeqNo{$i}+1
+End if 
+[Trxs]SeqNo:=<>aiTrxSeqNo{$i}
+Else 
+$0:=-16001
+End if 
+End if 
+If ($0=0)
+If ([Trxs]TrxTime=?00:00:00?)
+[Trxs]TrxTime:=Current time
+End if 
+$0:=TriggerTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt;[Trxs]TotAmt;[Trxs]DiscAmt;[Trxs]Charge;True)
+$Modified:=True
+If ($0=0)
+UpdateRecalc ($Facility;[Trxs]TrxDate)
+End if 
+End if 
+If ([Trxs]TotAmt<0)
+$Code:="-"
+End if 
+
+//21/02 DM Added new fields
+[Trxs]CreatedDate:=UTCDate (Current time;True;Current date)
+[Trxs]CreatedTime:=UTCTime (Current time;True)
+[Trxs]UpdatedDate:=UTCDate (Current time;True;Current date)
+[Trxs]UpdatedTime:=UTCTime (Current time;True)
+
+: (Trigger event=On Saving Existing Record Event)
+If (Old([Trxs]AnalysisCode)#[Trxs]AnalysisCode) | (Old([Trxs]TrxDate)#[Trxs]TrxDate) | (Old([Trxs]TaxAmt)#[Trxs]TaxAmt) | (Old([Trxs]TotAmt)#[Trxs]TotAmt)
+$Modified:=True
+End if 
+If (Old([Trxs]TrxDate)#[Trxs]TrxDate)
+$Code:=$Code+"!"
+End if 
+If (Old([Trxs]TotAmt)#[Trxs]TotAmt)
+$Code:=$Code+"$"
+End if 
+If (Old([Trxs]DateBanked)#[Trxs]DateBanked)
+$Code:=$Code+"*"
+End if 
+If (Old([Trxs]DateFrom)#[Trxs]DateFrom) | (Old([Trxs]DateTo)#[Trxs]DateTo)
+$Code:=$Code+"~"
+End if 
+
+If ([Trxs]DiscAmt>0)
+$Code:=$Code+"%"
+End if 
+If ($Modified)
+If (Old([Trxs]TrxDate)>!1980-01-01!)
+$0:=TriggerTrx (Old([Trxs]AnalysisCode);Old([Trxs]TrxDate);Old([Trxs]TaxAmt)*-1;Old([Trxs]TotAmt)*-1;Old([Trxs]DiscAmt)*-1;[Trxs]Charge;False)
+If ($0=0)
+UpdateRecalc ($Facility;Old([Trxs]TrxDate))
+End if 
+End if 
+If ($0=0)
+$0:=TriggerTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt;[Trxs]TotAmt;[Trxs]DiscAmt;[Trxs]Charge;True)
+End if 
+If ($0=0)
+UpdateRecalc ($Facility;[Trxs]TrxDate)
+End if 
+End if 
+//25/09/14 DAM commenter code below as it never triggered
+//: (Trigger event=On Deleting Record Event)
+//If (Old([Trxs]TrxDate)>!01/01/1980!)
+//$0:=TriggerTrx (Old([Trxs]AnalysisCode);Old([Trxs]TrxDate);Old([Trxs]TaxAmt)*-1;Old([Trxs]TotAmt)*-1;Old([Trxs]DiscAmt)*-1;[Trxs]Charge;False)
+//If ($0=0)
+//UpdateRecalc ($Facility;Old([Trxs]TrxDate))
+//If ([Trxs]Charge=False) & ([Trxs]CustomerCode#"@MISCL")  //Misc handled by MiscReceipts'bDelete
+//  //ALL SUBRECORDS([Transaction]MiscDetls)
+//  //For ($i;1;Records in subselection([Transaction]MiscDetls))
+//  //TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;Old([Transaction]TrxDate);[Transaction]MiscDetls'TaxAmt*-1;[Transaction]MiscDetls'TotAmt*-1)
+//  //NEXT SUBRECORD([Transaction]MiscDetls)
+//  //End for 
+//End if 
+//End if 
+//End if 
+//$Modified:=True
+//$BillP:=Old([Trxs]AnalysisCode)
+//$TrxDate:=Old([Trxs]TrxDate)
+//$TrxAmt:=Old([Trxs]TotAmt)
+//$Code:="T"
+
+//21/02 DM Added to update the fields
+[Trxs]UpdatedDate:=UTCDate (Current time;True;Current date)
+[Trxs]UpdatedTime:=UTCTime (Current time;True)
+
+End case 
+End case 
+Else 
+
+//21/12/16 DAM Added Code below to records Trxs deletion
+$Facility:=Substring([Trxs]AgreeNo;1;5)
+If (Old([Trxs]TrxDate)>!1980-01-01!)
+$0:=TriggerTrx (Old([Trxs]AnalysisCode);Old([Trxs]TrxDate);Old([Trxs]TaxAmt)*-1;Old([Trxs]TotAmt)*-1;Old([Trxs]DiscAmt)*-1;[Trxs]Charge;False)
+If ($0=0)
+UpdateRecalc ($Facility;Old([Trxs]TrxDate))
+End if 
+End if 
+
+$Modified:=True
+$BillP:=Old([Trxs]AnalysisCode)
+$TrxDate:=Old([Trxs]TrxDate)
+$TrxAmt:=Old([Trxs]TotAmt)
+$Code:="T"
+End if 
+If ($0=0)
+
+If (Test path name(Get 4D folder(Current resources folder)+"Inventory.txt")=Is a document)
+
+If ([Trxs]Charge=True) & (([Trxs]Qty>0) | (Old([Trxs]Qty)>0))
+Case of 
+: (Trigger event=On Saving New Record Event)
+LogAction (<>tLogging;"Adding - Analysis Code: "+[Trxs]AnalysisCode+" Qty: "+String([Trxs]Qty))
+: (Trigger event=On Saving Existing Record Event)
+If ([Trxs]Qty#Old([Trxs]Qty))
+LogAction (<>tLogging;"Modifying - Analysis Code: "+[Trxs]AnalysisCode+" Old Qty: "+String(Old([Trxs]Qty))+" Qty: "+String([Trxs]Qty))
+End if 
+If ([Trxs]AnalysisCode#Old([Trxs]AnalysisCode))
+LogAction (<>tLogging;"Modifying - Analysis Code: "+[Trxs]AnalysisCode+" Old Analysis Code: "+Old([Trxs]AnalysisCode)+" Qty: "+String([Trxs]Qty))
+End if 
+: (Trigger event=On Deleting Record Event)
+LogAction (<>tLogging;"Deleting - Analysis Code: "+[Trxs]AnalysisCode+" Qty: "+String([Trxs]Qty))
+End case 
+End if 
+
+End if 
+
+TriggerLog (6;"037";$BillP;$TrxDate;$TrxAmt;$Code;Substring([Trxs]AgreeNo;1;5);[Trxs]AgreeNo)
+End if 

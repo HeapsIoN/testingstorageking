@@ -1,0 +1,50 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 08/03/13 Added $ThisSize variable to calculate size of packet incl $Message as some CHK events are quite large
+C_TEXT($cr)//SyncDecode
+C_LONGINT($1;$2;$i;$PacketSize;$ThisSize)//$1 is SeqNo to be allocated to the Event, $2 is packetsize from HOF
+ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+$cr:=Char(13)+Char(10)
+$Message:="<SiteHeader>"+[Facility]FacilityCode+"</SiteHeader>"+$cr
+$Message:=$Message+"<Version>"+String(<>iVersion)+String(vDate)+"</Version>"+$cr//vDate is [Facility]VersionDate set in SyncCheckValidSites
+$Message:=$Message+"<ComputerDate>"+String(UTCDate (Current time;True;Current date))+"</ComputerDate>"+$cr//added 25/5/05
+$PacketSize:=512
+$i:=0
+If ([Facility]PacketSize>1) & ([Facility]PacketSize<1024)
+$PacketSize:=[Facility]PacketSize
+End if 
+If (Count parameters>1)
+$PacketSize:=$2
+End if 
+$ThisSize:=0
+While (End selection([EventLog])=False) & ($i<=$PacketSize) & ($ThisSize<($PacketSize*1024))
+$i:=$i+1
+$Message:=$Message+"<EventLog><EventDate>"+GetDateString ([EventLog]EventDate;5)+"</EventDate><EventTime>"+String([EventLog]EventTime)+"</EventTime><EventAlert>"
+If ([EventLog]EventAlert=True)
+$Message:=$Message+"True"
+Else 
+$Message:=$Message+"False"
+End if 
+If ([EventLog]EventTable=15)
+[EventLog]FacilityCode:=[Facility]FacilityCode
+End if 
+$Message:=$Message+"</EventAlert><FacilityCode>"+[EventLog]FacilityCode+"</FacilityCode><SeqNo>"+String($1)+"</SeqNo><UserLogin>"+[EventLog]UserLogin+"</UserLogin>"
+$Message:=$Message+"<EventType>"+[EventLog]EventType+"</EventType><EventTable>"+String([EventLog]EventTable)+"</EventTable><KeyFields>"+[EventLog]KeyFields+"</KeyFields>"
+$Message:=$Message+"<KeyValue>"+[EventLog]KeyValue+"</KeyValue><BillPAnlys>"+[EventLog]BillPAnlys+"</BillPAnlys><TrxDate>"+GetDateString ([EventLog]TrxDate;5)+"</TrxDate>"
+$Message:=$Message+"<TrxAmount>"+String([EventLog]TrxAmount;"########.00")+"</TrxAmount><LogDetail>"+[EventLog]LogDetail+"</LogDetail><LogSubtable>"+[EventLog]LogSubtable+"</LogSubtable>"
+$Message:=$Message+"<AgreeNo>"+[EventLog]AgreeNo+"</AgreeNo>"
+$Message:=$Message+"<LogBlob>"
+If (BLOB size([EventLog]LogBlob)>0)
+SyncTextToBlob (->$Message;->vbEventContent)
+$Message:=""
+COPY BLOB([EventLog]LogBlob;vbEventContent;0;BLOB size(vbEventContent);BLOB size([EventLog]LogBlob))
+End if 
+$Message:=$Message+"</LogBlob><Code>"+[EventLog]Code+"</Code></EventLog>"+$cr
+$ThisSize:=Length($Message)+BLOB size(vbEventContent)
+NEXT RECORD([EventLog])
+End while 
+$Message:=$Message+"<EventCount>"+String($i)+"</EventCount>"+$cr+"<EOF>EOF</EOF>"+$cr
+SyncTextToBlob (->$Message;->vbEventContent)
+If ($i=0)//SDD 16/2/11 To debug why an event could be getting sent without any records
+SyncRecordLog (Get localized string("End Selection=")+String(End selection([EventLog]))+" - $i="+String($i)+" - "+Get localized string("$PacketSize")+"="+String($PacketSize)+" - "+Get localized string("BlobSize")+"="+String(BLOB size(vbEventContent)))
+End if 
+REDUCE SELECTION([EventLog];$i)

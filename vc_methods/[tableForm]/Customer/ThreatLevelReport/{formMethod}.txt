@@ -1,0 +1,89 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+If (forCompleted=False)
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-2)
+End for 
+forCompleted:=True
+End if 
+End if 
+vTitle:=Get localized string("Threat Level Report as at")+" "+String(Current date)
+vLegend:=""
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text5";Get localized string("Berth"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text5";Get localized string("Appliance"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text5";Get localized string("Space"))
+Else 
+OBJECT SET TITLE(*;"Text5";Get localized string("Unit"))
+End case 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+vAgreeList:=""
+vUnitList:=""
+For ($i;1;Records in selection([Agreement]))
+If (vAgreeList="")
+vAgreeList:=[Agreement]AgreeNo
+Else 
+vAgreeList:=vAgreeList+", "+[Agreement]AgreeNo
+End if 
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($j;1;Records in selection([Unit]))
+If (vUnitList="")
+vUnitList:=[Unit]UnitNo
+Else 
+vUnitList:=vUnitList+", "+[Unit]UnitNo
+End if 
+NEXT RECORD([Unit])
+End for 
+NEXT RECORD([Agreement])
+End for 
+
+If (vAgreeList="")
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+
+For ($i;1;Records in selection([Reservation]))
+If (vAgreeList="")
+vAgreeList:=[Reservation]ReserveNo
+Else 
+vAgreeList:=vAgreeList+", "+[Reservation]ReserveNo
+End if 
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+For ($j;1;Records in selection([Unit]))
+If (vUnitList="")
+vUnitList:=[Unit]UnitNo
+Else 
+vUnitList:=vUnitList+", "+[Unit]UnitNo
+End if 
+NEXT RECORD([Unit])
+End for 
+NEXT RECORD([Reservation])
+End for 
+
+End if 
+
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Customer]CustomerCode;*)
+QUERY([NotesHistory]; & ;[NotesHistory]Security=True)
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+FIRST RECORD([NotesHistory])
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

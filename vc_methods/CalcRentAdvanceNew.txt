@@ -1,0 +1,225 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 30/9/11 Changes to include Billing KeyStatsCategories
+//SDD 13/08/13 Modified at line 165 to avoid divide by zero error
+C_REAL($0)//Amount in advance  CalcRentAdvanceOld
+C_DATE($1;$vMthDate)//Date to calculate as at
+C_BOOLEAN($2;$3;$RentAdvMethod;$NoErrors)//True is Daily Basis
+C_LONGINT($i)
+C_LONGINT($posArray)//10782
+C_REAL($Amount;$TaxAmount;$OutPutAmt)//10782
+$0:=0
+$RentAdvMethod:=$2
+$NoErrors:=$3
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+$RentOnly:=False
+
+$Set:=(<>sCurrentUser="AdminSupport")
+
+//////*****************  Part 1 - Income Charged Report
+$WinRef:=Open window(20;50;300;150;0;Get localized string("Progress"))
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@";*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>;[Trxs]AnalysisCode;>)
+
+For ($i;1;Records in selection([Trxs]))
+$posArray:=0
+$posArray:=Find in array(asAnalysisCode;[Trxs]AnalysisCode)
+If ($posArray>0)
+asAdIncomeAmt{$posArray}:=asAdIncomeAmt{$posArray}+[Trxs]TotAmt
+
+If (asAdIncomeAmt{$posArray}=0)
+asAdIncomeTaxAmt{$posArray}:=0
+Else 
+asAdIncomeTaxAmt{$posArray}:=asAdIncomeTaxAmt{$posArray}+[Trxs]TaxAmt//[Trxs]TaxAmt
+End if 
+Else 
+SyncRecordLog ("Analysis code "+[Trxs]AnalysisCode+" not found")
+End if 
+NEXT RECORD([Trxs])
+End for 
+CLOSE WINDOW($WinRef)
+DEFAULT TABLE([Agreement])
+
+
+///**************** Part 2 - Prepaid Report for End of previous month
+ARRAY REAL($aOBal1;0)
+$vMthDate:=vDate-1
+READ ONLY([Agreement])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+SET AUTOMATIC RELATIONS(True;False)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; | ;[Agreement]MoveOut>$vMthDate;*)
+QUERY([Agreement]; | ;[Agreement]BalanceOwing<0;*)//New condition to fix last column 3.5.4
+QUERY([Agreement]; | ;[Customer]LatestTrxDate>($vMthDate-32);*)//New condition 3.5.4
+QUERY([Agreement]; & ;[Agreement]MoveIn<=$vMthDate;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#<>sFacility+"PETTY")
+SET AUTOMATIC RELATIONS(False;False)
+CREATE SET([Agreement];"ToPrint")
+
+//
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@#@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#<>sFacility+"PETTY")
+CREATE SET([Agreement];"CreditSale")
+
+UNION("CreditSale";"ToPrint";"ToPrint")
+CLEAR SET("CreditSale")
+USE SET("ToPrint")
+//
+
+QUERY SELECTION([Agreement]NoticeAmtToBill#0)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=0)
+
+USE SET("ToPrint")
+MESSAGES OFF
+CREATE EMPTY SET([Agreement];"ToPrint")
+$WinRef:=Open window(20;50;300;150;0;Get localized string("Progress"))
+
+ARRAY REAL(aOBal;0)
+ARRAY REAL(aOBal;Size of array(asAnalysisCode))
+ARRAY REAL(aTaxAmt;Size of array(asAnalysisCode))
+ARRAY REAL($aTaxAmt1;Size of array(asAnalysisCode))
+FIRST RECORD([Agreement])
+
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"    ")
+If (Locked([Agreement]))
+vLeg:=Get localized string("Prepaid Report for ")+<>sFacility+Get localized string(" could not be printed due to locked records!")
+FORM SET OUTPUT([Facility];"LockedRpt")
+If (<>tBatch=False)
+PRINT RECORD([Facility])
+Else 
+PRINT RECORD([Facility];*)
+End if 
+ABORT
+Else 
+If (([Agreement]ActiveAgreemt=True) | ([Agreement]MoveOut>$vMthDate)) & ([Agreement]MoveIn<=$vMthDate)
+[Agreement]NoticeAmtToBill:=NewCalcRentAdvance ($vMthDate;False;False;False;(<>sCurrentUser="AdminSupport"))//CalcRentAdvance
+SAVE RECORD([Agreement])
+End if 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>$vMthDate)
+
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([Agreement]BalanceOwing#0) | ([Agreement]NoticeAmtToBill>0)
+ADD TO SET([Agreement];"ToPrint")
+End if 
+End if 
+NEXT RECORD([Agreement])
+End for 
+
+CLOSE WINDOW($WinRef)
+MESSAGES ON
+USE SET("ToPrint")
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+COPY ARRAY(aOBal;$aOBal1)
+COPY ARRAY(aTaxAmt;$aTaxAmt1)
+
+///****************  Part 3 Prepaid Report for End of current month
+READ ONLY([Agreement])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+SET AUTOMATIC RELATIONS(True;False)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; | ;[Agreement]MoveOut>vMthDate;*)
+QUERY([Agreement]; | ;[Agreement]BalanceOwing<0;*)//New condition to fix last column 3.5.4
+QUERY([Agreement]; | ;[Customer]LatestTrxDate>(vMthDate-32);*)//New condition 3.5.4
+QUERY([Agreement]; & ;[Agreement]MoveIn<=vMthDate;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#<>sFacility+"PETTY")
+SET AUTOMATIC RELATIONS(False;False)
+CREATE SET([Agreement];"ToPrint")
+
+//
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@#@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#<>sFacility+"PETTY")
+CREATE SET([Agreement];"CreditSale")
+
+UNION("CreditSale";"ToPrint";"ToPrint")
+CLEAR SET("CreditSale")
+USE SET("ToPrint")
+//
+
+QUERY SELECTION([Agreement]NoticeAmtToBill#0)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=0)
+
+USE SET("ToPrint")
+MESSAGES OFF
+CREATE EMPTY SET([Agreement];"ToPrint")
+$WinRef:=Open window(20;50;300;150;0;Get localized string("Progress"))
+
+ARRAY REAL(aOBal;0)
+ARRAY REAL(aOBal;Size of array(asAnalysisCode))
+ARRAY REAL(aTaxAmt;Size of array(asAnalysisCode))
+FIRST RECORD([Agreement])
+
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"    ")
+If (Locked([Agreement]))
+vLeg:=Get localized string("Prepaid Report for ")+<>sFacility+Get localized string(" could not be printed due to locked records!")
+FORM SET OUTPUT([Facility];"LockedRpt")
+If (<>tBatch=False)
+PRINT RECORD([Facility])
+Else 
+PRINT RECORD([Facility];*)
+End if 
+ABORT
+Else 
+If (([Agreement]ActiveAgreemt=True) | ([Agreement]MoveOut>vMthDate)) & ([Agreement]MoveIn<=vMthDate)
+[Agreement]NoticeAmtToBill:=NewCalcRentAdvance (vMthDate;False;False;False;(<>sCurrentUser="AdminSupport"))//CalcRentAdvance
+SAVE RECORD([Agreement])
+End if 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>vMthDate)
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([Agreement]BalanceOwing#0) | ([Agreement]NoticeAmtToBill>0)
+ADD TO SET([Agreement];"ToPrint")
+End if 
+End if 
+
+NEXT RECORD([Agreement])
+End for 
+
+CLOSE WINDOW($WinRef)
+MESSAGES ON
+USE SET("ToPrint")
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+
+For ($i;1;Size of array(asAnalysisCode))
+asAdIncomeTaxAmt{$i}:=asAdIncomeTaxAmt{$i}+$aTaxAmt1{$i}-aTaxAmt{$i}
+asAdIncomeAmt{$i}:=asAdIncomeAmt{$i}+$aOBal1{$i}-aOBal{$i}
+End for 
+ARRAY REAL(aOBal;0)

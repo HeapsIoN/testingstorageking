@@ -1,0 +1,650 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_MoveOut"+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+C_LONGINT($i)
+C_DATE($TrxDate)
+C_LONGINT($NoWks;$xDays;$yDays)
+C_DATE($MoveOut;$Date;$LastDate;$LastBillDat;$NextBill;$PriorBill)
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vAmt5:=0
+vAmt6:=0
+vBillOther:=1
+vTotBal:=[Customer]Balance
+vToPay:=vTotBal
+$CurrentPlan:=[Agreement]BillingPlanCode
+$CurrentMthsAdv:=[Agreement]MthsAdv
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_Cust_Code;1;5))
+QUERY([Unit];[Unit]RUnitNo=Substring(WS_Cust_Code;1;5)+WS_UnitID)
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+[Agreement]MoveOut:=Current date
+
+If (Records in selection([Unit])#0)
+If ([Agreement]NextBillDate#!00-00-00!)//Added second condition 25/9/98
+
+If (([Agreement]MoveOut<[Agreement]BillPlanValidTo) | ([Agreement]BillPlanValidTo=!00-00-00!)) & ([Agreement]LastBillPlan#"") & ([Agreement]LastBillPlan#[Agreement]BillingPlanCode)
+[Agreement]BillingPlanCode:=[Agreement]LastBillPlan
+RELATE ONE([Agreement]BillingPlanCode)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+End if 
+If ([Agreement]MoveOut>=[Agreement]NextBillDate)
+//AlertMessage (Get localized string("Rent will be charged on next bill date prior to move out."))
+Else 
+If (([Agreement]NextBillDate-[Agreement]LastBillDate)<2) | ([Agreement]LastBillDate=!00-00-00!)
+//AlertMessage (Get localized string("This customer has never been billed!"))
+Else 
+If ([Agreement]ActiveAgreemt=True)
+If ([Facility]PriorRefndPol>=1) & ([Facility]PriorRefndPol<=3) & ([Agreement]AgreeNo<[Facility]RefndAgrChange)
+[Facility]RefundPolicy:=[Facility]PriorRefndPol
+End if 
+$MthsBilled:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30;0)
+If ([Facility]RefundPolicy=2) & ($MthsBilled>[Facility]RefndWklyMths)
+[Facility]RefundPolicy:=1
+End if 
+If ([Agreement]OutNoticeDate>[Agreement]MoveOut) | ([Agreement]OutNoticeDate=!00-00-00!)
+[Agreement]OutNoticeDate:=[Agreement]MoveOut
+End if 
+$MoveOut:=[Agreement]OutNoticeDate+[Facility]NoticeDaysReqd
+If ([Agreement]MoveOut>$MoveOut)
+$MoveOut:=[Agreement]MoveOut
+End if 
+If ([BillPlan]PlanPeriod="Week")//-1 added as if they move out on the day when rent calced in future
+$Date:=Add to date([Agreement]MoveIn;0;0;[BillPlan]MthsNoRefund*7)-1//Weeks No Refund
+Else 
+$Date:=Add to date([Agreement]MoveIn;0;[BillPlan]MthsNoRefund;0)-1//Months No Refund
+End if 
+If ($Date>$MoveOut)
+$MoveOut:=$Date
+End if 
+RELATE ONE([Agreement]BillingPlanCode)
+$NextBill:=[Agreement]NextBillDate
+If ([BillPlan]ShowIncentonInv=False)//Added 3.1.7
+$NextBill:=CalcNxtBillDate ([Agreement]NextBillDate;[BillPlan]FreePeriods*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)//Take out free months
+End if 
+If ([BillPlan]PlanPeriod="Week")
+$FromMoveIn:=Add to date([Agreement]MoveIn;0;0;[BillPlan]MthsRevIncent*7)
+Else 
+$FromMoveIn:=Add to date([Agreement]MoveIn;0;[BillPlan]MthsRevIncent;0)
+End if 
+$LastInsurance:=0
+If ([Facility]RefundInsurance=True)
+CREATE SET([Trxs];"Hold")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Agreement]LastBillDate)
+$LastInsurance:=Sum([Trxs]TotAmt)
+USE SET("Hold")
+CLEAR SET("Hold")
+End if 
+vtFormula:=""
+vWords:=""
+vORCText:=""
+Case of 
+: ([Facility]RefundPolicy=1)//Daily Basis (Original)
+If ($NextBill-[Agreement]MoveOut<[BillPlan]PeriodstoPay) & ([BillPlan]RemoveDiscMO=True)
+[BillPlan]RemoveDiscMO:=False//Where Moveout is close to NextBillDate don't charge back discount
+End if 
+$xDays:=$NextBill-$MoveOut-1
+$PriorBill:=CalcNxtBillDate ([Agreement]LastBillDate;[Agreement]MthsAdv*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+If ($MoveOut<[Agreement]LastBillDate)
+//This line to adjust denominator where rent has been billed on past MoveOut date 
+$yDays:=[Agreement]LastBillDate-$PriorBill
+Else 
+$yDays:=$NextBill-[Agreement]LastBillDate
+End if 
+If ([BillPlan]RemoveDiscMO=True) | ($MoveOut<$FromMoveIn)//This added to add back incentive if within time of MoveIn
+//Remove Discount  
+vAmt1:=Round([Agreement]LastDiscAmt+[BillPlan]DiscFixedAmt;2)
+//Rental Credit
+vAmt2:=Round((([Agreement]LastBillAmt+[Agreement]LastDiscAmt)*$xDays/$yDays)*(-1);2)
+//Previous used RentAmt instead of LastBillAmt on line above.  This did not work
+//when billing plan was changed.
+Else 
+//Rental Credit
+vAmt2:=Round(([Agreement]LastBillAmt*$xDays/$yDays)*(-1);2)
+End if 
+If ([Facility]InsuranceAgentType=1)
+$InsMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]LastBillDate)
+$RefundMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]MoveOut)
+If ($RefundMonths>0)
+vAmt4:=Round(($LastInsurance*$RefundMonths/$InsMonths)*(-1);2)
+Else 
+vAmt4:=0
+End if 
+Else 
+vAmt4:=Round(($LastInsurance*$xDays/$yDays)*(-1);2)
+End if 
+If ([BillPlan]RefundDays>0)
+If ($MoveOut>([Agreement]LastBillDate+[BillPlan]RefundDays))
+vAmt2:=0
+Else 
+If (Abs(vAmt2)>[Agreement]LastBillAmt) & ($MoveOut>($PriorBill+[BillPlan]RefundDays))//This in case the billing has gone on to next month
+vAmt2:=[Agreement]LastBillAmt*(-1)
+vAmt4:=$LastInsurance*(-1)
+End if 
+End if 
+End if 
+
+If (vAmt2>0)
+vAmt2:=0
+End if 
+If (vAmt4>0)
+vAmt4:=0
+End if 
+//Rental Charges
+vAmt3:=Round(vAmt2*(-1)*[BillPlan]Penalty/100;2)
+: ([Facility]RefundPolicy=2)//Weekly basis for Safe Store
+//Remove Discount  
+If ([BillPlan]RemoveDiscMO=True) | ($MoveOut<$FromMoveIn)//This added to add back incentive if with time of MoveIn
+vAmt1:=Round([BillPlan]DiscFixedAmt;2)//Only fixed amount as rent is recalced
+Else 
+vAmt1:=0
+End if 
+If ($MoveOut>[Agreement]NextBillDate)
+$LastBillDat:=[Agreement]LastBillDate
+vAmt2:=0//No rental credit
+[Agreement]LastBillDate:=[Agreement]NextBillDate
+Else 
+$LastBillDat:=!00-00-00!
+vAmt2:=[Agreement]LastBillAmt//Rental Credit
+End if 
+If ([Agreement]LastBillDate>=$MoveOut)//Prev was MoveOut instead of $MoveOut Changed 27/7/95
+vAmt3:=0//Rental Charges
+Else //Following line was 30 instead of ◊aLastDay but caused probs between 30 & 31 day months
+
+$Month:=Month of([Agreement]LastBillDate)
+If ($Month>=1) & ($Month<=12)
+
+If ($Month=2)
+$TestDate:=Add to date(Date(String(<>aLastDay{$Month})+"/"+String($Month)+"/"+String(Year of([Agreement]LastBillDate)));0;0;1)
+$LeapYear:=Month of($TestDate)
+If ($Month=$LeapYear)
+$Month:=<>aLastDay{$Month}+1
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+
+
+Else 
+$Month:=30
+End if 
+
+$NoMths:=Trunc(($MoveOut-[Agreement]LastBillDate)/$Month;0)//Calculate no of months since LastBillDate
+If ([BillPlan]PlanPeriod="Week")
+$LastDate:=[Agreement]LastBillDate
+Else 
+If ($NoMths>=0)
+$LastDate:=Add to date([Agreement]LastBillDate;0;$NoMths;0)
+End if 
+If ($LastBillDat#!00-00-00!) & (String($LastBillDat)#"00/00/00")
+[Agreement]LastBillDate:=$LastBillDat
+End if 
+End if 
+$NoWks:=Trunc(($MoveOut-$LastDate)/7;0)//Calculate no of extra weeks to bill
+If ($NoWks*7<($MoveOut-$LastDate))
+$NoWks:=$NoWks+1
+End if 
+
+If ([BillPlan]PlanPeriod="Week")
+vAmt3:=RoundAmt (([Agreement]RentAmt+[Agreement]DiscountAmt)/[Agreement]MthsAdv*$NoWks)
+Else 
+
+vAmt3:=RoundAmt (([Agreement]RentAmt/[Agreement]MthsAdv*$NoMths)+(RoundAmt ([Agreement]RentAmt/[Agreement]MthsAdv*[Facility]RentWeeklyMthly)*$NoWks))
+End if 
+If (vAmt3>vAmt2) & ($LastBillDat=!00-00-00!)
+vAmt3:=0
+vAmt2:=0
+End if 
+End if 
+vAmt2:=vAmt2*(-1)
+If ([Facility]InsuranceAgentType=1)
+$InsMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]LastBillDate)
+$RefundMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]MoveOut)
+If ($RefundMonths>0)
+vAmt4:=Round(($LastInsurance*$RefundMonths/$InsMonths)*(-1);2)
+Else 
+vAmt4:=0
+End if 
+Else 
+vAmt4:=0
+End if 
+: ([Facility]RefundPolicy=3)//No Refunds at all
+If ([BillPlan]RemoveDiscMO=True) | ($MoveOut<$FromMoveIn)//This added to add back incentive if with time of MoveIn
+vAmt1:=Round([BillPlan]DiscFixedAmt;2)
+Else 
+vAmt1:=0
+End if 
+vAmt2:=0
+vAmt3:=0
+If ([Facility]InsuranceAgentType=1)
+$InsMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]LastBillDate)
+$RefundMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]MoveOut)
+If ($RefundMonths>0)
+vAmt4:=Round(($LastInsurance*$RefundMonths/$InsMonths)*(-1);2)
+Else 
+vAmt4:=0
+End if 
+Else 
+vAmt4:=0
+End if 
+Else 
+//AlertMessage (Get localized string("Warning - The refund policy has not been set correctly for")+" "+<>sOEMName+"!  "+Get localized string("Please check your manual for details."))
+End case 
+End if 
+End if 
+End if 
+//Reverse Deposit
+QUERY([PhotosCards];[PhotosCards]Code=[Agreement]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Deposit>0)
+vAmt5:=Round([Agreement]DepositAmt+Sum([PhotosCards]Deposit)*(-1);2)
+//Other Charges
+vAmt6:=0
+If ([Facility]RefundOtherRegChgs=True)// Refund Other Regular Charges
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode#<>sFacility+"IN")
+ARRAY TEXT(aOtherChgsAnalysisCode;0)
+DISTINCT VALUES([OtherChgs]AnalysisCode;aOtherChgsAnalysisCode)
+CREATE SET([Trxs];"Hold")
+For ($i;1;Size of array(aOtherChgsAnalysisCode))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=aOtherChgsAnalysisCode{$i};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Agreement]LastBillDate)
+If ([Facility]TaxAddtoAmt=True)
+$OtherTot:=Sum([Trxs]TotAmt)-Sum([Trxs]TaxAmt)
+Else 
+$OtherTot:=Sum([Trxs]TotAmt)
+End if 
+Case of 
+: ([Facility]RefundPolicy=1)
+vAmt6:=vAmt6+Round(($OtherTot*$xDays/$yDays)*(-1);2)
+: ([Facility]RefundPolicy=2)
+vAmt6:=vAmt6+0
+: ([Facility]RefundPolicy=3)
+vAmt6:=vAmt6+0
+Else 
+//Do Nothing
+End case 
+End for 
+USE SET("Hold")
+CLEAR SET("Hold")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveOut=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+vAmt6:=vAmt6+Round(Sum([Analysis]DfltSellAmt);2)
+If ([Facility]RoundCredit=True)
+vAmt2:=RoundAmt (vAmt2)
+End if 
+vTotBal:=Round([Agreement]BalanceOwing+vAmt1+vAmt2+vAmt3+vAmt4+vAmt5+vAmt6;2)
+vToPay:=vTotBal
+If (vAmt1<0)
+vAmt1:=0
+End if 
+vNew1:=vAmt1
+vNew2:=vAmt2
+vNew3:=vAmt3
+vNew4:=vAmt4
+vNew5:=vAmt5
+Else 
+OBJECT SET ENABLED(bOut;False)
+End if 
+
+If (vTotBal>0)
+vLeg1:=Get localized string("BALANCE DUE FROM CUSTOMER")+": "+String(vTotBal)
+$Create:=True
+WS_RET_CODE:=False
+WS_ERROR:="Balance # 0"
+Else 
+If (vTotBal<0)
+vLeg1:=Get localized string("TOTAL OWING TO CUSTOMER")+": "+String(Abs(vTotBal))
+$Create:=True
+WS_RET_CODE:=False
+WS_ERROR:="Balance # 0"
+Else 
+vLeg1:=Get localized string("NIL BALANCE")
+WS_RET_CODE:=True
+$Create:=True
+End if 
+End if 
+[Agreement]BillingPlanCode:=$CurrentPlan
+[Agreement]MthsAdv:=$CurrentMthsAdv
+
+Else 
+WS_ERROR:="Unit No doesn't exist"
+WS_RET_CODE:=False
+End if 
+
+
+If ($Create=True)
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+READ WRITE([Unit])
+//RELATE MANY([Agreement]RAgreeNo)
+vMoveOut:=False
+$i:=1
+
+$TrxDate:=[Agreement]MoveOut
+OK:=1
+
+If (vBillOther=1)
+QUERY([Analysis];[Analysis]Code=Substring(WS_Cust_Code;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveOut=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+Else 
+REDUCE SELECTION([Analysis];0)
+End if 
+READ WRITE([Trxs])
+If ([Facility]PriorRefndPol>=1) & ([Facility]PriorRefndPol<=3) & ([Agreement]AgreeNo<[Facility]RefndAgrChange)
+[Facility]RefundPolicy:=[Facility]PriorRefndPol
+End if 
+$i:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30;0)
+If ([Facility]RefundPolicy=2) & ($i>[Facility]RefndWklyMths)
+[Facility]RefundPolicy:=1
+End if 
+If ([Facility]RefundOtherRegChgs=True)// Refund Other Regular Charges
+$NextBill:=[Agreement]NextBillDate
+If ([BillPlan]ShowIncentonInv=False)//Added 3.1.7
+$NextBill:=CalcNxtBillDate ([Agreement]NextBillDate;[BillPlan]FreePeriods*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)//Take out free months
+End if 
+$xDays:=$NextBill-$TrxDate-1
+$PriorBill:=CalcNxtBillDate ([Agreement]LastBillDate;[Agreement]MthsAdv*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+If ($TrxDate<[Agreement]LastBillDate)
+//This line to adjust denominator where rent has been billed on past MoveOut date 
+$yDays:=[Agreement]LastBillDate-$PriorBill
+Else 
+$yDays:=$NextBill-[Agreement]LastBillDate
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode#<>sFacility+"IN")
+ARRAY TEXT(aOtherChgsAnalysisCode;0)
+DISTINCT VALUES([OtherChgs]AnalysisCode;aOtherChgsAnalysisCode)
+CREATE SET([Trxs];"Hold")
+For ($i;1;Size of array(aOtherChgsAnalysisCode))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=aOtherChgsAnalysisCode{$i};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Agreement]LastBillDate)
+If ([Facility]TaxAddtoAmt=True)
+$OtherTot:=Sum([Trxs]TotAmt)-Sum([Trxs]TaxAmt)
+Else 
+$OtherTot:=Sum([Trxs]TotAmt)
+End if 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+Case of 
+: ([Facility]RefundPolicy=1)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$TrxDate
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" Credit"
+[Trxs]TotAmt:=vTotBal
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=True
+[Trxs]Narration:=vORCText
+[Trxs]Narration:=[Trxs]Narration+"M = Rate for "+[Analysis]Description+" = "+String($OtherTot;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"M x X / Y = "+String([Trxs]TotAmt;<>sFormat)+Char(13)
+
+SAVE RECORD([Trxs])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=[Agreement]LastBillDate
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+SAVE RECORD([Trxs])
+End if 
+End if 
+Else 
+//Do Nothing
+End case 
+End for 
+USE SET("Hold")
+CLEAR SET("Hold")
+End if 
+For ($i;1;5+Records in selection([Analysis]))
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$TrxDate
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+[Trxs]UserLogin:="Insomniac"
+$MoveOut:=[Agreement]OutNoticeDate+[Facility]NoticeDaysReqd
+If ([Agreement]MoveOut>$MoveOut)
+$MoveOut:=[Agreement]MoveOut
+End if 
+GetAnalysis 
+Case of 
+: ($i=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Remove Discount"
+[Trxs]TotAmt:=vAmt1
+[Trxs]CheckTotAmt:=vNew1
+[Trxs]DateFrom:=$MoveOut+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+: ($i=2)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=Substring("Rent Credit Unit "+[Agreement]UnitsOccup;1;80)
+[Trxs]TotAmt:=vAmt2
+[Trxs]CheckTotAmt:=vNew2
+[Trxs]DateFrom:=$MoveOut+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+
+: ($i=3)
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Facility]RefundPolicy=2)
+[Trxs]Description:="Rent at Weekly Rate"
+Else 
+[Trxs]Description:="Cancellation Fee"
+End if 
+[Trxs]TotAmt:=vAmt3
+[Trxs]CheckTotAmt:=vNew3
+[Trxs]DateFrom:=$MoveOut+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+: ($i=4)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Insurance")
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Insurance Credit"
+[Trxs]TotAmt:=vAmt4
+[Trxs]CheckTotAmt:=vNew4
+[Trxs]DateFrom:=$MoveOut+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+
+: ($i=5)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP")
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Reverse "+[Analysis]Description
+[Trxs]TotAmt:=vAmt5
+[Trxs]CheckTotAmt:=vNew5
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Deposit:=0)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveOut=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+GOTO SELECTED RECORD([Analysis];$i-4)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=[Analysis]DfltSellAmt
+End case 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Agreement]LastBillDate;[Agreement]NextBillDate)
+[Trxs]Confirmed:=True
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=[Agreement]LastBillDate
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End if 
+End for 
+READ ONLY([Trxs])
+$i:=Position([Agreement]AgreeNo;[Customer]AgreemtsOperating)
+If ($i>0)
+[Customer]AgreemtsOperating:=Delete string([Customer]AgreemtsOperating;$i;6)
+End if 
+SET QUERY DESTINATION(3;$i)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+SET QUERY DESTINATION(0)
+[Customer]NoActiveAgreemts:=$i-1//This one has not yet been set inactive
+If ($i=0)
+[Customer]Overdue:=0
+End if 
+SAVE RECORD([Customer])
+RELATE MANY([Agreement]RAgreeNo)
+FIRST RECORD([Unit])
+
+
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+[UnitType]NoVacant:=[UnitType]NoVacant+1
+If ([Unit]MoveOut#!00-00-00!)
+[UnitType]NoExpMoveOut:=[UnitType]NoExpMoveOut-1
+End if 
+SAVE RECORD([UnitType])
+[Unit]MoveOut:=[Agreement]MoveOut
+READ WRITE([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Unit]AgreeNo)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+[UnitHistory]MoveOut:=[Unit]MoveOut
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+End if 
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+[Unit]AgreeNo:=""
+[Unit]InsureValue:=0
+[Unit]Deposit:=0
+[Unit]Vacant:=True
+If ([Facility]FacilityCode="ST@")
+// SU to Billing - If removing the Unit
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;Char(Line feed);";";1;String(Num(Old([Unit]SUFacilityID))))//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+If ($Index#-1)
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$Index)+Char(Line feed);"")
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;Char(Line feed)+Char(Line feed);Char(Line feed))
+[Unit]SUFacilityID:=0
+//Else 
+//AlertMessage ("The SU Facility details were not able to be removed from Agreement "+[Agreement]AgreeNo)
+End if 
+End if 
+
+
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+If ([Facility]MoveOutUnitStatus)
+[Unit]Status:=<>asUnitStatus{6}//ToClean  ChangeSite
+End if 
+If ([Unit]ReservedTo>"")
+[Unit]Status:=<>asUnitStatus{3}//Reserved
+End if 
+[Unit]UpdateGate:=[Facility]UseGateSys
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+[Unit]UpdatePULS:=<>tUtilities
+End if 
+[Unit]IncreaseFrom:=!00-00-00!
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+
+[Agreement]DepositAmt:=0
+[Agreement]ActiveAgreemt:=False
+vMoveOut:=True
+vUnits:=[Agreement]UnitsOccup
+// [Agreement]NextBillDate:=!00/00/00!  Don't know why to do this? DELETED
+vRecalc:=True
+SAVE RECORD([Agreement])
+vbFrom:=True
+
+
+If ([Customer]NoActiveAgreemts<2)
+//ConfirmTwo ("Clear this customer's PIN's?";"Yes";"No")
+//If (OK=1)
+[Customer]GatePIN:=""
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+For ($i;1;Records in selection([PhotosCards]))
+If ([PhotosCards]Deposit>0)
+//AlertMessage ("The card for "+[PhotosCards]Name+" still has a deposit, please remove this manually")
+//Else 
+DELETE RECORD([PhotosCards])
+End if 
+NEXT RECORD([PhotosCards])
+End for 
+//Else 
+//AlertMessage ("You will need to clear this customer's PIN's manually")
+//End if 
+End if 
+
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+READ ONLY([Unit])
+LOAD RECORD([UnitType])
+LOAD RECORD([RCHistory])
+LOAD RECORD([Unit])
+SAVE RECORD([Agreement])
+End if 
+
+$String:="End WS_Insomniac_MoveOut"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

@@ -1,0 +1,125 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: Start";"UpdateLog")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 31/03/16, 16:26:06
+// ----------------------------------------------------
+// Method: WSC_CheckForUpdates
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+//
+
+C_LONGINT($1;WS_AUUserCode)
+C_TEXT($2;WS_ORFacilityCode;WS_SyncingTo)
+C_TEXT($3;WS_AUCallType)
+C_TEXT($4;WS_AUCall)
+C_LONGINT($5;WS_CurrentBuild)
+C_DATE($6;WS_CurrentBuildDate;WS_NextVersionDate)
+C_BOOLEAN($7;$Silent)
+
+C_BOOLEAN($0;WS_ORSuccess;WS_AUUpdate)
+C_LONGINT(WS_ORErrorCode;WS_NextVersion)
+C_TEXT(WS_ORErrorDescription)
+$0:=False
+$Silent:=False
+$Silent:=$7
+
+WEB SERVICE SET PARAMETER("WS_AUUserCode";$1)
+WEB SERVICE SET PARAMETER("WS_ORFacilityCode";$2)
+WEB SERVICE SET PARAMETER("WS_AUCallType";$3)
+WEB SERVICE SET PARAMETER("WS_AUCall";$4)
+WEB SERVICE SET PARAMETER("WS_CurrentBuild";$5)
+WEB SERVICE SET PARAMETER("WS_CurrentBuildDate";$6)
+
+If (Current machine="AFTERMATH") | (Current machine="VALKYRIE")
+WEB SERVICE CALL("http://localhost:19811/4DSOAP/";"WS_CheckForUpdates#WS_CheckForUpdates";"WS_CheckForUpdates";"StormanUsersV2";Web Service dynamic)
+Else 
+WEB SERVICE CALL("http://"+GetDNS ("SUV1")+":19811/4DSOAP/";"WS_CheckForUpdates#WS_CheckForUpdates";"WS_CheckForUpdates";"StormanUsersV2";Web Service dynamic)
+End if 
+
+If (OK=1)
+WEB SERVICE GET RESULT(WS_SyncingTo;"WS_SyncingTo")
+WEB SERVICE GET RESULT(WS_UpdateNotesURL;"WS_UpdateNotesURL")//update to download
+WEB SERVICE GET RESULT(WS_EnforceUpdate;"WS_EnforceUpdate")//update to download
+WEB SERVICE GET RESULT(WS_NextVersion;"WS_NextVersion")//update to download
+WEB SERVICE GET RESULT(WS_NextVersionDate;"WS_NextVersionDate")//build date of update
+WEB SERVICE GET RESULT(WS_AUStatus;"WS_AUStatus")
+WEB SERVICE GET RESULT(WS_ORSuccess;"WS_ORSuccess")
+WEB SERVICE GET RESULT(WS_ORErrorCode;"WS_ORErrorCode")
+WEB SERVICE GET RESULT(WS_ORErrorDescription;"WS_ORErrorDescription";*)// Memory clean-up on the final return value.
+
+If (WS_ORSuccess)
+
+If (WS_SyncingTo#"")
+
+//$Doc:=Create document(<>sPreferencesPath+"SyncTo "+WS_SyncingTo+".sm")
+//CLOSE DOCUMENT($Doc)
+
+//If (Locked([Facility])=True)
+//UNLOAD RECORD([Facility])
+//End if 
+
+If (Records in selection([Facility])=0)
+SetFacility 
+End if 
+
+READ WRITE([Facility])
+[Facility]CentralAddress:=WS_SyncingTo
+SAVE RECORD([Facility])
+
+End if 
+
+
+If ($3#"Notify")
+If (WS_NextVersion=0)
+$0:=False
+If ($3#"CallBack")
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: No new updates";"UpdateLog")
+End if 
+Else 
+
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: [AutoUpdates]UpdateStatus: "+String([AutoUpdates]UpdateStatus);"UpdateLog")
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: [AutoUpdates]FacilityCode: "+String([AutoUpdates]FacilityCode);"UpdateLog")
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: [AutoUpdates]NextVersion: "+String([AutoUpdates]NextVersion);"UpdateLog")
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: [AutoUpdates]OldVersion: "+String([AutoUpdates]OldVersion);"UpdateLog")
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: [AutoUpdates]UpdateReady: "+String([AutoUpdates]UpdateReady);"UpdateLog")
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: [AutoUpdates]UpdateFile: "+String([AutoUpdates]UpdateFile);"UpdateLog")
+
+
+READ WRITE([AutoUpdates])
+CREATE RECORD([AutoUpdates])
+[AutoUpdates]CustomURL:=WS_UpdateNotesURL
+[AutoUpdates]EnforceUpdates:=WS_EnforceUpdate
+[AutoUpdates]UpdateStatus:=3
+[AutoUpdates]FacilityCode:=[Facility]FacilityCode
+[AutoUpdates]NextVersion:=WS_NextVersion
+SAVE RECORD([AutoUpdates])
+
+$0:=True
+End if 
+Else 
+If ($3="Get") & (WS_AUStatus="Downloaded")
+SyncRecordLog ("Status "+WS_AUStatus;"UpdateLog")
+$0:=True
+End if 
+End if 
+
+Else 
+If ($Silent=False)
+AlertMessage ("There was a problem with Auto updates, please contact Storman support")
+End if 
+$0:=False
+End if 
+Else 
+If ($Silent=False)
+AlertMessage ("There was a problem with Auto updates, please contact Storman support")
+End if 
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: Not able to contact SU";"UpdateLog")
+$0:=False
+End if 
+
+
+SyncRecordLog ("Storman Update: WSC_CheckForUpdates: End";"UpdateLog")

@@ -1,0 +1,46 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_PhonePrivate;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_Get_TenantbyPhone"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_PhonePrivate: "+WS_PhonePrivate+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_TenantID;Text array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_TenantID;0)
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+If (Records in selection([Facility])#0)
+QUERY([Customer];[Customer]CustomerCode=WS_FacilityID+"@";*)
+QUERY([Customer]; & ;[Customer]PhonePrivate=WS_PhonePrivate)
+
+If (Records in selection([Customer])#0)
+For ($i;1;Records in selection([Customer]))
+INSERT IN ARRAY(WS_TenantID;Size of array(WS_TenantID)+1)
+WS_TenantID{$i}:=[Customer]CustomerCode
+End for 
+WS_RET_CODE:=True
+
+Else 
+WS_ERROR:="Customer Not Found"
+WS_RET_CODE:=False
+End if 
+Else 
+WS_ERROR:="Facility Not Found"
+WS_RET_CODE:=False
+End if 
+
+$String:="End WS_Insomniac_Get_TenantbyPhone"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$sizeofarray:=Size of array(WS_TenantID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_TenantID("+String($vlElem)+"):"+WS_TenantID{$vlElem}+Char(13)
+End for 
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

@@ -1,0 +1,96 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($0)//Amount in advance
+C_DATE($1)//Date to calculate as at
+C_BOOLEAN($2;$3;$RentAdvMethod;$NoErrors)//True is Daily Basis
+If (Substring([Facility]ReportSettings;25;1)="1")//Previously used to test out the new method
+$0:=CalcRentAdvance ($1;$2;$3)
+Else 
+$RentAdvMethod:=$2
+$NoErrors:=$3
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+GetAnalysis (False;True)
+Case of 
+: ([Agreement]LastBillDate<=$1) & ([Agreement]NextBillDate>$1) & (([Agreement]MoveOut=!00-00-00!) | ([Agreement]MoveOut>$1))
+[Agreement]BalFwd:=-1
+If ($RentAdvMethod)
+//Calculate using daily basis    
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/([Agreement]NextBillDate-[Agreement]LastBillDate);2)
+//Modification by SDD on 9/8/05 to avoid slightly changing denominators between 30 & 31 day months.
+$MthsAdv:=Round([Agreement]NextBillDate-[Agreement]LastBillDate;0)
+Case of 
+: ($MthsAdv>=28) & ($MthsAdv<=31)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/30.4;2)
+: ($MthsAdv>=59) & ($MthsAdv<=62)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/60.8;2)
+: ($MthsAdv>=89) & ($MthsAdv<=92)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/91.2;2)
+: ($MthsAdv>=181) & ($MthsAdv<=183)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/182.4;2)
+: ($MthsAdv>=365) & ($MthsAdv<=366)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/364.8;2)
+Else 
+//Do Nothing
+End case 
+Else 
+//Calculate using whole months basis    
+$MthsAdv:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30.4;0)
+$Month:=Trunc(($1-[Agreement]LastBillDate)/30.4;0)+1//THIS DOESN'T SEEM RIGHT 31days=2 30days=1?
+$0:=Round([Agreement]LastBillAmt*($MthsAdv-$Month)/$MthsAdv;2)
+If ($0<0)
+$0:=0
+End if 
+End if 
+: (([Agreement]LastBillDate>$1) & ([Agreement]NextBillDate>$1)) | (([Agreement]ActiveAgreemt=False) & ([Agreement]MoveOut>$1))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]DateFrom<=$1;*)
+QUERY([Trxs]; & ;[Trxs]DateTo>$1)
+If (Records in selection([Trxs])=1)
+[Agreement]BalFwd:=Record number([Trxs])//Store rec location for use by report
+$0:=0
+If ($RentAdvMethod)
+//Calculate using daily basis  
+If ([Trxs]DateFrom#[Trxs]DateTo)
+$0:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/([Trxs]DateTo-[Trxs]DateFrom);2)
+$MthsAdv:=Round([Trxs]DateTo-[Trxs]DateFrom;0)
+Case of 
+: ($MthsAdv>=28) & ($MthsAdv<=31)
+$0:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/30.4;2)
+: ($MthsAdv>=59) & ($MthsAdv<=62)
+$0:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/60.8;2)
+: ($MthsAdv>=89) & ($MthsAdv<=92)
+$0:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/91.2;2)
+: ($MthsAdv>=181) & ($MthsAdv<=183)
+$0:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/182.4;2)
+: ($MthsAdv>=365) & ($MthsAdv<=366)
+$0:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/364.8;2)
+Else 
+//Do Nothing
+End case 
+End if 
+Else 
+//Calculate using whole months basis    
+$MthsAdv:=Round(([Trxs]DateTo-[Trxs]DateFrom)/30.4;0)
+If ($MthsAdv>=1)
+$Month:=Trunc(($1-[Trxs]DateFrom)/30.4;0)+1//THIS DOESN'T SEEM RIGHT 31days=2 30days=1?
+$0:=Round([Trxs]TotAmt*($MthsAdv-$Month)/$MthsAdv;2)
+End if 
+If ($0<0)
+$0:=0
+End if 
+End if 
+Else 
+If (Records in selection([Trxs])>1)
+$0:=-3//More than one rent transaction
+Else 
+$0:=-2//Not billed for the period in question
+
+End if 
+End if 
+Else 
+$0:=-1//Not billed up to date or has moved out
+End case 
+If ($NoErrors) & (($0=-1) | ($0=-2) | ($0=-3))
+$0:=0
+End if 
+End if 

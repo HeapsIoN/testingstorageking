@@ -1,0 +1,343 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_BoxIDs;Text array;SOAP input)
+SOAP DECLARATION(WS_ORCustomerName;Is string var;SOAP input)
+SOAP DECLARATION(WS_StreetAddress;Is string var;SOAP input)
+SOAP DECLARATION(WS_StreetSuburb;Is string var;SOAP input)
+SOAP DECLARATION(WS_PostCode;Is longint;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+$String:="Start WS_BnSTrxMO"+Char(13)
+$sizeofarray:=Size of array(WS_BoxIDs)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_BoxIDs("+String($vlElem)+"):"+WS_BoxIDs{$vlElem}+Char(13)
+End for 
+$String:=$String+"WS_ORCustomerName: "+WS_ORCustomerName+Char(13)
+$String:=$String+"WS_StreetAddress: "+WS_StreetAddress+Char(13)
+$String:=$String+"WS_StreetSuburb: "+WS_StreetSuburb+Char(13)
+$String:=$String+"WS_PostCode: "+String(WS_PostCode)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_ORTotal;Is real;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+SOAP DECLARATION(WS_Code;Is text;SOAP output)
+SOAP DECLARATION(WS_Reference;Is text;SOAP output)
+
+READ WRITE([Authenticate])
+READ WRITE([Customer])
+READ WRITE([Agreement])
+
+C_BOOLEAN($First)
+C_TEXT($CheckAgree;$OldFacility)
+C_DATE($TrxDate)
+C_LONGINT($xDays;$yDays)
+C_LONGINT($Kg)
+$Kg:=0
+$CheckAgree:=""
+ARRAY TEXT($Units;0)
+$First:=True
+WS_ORSuccess:=True
+WS_ORTotal:=0
+
+If (Size of array(WS_BoxIDs)>0)
+For ($i;1;Size of array(WS_BoxIDs))
+QUERY([BarCode];[BarCode]Code=WS_BoxIDs{$i})
+
+If (Records in selection([BarCode])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1008
+WS_ORErrorDescription:="Box ID cannot be found in the system!"
+End if 
+
+If ([BarCode]Active=True) & (WS_ORSuccess)
+APPEND TO ARRAY($Units;[BarCode]UnitNo)
+// Check all boxes are for the same agreement
+If ($First=True)
+$CheckAgree:=[BarCode]AgreeNo
+$First:=False
+End if 
+If ($CheckAgree#[BarCode]AgreeNo)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1004
+WS_ORErrorDescription:="All boxes must be for the same agreement"
+End if 
+QUERY([Unit];[Unit]RUnitNo=[BarCode]UnitNo)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+If ((Locked([Unit])=True) | (Locked([UnitType])=True)) & (WS_ORSuccess=True)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1007
+WS_ORErrorDescription:="Either the Unit or UnitType file is locked by another process"
+End if 
+End if 
+End for 
+
+If (WS_ORSuccess=True)
+//Check shipping info
+$Kg:=Size of array($Units)*25
+
+QUERY([Shipping];[Shipping]FacilityCode=Substring($CheckAgree;1;5);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+If (Records in selection([Shipping])>1) & (WS_ORSuccess=True)
+WS_ORErrorCode:=13
+WS_ORErrorDescription:="Please check entered post code and the number of boxes"
+WS_ORSuccess:=False
+End if 
+
+QUERY([Agreement];[Agreement]RAgreeNo=$CheckAgree)
+If ((Records in selection([Agreement])#1) | ([Agreement]ActiveAgreemt=False)) & (WS_ORSuccess=True)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1002
+WS_ORErrorDescription:="The agreement is inactive or Agreement record cannot be found"
+End if 
+
+QUERY([Facility];[Facility]FacilityCode=Substring($CheckAgree;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+Else 
+WS_ORErrorCode:=99
+WS_ORErrorDescription:="Incorrect password"
+WS_ORSuccess:=False
+End if 
+
+If (WS_ORSuccess=True)
+
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+If (WS_ORCustomerName#"")
+[Customer]CustomerName:=WS_ORCustomerName
+End if 
+If (WS_StreetAddress#"")
+[Customer]StreetAddress:=WS_StreetAddress
+End if 
+If (WS_StreetSuburb#"")
+[Customer]StreetSuburb:=WS_StreetSuburb
+End if 
+If (String(WS_PostCode)#"")
+[Customer]StreetZIPCode:=String(WS_PostCode)
+End if 
+SAVE RECORD([Customer])
+
+$OldFacility:=<>sFacility
+<>sFacility:=Substring($CheckAgree;1;5)
+
+//Apply MO Charges only if all units are moving out
+QUERY([Unit];[Unit]AgreeNo=$CheckAgree)
+If (Records in selection([Unit])=Size of array($Units))
+
+// 18/09/14 - Undo Charges if Customer was billed in Advance
+If ([Agreement]LastBillDate>Current date)
+tRentTrx:=False
+bAdd:=0
+bAll:=0
+asShowHistory:=0
+viMatch:=0
+<>iRound:=[Facility]RoundDefault
+<>iRoundMethod:=[Facility]RoundMethod
+vFacility:=[Facility]FacilityCode
+vTotal:=0
+
+vOthInsurance:=[Agreement]InsureValue-Sum([Unit]InsureValue)
+vOldOthInsurance:=vOthInsurance
+
+BillNextCharges (8)
+SAVE RECORD([Agreement])
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+End if 
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vAmt5:=0
+vAmt6:=0
+vTotBal:=0
+[Agreement]MoveOut:=Current date
+[Agreement]OutNoticeDate:=[Agreement]MoveOut
+[Agreement]BnS:=String(WS_PostCode)+","+WS_StreetSuburb
+SAVE RECORD([Agreement])
+
+If ([Agreement]MoveOut#!00-00-00!) & ([Agreement]ActiveAgreemt)
+MoveOutCalc 
+End if 
+WS_ORTotal:=WS_ORTotal+vTotBal
+[Agreement]MoveOut:=Old([Agreement]MoveOut)
+SAVE RECORD([Agreement])
+Else 
+//create prorate for removing units
+
+WS_ORTotal:=WS_ORTotal+[Agreement]BalanceOwing
+For ($j;1;Size of array($Units))
+QUERY([Unit];[Unit]RUnitNo=$Units{$j})
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+vAgreePeriods:=$CasualAmount*[Agreement]MthsAdv
+If ([BillPlan]PlanPeriod="Week")
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+Else 
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+End if 
+
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+$xDays:=[Agreement]NextBillDate-Current date-1
+$Amt:=RoundAmt ($xDays/$yDays*$Amt*(-1))
+WS_ORTotal:=WS_ORTotal+$Amt
+
+// For Insurance
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description="@"+[Unit]RUnitNo+"@")
+If (Records in selection([OtherChgs])#0)
+For ($z;1;Records in selection([OtherChgs]))
+$Amt:=[OtherChgs]Amount
+$Amt:=RoundAmt ($xDays/$yDays*$Amt*(-1))
+WS_ORTotal:=WS_ORTotal+$Amt
+NEXT RECORD([OtherChgs])
+End for 
+End if 
+
+//18/09/14 Deposit Amount
+WS_ORTotal:=WS_ORTotal-[Unit]Deposit
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+[Agreement]BnS:=String(WS_PostCode)+","+WS_StreetSuburb
+SAVE RECORD([Agreement])
+End for 
+
+//Shipping Price
+QUERY([Shipping];[Shipping]FacilityCode=Substring($CheckAgree;1;5);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+WS_ORTotal:=WS_ORTotal+[Shipping]Price
+
+End if 
+
+<>sFacility:=$OldFacility
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+TRACE
+// Code for StroPay
+$MonthEarlier:=Add to date(Current date;0;-1;0)
+QUERY([Facility];[Facility]SortOrder>=0;*)//Find all Facility records except the Head Office one
+QUERY([Facility]; & ;[Facility]OnlineReserveIncl=True;*)
+QUERY([Facility]; & ;[Facility]UseOnlineReservations=True;*)
+QUERY([Facility]; & ;[Facility]UpgradesPaidTo>$MonthEarlier;*)
+QUERY([Facility]; & ;[Facility]FacilityCode=Substring($CheckAgree;1;5))
+vtFacilityCodeSelect:=Substring($CheckAgree;1;5)
+CREATE SET([Facility];"OnlineReservationsEntitled")
+vtLoginPassword:=[Customer]Password
+vtLoginUsername:=[Agreement]AgreeNo
+vKinitekRef:=Generate UUID
+WS_Reference:=vKinitekRef
+
+vKinitekRef:="MoveOut"+vKinitekRef
+
+KinitekStorpay 
+WS_Code:=vtOnlineReservationContent
+
+QUERY([Authenticate];[Authenticate]RAgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([Authenticate])#0)
+DELETE SELECTION([Authenticate])
+End if 
+
+CREATE RECORD([Authenticate])
+[Authenticate]RAgreeNo:=[Agreement]RAgreeNo
+[Authenticate]IPAddress:="BnS"
+[Authenticate]ReferenceID:=WS_Reference
+[Authenticate]DateAuth:=Current date
+[Authenticate]SessionID:=String(WS_ORTotal)
+QUERY([Unit];[Unit]AgreeNo=$CheckAgree)
+If (Records in selection([Unit])=Size of array($Units))
+[Authenticate]SessionID:=[Authenticate]SessionID+","+"agreement "+[Agreement]RAgreeNo
+Else 
+[Authenticate]SessionID:=[Authenticate]SessionID+","+"unit(s):"
+For ($l;1;Size of array($Units))
+[Authenticate]SessionID:=[Authenticate]SessionID+","+$Units{$l}
+End for 
+[Authenticate]SessionID:=[Authenticate]SessionID+", agreement "+[Agreement]RAgreeNo+","
+End if 
+SAVE RECORD([Authenticate])
+
+//12/01/14 DAM Added code to send email when customer is for MO and the balance in credit
+If (WS_ORTotal<=0)
+If ([Facility]OResFacNotifEmail#"")
+$MessageBody:=""
+$MessageBody:="Customer: "+[Customer]CustomerName+" Agreement: "+[Agreement]AgreeNo+Char(Carriage return)
+$MessageBody:=$MessageBody+"Is ready to move out, from : "+GetTextNo ([Authenticate]SessionID;2;",")+Char(Carriage return)
+$MessageBody:=$MessageBody+Char(Carriage return)
+$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - New Online Reservation";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")//Notification Email to Facility
+End if 
+End if 
+
+End if 
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1006
+WS_ORErrorDescription:="There are no Boxes ID passed to the method"
+End if 
+READ ONLY([Authenticate])
+READ ONLY([Customer])
+READ ONLY([Agreement])
+
+$String:="End WS_BnSTrxMO"+Char(13)
+$String:=$String+"WS_ORTotal: "+String(WS_ORTotal)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_Code: "+WS_Code+Char(13)
+$String:=$String+"WS_Reference: "+String(WS_Reference)+Char(13)
+
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

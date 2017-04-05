@@ -1,0 +1,50 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+ConfirmTwo ("Do you wish to authorize Storman? By clicking yes the system setup will be closed and defaut web browser will be opened.";"Yes";"No")
+If (OK=1)
+
+C_LONGINT($Request)
+C_TEXT(AppID;AppSecret)
+C_TEXT($URL;$AppID;StormanURL;$response)
+
+$MerchantID:=GetTextNo ([Facility]DDAccountDetails;1;",")
+$AppID:=GetTextNo ([Facility]DDAccountDetails;2;",")
+$AppSecret:=GetTextNo ([Facility]DDAccountDetails;3;",")
+$AccessToken:=GetTextNo ([Facility]DDAccountDetails;4;",")
+$StormanAppID:=GetTextNo ([Facility]DDAccountDetails;5;",")
+$StormanAppSecret:=GetTextNo ([Facility]DDAccountDetails;6;",")
+
+StormanURL:=[Facility]ExternalIP+"/4DCGI/gocardless"
+StormanURLEncoded:=URLEncode (StormanURL)
+$BillingURL:="https://billing.storman.com:443/4DCGI/gocardless"
+$BillingURLEncoded:=URLEncode ($BillingURL)
+
+If ([Facility]TestAccount)
+$URL:="https://sandbox.gocardless.com/oauth/authorize"
+Else 
+$URL:="https://gocardless.com/oauth/authorize"
+End if 
+
+ARRAY TEXT($HeaderNames;0)
+ARRAY TEXT($HeaderValues;0)
+APPEND TO ARRAY($HeaderNames;"Content-Type")
+APPEND TO ARRAY($HeaderValues;"application/x-www-form-urlencoded")
+
+$contents:="FacilityCode="+[Facility]FacilityCode+"&StormanURL="+StormanURLEncoded
+
+//Call Billing
+$response:=""
+$Request:=HTTP Request(HTTP POST method;"https://billing.storman.com:443/4DCGI/gocardless";$contents;$response;$HeaderNames;$HeaderValues)
+
+//$Request:=HTTP Request(HTTP POST Method;"http://rdc.storman.com:19812/4DCGI/gocardless";$contents;$response;$HeaderNames;$HeaderValues)
+SyncRecordLog ("HTTP Body: "+$contents)
+SyncRecordLog ("HTTP Response for calling Billing: "+String($Request))
+SyncRecordLog ("HTTP Response for calling Billing: "+String($response))
+If ($Request>=200) & ($Request<300)
+$URL:=$URL+"?client_id="+$StormanAppID+"&amp;"+"redirect_uri="+$BillingURL+"&amp;response_type=code&amp;scope=manage_merchant"
+OPEN URL($URL)
+ACCEPT
+Else 
+AlertMessage ("Unable to send request to Storman Billing. Please contact Storman Support. HTTP Response: "+String($Request))
+End if 
+
+End if 

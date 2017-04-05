@@ -1,0 +1,89 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+SetFormats 
+If (vMthDate#!00-00-00!) & ((vReportSettings[[11]]="Y") | (<>tBatch))
+QUERY([Unit];[Unit]UnitTypeCode=[UnitType]RUnitType;*)
+QUERY([Unit]; & ;[Unit]StartDate<=vMthDate)
+Else 
+QUERY([Unit];[Unit]UnitTypeCode=[UnitType]RUnitType)
+End if 
+//QUERY([Unit]; & ;[Unit]Status#"Unavail@")
+CREATE EMPTY SET([Unit];"toprint")
+For ($i;1;Records in selection([Unit]))
+If ([Unit]Status="Unavail@")
+QUERY([UnitHistory];[UnitHistory]MoveOut>vMthDate;*)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vMthDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo)
+If (Records in selection([UnitHistory])>0)
+ADD TO SET([Unit];"toprint")
+End if 
+Else 
+ADD TO SET([Unit];"toprint")
+End if 
+NEXT RECORD([Unit])
+End for 
+USE SET("toprint")
+CLEAR SET("toprint")
+[UnitType]NoTotal:=Records in selection([Unit])
+[UnitType]AreaSizeTotal:=0
+vOccUnit:=0
+[UnitType]AreaSizeOccup:=0
+[UnitType]RentedValue:=0
+For ($i;1;Records in selection([Unit]))
+[UnitType]AreaSizeTotal:=Round([UnitType]AreaSizeTotal+[Unit]UnitAreaSize;2)
+If ((tBoolean) & ([Unit]OccupRentedVal#-999)) | ((tBoolean=False) & ([Unit]Vacant=False))
+vOccUnit:=vOccUnit+1
+[UnitType]AreaSizeOccup:=Round([UnitType]AreaSizeOccup+[Unit]UnitAreaSize;2)
+If (tBoolean)
+[UnitType]RentedValue:=[UnitType]RentedValue+[Unit]OccupRentedVal
+Else 
+[UnitType]RentedValue:=[UnitType]RentedValue+[Unit]UnitValue
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+[UnitType]NoVacant:=[UnitType]NoTotal-vOccUnit
+If ([UnitType]VariableLength)
+vUnitBaseRate:=[UnitType]UnitTypeLength*[UnitType]MonthlyRate
+Else 
+vUnitBaseRate:=[UnitType]MonthlyRate
+End if 
+If ([Facility]TaxAddtoAmt)
+[UnitType]RentedValue:=Round([UnitType]RentedValue*(1+(vTax/100));2)
+vRate:=Round(vUnitBaseRate*(1+(vTax/100));2)
+Else //Documentation
+[UnitType]RentedValue:=Round([UnitType]RentedValue/(1+(vTax/100));2)
+vRate:=Round(vUnitBaseRate/(1+(vTax/100));2)
+End if 
+vTotal:=vRate*[UnitType]NoTotal
+If (vReportSettings[[4]]="2")
+[UnitType]RentedValue:=Round(vOccUnit*vRate;2)
+End if 
+vVacVal:=Round([UnitType]NoVacant*vRate;2)
+vVacArea:=Round([UnitType]AreaSizeTotal-[UnitType]AreaSizeOccup;2)
+If ([UnitType]NoTotal=0)
+vPCUOcc:=0
+vPCUVac:=0
+Else 
+vPCUOcc:=Round(vOccUnit*100/[UnitType]NoTotal;1)
+vPCUVac:=Round([UnitType]NoVacant*100/[UnitType]NoTotal;1)
+End if 
+If (vTotal=0)
+vPCVOcc:=0
+vPCVVac:=0
+Else 
+vPCVOcc:=Round([UnitType]RentedValue*100/vTotal;1)
+vPCVVac:=Round(vVacVal*100/vTotal;1)
+End if 
+If ([UnitType]AreaSizeTotal=0)
+vPCAOcc:=0
+vPCAVac:=0
+Else 
+vPCAOcc:=Round([UnitType]AreaSizeOccup*100/[UnitType]AreaSizeTotal;1)
+vPCAVac:=Round(100-vPCAOcc;1)
+End if 
+
+$0:="Text"+","+String(vRate)+","+String(vOccUnit)+","+String(vPCUOcc)+","+String(vPCVOcc)
+$0:=$0+","+String(vPCAOcc)+","+String(vPCUVac)+","+String(vVacVal)+","+String(vPCVVac)+","+String(vVacArea)+","+String(vPCAVac)

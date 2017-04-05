@@ -1,0 +1,90 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(Test_TheID)
+C_TEXT($Attachments;Test_TextBlob)
+C_BOOLEAN(bURLLoaded)
+Case of 
+: (Form event=On Load)
+bPreview:=False
+If (Test_TheID=0) & (BLOB size([Message]EmailMsg)>0)
+Test_TheID:=Milliseconds
+End if 
+
+//20/01/15 DAM Added for Fort Knox
+//If (<>sFacility="FK@")
+//OBJECT SET VISIBLE(bResend;False)
+//End if 
+
+bPreview:=False
+bURLLoaded:=False
+HTMLEdit_url:="http://www.storman.com/blank.html"
+OBJECT SET TITLE(*;"Text7";Get localized string("Address")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Subject")+":")
+OBJECT SET TITLE(*;"Text4";Get localized string("Message")+":")
+OBJECT SET TITLE(*;"Text6";Get localized string("Attachments")+":")
+If (<>sProduct="M@")
+OBJECT SET VISIBLE(*;"@CustCode";False)
+Else 
+OBJECT SET VISIBLE(*;"@CustCode1";False)
+End if 
+//SetColours 
+vLastNo:=""
+If ([Message]Address="")
+//[Message]Address:="support@storman.com"
+[Message]OutIn:=True
+End if 
+If ([Message]OutIn=False) | ([Message]SentRead=True) | (BLOB size([Message]AttachmentBlob)>0)
+OBJECT SET VISIBLE(bAddIncl;True)
+OBJECT SET VISIBLE(bDelIncl;True)
+OBJECT SET VISIBLE(*;"Picture1";True)
+OBJECT SET VISIBLE(*;"Picture2";True)
+End if 
+If ([Message]OutIn=True) & ([Message]SentRead=True)
+OBJECT SET VISIBLE(bResend;True)
+End if 
+//If ([Message]OutIn=True)
+//SET VISIBLE(*;"Text7";False)
+//Else 
+//SET VISIBLE(*;"Text9";False)
+//End if 
+ARRAY TEXT(aAttachments;0)
+$Attachments:=[Message]Attachments
+$Pos:=Position(Char(13);$Attachments;0;*)
+While ($Pos>0)
+$File:=Substring($Attachments;1;$Pos-1)
+$Attachments:=Substring($Attachments;$Pos+1)
+$Pos:=Position(Char(13);$Attachments;0;*)
+APPEND TO ARRAY(aAttachments;$File)
+End while 
+APPEND TO ARRAY(aAttachments;$Attachments)
+If ([Message]Attachments="")
+ARRAY TEXT(aAttachments;0)
+//OBJECT SET VISIBLE(*;"Picture3";False)
+//OBJECT SET VISIBLE(bOpenIncl;False)
+End if 
+
+If (Test_TheID#0)
+If (Test_Mailpath#"")
+EMail_Edit_Prepare ("HTMLEdit";"";Test_TheID;Test_Mailpath)
+Else 
+EMail_Edit_Prepare ("HTMLEdit";Test_TextBlob;Test_TheID;"")
+Test_TextBlob:=""
+End if 
+Else 
+$id:=Milliseconds
+EMail_Edit_Prepare ("HTMLEdit";"";$id)
+End if 
+
+
+
+: ((Form event=On Resize) | (Form event=On Timer))
+If (bPreview=False)
+EMail_Edit_EventHandler ("HTMLEdit")
+End if 
+: (Form event=On Unload)
+HTMLEdit_url:="http://www.storman.com/blank.html"
+If (Test_TheID#0)
+EMail_ReturnURLCleanUp (Test_TheID)
+End if 
+End case 
+
+

@@ -1,0 +1,200 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//not sure how Sage handles the QB equivalent of 'classes' - which will be needed for MV extracts - maybe department field?
+//Dates must be imported in format xx/xx/xxxx - does not specify whether MM or DD, but using forced 4D format 7 which meant to be country specific.
+//!
+
+
+C_TEXT($0)//Contains the resulting journal
+C_TEXT($1)
+C_LONGINT($i;$j)
+C_TEXT($t;$cr;$Ext)
+C_BOOLEAN($Sum)
+C_REAL($TaxAmt)
+$0:=""
+$sp:="  "
+$t:=","
+$cr:=Char(13)//Char(10)  `+Char(13)
+$Sum:=False
+$TaxAmt:=0
+$TotExTax:=0
+$TotIncTax:=0
+If (<>iPlatform<3)
+$Ext:="CSV"
+Else 
+$Ext:="csv"
+End if 
+//$Ext:="csv" - csv doesn't work
+If ([Journal]JrnlType#"REV")
+If (Count parameters>0)
+$DocRef:=Create document(<>sExportPath+$1;$Ext)
+Else 
+$DocRef:=Create document("";$Ext)
+End if 
+Else 
+OK:=1
+End if 
+If (OK=1)
+CREATE SET([Journal];"Jnls")
+$Jnls:=Records in set("Jnls")
+For ($i;1;$Jnls)
+USE SET("Jnls")
+ORDER BY([Journal];[Journal]JrnlType;<)
+FIRST RECORD([Journal])
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]AcctNo>"")
+CREATE SET([CashBookTrxs];"CashBookTrxs")
+Case of 
+: ([Journal]JrnlType="REV")
+For ($n;1;Size of array(<>asSiteCodes))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+USE SET("CashBookTrxs")
+QUERY SELECTION BY FORMULA([CashBookTrxs];Substring([CashBookTrxs]Description;((Position(",";[CashBookTrxs]Description))+1);5)=<>asSiteCodes{$n})
+$ShortName:=Position(",";[CashBookTrxs]Description)
+ORDER BY([CashBookTrxs];[CashBookTrxs]AcctNo;>)
+FIRST RECORD([CashBookTrxs])
+$AcctNo:=[CashBookTrxs]AcctNo
+$TotalTax:=Sum([CashBookTrxs]GrossAmt)-Sum([CashBookTrxs]Amount)
+If ($i>1)
+CLOSE DOCUMENT($DocRef)
+Else 
+vLoc:=Select folder("Save Export";Get 4D folder(Current resources folder))
+End if 
+vShortname:=Position(",";[CashBookTrxs]Description)
+$Name:=vLoc+[Journal]JrnlType+Substring([CashBookTrxs]Description;vShortname+1;5)+Replace string(String([Journal]JrnlDate);"/";"")
+$DocRef:=Create document($Name;$Ext)
+If (Records in selection([CashBookTrxs])>0)
+For ($j;1;Records in selection([CashBookTrxs]))
+//[CashBookTrxs]Amount:=[CashBookTrxs]Amount*$Neg
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+$TaxAmt:=$TaxAmt+([CashBookTrxs]GrossAmt-[CashBookTrxs]Amount)
+If ($TaxAmt=0)
+If ([ChartAccts]AcctType="D")
+$TransType:="JD"
+Else 
+$TransType:="JC"
+End if 
+$TaxCode:="T9"//T+zero, Sage uses tax codes T0-T99
+Else 
+$TransType:="JC"
+$TaxCode:="T"+String([Facility]TaxRate)//"T15"  //assume T15 is the 15% rate, being standard VAT rate
+If ($TaxAmt<0)
+$TaxAmt:=$TaxAmt*(-1)
+End if 
+End if 
+$Name:="Income Journal"
+$ShortName:=Position(",";[CashBookTrxs]Description)
+If ($AcctNo=[CashBookTrxs]AcctNo)
+$TotExTax:=$TotExTax+[CashBookTrxs]Amount
+$TotIncTax:=$TotIncTax+[CashBookTrxs]GrossAmt
+Else 
+$TotExTax:=[CashBookTrxs]Amount
+$TotIncTax:=[CashBookTrxs]GrossAmt
+End if 
+$Date:=[CashBookTrxs]TrxDate
+$DeptRef:=[CashBookTrxs]SiteID
+$Desc:=[ChartAccts]Description
+NEXT RECORD([CashBookTrxs])
+If ($AcctNo#[CashBookTrxs]AcctNo)
+If ($TotExTax<0)
+$TotIncTax:=$TotIncTax*(-1)
+$TotExTax:=$TotExTax*(-1)
+Else 
+$TransType:="JD"
+End if 
+$StrDate:=String($Date;7)
+SEND PACKET($DocRef;$TransType+$t+$Name+$t+$AcctNo+$t+$DeptRef+$t+$StrDate+$t+$Desc+$t+$t+String(Abs($TotIncTax))+$t+$TaxCode+$t)
+SEND PACKET($DocRef;String(Abs($TaxAmt))+$t+"1.00"+$t+$t+$t+$cr)
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;3)+$sp+<>sCurrency+String(Abs([CashBookTrxs]Amount);<>sFormat)+$sp+[ChartAccts]Description+$cr
+$TaxAmt:=0
+$TotExTax:=0
+$TotIncTax:=0
+End if 
+$AcctNo:=[CashBookTrxs]AcctNo
+End for 
+End if 
+End if 
+End for 
+SEND PACKET($DocRef;$cr+$cr)
+$0:=$0+$cr+$cr
+: ([Journal]JrnlType="REC") & (Records in selection([CashBookTrxs])>0)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+CREATE SET([CashBookTrxs];"CashBookTrxs")
+For ($n;1;Size of array(<>asSiteCodes))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+USE SET("CashBookTrxs")
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position((<>asFacilities{$n}+",");[CashBookTrxs]Description)>0)
+If (Records in selection([CashBookTrxs])>0)
+FIRST RECORD([CashBookTrxs])
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+$ShortName:=Position(",";[CashBookTrxs]Description)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")//need to know primary bank account
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>asSiteCodes{$n})//[Facility]FacilityCode  `◊asSiteCodes{$o})
+End if 
+$BankAcc:=[ChartAccts]AcctNo
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>asSiteCodes{$n})//[Facility]FacilityCode  `◊asSiteCodes{$o})
+End if 
+$IncomeAcc:=[ChartAccts]AcctNo
+For ($q;1;Records in selection([CashBookTrxs]))
+$ShortName:=Position(",";[CashBookTrxs]Description)
+$Desc:=Substring([CashBookTrxs]Description;($ShortName+1))
+$Pos:=Position(",";$Desc)
+$GLCode:=Substring($Desc;1;($Pos-1))
+$Desc:=Substring($Desc;($Pos+1))
+QUERY([Supplier];[Supplier]SupplierCode=$GLCode)
+If ([Supplier]Phone#"")
+$Item:=[Supplier]Phone
+Else 
+$Item:=[Supplier]SupplierCode
+End if 
+$TransType:="BR"
+$TaxCode:="T9"//tax for receipts does not apply
+$DeptRef:=[CashBookTrxs]SiteID
+$StrDate:=String([CashBookTrxs]TrxDate;7)
+SEND PACKET($DocRef;$TransType+$t+$BankAcc+$t+[ChartAccts]AcctNo+$t+$DeptRef+$t+$StrDate+$t+[ChartAccts]Description+$t+$Item+$t+String(Abs([CashBookTrxs]Amount);"######0.00")+$t+$TaxCode+$t)
+SEND PACKET($DocRef;"0"+$t+"1.00"+$t+$t+$cr)
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End if 
+End for 
+: ([Journal]JrnlType="PRE")
+For ($n;1;Size of array(<>asSiteCodes))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+$Name:="Prepaid Jnl"
+$TaxCode:="T9"
+$TaxAmt:=0
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]AcctNo>"")
+QUERY SELECTION BY FORMULA([CashBookTrxs];Substring([CashBookTrxs]Description;((Position(",";[CashBookTrxs]Description))+1);5)=<>asSiteCodes{$n})
+For ($j;1;Records in selection([CashBookTrxs]))
+If ([CashBookTrxs]Amount<=0)
+$Amt:=[CashBookTrxs]Amount*(-1)
+$TransType:="JD"
+Else 
+$Amt:=[CashBookTrxs]Amount
+$TransType:="JC"
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo;*)
+QUERY([ChartAccts]; & ;[ChartAccts]ReportName=<>sFacility)
+$DeptRef:=[CashBookTrxs]SiteID
+$StrDate:=String([CashBookTrxs]TrxDate;7)
+SEND PACKET($DocRef;$TransType+$t+$Name+$t+[CashBookTrxs]AcctNo+$t+$DeptRef+$t+$StrDate+$t+[ChartAccts]Description+$t+$t+String(Abs($Amt);"######0.00")+$t+$TaxCode+$t)
+SEND PACKET($DocRef;"0"+$t+"1.00"+$t+$t+$cr)
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End for 
+Else 
+//Do nothing
+End case 
+REMOVE FROM SET([Journal];"Jnls")
+End for 
+CLOSE DOCUMENT($DocRef)
+CLEAR SET("Jnls")
+CLEAR SET("CashbookTrxs")
+AlertMessage (Get localized string("Export Complete!"))
+End if 
+SetFacility 

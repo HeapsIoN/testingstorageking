@@ -1,0 +1,95 @@
+//%attributes = {"folder":"CustomSearch","lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$TableNo;$Last)
+C_POINTER($Field)
+$TableNo:=Table(Current default table)
+ARRAY TEXT(asFields;0)
+ARRAY LONGINT(aiCheck;0)
+
+For ($i;1;Get last field number(Current default table))
+$Field:=Field($TableNo;$i)
+If (Type($Field->)=Is integer) | (Type($Field->)=Is longint)
+INSERT IN ARRAY(asFields;Size of array(asFields)+1)
+asFields{Size of array(asFields)}:=Field name($Field)
+INSERT IN ARRAY(aiCheck;Size of array(aiCheck)+1)
+aiCheck{Size of array(aiCheck)}:=$i
+End if 
+End for 
+
+If (Size of array(asFields)>1)
+asFields:=1
+Open window((Screen width/2)-159;(Screen height/2)-89;(Screen width/2)+159;(Screen height/2)+89;5;"Select Field")
+DIALOG([Facility];"SelectField")
+CLOSE WINDOW
+CREATE EMPTY SET("DupSet")
+If (OK=1)
+$Field:=Field($TableNo;aiCheck{asFields})
+ORDER BY(Current default table->;$Field->;>)
+$Last:=-32000
+$Found:=""
+Open window(20;50;400;150;0;Get localized string("Progress"))
+For ($i;1;Records in selection)
+GOTO XY(2;2)
+If ($Last=$Field->)
+$Found:=$Found+String($Last)+","
+ADD TO SET("DupSet")
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection)+" - "+Get localized string("Found")+"    ")
+Else 
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection)+"              ")
+End if 
+$Last:=$Field->
+NEXT RECORD
+End for 
+CLOSE WINDOW
+If ($Found="")
+AlertMessage (Get localized string("There are no duplicates for field")+" "+asFields{asFields}+"!")
+Else 
+AlertMessage (Get localized string("There are duplicates for field")+" "+asFields{asFields}+" "+Get localized string("for the following numbers")+":"+Char(13)+Substring($Found;1;200))
+USE SET("DupSet")
+SET WINDOW TITLE(Get localized string("Records")+" : "+String(Records in selection)+" "+Get localized string("of")+" "+String(Records in table))
+If ($Field->=[Trxs]SeqNo)
+ConfirmTwo (Get localized string("Recalculate Sequence Numbers?"))
+If (OK=1)
+READ WRITE([Trxs])
+APPLY TO SELECTION([Trxs];[Trxs]SeqNo:=0)
+
+QUERY([Trxs];[Trxs]SeqNo=0)
+If (Records in selection([Trxs])>0)
+SET QUERY DESTINATION(3;$j)
+$Occup:=0
+FIRST RECORD([Trxs])
+For ($i;1;Records in selection([Trxs]))
+QUERY([Trxs];[Trxs]SeqNo=(Record number([Trxs])+1))
+If ($j>0)
+Repeat 
+$Occup:=$Occup+1
+QUERY([Trxs];[Trxs]SeqNo=$Occup)
+Until ($j=0)
+[Trxs]SeqNo:=$Occup
+Else 
+[Trxs]SeqNo:=Record number([Trxs])+1
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+SET QUERY DESTINATION(0)
+RELATE ONE SELECTION([Trxs];[Agreement])
+CheckMatching (True;2;True;!00-00-00!;[Facility]FacilityCode;True)
+End if 
+
+//If ([Facility]CentralAddress>"")
+//AlertMessage (Get localized string("Set all events on table 6 with SyncStatus 0 to SyncStatus 1. You will then need to export the Transaction table and import to HOF."))
+//End if 
+SET WINDOW TITLE(Get localized string("Records")+" : "+String(Records in selection)+" "+Get localized string("of")+" "+String(Records in table))
+
+End if 
+
+End if 
+End if 
+CLEAR SET("DupSet")
+End if 
+
+Else 
+AlertMessage (Get localized string("This table does not contain any numbers of type integer or longint!"))
+End if 

@@ -1,0 +1,77 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_Unit_TypeID;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_Promotions"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_Unit_TypeID: "+WS_Unit_TypeID+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_PromotionID;Text array;SOAP output)
+SOAP DECLARATION(WS_PromotionDescr;Text array;SOAP output)
+SOAP DECLARATION(WS_Avaliability;Text array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_PromotionID;0)
+ARRAY TEXT(WS_PromotionDescr;0)
+ARRAY TEXT(WS_Avaliability;0)
+
+
+QUERY([Promotions];[Promotions]PromoCode=WS_FacilityID+"@")
+
+//QUERY([Promotions];[Promotions]VoucherCode=WS_Unit_TypeID)
+
+If (Records in selection([Promotions])=0)
+WS_RET_CODE:=False
+WS_ERROR:="Promotions Not Found"
+Else 
+
+FIRST RECORD([Promotions])
+For ($i;1;Records in selection([Promotions]))
+INSERT IN ARRAY(WS_PromotionID;Size of array(WS_PromotionID)+1)
+INSERT IN ARRAY(WS_PromotionDescr;Size of array(WS_PromotionDescr)+1)
+INSERT IN ARRAY(WS_Avaliability;Size of array(WS_PromotionID)+1)
+WS_RET_CODE:=True
+WS_PromotionID{$i}:=[Promotions]VoucherCode
+WS_PromotionDescr{$i}:=[Promotions]Description
+
+If ([Promotions]Active)
+If ([Promotions]ValidFrom<Current date) & ([Promotions]ValidTo>Current date)
+WS_Avaliability{$i}:="Y"
+Else 
+WS_Avaliability{$i}:="N"
+End if 
+Else 
+WS_Avaliability{$i}:="Y"
+End if 
+
+NEXT RECORD([Promotions])
+End for 
+End if 
+
+$String:="End WS_Insomniac_Promotions"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+
+$sizeofarray:=Size of array(WS_PromotionID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_PromotionID("+String($vlElem)+"):"+WS_PromotionID{$vlElem}+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_PromotionDescr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_PromotionDescr("+String($vlElem)+"):"+WS_PromotionDescr{$vlElem}+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_Avaliability)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_Avaliability("+String($vlElem)+"):"+WS_Avaliability{$vlElem}+Char(13)
+End for 
+
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

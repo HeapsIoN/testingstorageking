@@ -1,0 +1,1884 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SHOW ON DISK(Get 4D folder+"4D Preferences v13.4DPreferences")
+//AlertMessage ("teste")
+//TRACE
+//================================================================================================================
+
+//READ WRITE([Agreement])
+//READ WRITE([Customer])
+//default table ([Agreement])
+//QUERY([Agreement];[Agreement]RAgreeNo="@R_@")
+// ////QUERY([Agreement];[Agreement]RAgreeNo="@R_73")
+//If (Records in selection([Agreement])>0)
+//
+//For ($vlRecord;1;Records in selection([Agreement]))
+//viMatch:=0
+//bPrtRec:=0
+//bEmailReceipt:=0
+//bAll:=0
+//asShowHistory:=1
+//ReCalc 
+//
+//SAVE RECORD([Agreement])
+//NEXT RECORD([Agreement])
+//End for 
+//
+//End if 
+
+
+//``````````==========================S T A R T ===============================
+
+//```$res:=RentPlusConvertercleanTables($prefix;$prefix2)
+$show_progress:=False//true or false
+
+
+vtFormula:=""
+//SQL LOGIN("Rent Plus";"RentPlusUser";"98fl46nh41")
+
+$prefix:="R_"
+$prefix2:="(RP)"
+
+//$prefix:=""
+//$prefix2:=""
+
+
+$time_start:=Current time
+vtFormula:=vtFormula+Char(Carriage return)+"============== Rent Plus Converter in Storman ==============  "
+vtFormula:=vtFormula+Char(Carriage return)+"started at:"+String($time_start)
+$counter:=0
+
+
+QUERY([Trxs];[Trxs]AgreeNo="@"+$prefix+"@")
+$temp_counter:=Records in selection([Trxs])
+//If ($temp_counter>0)
+//START TRANSACTION
+//SET QUERY AND LOCK(True)
+//DELETE SELECTION([TRXS])
+//SET QUERY AND LOCK(False)
+//VALIDATE TRANSACTION
+//End if 
+
+
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=<>sFacility+"@"+$prefix+"@")
+$temp_counter:=Records in selection([UnitHistory])
+If ($temp_counter>0)
+//START TRANSACTION
+//SET QUERY AND LOCK(True)
+//DELETE SELECTION([UnitHistory])
+//SET QUERY AND LOCK(False)
+//VALIDATE TRANSACTION
+End if 
+//=================================
+
+//================================================================================================================
+
+
+//AlertMessage (" Do you want to import RP data to SM 4D ? ")
+
+CONFIRM("Do you want to import Rent Plus data to SM 4D ?")
+If (OK=1)
+
+Else 
+ALERT("Operation canceled.")
+ABORT
+End if 
+
+
+
+ARRAY INTEGER($RP_UnitID;0)
+ARRAY TEXT($RP_UnitNumber;0)
+ARRAY TEXT($RP_Unit;0)
+
+ARRAY INTEGER($RP_UnitTypeID;0)
+ARRAY INTEGER($RP_LocationID;0)
+
+ARRAY REAL($RP_UnitMonthlyRate;0)
+ARRAY REAL($RP_UnitWeeklyRate;0)
+ARRAY REAL($RP_UnitDailyRate;0)
+
+ARRAY TEXT($RP_Type Description;0)
+ARRAY INTEGER($RP_Length;0)
+ARRAY INTEGER($RP_Width;0)
+ARRAY INTEGER($RP_Height;0)
+
+
+
+SQL LOGIN("ODBC:Rent Plus";"";"")
+///SQL LOGIN("ODBC:rent_be";"";"")
+If (OK=1)
+
+
+C_REAL($UnitMnthRate;$UnitWeekRate)
+
+
+
+$SQLStm:="SELECT UnitID FROM tblUnit order by UnitID"
+SQL EXECUTE($SQLStm;$RP_UnitID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT UnitNumber FROM tblUnit order by UnitID"
+SQL EXECUTE($SQLStm;$RP_UnitNumber)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT UnitTypeID FROM tblUnit order by UnitID"
+SQL EXECUTE($SQLStm;$RP_UnitTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT LocationID FROM tblUnit order by UnitID"
+SQL EXECUTE($SQLStm;$RP_LocationID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Unit FROM tblUnit order by UnitID"
+SQL EXECUTE($SQLStm;$RP_Unit)
+SQL LOAD RECORD(SQL all records)
+
+ARRAY TEXT($RP_StatusNow;0)
+$SQLStmStatusNow:="SELECT StatusNow FROM tblUnit order by UnitID"
+SQL EXECUTE($SQLStmStatusNow;$RP_StatusNow)
+SQL LOAD RECORD(SQL all records)
+
+//`----------------tbl UnitRate---------------------
+//
+ARRAY INTEGER($RP_UnitRate_UnitID;0)
+ARRAY INTEGER($RP_UnitRate_RateID;0)
+
+$SQLStm:="SELECT UnitID FROM tblUnitRate"
+SQL EXECUTE($SQLStm;$RP_UnitRate_UnitID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT RateID FROM tblUnitRate"
+SQL EXECUTE($SQLStm;$RP_UnitRate_RateID)
+SQL LOAD RECORD(SQL all records)
+
+//-------------------------tbl Rate--------------------------
+
+ARRAY INTEGER($RP_Rate_RateID;0)
+
+$SQLStm:="SELECT RateID FROM tblRate"
+SQL EXECUTE($SQLStm;$RP_Rate_RateID)
+SQL LOAD RECORD(SQL all records)
+
+//-------------------------tbl Unittype--------------------------
+
+ARRAY INTEGER($RP_UnitType_UnitRTypeID;0)
+ARRAY TEXT($RP_UnitType_Description;0)
+
+$SQLStm:="SELECT UnitTypeID FROM tblUnitType"
+SQL EXECUTE($SQLStm;$RP_UnitType_UnitRTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT UnitType FROM tblUnitType"
+SQL EXECUTE($SQLStm;$RP_UnitType_Description)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------unit selfstor now 2d----------------------------------
+ARRAY INTEGER($RP_UnitSSID1;0)
+ARRAY REAL($RP_UnitSSLength;0)
+ARRAY REAL($RP_UnitSSWidth;0)
+ARRAY REAL($RP_UnitSSHeight;0)
+
+ARRAY TEXT($RP_UnitSize;3;0)
+
+$SQLStm:="SELECT UnitID FROM tblUnitSelfStor"
+SQL EXECUTE($SQLStm;$RP_UnitSSID1)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT UnitLength FROM tblUnitSelfStor"
+SQL EXECUTE($SQLStm;$RP_UnitSSLength)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT UnitWidth FROM tblUnitSelfStor"
+SQL EXECUTE($SQLStm;$RP_UnitSSWidth)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT UnitHeight FROM tblUnitSelfStor"
+SQL EXECUTE($SQLStm;$RP_UnitSSHeight)
+SQL LOAD RECORD(SQL all records)
+
+
+For ($vlElem;1;Size of array($RP_UnitSSID1))
+APPEND TO ARRAY($RP_UnitSize{0};String($RP_UnitSSID1{$vlElem}))
+APPEND TO ARRAY($RP_UnitSize{1};String(Round($RP_UnitSSLength{$vlElem};2)))
+APPEND TO ARRAY($RP_UnitSize{2};String(Round($RP_UnitSSWidth{$vlElem};2)))
+APPEND TO ARRAY($RP_UnitSize{3};String(Round($RP_UnitSSHeight{$vlElem};2)))
+End for 
+
+ARRAY INTEGER($RP_Tempor_RateID;0)
+ARRAY REAL($RP_RateMnth;0)
+ARRAY REAL($RP_RateWeek;0)
+ARRAY REAL($RP_RateDay;0)
+For ($vlElem;1;Size of array($RP_UnitID))
+APPEND TO ARRAY($RP_UnitMonthlyRate;0)
+APPEND TO ARRAY($RP_UnitWeeklyRate;0)
+APPEND TO ARRAY($RP_UnitDailyRate;0)
+End for 
+
+
+
+//$UnitMnthRate,$UnitWeekRate
+For ($vlElem;1;Size of array($RP_UnitID))
+//``````````````````````get rates 
+
+$vlfind1:=Find in array($RP_UnitRate_UnitID;$RP_UnitID{$vlElem})//` find UnitID in  tblunitrate
+If ($vlfind1>0)
+///$SQLStm:="SELECT  RateID FROM tblUnitRate where UnitID="+String($vlElem) //03/02/15 ?????????????????????
+$SQLStm:="SELECT  RateID FROM tblUnitRate where UnitID="+String($RP_UnitID{$vlElem})
+SQL EXECUTE($SQLStm;$RP_Tempor_RateID)//15,66,67
+SQL LOAD RECORD(SQL all records)
+$UnitMnthRate:=0
+$UnitWeekRate:=0
+$UnitDayRate:=0
+If (Size of array($RP_Tempor_RateID)>0)//`search monthly, weekly, daily rate
+For ($vlElemRateID;1;Size of array($RP_Tempor_RateID))
+// monthly
+$SQLStm:="SELECT  UnitPrice FROM tblRate where RateID="+String($RP_Tempor_RateID{$vlElemRateID})+" and UnitofMeasure like 'm'"
+SQL EXECUTE($SQLStm;$RP_RateMnth)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_RateMnth)>0)
+$UnitMnthRate:=$RP_RateMnth{1}
+INSERT IN ARRAY($RP_UnitMonthlyRate;$vlElem;1)
+$RP_UnitMonthlyRate{$vlElem}:=Round($UnitMnthRate;2)
+DELETE FROM ARRAY($RP_UnitMonthlyRate;$vlElem+1;1)
+End if 
+// weekly
+$SQLStm:="SELECT  UnitPrice FROM tblRate where RateID="+String($RP_Tempor_RateID{$vlElemRateID})+" and UnitofMeasure like 'd' And Quantity=7"
+SQL EXECUTE($SQLStm;$RP_RateWeek)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_RateWeek)>0)
+$UnitWeekRate:=$RP_RateWeek{1}
+INSERT IN ARRAY($RP_UnitWeeklyRate;$vlElem;1)
+$RP_UnitWeeklyRate{$vlElem}:=Round($UnitWeekRate;2)
+DELETE FROM ARRAY($RP_UnitWeeklyRate;$vlElem+1;1)
+End if 
+
+// daily
+$SQLStm:="SELECT  UnitPrice FROM tblRate where RateID="+String($RP_Tempor_RateID{$vlElemRateID})+" and UnitofMeasure like 'd' And Quantity=1"
+SQL EXECUTE($SQLStm;$RP_RateDay)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_RateDay)>0)
+$UnitDaykRate:=$RP_RateDay{1}
+INSERT IN ARRAY($RP_UnitdailyRate;$vlElem;1)
+$RP_UnitDailyRate{$vlElem}:=Round($UnitDayRate;2)
+DELETE FROM ARRAY($RP_UnitDailyRate;$vlElem+1;1)
+End if 
+
+End for 
+End if 
+End if 
+
+//``````````````````````get description
+$vlfind3:=Find in array($RP_UnitType_UnitRTypeID;$RP_UnitTypeID{$vlElem})
+If ($vlfind3>0)
+$tmp:=$RP_UnitType_Description{$vlfind3}
+APPEND TO ARRAY($RP_Type Description;$tmp)
+End if 
+End for 
+Else 
+AlertMessage ("ODBC connection problems found,"+Char(Carriage return)+" Process interrupted ")
+ABORT
+End if 
+
+
+//`------------------------tblParty   from RP  ----------------------------------
+ARRAY INTEGER($RP_tblParty_PartyID;0)
+ARRAY INTEGER($RP_tblParty_PartyTypeID;0)
+ARRAY TEXT($RP_tblParty_PartyName;0)
+ARRAY TEXT($RP_tblParty_Soundex;0)
+ARRAY TEXT($RP_tblParty_Identification1;0)
+ARRAY TEXT($RP_tblParty_Identification2;0)
+
+
+// //$SQLStm:="SELECT PartyID FROM tblParty where partyid >=2621 and partyid<2630" /// for test
+$SQLStm:="SELECT PartyID FROM tblParty"
+SQL EXECUTE($SQLStm;$RP_tblParty_PartyID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PartyTypeID FROM tblParty"
+SQL EXECUTE($SQLStm;$RP_tblParty_PartyTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PartyName FROM tblParty"
+SQL EXECUTE($SQLStm;$RP_tblParty_PartyName)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Soundex FROM tblParty"
+SQL EXECUTE($SQLStm;$RP_tblParty_Soundex)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Identification1 FROM tblParty"
+SQL EXECUTE($SQLStm;$RP_tblParty_Identification1)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Identification2 FROM tblParty"
+SQL EXECUTE($SQLStm;$RP_tblParty_Identification2)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------tblPerson   from RP  ----------------------------------
+ARRAY INTEGER($RP_tblPerson_PartyID;0)
+ARRAY TEXT($RP_tblPerson_FirstName;0)
+ARRAY TEXT($RP_tblPerson_LastName;0)
+
+$SQLStm:="SELECT PartyID FROM tblPerson"
+SQL EXECUTE($SQLStm;$RP_tblPerson_PartyID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT FirstName FROM tblPerson"
+SQL EXECUTE($SQLStm;$RP_tblPerson_FirstName)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT LastName FROM tblPerson"
+SQL EXECUTE($SQLStm;$RP_tblPerson_LastName)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------tblAddress   from RP  ----------------------------------
+ARRAY INTEGER($RP_tblAddress_AdressTypeID;0)
+ARRAY INTEGER($RP_tblAddress_PartyID;0)
+ARRAY TEXT($RP_tblAddress_Street;0)
+ARRAY TEXT($RP_tblAddress_City;0)
+ARRAY TEXT($RP_tblAddress_Code;0)
+
+$SQLStm:="SELECT AddressTypeID FROM tblAddress"
+SQL EXECUTE($SQLStm;$RP_tblAddress_AdressTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PartyID FROM tblAddress"
+SQL EXECUTE($SQLStm;$RP_tblAddress_PartyID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Street FROM tblAddress"
+SQL EXECUTE($SQLStm;$RP_tblAddress_Street)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT City FROM tblAddress"
+SQL EXECUTE($SQLStm;$RP_tblAddress_City)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Code FROM tblAddress"
+SQL EXECUTE($SQLStm;$RP_tblAddress_Code)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------tblAddressType   from RP  ----------------------------------
+ARRAY INTEGER($RP_tblAddressType_AddressTypeID;0)
+ARRAY TEXT($RP_tblAddressType_AddressType;0)
+
+$SQLStm:="SELECT AddressTypeID FROM tblAddressType"
+SQL EXECUTE($SQLStm;$RP_tblAddressType_AddressTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT AddressType FROM tblAddressType"
+SQL EXECUTE($SQLStm;$RP_tblAddressType_AddressType)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------tblPhoneType   from RP  ----------------------------------
+ARRAY INTEGER($RP_tblPhoneType_PhoneTypeID;0)
+ARRAY TEXT($RP_tblPhoneType_PhoneType;0)
+
+$SQLStm:="SELECT PhoneTypeID FROM tblPhoneType"
+SQL EXECUTE($SQLStm;$RP_tblPhoneType_PhoneTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PhoneType FROM tblPhoneType"
+SQL EXECUTE($SQLStm;$RP_tblPhoneType_PhoneType)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------tblPhone   from RP  ----------------------------------
+ARRAY INTEGER($RP_tblPhone_PartyID;0)
+ARRAY INTEGER($RP_tblPhone_PhoneTypeID;0)
+ARRAY TEXT($RP_tblPhone_PhoneNumber;0)
+
+
+$SQLStm:="SELECT PartyID FROM tblPhone"
+SQL EXECUTE($SQLStm;$RP_tblPhone_PartyID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PhoneTypeID FROM tblPhone"
+SQL EXECUTE($SQLStm;$RP_tblPhone_PhoneTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PhoneNumber FROM tblPhone"
+SQL EXECUTE($SQLStm;$RP_tblPhone_PhoneNumber)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------tblAction  from RP  ----------------------------------
+ARRAY INTEGER($RP_tblAction_ActionID_in;0)
+ARRAY INTEGER($RP_tblAction_ActionID_out;0)
+
+//ARRAY INTEGER($RP_tblAction_ActionID;0)
+ARRAY INTEGER($RP_tblAction_PartyID;0)
+ARRAY INTEGER($RP_tblAction_ContractID;0)
+ARRAY INTEGER($RP_tblAction_UnitID;0)
+ARRAY INTEGER($RP_tblAct_ActTypeID;0)
+ARRAY INTEGER($RP_tblAction_RateID;0)
+// /ARRAY INTEGER($RP_tblAction_PlanID;0)
+
+ARRAY DATE($RP_tblAction_movein;0)
+ARRAY DATE($RP_tblAction_moveout;0)
+
+//$SQLStm:="SELECT  ActionID FROM tblAcrion"
+//SQL EXECUTE($SQLStm;$RP_tblAction_ActionID)
+//SQL LOAD RECORD(SQL All Records)
+
+
+
+
+//`------------------------tblContract  from RP agreement in SM ----------------------------------
+//`================================================================================================
+ARRAY INTEGER($RP_tblContract_ContractID;0)
+ARRAY INTEGER($RP_tblContract_MarketSourceID;0)
+ARRAY INTEGER($RP_tblContract_MarketReasonID;0)
+ARRAY INTEGER($RP_tblContract_ContractTypeID;0)
+ARRAY DATE($RP_tblContract_Effective;0)
+
+
+$SQLStm:="SELECT ContractID FROM tblContract where Pau is null order by ContractID"//` PAU - cotract terminated, not iterested
+SQL EXECUTE($SQLStm;$RP_tblContract_ContractID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT MarketSourceID FROM tblContract where Pau is null order by ContractID"
+SQL EXECUTE($SQLStm;$RP_tblContract_MarketSourceID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT MarketReasonID FROM tblContract where Pau is null order by ContractID"
+SQL EXECUTE($SQLStm;$RP_tblContract_MarketReasonID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT ContractTypeID FROM tblContract where Pau is null order by ContractID"
+SQL EXECUTE($SQLStm;$RP_tblContract_ContractTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Effective FROM tblContract where Pau is null order by ContractID"
+SQL EXECUTE($SQLStm;$RP_tblContract_Effective)
+SQL LOAD RECORD(SQL all records)
+
+
+
+//`------------------------tblMarketSource  from RP  ----------------------------------
+
+ARRAY INTEGER($RP_tblMarketSource_MSourceID;0)
+ARRAY TEXT($RP_tblMarketSource_MSource;0)
+
+
+$SQLStm:="SELECT MarketSourceID FROM tblMarketSource"
+SQL EXECUTE($SQLStm;$RP_tblMarketSource_MSourceID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT MarketSource FROM tblMarketSource"
+SQL EXECUTE($SQLStm;$RP_tblMarketSource_MSource)
+SQL LOAD RECORD(SQL all records)
+
+//`------------------------!!!!!Matching SM & RP  CustomerCode & PartytypeID!!!!!!!!!  ----------------------------------
+
+ARRAY INTEGER($tblMatchingPartID;0)
+ARRAY TEXT($tblMatchingCustomerCode;0)
+
+
+//-------------------------tbl Reminder--------------------------
+
+ARRAY INTEGER($RP_Reminder_ReminderID;0)
+ARRAY DATE($RP_Reminder_CreateDate;0)
+ARRAY INTEGER($RP_Reminder_PartyID;0)
+ARRAY TEXT($RP_Reminder_Note;0)
+
+$SQLStm:="SELECT ReminderID FROM tblReminder"
+SQL EXECUTE($SQLStm;$RP_Reminder_ReminderID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT CreateDate FROM tblReminder"
+SQL EXECUTE($SQLStm;$RP_Reminder_CreateDate)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PartyID FROM tblReminder"
+SQL EXECUTE($SQLStm;$RP_Reminder_PartyID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Note FROM tblReminder"
+SQL EXECUTE($SQLStm;$RP_Reminder_Note)
+SQL LOAD RECORD(SQL all records)
+
+//``--------------------------------------------------
+
+
+//``=============================== Build SM  Tables  ====================================================
+
+
+//  //` =================================build Billing plans table==================================
+
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build Billing Plan table...")
+End if 
+
+
+ARRAY INTEGER($RP_tblPlan_PlanID;0)
+ARRAY TEXT($RP_tblPlan_SM_Code;0)
+
+ARRAY INTEGER($RP_tblPlan_PlanTypeID;0)
+ARRAY TEXT($RP_tblPlan_Plan;0)
+ARRAY TEXT($RP_tblPlan_CycleLength;0)
+ARRAY TEXT($RP_tblPlan_CycleBegin;0)
+
+
+
+
+$SQLStm:="SELECT PlanID FROM tblPlan"
+SQL EXECUTE($SQLStm;$RP_tblPlan_PlanID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PlanTypeID FROM tblPlan"
+SQL EXECUTE($SQLStm;$RP_tblPlan_PlanTypeID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Plan FROM tblPlan"
+SQL EXECUTE($SQLStm;$RP_tblPlan_Plan)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT CycleLength FROM tblPlan"
+SQL EXECUTE($SQLStm;$RP_tblPlan_CycleLength)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT CycleBeginDate FROM tblPlan"
+SQL EXECUTE($SQLStm;$RP_tblPlan_CycleBegin)
+SQL LOAD RECORD(SQL all records)
+
+READ WRITE([BillPlan])
+DEFAULT TABLE([BillPlan])
+
+For ($vlElem;1;Size of array($RP_tblPlan_PlanID))
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Size of array($RP_tblPlan_PlanID))*100;0)
+End if 
+
+QUERY([BillPlan];[BillPlan]Code=Delete string(<>sFacility+String($RP_tblPlan_PlanID{$vlElem})+String($RP_tblPlan_PlanTypeID{$vlElem});9;32000))
+If (Records in selection>0)
+DELETE SELECTION([BillPlan])
+End if 
+// ///if($RP_tblPlan_CycleBegin{$vlElem}#"")
+
+CREATE RECORD([BillPlan])
+[BillPlan]Code:=<>sFacility+String($RP_tblPlan_PlanID{$vlElem})+String($RP_tblPlan_PlanTypeID{$vlElem})
+APPEND TO ARRAY($RP_tblPlan_SM_Code;<>sFacility+String($RP_tblPlan_PlanID{$vlElem})+String($RP_tblPlan_PlanTypeID{$vlElem}))
+
+If ($RP_tblPlan_Plan{$vlElem}="4 week")///666
+[BillPlan]Description:="1 week"
+[BillPlan]PlanPeriod:="1w"
+Else 
+[BillPlan]Description:=$RP_tblPlan_Plan{$vlElem}
+[BillPlan]PlanPeriod:=$RP_tblPlan_CycleLength{$vlElem}
+End if 
+
+
+
+If ($RP_tblPlan_PlanID{$vlElem}=21) & ($RP_tblPlan_PlanTypeID{$vlElem}=5)
+[BillPlan]DiscPercentage:=5
+End if 
+If ($RP_tblPlan_PlanID{$vlElem}=23) & ($RP_tblPlan_PlanTypeID{$vlElem}=2)
+[BillPlan]DiscPercentage:=15
+End if 
+If ($RP_tblPlan_PlanID{$vlElem}=24) & ($RP_tblPlan_PlanTypeID{$vlElem}=1)
+[BillPlan]DiscPercentage:=15
+End if 
+If ($RP_tblPlan_PlanID{$vlElem}=27) & ($RP_tblPlan_PlanTypeID{$vlElem}=1)
+[BillPlan]DiscPercentage:=7.5
+End if 
+If ($RP_tblPlan_PlanID{$vlElem}=28) & ($RP_tblPlan_PlanTypeID{$vlElem}=2)
+[BillPlan]DiscPercentage:=7.5
+End if 
+
+
+$lng1:=Substring(($RP_tblPlan_CycleLength{$vlElem});1;1)
+$lng2:=Substring(($RP_tblPlan_CycleLength{$vlElem});2;1)
+$msr:=""
+$nbd:=0
+
+If (Character code($lng2)=48)//` 48 is code of 0
+$nbd:=Num(Substring(($RP_tblPlan_CycleLength{$vlElem});1;2))
+$msr:=Substring(($RP_tblPlan_CycleLength{$vlElem});3;1)
+//end if
+Else 
+If (Num($lng2)=0)
+$nbd:=Num($lng1)
+$msr:=$lng2
+Else 
+$nbd:=Num($lng1+$lng2)
+$msr:=Substring(($RP_tblPlan_CycleLength{$vlElem});3;1)
+End if 
+End if 
+
+If ($msr="m")
+$msr:="Month"
+End if 
+If ($msr="d")
+$msr:="Day"
+End if 
+
+If ($RP_tblPlan_Plan{$vlElem}="4 week")//666
+[BillPlan]PlanPeriod:="Week"
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+Else 
+[BillPlan]PlanPeriod:=$msr
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=$nbd
+End if 
+
+
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+// //end if
+End for 
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+
+
+
+//`` =================================build UnitType table==================================
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build UnitType table...")
+End if 
+
+READ WRITE([UnitType])
+DEFAULT TABLE([UnitType])
+$counter:=0
+//For ($vlElem;1;Size of array($RP_UnitID))
+For ($vlElem;1;Size of array($RP_UnitType_UnitRTypeID))
+If ($show_progress=True)
+//<>ProgressInd:=Trunc(($vlElem/Size of array($RP_tblParty_PartyID))*100;0)
+<>ProgressInd:=Trunc(($vlElem/Size of array($RP_UnitType_UnitRTypeID))*100;0)
+End if 
+
+//If ($RP_UnitNumber{$vlElem}#"") & ($RP_StatusNow{$vlElem}#"")
+
+//QUERY([UnitType];[UnitType]RUnitType=Delete string(<>sFacility+$prefix+$RP_UnitNumber{$vlElem};15;32000))
+QUERY([UnitType];[UnitType]RUnitType=Delete string(<>sFacility+$prefix+String($RP_UnitType_UnitRTypeID{$vlElem});15;32000))
+If (Records in selection>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([UnitType])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+// /If (Records in selection<1)  //` no duplicates
+CREATE RECORD([UnitType])
+//[UnitType]RUnitType:=Delete string(<>sFacility+$prefix+$RP_UnitNumber{$vlElem};15;32000)  //<>sFacility+$RP_UnitNumber{$vlElem}  //Delete string(<>sFacility+$RP_UnitNumber{$vlElem};11;32000)
+[UnitType]RUnitType:=Delete string(<>sFacility+$prefix+String($RP_UnitType_UnitRTypeID{$vlElem});15;32000)//<>sFacility+$RP_UnitNumber{$vlElem}  //Delete string(<>sFacility+$RP_UnitNumber{$vlElem};11;32000)
+
+//[UnitType]UnitTypeCode:=$prefix+$RP_UnitNumber{$vlElem}
+[UnitType]UnitTypeCode:=$prefix+String($RP_UnitType_UnitRTypeID{$vlElem})
+
+[UnitType]Description:=Delete string($RP_UnitType_Description{$vlElem};20;32000)
+//[UnitType]MonthlyRate:=$RP_UnitMonthlyRate{$vlElem}
+//[UnitType]WeeklyRate:=$RP_UnitWeeklyRate{$vlElem}
+//[UnitType]DailyRate:=$RP_UnitDailyRate{$vlElem}
+
+
+[UnitType]NoTotal:=1
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])
+$counter:=$counter+1
+//End if 
+End for 
+// /READ ONLY([UnitType])
+
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+
+vtFormula:=vtFormula+Char(Carriage return)+"UnitType table, imported records: "+String($counter)
+
+//` =================================build Unit table==================================
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build Unit table...")
+End if 
+
+$counter:=0
+DEFAULT TABLE([Unit])
+READ WRITE([Unit])
+READ WRITE([UnitType])
+For ($vlElem;1;Size of array($RP_UnitNumber))
+
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Size of array($RP_UnitNumber))*100;0)
+End if 
+
+If ($RP_UnitNumber{$vlElem}#"") & ($RP_StatusNow{$vlElem}#"")
+QUERY([Unit];[Unit]RUnitNo=Delete string(<>sFacility+$prefix+$RP_UnitNumber{$vlElem};21;32000))
+
+If (Records in selection>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Unit])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+CREATE RECORD([Unit])// Create a new archive record 
+
+//[Unit]UnitTypeCode:=Delete string(<>sFacility+$prefix+$RP_UnitNumber{$vlElem};21;32000)
+[Unit]UnitNo:=$prefix+$RP_UnitNumber{$vlElem}// Copy fields to the archive record 
+/////[Unit]UnitNo:=$RP_UnitNumber{$vlElem}  // Copy fields to the archive record /666
+
+[Unit]RUnitNo:=<>sFacility+$prefix+$RP_UnitNumber{$vlElem}
+//[Unit]UnitTypeCode:=<>sFacility+$prefix+$RP_UnitNumber{$vlElem}
+[Unit]UnitTypeCode:=<>sFacility+$prefix+String($RP_UnitTypeID{$vlElem})
+
+
+[Unit]AgreeNo:=""//<>sFacility  ///<>sHOFacility+"Agreement"  //$RP_UnitNumber{$vlElem}
+
+$vlfind:=Find in array($RP_UnitSize{0};String($RP_UnitID{$vlElem}))//` Unit sizes
+If ($vlfind>0)
+[Unit]UnitLength:=Num($RP_UnitSize{1}{$vlfind})
+[Unit]UnitWidth:=Num($RP_UnitSize{2}{$vlfind})
+[Unit]Height:=Num($RP_UnitSize{3}{$vlfind})
+[Unit]UnitSize:=String($RP_UnitSize{1}{$vlfind})+"x"+String($RP_UnitSize{2}{$vlfind})+" "
+$tmpr:=$RP_UnitSize{3}{$vlfind}
+If (Num($tmpr)>0)
+$tmpr:=$RP_UnitSize{3}{$vlfind}
+[Unit]UnitSize:=[Unit]UnitSize+"x"+String($tmpr)+" "
+End if 
+
+// //[Customer]CustomerCode
+$status1:=""
+$vacant1:=False
+Case of 
+: ($RP_StatusNow{$vlElem}="O") | ($RP_StatusNow{$vlElem}="D")
+$status1:="Rented"
+: ($RP_StatusNow{$vlElem}="V") | ($RP_StatusNow{$vlElem}="")
+$vacant1:=True
+$status1:="Vacant"
+: ($RP_StatusNow{$vlElem}="S")
+$status1:="Locked"
+: ($RP_StatusNow{$vlElem}="X")
+$status1:="Repair"
+Else 
+$status1:="Vacant"// /"N/A"
+$vacant1:=True
+End case 
+[Unit]Status:=$status1// /////$RP_StatusNow{$vlElem}
+[Unit]Vacant:=$vacant1
+//////////
+
+$Unit_num:=""
+$reg_r:=0
+//$reg_y:=0.00
+//$reg_w:=0.00
+//$reg_d:=0.00
+///QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+///If (Records in selection([Unit])=1)
+$Unit_num22:=Replace string([Unit]RUnitNo;<>sFacility;"")
+$Unit_num22:=Replace string($Unit_num22;$prefix;"")
+
+$RateID22:=0
+$UnitID23:=0
+$SQLStm22:="SELECT UnitID FROM tblUnit where UnitNumber='"+$Unit_num22+"'"
+SQL EXECUTE($SQLStm22;$UnitID23)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm23:="SELECT RateID FROM tblUnitRate where UnitID="+String($UnitID23)
+SQL EXECUTE($SQLStm23;$RateID22)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm24:="SELECT UnitPrice FROM tblRate where RateID="+String($RateID22)
+SQL EXECUTE($SQLStm24;$reg_r)
+SQL LOAD RECORD(SQL all records)
+///End if 
+
+////[Agreement]RegularRent:=$reg_r
+/////SAVE RECORD([Agreement])
+
+
+
+//////////
+[Unit]RentedValue:=$reg_r////$RP_UnitMonthlyRate{$vlElem}  ///666  see 03/02/15 ?????????????
+[Unit]WeeklyRentedValue:=$RP_UnitWeeklyRate{$vlElem}
+
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+$counter:=$counter+1
+
+If ($vacant1=True)
+QUERY([UnitType];[UnitType]RUnitType=(<>sFacility+$prefix+$RP_UnitNumber{$vlElem}))
+If (Records in selection=1)
+[UnitType]NoVacant:=1
+SAVE RECORD([UnitType])
+End if 
+End if 
+
+
+End if 
+End if // ///[Customer]CustomerCode
+End for 
+// /READ ONLY([Unit])
+// /READ ONLY([UnitType])
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+vtFormula:=vtFormula+Char(Carriage return)+"Unit table, imported records: "+String($counter)
+
+//``` =================================build Customer table==================================
+
+DEFAULT TABLE([Customer])
+READ WRITE([Customer])
+
+$cust_imported:=0
+$counter:=0
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build Customer table...")
+End if 
+
+For ($vlElem;1;Size of array($RP_tblParty_PartyID))
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Size of array($RP_tblParty_PartyID))*100;0)
+End if 
+$Name13:=RemoveSpecial ($RP_tblParty_PartyName{$vlElem})
+If (Length($Name13)>2)
+QUERY([Customer];[Customer]CustomerName=$RP_tblParty_PartyName{$vlElem}+" "+$prefix2)//Delete string(<>sFacility+$prefix+$RP_UnitNumber{$vlElem};15;32000))
+If (Records in selection>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Customer])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+$cust_imported:=$cust_imported+1
+
+vName:=$Name13
+CreateCustCode (True;True)
+
+
+
+$vlfind:=Find in array($RP_tblPerson_PartyID;$RP_tblParty_PartyID{$vlElem})
+
+If ($vlfind>0)
+[Customer]UserName:=$RP_tblPerson_LastName{$vlfind}+", "+$RP_tblPerson_FirstName{$vlfind}
+Else 
+[Customer]UserName:=""
+End if 
+[Customer]CustomerName:=$RP_tblParty_PartyName{$vlElem}+" "+$prefix2//$RP_tblPerson_LastName{$vlElem} +", " + $RP_tblPerson_FirstName{$vlElem}+" "+$prefix2
+
+$vlfind:=Find in array($RP_tblAddress_PartyID;$RP_tblParty_PartyID{$vlElem})
+If ($vlfind>0)
+[Customer]StreetAddress:=$RP_tblAddress_Street{$vlfind}
+[Customer]MailAddress:=$RP_tblAddress_Street{$vlfind}
+[Customer]StreetCity:=$RP_tblAddress_City{$vlfind}
+[Customer]MailCity:=$RP_tblAddress_City{$vlfind}
+
+//[Customer]StreetZIPCode:=$RP_tblAddress_Code{$vlfind}
+[Customer]MailPostZIPCode:=$RP_tblAddress_Code{$vlfind}
+
+$vlfind2:=Find in array($RP_tblAddressType_AddressTypeID;$RP_tblAddress_AdressTypeID{$vlfind})
+If ($vlfind2>0)
+[Customer]CustType:=$RP_tblAddressType_AddressType{$vlfind2}
+End if 
+
+
+ARRAY TEXT($RP_tblPhonenums;0)
+$SQLStm:="SELECT PhoneNumber FROM tblPhone where PartyID="+String($RP_tblParty_PartyID{$vlElem})+" and PhoneTypeID=5"//mobile
+SQL EXECUTE($SQLStm;$RP_tblPhonenums)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_tblPhonenums)>0)
+[Customer]MobilePhone:=$RP_tblPhonenums{1}
+End if 
+
+$SQLStm:="SELECT PhoneNumber FROM tblPhone where PartyID="+String($RP_tblParty_PartyID{$vlElem})+" and PhoneTypeID=1 "//or PhoneTypeID=9"  //business
+SQL EXECUTE($SQLStm;$RP_tblPhonenums)
+SQL LOAD RECORD(SQL all records)
+[Customer]PhoneBus:=""
+If (Size of array($RP_tblPhonenums)>0)
+[Customer]PhoneBus:=$RP_tblPhonenums{1}
+End if 
+
+$SQLStm:="SELECT PhoneNumber FROM tblPhone where PartyID="+String($RP_tblParty_PartyID{$vlElem})+" and PhoneTypeID=6"//email
+SQL EXECUTE($SQLStm;$RP_tblPhonenums)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_tblPhonenums)>0)
+[Customer]EmailAddress:=$RP_tblPhonenums{1}
+End if 
+
+$SQLStm:="SELECT PhoneNumber FROM tblPhone where PartyID="+String($RP_tblParty_PartyID{$vlElem})+" and PhoneTypeID=3"//home
+SQL EXECUTE($SQLStm;$RP_tblPhonenums)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_tblPhonenums)>0)
+[Customer]PhonePrivate:=$RP_tblPhonenums{1}
+End if 
+
+$SQLStm:="SELECT PhoneNumber FROM tblPhone where PartyID="+String($RP_tblParty_PartyID{$vlElem})+" and PhoneTypeID=4"//fax
+SQL EXECUTE($SQLStm;$RP_tblPhonenums)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_tblPhonenums)>0)
+[Customer]FaxNo:=$RP_tblPhonenums{1}
+End if 
+
+End if 
+
+$mrksource:=""
+
+ARRAY INTEGER($tmpr_contrID;0)
+$SQLStm4:="SELECT ContractID FROM tblAction where PartyID="+String($RP_tblParty_PartyID{$vlElem})
+SQL EXECUTE($SQLStm4;$tmpr_contrID)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($tmpr_contrID)>0)
+For ($vlElem4;1;Size of array($tmpr_contrID))
+ARRAY INTEGER($tmpr_msrcID;0)
+$SQLStm5:="SELECT MarketSourceID FROM tblContract where ContractID="+String($tmpr_contrID{$vlElem4})
+SQL EXECUTE($SQLStm5;$tmpr_msrcID)
+SQL LOAD RECORD(SQL all records)
+
+If (Size of array($tmpr_msrcID)>0)
+$SQLStm5:="SELECT MarketSource FROM tblMarketSource where MarketSourceID="+String($tmpr_msrcID{1})
+SQL EXECUTE($SQLStm5;$mrksource)
+SQL LOAD RECORD(SQL all records)
+If ($mrksource#"")
+[Customer]MarketSrce:=$mrksource
+End if 
+End if 
+
+End for 
+End if 
+
+//`//===========!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!=============================
+APPEND TO ARRAY($tblMatchingPartID;$RP_tblParty_PartyID{$vlElem})
+APPEND TO ARRAY($tblMatchingCustomerCode;[Customer]CustomerCode)
+
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+$counter:=$counter+1
+End if 
+End for 
+// /READ ONLY([Customer])
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+vtFormula:=vtFormula+Char(Carriage return)+"Customer table, imported records: "+String($counter)
+
+//` =================================build Agreement table==================================
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build Agreement table...")
+End if 
+$counter:=0
+
+DEFAULT TABLE([Agreement])
+READ WRITE([Agreement])
+READ WRITE([Unit])
+READ WRITE([UnitHistory])
+READ WRITE([UnitType])
+
+$units_agrrrr:=0
+
+For ($vlElem;1;Size of array($RP_tblContract_ContractID))
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Size of array($RP_tblContract_ContractID))*100;0)
+End if 
+
+$tmpr_str:=$prefix+String($RP_tblContract_ContractID{$vlElem})
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)// Loop as long as the user wants to
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+
+
+QUERY([Agreement];[Agreement]AgreeNo=$tmpr_str)//$prefix+String($RP_tblContract_ContractID{$vlElem}))  //Delete string(<>sFacility+$prefix+$RP_UnitNumber{$vlElem};15;32000))
+If (Records in selection>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Agreement])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+CLEAR VARIABLE($RP_tblAction_ActionID_in)
+CLEAR VARIABLE($RP_tblAction_ActionID_out)
+CLEAR VARIABLE($RP_tblAction_PartyID)
+// /CLEAR VARIABLE($RP_tblAction_PlanID)
+
+CLEAR VARIABLE($RP_tblAction_ContractID)
+CLEAR VARIABLE($RP_tblAction_UnitID)
+//``````````CLEAR VARIABLE($RP_tblAction_ActionTypeID)
+CLEAR VARIABLE($RP_tblAction_RateID)
+CLEAR VARIABLE($RP_tblAction_movein)
+CLEAR VARIABLE($RP_tblAction_moveout)
+
+
+$SQLStm:="SELECT TOP 1 PartyID FROM tblAction where ActionTypeID=86 and ContractID="+String($RP_tblContract_ContractID{$vlElem})//`UnitMovein
+$SQLStm:=$SQLStm+" ORDER by ActionID DESC;"
+
+
+SQL EXECUTE($SQLStm;$RP_tblAction_PartyID)
+SQL LOAD RECORD(SQL all records)
+
+C_DATE($mvin_un_date)
+
+If (Size of array($RP_tblAction_PartyID)>0)
+$tmp_PartyID:=$RP_tblAction_PartyID{1}
+$vlfind:=Find in array($tblMatchingPartID;$tmp_PartyID)
+If ($vlfind>0)
+$tmpCustCode:=$tblMatchingCustomerCode{$vlfind}
+// //$tmpCustCode:="ZZZZZNICO1"  ///"ZZZZZWALLA"  //`````test
+
+$RP_PlanID:=0
+$SQLStm:="SELECT Top 1 PlanID FROM tblAction where ActionTypeID=86 and ContractID="+String($RP_tblContract_ContractID{$vlElem})
+$SQLStm:=$SQLStm+" ORDER by ActionID DESC;"
+
+SQL EXECUTE($SQLStm;$RP_PlanID)
+SQL LOAD RECORD(SQL all records)
+
+CREATE RECORD([Agreement])
+[Agreement]CustomerCode:=$tmpCustCode
+[Agreement]AgreeNo:=$tmpr_str
+[Agreement]RAgreeNo:=<>sFacility+$tmpr_str
+[Agreement]MoveIn:=$RP_tblContract_Effective{$vlElem}
+[Agreement]NoticePlanNo:=0
+[Agreement]NoticeAmtToBill:=0
+
+//$Unit_num:=""
+//$reg_r:=0
+//  //$reg_y:=0.00
+//  //$reg_w:=0.00
+//  //$reg_d:=0.00
+//QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+//If (Records in selection([Unit])=1)
+//$Unit_num22:=Replace string([Unit]RUnitNo;<>sFacility;"")
+//
+//$RateID22:=0
+//$UnitID23:=0
+//$SQLStm22:="SELECT UnitID FROM tblUnit where UnitNumber='"+$Unit_num22+"'"
+//SQL EXECUTE($SQLStm22;$UnitID23)
+//SQL LOAD RECORD(SQL All Records)
+//
+//$SQLStm23:="SELECT RateID FROM tblUnitRate where UnitID="+String($UnitID23)
+//SQL EXECUTE($SQLStm23;$RateID22)
+//SQL LOAD RECORD(SQL All Records)
+//
+//$SQLStm24:="SELECT UnitPrice FROM tblRate where RateID="+String($RateID22)
+//SQL EXECUTE($SQLStm24;$reg_r)
+//SQL LOAD RECORD(SQL All Records)
+//End if 
+//
+//[Agreement]RegularRent:=$reg_r
+//SAVE RECORD([Agreement])
+
+$mvin_un_date:=$RP_tblContract_Effective{$vlElem}
+[Agreement]ActiveAgreemt:=True
+
+$tmp_date:=[Agreement]MoveIn
+$nextbd:=[Agreement]MoveIn//` starting point
+$cdfind:=Find in array($RP_tblPlan_PlanID;$RP_PlanID)
+If ($cdfind>0)
+[Agreement]BillingPlanCode:=$RP_tblPlan_SM_Code{$cdfind}
+QUERY([BillPlan];[BillPlan]Code=$RP_tblPlan_SM_Code{$cdfind})
+If (Records in selection([BillPlan])=1)
+If ([BillPlan]PlanPeriod="Month")
+If (Current date>$nextbd)
+While (Current date>$nextbd)
+$nextbd:=Add to date($nextbd;0;[BillPlan]PeriodstoPay;0)
+End while 
+End if 
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;-[BillPlan]PeriodstoPay;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;-2*[BillPlan]PeriodstoPay;0)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+End if 
+// /End if 
+If ([BillPlan]PlanPeriod="Day")
+If (Current date>$nextbd)
+While (Current date>$nextbd)
+$nextbd:=Add to date($nextbd;0;0;[BillPlan]PeriodstoPay)
+End while 
+End if 
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;0;-[BillPlan]PeriodstoPay)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-2*[BillPlan]PeriodstoPay)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+End if 
+//----------------------------------
+If ([BillPlan]PlanPeriod="Week")
+If (Current date>$nextbd)
+While (Current date>$nextbd)
+$nextbd:=Add to date($nextbd;0;0;7)
+End while 
+End if 
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;0;-7)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-2*7)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+End if 
+
+//-------------------------------------
+
+End if 
+Else 
+//` put it to one month plan
+If (Current date>$nextbd)
+While (Current date>$nextbd)
+$nextbd:=Add to date($nextbd;0;1;0)
+End while 
+End if 
+[Agreement]BillingPlanCode:=<>sFacility+"11"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;-1;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;-2;0)
+[Agreement]MthsAdv:=1//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+End if 
+//``````````````
+End if 
+//[Agreement]MthsAdv:=1
+End if 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+
+//  //`update movin in units
+//QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+//If (Records in selection([Unit])=1)
+//[Unit]MoveIn:=[Agreement]MoveIn
+//SAVE RECORD([Unit])
+//End if 
+
+ARRAY INTEGER($fk_unitID;0)
+
+$counter:=$counter+1
+
+//$SQLStm:="SELECT Top 1 UnitID FROM tblAction where ActionTypeID=86 and ContractID="+String($RP_tblContract_ContractID{$vlElem})  //`UnitMovein
+$SQLStm:="SELECT UnitID FROM tblAction where ActionTypeID=86 and ContractID="+String($RP_tblContract_ContractID{$vlElem})//`UnitMovein
+$SQLStm:=$SQLStm+" ORDER by ActionID DESC;"
+
+If ($RP_tblContract_ContractID{$vlElem}=1239)
+$dd:=""
+End if 
+
+//SQL EXECUTE($SQLStm;$RP_tblAction_UnitID)
+SQL EXECUTE($SQLStm;$fk_unitID)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($fk_unitID)>0)// unit in RP, need to match with  SM
+$tmpUnitID:=$fk_unitID{1}
+
+$un_num:=""
+$vlfind_un_name:=Find in array($RP_UnitID;$tmpUnitID)
+If ($vlfind_un_name>0)
+$un_num:=$RP_UnitNumber{$vlfind_un_name}
+//QUERY([Unit];[Unit]RUnitNo=<>sFacility+String($tmpUnitID))
+
+QUERY([Unit];[Unit]UnitNo=$prefix+String($un_num))
+///QUERY([Unit];[Unit]UnitNo=String($un_num))  ///666
+If (Records in selection=1)//` make changes in UnitTable
+
+If ([Unit]Vacant=True)
+[Unit]AgreeNo:=""
+SAVE RECORD([Unit])
+Else 
+[Unit]AgreeNo:=<>sFacility+$tmpr_str
+[Unit]MoveIn:=$mvin_un_date
+[Unit]Vacant:=False
+SAVE RECORD([Unit])
+
+End if 
+
+$SQLStm:="SELECT Top 1 ActionID FROM tblAction where ActionTypeID=86 and ContractID="+String($RP_tblContract_ContractID{$vlElem})//`UnitMovein
+$SQLStm:=$SQLStm+" ORDER by ActionID DESC;"
+
+SQL EXECUTE($SQLStm;$RP_tblAction_ActionID_in)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($RP_tblAction_ActionID_in)>0)
+$movein_id:=$RP_tblAction_ActionID_in{1}
+$SQLStm:="SELECT Created FROM tblEvent where ActionID="+String($movein_id)//`UnitMovein
+SQL EXECUTE($SQLStm;$RP_tblAction_movein)
+SQL LOAD RECORD(SQL all records)
+
+If (Size of array($RP_tblAction_movein)>0)
+$moveInDate:=$RP_tblAction_movein{1}
+//SAVE RECORD([Unit])
+//$SQLStm:="SELECT ActionID FROM tblAction where ActionTypeID=87 and ContractID="+String($RP_tblContract_ContractID{$vlElem})  //`UnitMoveout
+//SQL EXECUTE($SQLStm;$RP_tblAction_ActionID_out)
+//SQL LOAD RECORD(SQL All Records)
+//
+//If (Size of array($RP_tblAction_ActionID_out)>0)
+//$moveout_id:=$RP_tblAction_ActionID_out{1}
+//$SQLStm:="SELECT Created FROM tblEvent where ActionID="+String($moveout_id)  //`UnitMovein
+//SQL EXECUTE($SQLStm;$RP_tblAction_moveout)
+//SQL LOAD RECORD(SQL All Records)
+//If (Size of array($RP_tblAction_moveout)>0)
+//$moveoutDate:=$RP_tblAction_moveout{1}
+//[Unit]MoveOut:=$moveoutDate
+//SAVE RECORD([Unit])
+//End if 
+//End if 
+
+//[Unit]RentedValue
+//[Unit]OccupRentedVal
+
+[Unit]MoveIn:=$moveInDate
+SAVE RECORD([Unit])
+End if 
+// /////////
+End if 
+Else 
+$nf:="unit not found"
+End if 
+End if 
+// //End if 
+
+Else 
+$nf:="cust code not found???"
+End if 
+// End if 
+End for 
+$cntr:=$units_agrrrr
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+vtFormula:=vtFormula+Char(Carriage return)+"Agreement table, imported records: "+String($counter)
+
+//  //` =================================Unit-Agreement synchronisation==================================
+DEFAULT TABLE([Unit])
+READ WRITE([Agreement])
+READ WRITE([UnitHistory])
+READ WRITE([UnitType])
+
+ALL RECORDS([Unit])
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Synchronisation the data......")
+End if 
+
+If (Records in selection([Unit])>0)
+
+FIRST RECORD([Unit])// Start at first record in the selection 
+For ($vlRecord;1;Records in selection([Unit]))// Loop once for each record 
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Records in selection([Unit]))*100;0)
+End if 
+If ([Unit]AgreeNo#"")
+If (Position($prefix;([Unit]UnitNo))>0)///666
+QUERY([Agreement];[Agreement]RAgreeNo=([Unit]AgreeNo))
+If (Records in selection([Agreement])=1)
+//`update movin in units
+[Unit]MoveIn:=[Agreement]MoveIn
+SAVE RECORD([Unit])
+
+CREATE RECORD([UnitHistory])
+[UnitHistory]AgreeNo:=([Unit]AgreeNo)//<>sFacility+$tmpr_str
+[UnitHistory]UnitNo:=([Unit]RUnitNo)//<>sFacility+$prefix+String($un_num)
+
+If ([Agreement]MoveIn<!1980-01-01!)
+[UnitHistory]MoveIn:=!2000-01-01!
+Else 
+[UnitHistory]MoveIn:=([Agreement]MoveIn)
+End if 
+[UnitHistory]RentedValue:=([Unit]RentedValue)
+SAVE RECORD([UnitHistory])
+
+$quant:=0
+If ([Unit]Vacant=True)
+$quant:=1
+End if 
+QUERY([UnitType];[UnitType]RUnitType=([Unit]UnitTypeCode))//????????????????
+If (Records in selection([UnitType])=1)
+[UnitType]NoVacant:=$quant
+SAVE RECORD([UnitType])
+End if 
+[Agreement]UnitsOccup:=([Unit]UnitNo)
+SAVE RECORD([Agreement])
+[Agreement]RentAmt:=([Unit]RentedValue)
+
+
+SAVE RECORD([Agreement])
+[Agreement]RegularRent:=([Unit]RentedValue)///66666
+SAVE RECORD([Agreement])
+// //[Agreement]NextBillDate:=([Agreement]MoveIn)
+// //SAVE RECORD([Agreement])
+
+End if 
+End if ///666
+
+End if 
+NEXT RECORD([Unit])// Move to the next record 
+End for 
+End if 
+
+//```removes empty ones
+//`--------------------------------
+$tmp:="@"+$prefix+"@"
+QUERY([Agreement];[Agreement]RAgreeNo=$tmp;*)
+QUERY([Agreement]; & ;[Agreement]UnitsOccup="")
+If (Records in selection([Agreement])>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Agreement])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+//`--------------------------------
+//READ ONLY([Agreement])
+//READ ONLY([UnitHistory])
+//READ ONLY([UnitType])
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+
+//``/` =================================build TRX(transactions) table==================================
+
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build Transactions table...")
+End if 
+
+
+
+//` remove previously created 
+$tmp:=<>sFacility+"@"+$prefix+"@"
+QUERY([Trxs];[Trxs]AgreeNo=$tmp)
+//If (Records in selection([Trxs])>0)
+//START TRANSACTION
+//SET QUERY AND LOCK(True)
+//DELETE SELECTION([Trxs])
+//SET QUERY AND LOCK(False)
+//VALIDATE TRANSACTION
+//End if 
+
+
+DEFAULT TABLE([Trxs])
+READ WRITE([Agreement])
+READ WRITE([Analysis])
+
+$units_agrrrr:=0
+ARRAY REAL($RPTxInv_InvoiceID;0)
+ARRAY TEXT($RPTxInv_InvoiceNumber;0)
+ARRAY DATE($RPTxInv_InvoiceDate;0)
+ARRAY REAL($RPTxInv_PartyID;0)
+
+ARRAY REAL($RPTxInvEvnt_InvoiceID;0)
+ARRAY REAL($RPTxInvEvnt_EventID;0)
+ARRAY TEXT($RPTxInvEvnt_Description;0)
+ARRAY TEXT($RPTxInvEvnt_Unit;0)
+ARRAY DATE($RPTxInv_DueDate;0)
+ARRAY REAL($RPTxInv_Amount;0)
+ARRAY REAL($RPTxInv_VAT;0)
+
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! per customer
+ARRAY REAL($RPPartyId4;0)
+ARRAY REAL($RPContractId4;0)
+
+//``` Rp Action table
+ARRAY REAL($tblAction_ParentActionID;0)
+ARRAY REAL($tblAction_PartyID;0)
+ARRAY REAL($tblAction_ContractID;0)
+
+ARRAY REAL($set_tblAct_ActID;0)
+ARRAY REAL($set_tblAction_ActionTypeID;0)
+
+ARRAY REAL($set_tblEvent_EventID;0)
+ARRAY DATE($set_tblEvent_Created;0)
+
+ARRAY REAL($set_tblEvtMoney_Amount;0)
+ARRAY REAL($set_tblEvtMoney_TaxID;0)
+
+//``=================test====================
+
+ARRAY REAL($tblAction_AllPartyID;0)//` all parties
+
+ARRAY REAL($tblAction_PartyID;0)
+ARRAY REAL($tblAction_ContractID;0)
+ARRAY REAL($tblAction_ParentActionID;0)
+
+ARRAY REAL($tblAction_ActionSet;0)
+ARRAY REAL($tblAction_TypeSet;0)
+
+
+//` get all customers(partyid)
+$SQLStm:="SELECT Distinct PartyID FROM tblAction where ParentActionID >0  order by PartyID"
+SQL EXECUTE($SQLStm;$tblAction_AllPartyID)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//` control only get all parent actions for customers by order
+//`$SQLStm1:="SELECT Distinct PartyID, ParentActionID, ContractID FROM tblAction where ParentActionID >0 order by PartyID"  //is not null"//, ContractID FROM tblAction"// order by ActionID"
+//`SQL EXECUTE($SQLStm1;$tblAction_PartyID;$tblAction_ParentActionID;$tblAction_ContractID)
+//`SQL LOAD RECORD(SQL All Records)
+//`SQL CANCEL LOAD
+
+//` go through each party by parent action
+If (Size of array($tblAction_AllPartyID)>0)
+For ($vlElem;1;Size of array($tblAction_AllPartyID))
+
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Size of array($tblAction_AllPartyID))*100;0)
+End if 
+
+$vlfindCust:=Find in array($tblMatchingPartID;$tblAction_AllPartyID{$vlElem})
+If ($vlfindCust>0)// matched customer in SM
+$tmpCustCode:=$tblMatchingCustomerCode{$vlfindCust}//` customer code
+
+$SQLStm:="SELECT Distinct PartyID, ParentActionID, ContractID FROM tblAction where ParentActionID >0"
+$SQLStm:=$SQLStm+" and PartyID="+String($tblAction_AllPartyID{$vlElem})// +" order by ActionID"  //is not null"//, ContractID FROM tblAction"// order by ActionID"
+SQL EXECUTE($SQLStm;$tblAction_PartyID;$tblAction_ParentActionID;$tblAction_ContractID)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($tblAction_PartyID)>0)
+SQL CANCEL LOAD
+If (Size of array($tblAction_PartyID)>1)//`` several contracts
+For ($vlElemset;1;Size of array($tblAction_PartyID)-1)
+$tmpr_str:=$prefix+String($tblAction_ContractID{$vlElemset})//` agreement
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+$cust_agr:=<>sFacility+$tmpr_str
+QUERY([Agreement];[Agreement]RAgreeNo=$cust_agr)
+$unit:=""
+If (Records in selection([Agreement])=1)
+$unit:=([Agreement]UnitsOccup)
+End if 
+//```````````````````````````````````````````````
+$SQLStm:="SELECT  ActionID, ActionTypeID from tblAction "
+$SQLStm:=$SQLStm+" where PartyID="+String($tblAction_AllPartyID{$vlElem})
+$SQLStm:=$SQLStm+" and actionID>="+String($tblAction_ParentActionID{$vlElemset})
+$SQLStm:=$SQLStm+" and actionID<"+String($tblAction_ParentActionID{$vlElemset+1})
+SQL EXECUTE($SQLStm;$tblAction_ActionSet;$tblAction_TypeSet)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($tblAction_ActionSet)>0) & ($unit#"")
+For ($vlElements;1;Size of array($tblAction_ActionSet))
+RentPlusConverterTrx ($tblAction_ActionSet{$vlElements};$tblAction_TypeSet{$vlElements};$tmpCustCode;$cust_agr;$unit)
+End for 
+End if 
+End for 
+//```` for last parentaction
+$tmpr_str:=$prefix+String($tblAction_ContractID{$tblAction_PartyID})//` agreement
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+$cust_agr:=<>sFacility+$tmpr_str
+QUERY([Agreement];[Agreement]RAgreeNo=$cust_agr)
+$unit:=""
+If (Records in selection([Agreement])=1)
+$unit:=([Agreement]UnitsOccup)
+End if 
+
+$SQLStm:="SELECT  ActionID, ActionTypeID from tblAction "
+$SQLStm:=$SQLStm+" where PartyID="+String($tblAction_AllPartyID{$vlElem})
+$SQLStm:=$SQLStm+" and actionID>="+String($tblAction_ParentActionID{$tblAction_PartyID})
+SQL EXECUTE($SQLStm;$tblAction_ActionSet;$tblAction_TypeSet)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($tblAction_ActionSet)>0) & ($unit#"")
+For ($vlElements;1;Size of array($tblAction_ActionSet))
+//testEugene_RPpayments ($tblAction_ActionSet{$vlElements};$tblAction_TypeSet{$vlElements};$tmpCustCode;$cust_agr;$unit)
+RentPlusConverterTrx ($tblAction_ActionSet{$vlElements};$tblAction_TypeSet{$vlElements};$tmpCustCode;$cust_agr;$unit)
+End for 
+End if 
+
+Else //```````````````````````````````````````found just one contract
+SQL CANCEL LOAD
+$pid:=String($tblAction_AllPartyID{$vlElem})
+$parent:=String($tblAction_ParentActionID{1})
+$tmpr_str:=$prefix+String($tblAction_ContractID{1})
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+$cust_agr:=<>sFacility+$tmpr_str
+QUERY([Agreement];[Agreement]RAgreeNo=$cust_agr)
+$unit:=""
+If (Records in selection([Agreement])=1)
+$unit:=([Agreement]UnitsOccup)
+End if 
+$SQLStm1:="SELECT  ActionID, ActionTypeID from tblAction "
+$SQLStm1:=$SQLStm1+" where PartyID="+$pid
+$SQLStm1:=$SQLStm1+" and actionID>="+$parent
+SQL EXECUTE($SQLStm1;$tblAction_ActionSet;$tblAction_TypeSet)
+SQL LOAD RECORD(SQL all records)
+If (Size of array($tblAction_ActionSet)>0) & ($unit#"")
+For ($vlElements;1;Size of array($tblAction_ActionSet))
+RentPlusConverterTrx ($tblAction_ActionSet{$vlElements};$tblAction_TypeSet{$vlElements};$tmpCustCode;$cust_agr;$unit)
+End for 
+End if 
+End if 
+End if 
+
+End if // customer valid
+End for 
+End if 
+//`-------------------------------end test------------------------
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+
+//`-------------------------------update balances------------------------
+
+
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Recalculate balances...")
+End if 
+
+READ WRITE([Agreement])
+READ WRITE([Customer])
+DEFAULT TABLE([Agreement])
+QUERY([Agreement];[Agreement]RAgreeNo="@R_@")
+// //QUERY([Agreement];[Agreement]RAgreeNo="@R_73")
+If (Records in selection([Agreement])>0)
+
+For ($vlRecord;1;Records in selection([Agreement]))
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlRecord/Records in selection([Agreement]))*100;0)
+End if 
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+End if 
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+
+//``/` =================================build Reservation table==================================
+
+
+//``APPEND TO ARRAY($tblMatchingPartID;$RP_tblParty_PartyID{$vlElem})
+//``APPEND TO ARRAY($tblMatchingCustomerCode;[Customer]CustomerCode)
+
+
+DEFAULT TABLE([Customer])
+READ WRITE([Customer])
+READ WRITE([Quote])
+READ WRITE([Contacts])
+
+
+ARRAY INTEGER($RP_tblReservationID;0)
+ARRAY INTEGER($RP_tblReservationPartyID;0)
+ARRAY TEXT($RP_tblReservationUnitID;0)
+ARRAY INTEGER($RP_tblReservationContractID;0)
+ARRAY DATE($RP_tblReservationCreated;0)
+ARRAY TEXT($RP_tblReservationWhen;0)
+
+ARRAY DATE($RP_When;0)
+
+$SQLStm:="SELECT ReservationID FROM tblReservation"
+SQL EXECUTE($SQLStm;$RP_tblReservationID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT PartyID FROM tblReservation"
+SQL EXECUTE($SQLStm;$RP_tblReservationPartyID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT UnitID FROM tblReservation"
+SQL EXECUTE($SQLStm;$RP_tblReservationUnitID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT ContractID FROM tblReservation"
+SQL EXECUTE($SQLStm;$RP_tblReservationContractID)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT Created FROM tblReservation"
+SQL EXECUTE($SQLStm;$RP_tblReservationCreated)
+SQL LOAD RECORD(SQL all records)
+
+$SQLStm:="SELECT When FROM tblReservation"
+SQL EXECUTE($SQLStm;$RP_tblReservationWhen)
+SQL LOAD RECORD(SQL all records)
+
+
+
+//  //` =================================build Reservation table==================================
+
+QUERY([Contacts];[Contacts]ContactName="@"+$prefix2)
+$temp_counter:=Records in selection([Contacts])
+If ($temp_counter>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Contacts])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+
+QUERY([Reservation];[Reservation]UnitsReserved="@"+$prefix2)
+$temp_counter:=Records in selection([Reservation])
+If ($temp_counter>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Reservation])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+
+QUERY([Quote];[Quote]Size="@"+$prefix2)
+$temp_counter:=Records in selection([Quote])
+If ($temp_counter>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Quote])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+
+
+$counter:=0
+$when_list:=""
+$CC_code:=""
+$Unit_nm:=""
+
+
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build Reservation table...")
+End if 
+
+For ($vlElem;1;Size of array($RP_tblReservationID))
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Size of array($RP_tblReservationID))*100;0)
+End if 
+CLEAR VARIABLE($RP_When)
+
+$vlfind_ccode:=Find in array($tblMatchingPartID;$RP_tblReservationPartyID{$vlElem})//`get customer SM code
+If ($vlfind_ccode>0)
+$CC_code:=$tblMatchingCustomerCode{$vlfind_ccode}
+
+//``$CC_code:="SSM60WALLA"  //`````test
+//$CC_code:="KEKLMWALLA"  //`````test
+
+$tmpUnID:=$RP_tblReservationUnitID{$vlElem}
+$vlfind_unit:=Find in array($RP_UnitID;Num($tmpUnID))
+If ($vlfind_unit>0)
+$Unit_nm:=$RP_UnitNumber{$vlfind_unit}
+$when_list:=$RP_tblReservationWhen{$vlElem}//`ARRAY Date($RP_When,0)
+$start:=1
+$i:=1
+$length:=9
+Repeat 
+$vlResult:=Position(",";$when_list;$start)//``````````;$lengthfound)
+$tmpr_d:=Date(Substring($when_list;$start;$i*$length))
+APPEND TO ARRAY($RP_When;$tmpr_d)
+$start:=$start+$length
+Until ($vlResult=0)
+
+If (Size of array($RP_When)>0)
+For ($vlElem2;1;Size of array($RP_When))
+
+$res_num_str:=""
+$res_num_str:=Replace string(String($RP_When{$vlElem2});"/";"";*)//+string($tmpUnID)//$Unit_nm
+$res_num_str:=Substring($res_num_str;1;4)+String($tmpUnID)//$Unit_nm
+
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+$res_num_str)//``delete if exists
+$temp_counter:=Records in selection([Reservation])
+If ($temp_counter>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([Reservation])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+
+CREATE RECORD([Reservation])
+[Reservation]ReserveNo:=$res_num_str// //String([Reservation]PrimaryKey)  //$res_num ?????????
+[Reservation]CustomerCode:=$CC_code
+[Reservation]ReservedDate:=$RP_tblReservationCreated{$vlElem}
+[Reservation]ExpMoveIn:=$RP_When{$vlElem2}
+[Reservation]UnitsReserved:=$Unit_nm+$prefix2
+[Reservation]RReserveNo:=<>sFacility+$res_num_str//$res_num  //[Reservation]ReserveNo  //$CC_code+string($temp_counter)
+[Reservation]ActiveReserve:=True
+SAVE RECORD([Reservation])
+NEXT RECORD([Reservation])
+$counter:=$counter+1
+// (Substring([Reservation]RReserveNo;1;5)#Substring([Reservation]CustomerCode;1;5)) & (Trigger event#On Deleting Record Event)
+//$0:=-16002
+
+//` update reserved unit in unit table
+//$Unit_nm:=""
+
+$rent_val:=0
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+$prefix+$Unit_nm;*)
+QUERY([Unit]; & ;[Unit]Status="Vacant")
+If (Records in selection([Unit])=1)
+[Unit]ReservedDate:=$RP_tblReservationCreated{$vlElem}
+[Unit]MoveIn:=$RP_When{$vlElem2}
+[Unit]ReservedTo:=<>sFacility+$res_num_str
+[Unit]Status:="Rented"
+[Unit]AgreeNo:=<>sFacility+String($RP_tblReservationContractID{$vlElem})
+$rent_val:=([Unit]RentedValue)
+SAVE RECORD([Unit])
+End if 
+
+
+// /=================================================================
+//`-----------------add to SM contact table-------------------
+QUERY([Customer];[Customer]CustomerCode=$CC_code)
+If (Records in selection([Customer])=1)
+
+CREATE RECORD([Contacts])
+[Contacts]Facility:=<>sFacility
+[Contacts]ContactNo:=<>sFacility+$res_num_str
+[Contacts]CallDate:=$RP_tblReservationCreated{$vlElem}
+[Contacts]ContactName:=[Customer]CustomerName
+[Contacts]ContactPhone:=[Customer]PhonePrivate
+[Contacts]MailCity:=[Customer]MailCity
+[Contacts]MailAddress:=[Customer]StreetAddress
+[Contacts]EmailAddress:=[Customer]EmailAddress
+
+//`-----------------add to quote table-------------------
+CREATE RECORD([Quote])
+
+[Quote]ContactNo:=<>sFacility+$res_num_str
+//from unit table
+QUERY([Unit];[Unit]UnitTypeCode=Delete string(<>sFacility+$prefix+$Unit_nm;15;32000))
+If (Records in selection([Unit])=1)
+[Quote]Size:=[Unit]UnitSize+$prefix2
+[Contacts]SizeQuoted:=[Unit]UnitSize
+[Quote]UnitTypeCode:=[Unit]UnitTypeCode
+End if 
+//from Unittypetable
+QUERY([UnitType];[UnitType]RUnitType=Delete string(<>sFacility+$prefix+$Unit_nm;15;32000))//<>sFacility+$Unit_nm)  //Delete string(<>sFacility+$prefix+$Unit_nm;11;32000))
+If (Records in selection=1)
+[Quote]Price:=[UnitType]MonthlyRate
+[Contacts]PriceQuoted:=$rent_val// /[UnitType]MonthlyRate
+
+
+
+//[Quote]Note:="*price per month"
+//[Contacts]Comments:="* price per month"
+End if 
+
+[Quote]UnitTypeCode:=Delete string(<>sFacility+$prefix+$Unit_nm;15;32000)//<>sFacility+$prefix+$Unit_nm  //Delete string(<>sFacility+$prefix+$Unit_nm;15;32000)
+
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+
+SAVE RECORD([Quote])
+NEXT RECORD([Quote])
+
+End if 
+
+//`([Contacts]Facility#Substring([Contacts]ContactNo;1;5))
+//([Contacts]CallDate<!01/01/1970!)
+//`$Facility:=Substring([Quote]ContactNo;1;5)
+End for 
+End if 
+End if 
+End if 
+End for 
+
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+
+
+//` =================================build Notes table==================================
+
+If ($show_progress=True)
+<>ProgressInd:=0
+Progress ("Build Notes table...")
+End if 
+
+QUERY([NotesHistory];[NotesHistory]ContactNo="RP")
+$temp_counter:=Records in selection([NotesHistory])
+If ($temp_counter>0)
+START TRANSACTION
+SET QUERY AND LOCK(True)
+DELETE SELECTION([NotesHistory])
+SET QUERY AND LOCK(False)
+VALIDATE TRANSACTION
+End if 
+
+DEFAULT TABLE([NotesHistory])
+READ WRITE([NotesHistory])
+
+For ($vlElem;1;Size of array($RP_Reminder_ReminderID))
+
+If ($show_progress=True)
+<>ProgressInd:=Trunc(($vlElem/Size of array($RP_Reminder_ReminderID))*100;0)
+End if 
+$vlfind_ccode:=Find in array($tblMatchingPartID;$RP_Reminder_PartyID{$vlElem})
+If ($vlfind_ccode>0)
+// /////$ccode:="ZZZZZWALLA
+$ccode:=$tblMatchingCustomerCode{$vlfind_ccode}
+
+CREATE RECORD([NotesHistory])
+// /$str:=string($RP_Reminder_CreateDate{$vlElem})
+//$pos:=Position(Char(Space);$str)
+
+[NotesHistory]CustomerCode:=$ccode//$tblMatchingCustomerCode{$vlfind_ccode}
+
+[NotesHistory]NoteDate:=$RP_Reminder_CreateDate{$vlElem}
+
+// /[NotesHistory]NoteTime:=Time(Substring($str;$pos+1;6))
+[NotesHistory]Note:=$RP_Reminder_Note{$vlElem}
+//[NotesHistory]ContactNo:="RP"
+SAVE RECORD([NotesHistory])
+NEXT RECORD([NotesHistory])
+//end if
+//End for 
+//End if 
+End if 
+End for 
+If ($show_progress=True)
+<>ProgressInd:=100
+End if 
+
+
+
+
+READ ONLY([NotesHistory])
+READ ONLY([Customer])
+READ ONLY([Unit])
+READ ONLY([Quote])
+READ ONLY([Contacts])
+READ ONLY([Agreement])
+READ ONLY([UnitHistory])
+READ ONLY([UnitType])
+
+
+ReCalcUnits 
+REntPlusConverterR_ 
+
+//CalcBalance (True;False;False;True)  //Suppress dialogs
+//C_BOOLEAN($1;$Suppress;$2;$WriteProgress;$3;$Deny;$4;$Ignore;$5;$AllCust)  //Suppress dialog
+
+vtFormula:=vtFormula+Char(Carriage return)+"Reservation table, imported records: "+String($counter)
+
+$time_finish:=Current time
+vtFormula:=vtFormula+Char(Carriage return)+"Run finished at: "+String($time_finish)
+
+vtFormula:=vtFormula+Char(Carriage return)+"Run duration: "+String($time_finish-$time_start)
+
+$File:="RentPlusImport.txt"
+$Path:=Test path name(<>sExportPath)
+If ($Path=0)
+If (Test path name(<>sExportPath+$File)=Is a document)
+DELETE DOCUMENT(<>sExportPath+$File)
+End if 
+$Doc:=Create document(<>sExportPath+$File)
+SEND PACKET($Doc;vtFormula)
+CLOSE DOCUMENT($Doc)
+//AlertMessage ("The output file saved as: "+Char(13)+String(<>sExportPath+$File))
+End if 
+vtFormula:=vtFormula+Char(Carriage return)+Char(Carriage return)+"The output file saved as: "+Char(13)+String(<>sExportPath+$File)
+vTitle:="Units Info"
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;"Info")
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+
+vtFormula:=""

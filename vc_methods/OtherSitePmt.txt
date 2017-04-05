@@ -1,0 +1,127 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 3/9/10 Added Customer Note parameter to Other Site Payment
+C_BOOLEAN($Continue)
+C_BOOLEAN(tmpFormCash)//- Added by Hamid - 4/5/2015 - 8950
+$Continue:=False
+If (<>sProduct#"M@")
+ARRAY TEXT(asFacilities;0)
+SetFacility 
+$Error:=IT_SetTimeOut (1)
+$TCPID:=0
+$PortPos:=Position(":";[Facility]CentralAddress)
+If ($PortPos>0)
+$PortString:=Substring([Facility]CentralAddress;$PortPos+1)
+Else 
+$PortString:="19812"
+End if 
+$Port:=Num($PortString)
+$Error:=TCP_Open (GetDNS ("MV");$Port;$TCPID;0)
+If ($Error=0)
+$Error:=TCP_Close ($TCPID)
+vName:=<>sFacility
+WEB SERVICE SET PARAMETER("WS_FacilityCode";vName)
+WEB SERVICE CALL("https://"+GetDNS ("MV")+":"+$PortString+"/4DSOAP/";"Storman#WS_GetSiteNames";"WS_GetSiteNames";"http://www.storpay.com/webservices";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT(asFacilities;"asFacilities";*)// Memory clean-up on the final return value.
+INSERT IN ARRAY(asFacilities;Size of array(asFacilities)+1;1)
+asFacilities{Size of array(asFacilities)}:="Search All Sites"
+If (asFacilities{1}#"INVALID SITE")
+asFacilities:=1
+vName:=""
+vNewCode:=""
+Open window((Screen width/2)-240;(Screen height/2)-154;(Screen width/2)+240;(Screen height/2)+154;5;"Locate Customer")
+DIALOG([Customer];"OtherSitePmt")
+CLOSE WINDOW
+If (OK=1)
+READ WRITE([Trxs])
+
+ARRAY TEXT(WS_AgreeNo;0)
+ARRAY TEXT(WS_CustCode;0)
+ARRAY TEXT(WS_UnitNos;0)
+ARRAY TEXT(WS_CustName;0)
+ARRAY TEXT(WS_RentAmt;0)
+ARRAY TEXT(WS_CustBal;0)
+ARRAY TEXT(WS_AgreeBal;0)
+ARRAY TEXT(WS_NextBillDate;0)
+ARRAY TEXT(WS_PaidToDate;0)
+ARRAY LONGINT(WS_NextInvNo;0)
+
+
+If (WSC_GetCustDetails (asFacilities{asFacilities};vName;vNewCode))//WS_GetCustDetails
+If (Size of array(WS_AgreeNo)>0)
+Open window((Screen width/2)-406;(Screen height/2)-240;(Screen width/2)+406;(Screen height/2)+240;5;"Select Customer")
+DIALOG([Customer];"OtherSelectCust")
+CLOSE WINDOW
+If (OK=1)
+vLeg7:=WS_AgreeNo{WS_AgreeNo}
+vLeg8:=WS_UnitNos{WS_AgreeNo}
+vLeg9:=WS_CustName{WS_AgreeNo}
+vTotal:=Num(WS_CustBal{WS_AgreeNo})
+vBalance:=Num(WS_AgreeBal{WS_AgreeNo})
+vInvDate:=Date(WS_NextBillDate{WS_AgreeNo})
+vLastDate:=Date(WS_PaidToDate{WS_AgreeNo})
+vAlertNote:=WS_CustNote{WS_AgreeNo}
+vtReverse:=False
+$Continue:=True
+End if 
+Else 
+AlertMessage (Get localized string("No Customers found with name containing")+" '"+vName+"' "+Get localized string("and Unit or Agreement containing")+" '"+vNewCode+"' "+Get localized string("for site")+" "+asFacilities{asFacilities})
+$Continue:=False
+End if 
+Else 
+AlertMessage (Get localized string("The Central server is currently unavailable. Please try again later!"))
+$Continue:=False
+End if 
+
+If ($Continue)
+If (bMod=1)
+QUERY([Trxs];[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=Current date-7;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=WS_AgreeNo{WS_AgreeNo})
+
+If (Records in selection([Trxs])#0)
+//vLeg7:=""
+//vLeg8:=""
+//vLeg9:=Get localized string("Not known")
+//vtReverse:=False
+//vBalance:=0
+//vTotal:=0
+//vInvDate:=!00/00/0000!
+//vLastDate:=!00/00/0000!
+tBoolean:=False
+vMisc:=False
+vTitle:=Get localized string("Modify Receipts")+"..."
+vAlertNote:=""
+FORM SET OUTPUT([Trxs];"TransOut")
+FORM SET INPUT([Trxs];"ModReceiptOthrSite")
+MODIFY SELECTION([Trxs];*)
+Else 
+AlertMessage ("No receipts found for the customer with agreement: "+WS_AgreeNo{WS_AgreeNo})
+End if 
+
+Else 
+$OldvMisc:=vmisc
+vmisc:=True
+//tmpFormCash:=True  //- Added by Hamid - 4/5/2015 - 8950
+FORM SET INPUT([Trxs];"ModReceiptOthrSite")
+ADD RECORD([Trxs])
+vmisc:=False
+//tmpFormCash:=False  //- Added by Hamid - 4/5/2015 - 8950
+End if 
+End if 
+
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+Else 
+AlertMessage (Get localized string("This facility does not exist at the Central Server you are connecting to!!"))
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("The Central server is currently unavailable. Please try again later!"))
+End if 
+$Error:=IT_SetTimeOut (30)
+Else 
+AlertMessage (Get localized string("This procedure cannot be used at Head Office"))
+End if 

@@ -1,0 +1,203 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+
+OBJECT SET TITLE(*;"Text17";Get localized string("Next Bill Date")+":")
+OBJECT SET TITLE(*;"Text35";Get localized string("Customer Name")+":")
+OBJECT SET TITLE(*;"Text36";Get localized string("Agreement Number")+":")
+OBJECT SET TITLE(*;"Text26";Get localized string("Date Banked")+": ")
+OBJECT SET TITLE(*;"Text25";Get localized string("User")+":")
+OBJECT SET TITLE(*;"Text18";Get localized string("Paid To Date")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Description")+":")
+OBJECT SET TITLE(*;"Text21";Get localized string("Drawer")+":")
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text37";Get localized string("Berth No"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text37";Get localized string("Appl No"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text37";Get localized string("Space No"))
+Else 
+OBJECT SET TITLE(*;"Text37";Get localized string("Unit No"))
+End case 
+
+//SetColours 
+SetFacility 
+bSwipe:=Num(GetTextNo ([Facility]MerchantDetails;7;","))
+bModReceipt:=False
+If (bSwipe=1)
+OBJECT SET VISIBLE(*;"@Enter@";False)
+OBJECT SET VISIBLE(*;"@Swipe@";True)
+Else 
+OBJECT SET VISIBLE(*;"@Enter@";True)
+OBJECT SET VISIBLE(*;"@Swipe@";False)
+End if 
+If (GetTextNo ([Facility]MerchantDetails;1;",")="") | (GetTextNo ([Facility]MerchantDetails;1;",")="None")
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bCCInst;False)
+OBJECT SET VISIBLE(bEnter;False)
+OBJECT SET VISIBLE(*;"Text32";False)
+End if 
+If ([Trxs]AgreeNo="")
+[Trxs]AgreeNo:=vLeg7
+[Trxs]CustomerCode:=WS_CustCode{WS_AgreeNo}
+End if 
+//If ([Transaction]SeqNo=0)
+//[Transaction]SeqNo:=WS_NextInvNo{WS_AgreeNo}
+//End if 
+OBJECT SET VISIBLE(bNone;False)//To not catch Enter Key
+vCCNo:=""
+vCCName:=""
+vCCExpiry:=""
+vTrack:=""
+OBJECT SET FORMAT([Trxs]BankBranch;<>tBankBranch)
+Case of 
+: ([Facility]Country="NZ")
+OBJECT SET FILTER([Trxs]BankBranch;"!0&9##-####")
+: ([Facility]Country="AU")
+OBJECT SET FILTER([Trxs]BankBranch;"!0&9###-###")
+Else 
+//do nothing
+End case 
+[Trxs]Confirmed:=True
+OBJECT SET VISIBLE(bPrtRec;[Facility]UseReceiptPrinter)
+OBJECT SET VISIBLE(bPrev;False)
+bRepDate:=0
+vLastDate:=!00-00-00!
+bPrev:=bRepDate
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+vDatePick1:=[Trxs]TrxDate
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+vLeg:=""
+If (TestValidDate ([Trxs]TrxDate)=False) | (TestValidDate ([Trxs]DateBanked;True)=False)//Blank date is okay for BankedDate
+vLeg:=Get localized string("Receipt can't be changed as the transaction date or the date banked is earlier than the can't modify prior to date!")
+End if 
+If ([Trxs]CCAuthNo>"") & ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+vLeg:=Get localized string("Receipt can't be changed as this credit card trx has been authorized!")
+End if 
+If ([Trxs]DateReconciled>!00-00-00!)
+If (<>sCurrentUser#"AdminSupport")
+vLeg:=Get localized string("Receipt cannot be modified as it has been reconciled")+"! ("+String([Trxs]DateReconciled)+")"
+Else 
+AlertMessage (Get localized string("Receipt has been reconciled - do not modify amounts!"))
+End if 
+End if 
+If (vLeg>"")
+OBJECT SET VISIBLE(bAccept;False)
+OBJECT SET VISIBLE(bPrtRec;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bEnter;False)
+OBJECT SET VISIBLE(bNone;True)//To catch Enter Key
+End if 
+If (PermissionsControl (204;False)=False)
+OBJECT SET ENTERABLE([Trxs]TrxDate;False)
+OBJECT SET VISIBLE(vDatePick1;False)
+End if 
+If (PermissionsControl (47;False)=False)
+OBJECT SET VISIBLE(bDelete;False)
+End if 
+If (PermissionsControl (48;False)=False)
+OBJECT SET ENTERABLE([Trxs]DateBanked;False)
+OBJECT SET VISIBLE(vDatePick;False)
+End if 
+If ([Trxs]AnalysisCode="")
+If (vtReverse)
+If (vOriginalReceipt>"") | (vTransID>"")
+QUERY([Analysis];[Analysis]SpecialOptions=61;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+If (Records in selection([Analysis])=0)
+QUERY([Analysis];[Analysis]SpecialOptions=53;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+End if 
+Else 
+QUERY([Analysis];[Analysis]SpecialOptions=53;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+End if 
+
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+End if 
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+End if 
+End if 
+RELATE ONE([Trxs]AnalysisCode)
+vtReverse:=False
+LoadAnlsArrays (False;False)//2nd false so that it loads Analysis array for current facility rather than prefix of Transaction facility
+If ([Trxs]Description="")
+[Trxs]Description:=[Analysis]Description
+[Trxs]Confirmed:=True
+End if 
+If (vtReverse)
+vTitle:=Get localized string("Refunds")+"..."
+vLeg1:=Get localized string("Refund amount")
+If (vAmount>0)
+vLeg1:=Get localized string("Void Amtount")
+Else 
+[Trxs]TotAmt:=[Trxs]TotAmt*(-1)
+End if 
+Else 
+vTitle:=Get localized string("Receipts")+"..."
+vLeg1:=Get localized string("Receipt amount")
+End if 
+If ([Trxs]AnalysisCode="@CA") & ([Trxs]TotAmt>=0) & (Length([Trxs]AnalysisCode)=7) & ([Facility]DisableTender=False)
+[Trxs]CashReceived:=0
+OBJECT SET VISIBLE(*;"@Change";True)
+Else 
+[Trxs]CashReceived:=Abs([Trxs]TotAmt)
+OBJECT SET VISIBLE(*;"@Change";False)
+End if 
+End if 
+If (Form event=On Clicked) | (Form event=On Data Change)
+If (Modified([Trxs]DateBanked))
+[Trxs]DateBanked:=GetValidDate ([Trxs]DateBanked;Old([Trxs]DateBanked))
+If ([Trxs]DateBanked<[Trxs]TrxDate)
+AlertMessage (Get localized string("The date banked cannot be less than the date of this transaction. Please re-enter & try again..."))
+[Trxs]DateBanked:=Old([Trxs]DateBanked)
+End if 
+If ([Trxs]DateBanked>Current date) & ([Trxs]DateBanked>Old([Trxs]DateBanked))
+AlertMessage (Get localized string("Date Banked cannot be past today!"))
+[Trxs]DateBanked:=Old([Trxs]DateBanked)
+End if 
+If ([Trxs]DateBanked<[Facility]CantModPrior) & ([Trxs]DateBanked#!00-00-00!)
+AlertMessage (Get localized string("You cannot enter a DateBanked prior to last accounting reports! DateBanked has been reset!"))
+[Trxs]DateBanked:=Old([Trxs]DateBanked)
+End if 
+vDatePick:=[Trxs]DateBanked
+End if 
+bRepDate:=bPrev
+
+If (Modified([Trxs]TrxDate))
+If ([Trxs]TrxDate>Current date)
+AlertMessage (Get localized string("Warning - The transaction date is past today."))
+End if 
+[Trxs]TrxDate:=GetValidDate ([Trxs]TrxDate;Old([Trxs]TrxDate))
+vDatePick1:=[Trxs]TrxDate
+If ([Trxs]DateFrom=[Trxs]DateTo)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Trxs]TrxDate
+End if 
+End if 
+
+End if 
+If (Form event=On Validate)
+vCol1:=[Trxs]AnalysisCode
+[Trxs]Charge:=False
+If (vtReverse)
+[Trxs]TotAmt:=Round([Trxs]TotAmt*(-1);2)
+Else 
+[Trxs]TotAmt:=Round([Trxs]TotAmt;2)
+End if 
+[Trxs]TaxAmt:=0
+vLastDate:=[Trxs]TrxDate
+If ([Trxs]TrxTime=?00:00:00?)
+[Trxs]TrxTime:=Current time
+End if 
+End if 

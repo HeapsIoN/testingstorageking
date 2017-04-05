@@ -1,0 +1,140 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method to create an email to send to the Customer when they haven't paid their deposit within the predefined time period set by the Facility.
+//The time period in question is displayed on the screen when selecting the Unit Type after they have chosen the Facility from which to reserve their unit.
+//If a Notice Plan is present in Storman with the name of OReserveCancel, the email will use that, otherwise a hard coded plain text email is sent 
+
+C_BOOLEAN($7;$0;$OK)
+C_POINTER($8)
+C_TEXT($1;$2;$3;$4;$5;$6;$9;$10;$11;$12;$13;$14;$15)
+
+C_LONGINT($i;$j;$c;$Table;$Field;$Type2;$DateFormat;$TimeFormat)
+C_TEXT($Text;$Text2;$a;$b;$Name;$NumFormat)
+C_LONGINT(veLetter)
+C_TEXT(vtCurrencySymbol)
+
+$i:=0
+$j:=0
+$c:=0
+$Table:=0
+$Field:=0
+$Type2:=0
+$DateFormat:=0
+$TimeFormat:=0
+$Text:=""
+$Text2:=""
+$a:=""
+$b:=""
+$Name:=""
+$NumFormat:=""
+
+$0:=False
+$OK:=False
+
+ARRAY TEXT(Attachments;0)
+
+//Get the Notice
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="OReserveCancel")
+
+//Determine the Correct Currency Symbol to display
+
+vtCurrencySymbol:=<>tCurrencyHTML
+
+
+If (Records in selection([Notices])=1)
+BLOB PROPERTIES([Notices]Email;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+
+//Create the Email Message
+CREATE RECORD([Message])
+[Message]Subject:=[Notices]EmailSubject
+[Message]Address:=[Customer]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+$emailContent:=Convert to text([Notices]Email;"UTF-8")
+$emailContent:=ProcessStormanHTMLTags ($emailContent)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]MsgBody:=$emailContent
+CONVERT FROM TEXT($emailContent;"UTF-8";[Message]EmailMsg)
+[Message]Attachments:=""
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+
+
+//Create the Letter 
+READ WRITE([Letters])
+CREATE RECORD([Letters])
+
+[Letters]AgreeNo:=[Reservation]ReserveNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]SentViaEmail:=True
+[Letters]LetterBLOB:=[Message]EmailMsg
+[Letters]DateSent:=Current date
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+
+$OK:=OR_NewMailMessage ("";[Message]Address;"";"";[Message]Subject;[Message]MsgBody;False;->Attachments;"";"";"";"";"";"";"")
+If ($OK=True)
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+End if 
+READ ONLY([Letters])
+READ ONLY([Message])
+UNLOAD RECORD([Letters])
+UNLOAD RECORD([Message])
+Else 
+//Send Email To Customer Notifying of Cancelled Reservation
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+QUERY([Unit];[Unit]UnitNo=[Reservation]UnitsReserved)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+If (Records in selection([Customer])=1) & (Records in selection([Unit])=1) & (Records in selection([UnitType])=1) & ([Customer]EmailAddress#"")
+$MessageBody:=""
+$MessageBody:=$MessageBody+"Your Online Reservation has been cancelled as payment of the deposit has"+" not been received:"+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Reservation Date: "+String([Reservation]ReservedDate;5)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Reservation Time: "+String([Reservation]ReservedTime)+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Facility Name: "+[Facility]FacilityName+Char(Carriage return)
+$MessageBody:=$MessageBody+"Description: "+[UnitType]Description+Char(Carriage return)
+$MessageBody:=$MessageBody+"Reservation Cost: "+String([Reservation]Balance;"$#####0.00")+Char(Carriage return)
+$MessageBody:=$MessageBody+"Date Required: "+String([Reservation]ExpMoveIn;5)+Char(Carriage return)
+If ([Reservation]Weekly=True)
+$WeeklyMonthly:="Weekly"
+Else 
+$WeeklyMonthly:="Monthly"
+End if 
+$MessageBody:=$MessageBody+"Weekly / Monthly: "+$WeeklyMonthly+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Facility "+[Facility]FacilityName+" requires that the Deposit for any Online Reservations be paid within "+String([Facility]OResDepositPayTime)+" minutes"+" of the Reservation being made."+Char(Carriage return)
+$MessageBody:=$MessageBody+"You are receiving this Email because we have not received your Deposit payment.  "+"As a result of this we have cancelled your"+" Reserva"+"tion."+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"To ensure your future Online Reservation are confirmed, please complete payment o"+"f the Re"+"servation Deposit within "+String([Facility]OResDepositPayTime)+" minutes."+Char(Carriage return)
+$MessageBody:=$MessageBody+"If you are unable to pay the Reservation D"+"eposit online, please contact the Facility by Email, or by Phone during Facility "+"busi"+"ness "+"hours."+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Facility Contact Information:"+Char(Carriage return)
+$MessageBody:=$MessageBody+"Email Address: "+[Facility]EmailAddress+Char(Carriage return)
+$MessageBody:=$MessageBody+"Phone Number: "+[Facility]Phone+Char(Carriage return)+Char(Carriage return)
+
+CREATE RECORD([Message])
+[Message]Subject:=[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Your Online Reservation has been cancelled."
+[Message]Address:=[Customer]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=$MessageBody
+[Message]Attachments:=""
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+$OK:=OR_NewMailMessage ("";[Message]Address;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Your Online Reservation has been cancelled.";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")
+If ($OK=True)
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+End if 
+READ ONLY([Message])
+UNLOAD RECORD([Message])
+End if 
+End if 
+
+$0:=$OK

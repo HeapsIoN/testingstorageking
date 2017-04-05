@@ -1,0 +1,100 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+If (Form event=On Load)
+vBankDebit:=0
+vBankCredit:=0
+End if 
+
+If (Form event=On Printing Detail)
+vAmt1:=0
+vAmt2:=0
+vBalFwd:=0
+QUERY([CashBookTrxs];[CashBookTrxs]AcctNo=[ChartAccts]AcctNo)
+If (<>sProduct="M@")
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position(<>sFacility;[CashBookTrxs]Description)>1)
+End if 
+CREATE SET([CashBookTrxs];"ToQuery")
+QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate>=[Facility]YearStartDate)
+QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate<vStartDate)
+If (Records in selection([CashBookTrxs])>0)
+For ($s;1;Records in selection([CashBookTrxs]))
+vBalFwd:=vBalFwd+[CashBookTrxs]Amount
+NEXT RECORD([CashBookTrxs])
+End for 
+If ([ChartAccts]AcctType="D")
+vBalFwd:=vBalFwd-vBankDebitFwd+vBankCreditFwd//+vBankBalFwd
+End if 
+End if 
+USE SET("Test")
+QUERY SELECTION([CashBookTrxs];[CashBookTrxs]AcctNo=[ChartAccts]AcctNo)
+//QUERY SELECTION BY FORMULA([CashBookTrxs];Position(◊sFacility;[CashBookTrxs]Description)>1)
+If (Records in selection([CashBookTrxs])>0)
+Case of 
+: ([ChartAccts]AcctType="B@")
+//QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate>=vStartDate)
+//QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate<=vMthDate)
+For ($x;1;Records in selection([CashBookTrxs]))
+If ([CashBookTrxs]Amount>0)
+vAmt1:=vAmt1+[CashBookTrxs]Amount
+Else 
+vAmt2:=vAmt2+([CashBookTrxs]Amount*(-1))
+End if 
+NEXT RECORD([CashBookTrxs])
+End for 
+vBankDebit:=vAmt1
+vBankCredit:=vAmt2
+: ([ChartAccts]AcctType="D")
+//QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate=vMthDate)
+If ([CashBookTrxs]Amount>0)
+vAmt1:=[CashBookTrxs]Amount
+Else 
+vAmt2:=[CashBookTrxs]Amount*(-1)
+End if 
+vAmt1:=vAmt1+vBankCredit
+vAmt2:=vAmt2+vBankDebit
+: ([ChartAccts]AcctType="A")
+//QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate=vMthDate)
+If ([CashBookTrxs]Amount>0)
+vAmt1:=[CashBookTrxs]Amount
+Else 
+vAmt2:=[CashBookTrxs]Amount*(-1)
+End if 
+Else 
+//QUERY SELECTION([CashBookTrxs];[CashBookTrxs]TrxDate=vMthDate)
+If (Records in selection([CashBookTrxs])>1)
+For ($t;1;Records in selection([CashBookTrxs]))
+If ([CashBookTrxs]Amount>0)
+vAmt1:=vAmt1+([CashBookTrxs]Amount)
+Else 
+vAmt2:=vAmt2+(([CashBookTrxs]Amount)*(-1))
+End if 
+NEXT RECORD([CashBookTrxs])
+End for 
+Else 
+If ([CashBookTrxs]Amount>0)
+vAmt1:=[CashBookTrxs]Amount
+Else 
+vAmt2:=[CashBookTrxs]Amount*(-1)
+End if 
+End if 
+End case 
+End if 
+vBal:=vBalFwd+vAmt1-vAmt2
+End if 
+If (Form event=On Printing Break)
+vTotBalFwd:=Subtotal(vBalFwd)
+vTotAmt1:=Subtotal(vAmt1)
+vTotAmt2:=Subtotal(vAmt2)
+vTotBal:=Subtotal(vBal)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+
+
+If (Form event=On Header)
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+

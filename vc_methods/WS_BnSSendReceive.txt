@@ -1,0 +1,1025 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_BoxIDs;Text array;SOAP input)
+SOAP DECLARATION(WS_ORCustomerName;Is string var;SOAP input)
+SOAP DECLARATION(WS_StreetAddress;Is string var;SOAP input)
+SOAP DECLARATION(WS_StreetSuburb;Is string var;SOAP input)
+SOAP DECLARATION(WS_PostCode;Is longint;SOAP input)
+SOAP DECLARATION(WS_LengthStay;Is longint;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+SOAP DECLARATION(WS_ResID;Is text;SOAP input)// Blank if the reservation hasn't expired
+SOAP DECLARATION(WS_ORUnitRateSelected;Is string var;SOAP input)
+SOAP DECLARATION(WS_Change;Is Boolean;SOAP input)
+
+$String:="Start WS_BnSSendReceive"+Char(13)
+$sizeofarray:=Size of array(WS_BoxIDs)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_BoxIDs("+String($vlElem)+"):"+WS_BoxIDs{$vlElem}+Char(13)
+End for 
+$String:=$String+"WS_ORCustomerName: "+WS_ORCustomerName+Char(13)
+$String:=$String+"WS_StreetAddress: "+WS_StreetAddress+Char(13)
+$String:=$String+"WS_StreetSuburb: "+WS_StreetSuburb+Char(13)
+$String:=$String+"WS_PostCode: "+String(WS_PostCode)+Char(13)
+$String:=$String+"WS_LengthStay: "+String(WS_LengthStay)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_ResID: "+WS_ResID+Char(13)
+$String:=$String+"WS_ORUnitRateSelected: "+WS_ORUnitRateSelected+Char(13)
+$String:=$String+"WS_Change: "+String(WS_Change)+Char(13)
+
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_ORTotal;Is real;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+SOAP DECLARATION(WS_ReservationID;Is string var;SOAP output)
+SOAP DECLARATION(WS_Code;Is text;SOAP output)
+SOAP DECLARATION(WS_TotAmt;Is text;SOAP output)
+
+WS_ReservationID:=""
+WS_ORSuccess:=True
+WS_ORTotal:=0
+ARRAY TEXT($UnitNumbers;0)
+C_LONGINT($Kg;$KgFlat)
+C_REAL($Insurance)
+$KgFlat:=0
+$Kg:=0
+$NoUnit:=0
+
+READ WRITE([Customer])
+READ WRITE([Reservation])
+READ WRITE([Unit])
+READ WRITE([BarCode])
+READ WRITE([Trxs])
+READ WRITE([Analysis])
+READ WRITE([Facility])
+
+For ($i;1;Size of array(WS_BoxIds))
+QUERY([BarCode];[BarCode]Code=WS_BoxIDs{$i})
+If (Records in selection([BarCode])#1)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1
+WS_ORErrorDescription:="The Box ID cannot be found in the system"
+Else 
+// Check how many units are to be kept
+If (WS_ResID="")
+// 1. For reservations that hasn't expired
+QUERY([Unit];[Unit]RUnitNo=[BarCode]UnitNo;*)
+QUERY([Unit]; & ;[Unit]ReservedTo=[BarCode]ReserveNo)
+
+If (Records in selection([Unit])=1)
+APPEND TO ARRAY($UnitNumbers;[Unit]RUnitNo)
+//APPEND TO ARRAY($AnalysisCode;[BarCode]AnalysisCode)
+WS_ReservationID:=[BarCode]ReserveNo
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=8
+WS_ORErrorDescription:="Unit: "+[BarCode]UnitNo+" is not longer Reserved to "+[BarCode]ReserveNo
+End if 
+
+//FIRST RECORD([Unit])
+//For ($k;1;Records in selection([Unit]))
+//If ([Unit]RUnitNo=[BarCode]UnitNo)
+//APPEND TO ARRAY($UnitNumbers;[Unit]RUnitNo)
+//WS_ReservationID:=[BarCode]ReserveNo
+//End if 
+//NEXT RECORD([Unit])
+//End for 
+Else 
+//2. For Expired reservations check if the units are still available
+QUERY([Unit];[Unit]RUnitNo=[BarCode]UnitNo)
+If ([Unit]Vacant=True) & (([Unit]Status="Vacant") | ([Unit]Status="ToClean"))
+APPEND TO ARRAY($UnitNumbers;[Unit]RUnitNo)
+Else 
+// If the same units are not availble check for different Units (the same UnitType)
+$SearchUnitType:=[Unit]UnitTypeCode
+QUERY([Unit];[Unit]UnitTypeCode=$SearchUnitType;*)
+QUERY([Unit];[Unit]Status="Vacant";*)
+QUERY([Unit];[Unit]Vacant=True)
+If (Records in selection([Unit])#0)
+FIRST RECORD([Unit])
+APPEND TO ARRAY($UnitNumbers;[Unit]RUnitNo)
+[BarCode]UnitNo:=[Unit]RUnitNo
+SAVE RECORD([BarCode])
+
+End if 
+End if 
+WS_ReservationID:=WS_ResID
+End if 
+End if 
+End for 
+
+//change the shipping price if the No of boxes is different
+If (WS_ResID#"") & (WS_ORSuccess)
+// If the facility has available UnitTypes 
+// Set the reservation to active + Reserve the Units
+QUERY([Reservation];[Reservation]RReserveNo=WS_ReservationID)
+If (Size of array($UnitNumbers)=Size of array(WS_BoxIDs))
+WS_ReservationID:=WS_ResID
+[Reservation]ReservedDate:=Current date
+[Reservation]ReservedTime:=Current time
+[Reservation]ActiveReserve:=True
+[Reservation]Outcome:=""
+[Reservation]OutcomeDate:=!00-00-00!
+SAVE RECORD([Reservation])
+
+For ($u;1;Size of array($UnitNumbers))
+QUERY([Unit];[Unit]RUnitNo=$UnitNumbers{$u})
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]ReservedTo:=[Reservation]RReserveNo
+[Unit]ReservedDate:=Current date
+[Unit]LastStatusDate:=Current date
+[Unit]Deposit:=[UnitType]DepositAmt
+[Unit]Status:="Reserved"
+If (WS_ORUnitRateSelected="W")
+[Unit]QuotedRate:=[UnitType]WeeklyRate
+Else 
+[Unit]QuotedRate:=[UnitType]MonthlyRate
+End if 
+SAVE RECORD([Unit])
+End for 
+$Facility:=Substring(WS_ReservationID;1;5)
+Else 
+
+//select all facilities exept for that one and calculate everything based on WS_BnSCreateRes
+//Checks for KG
+
+If (Size of array(WS_BoxIDs)#0)
+$Kg:=Size of array(WS_BoxIDs)*25
+$KgFlat:=Size of array(WS_BoxIDs)*1
+QUERY([BarCode];[BarCode]ReserveNo=WS_ResID)
+End if 
+QUERY([Shipping];[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]FacilityCode#Substring(WS_ResID;1;5);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+If (Records in selection([Shipping])#0)
+SELECTION TO ARRAY([Shipping]FacilityCode;$arFacilityCode)
+ARRAY REAL($PriceperFacility;Size of array($arFacilityCode))
+
+//Price per Facility
+For ($f;1;Size of array($arFacilityCode))
+QUERY([Facility];[Facility]FacilityCode=$arFacilityCode)
+
+//Price per Box - Based on UnitType
+$NoUnit:=0
+For ($z;1;Size of array(WS_BoxIDs))
+
+QUERY([BarCode];[BarCode]Code=WS_BoxIDs{$z})
+QUERY([Unit];[Unit]RUnitNo=[BarCode]UnitNo)
+QUERY([UnitType];[UnitType]RUnitType=$arFacilityCode{$f}+Substring([Unit]UnitTypeCode;6))
+
+If (Records in selection([UnitType])>0)
+
+//Price Per Rent
+If (WS_LengthStay#0)
+//DAM Added $Calculate as expression didn't calculate correctly
+If (WS_ORUnitRateSelected="W")
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]WeeklyRate*WS_LengthStay)
+Else 
+// Monthly Rate * No of Units Required * Length of stay
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]MonthlyRate*WS_LengthStay)
+End if 
+Else 
+If (WS_ORUnitRateSelected="W")
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]WeeklyRate)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]MonthlyRate)
+End if 
+End if 
+
+$NoUnit:=$NoUnit+WS_ORUnitTypeNos{$z}
+Else 
+WS_ORErrorCode:=6
+WS_ORErrorDescription:="Unit Type Record not found!"
+WS_ORSuccess:=False
+End if 
+End for 
+
+For ($z;1;Size of array(WS_UnitTypeCodes))//  Cannot be done in the previous loop as Deposit is calcultaed for extra boxes too
+QUERY([UnitType];[UnitType]RUnitType=$arFacilityCode{$f}+WS_UnitTypeCodes{$z})
+//Deposit per Unit
+If ([UnitType]DepositAmt#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([UnitType]DepositAmt*WS_ORUnitTypeNos{$z})
+End if 
+End for 
+
+//Rent for B&S
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"RF1")
+If (Records in selection([Analysis])=1)
+
+//Per Month
+$BnSRent:=[Analysis]DfltSellAmt*($NoUnit)// BnS Rent Per month for all Units
+If (WS_ORUnitRateSelected="W")
+$BnSRent:=$BnSRent*[Facility]RentWeeklyMthly
+End if 
+If (WS_LengthStay#0)
+$BnSRent:=$BnSRent*WS_LengthStay
+End if 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+$BnSRent
+End if 
+
+//Delivery Price
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=6)
+If (Records in selection([Analysis])=1)
+//Delivery Price from customer to depot
+QUERY([Shipping];[Shipping]FacilityCode=$arFacilityCode{$f};*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+If (Records in selection([Shipping])=0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+1000000
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+[Shipping]Price
+End if 
+
+//Delivery Price from depot to customer
+QUERY([Shipping];[Shipping]FacilityCode=$arFacilityCode{$f};*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$KgFlat;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$KgFlat)
+
+If (Records in selection([Shipping])=0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+1000000
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+[Shipping]Price
+End if 
+
+Else 
+WS_ORErrorCode:=14
+WS_ORErrorDescription:="There is no shipping Analysis code in the system"
+WS_ORSuccess:=False
+End if 
+
+//Compulsory Insurance Cost
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"IN")
+If (Records in selection([Analysis])#0)
+If (WS_ORUnitRateSelected="W")
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*[Facility]InsWeeklyMthly*WS_LengthStay*$NoUnit)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*[Facility]InsWeeklyMthly*$NoUnit)
+End if 
+Else 
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*WS_LengthStay*$NoUnit)
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+([Analysis]DfltSellAmt*$NoUnit)
+End if 
+End if 
+End if 
+
+$Ins:=GetTextNo ([Reservation]BoxnStore;2;",")
+$InsAmount:=GetTextNo ([Reservation]BoxnStore;3;",")
+//EXTRA Insurance cost
+If ($Ins="TRUE")
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"IN")
+If (Records in selection([Analysis])#0)
+//
+If (Num($InsAmount)>0)
+QUERY([InsuranceRates];[InsuranceRates]Facility=$arFacilityCode{$f})
+$Insurance:=Num($InsAmount)*[InsuranceRates]Premium
+WSRecordLog ("Insurance: "+String($Insurance))
+If (WS_ORUnitRateSelected="W")
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*[Facility]InsWeeklyMthly*WS_LengthStay*$NoUnit)//04/06/13 DAM Added 
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*[Facility]InsWeeklyMthly*$NoUnit)
+End if 
+Else 
+If (WS_LengthStay#0)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*WS_LengthStay*$NoUnit)//04/06/13 DAM Added 
+Else 
+$PriceperFacility{$f}:=$PriceperFacility{$f}+($Insurance*$NoUnit)
+End if 
+End if 
+
+End if 
+Else 
+WS_ORErrorCode:=15
+WS_ORErrorDescription:="No Insurance found in Storman"
+End if 
+End if 
+
+//Deposit on MI
+QUERY([Analysis];[Analysis]Code=$arFacilityCode{$f}+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])=1)
+$PriceperFacility{$f}:=$PriceperFacility{$f}+[Analysis]DfltSellAmt
+End if 
+End for 
+
+//Find cheepest
+SORT ARRAY($PriceperFacility;$arFacilityCode;>)
+DELETE FROM ARRAY($UnitNumbers;1;Size of array($UnitNumbers))
+//Find the available units
+
+If (WS_ORSuccess=True)
+
+For ($r;1;Size of array($arFacilityCode))
+
+For ($z;1;Size of array(WS_BoxIDs))
+QUERY([BarCode];[BarCode]Code=WS_BoxIDs{$z})
+QUERY([Unit];[Unit]RUnitNo=[BarCode]UnitNo)
+QUERY([UnitType];[UnitType]RUnitType=$arFacilityCode{$r}+Substring([Unit]UnitTypeCode;6))
+RELATE MANY([UnitType]RUnitType)
+QUERY SELECTION([Unit];[Unit]Vacant=True;*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Company";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Reserved";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Repair";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Unavail")
+ORDER BY([Unit];[Unit]UnitNo;>)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=2)
+
+FIRST RECORD([Unit])
+For ($a;1;Records in selection([Unit]))//looping throug the units to find availble
+If ((Locked([Unit])=True) | (Read only state([Unit])=True)) & (End selection([Unit])=False)
+NEXT RECORD([Unit])
+Else 
+//check if the unit already used by the UnitType
+$Pos:=Find in array($UnitNumbers;[Unit]RUnitNo)
+If ($Pos>0)
+NEXT RECORD([Unit])
+Else 
+APPEND TO ARRAY($UnitNumbers;[Unit]RUnitNo)
+$a:=Records in selection([Unit])// Skip looping through Units if there is one available
+End if 
+End if 
+End for 
+End for 
+
+//chekc if there are units available -> skip looping through all facilities
+If (Size of array($UnitNumbers)=Size of array(WS_BoxIDs))
+$Facility:=$arFacilityCode{$r}
+WS_ORTotal:=$PriceperFacility{$r}
+$r:=Size of array($arFacilityCode)
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+
+//Create Customer
+QUERY([Reservation];[Reservation]RReserveNo=WS_ResID)
+$CustomerCode:=[Reservation]CustomerCode
+//check does the Customer Code exist at the other facility
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+Substring($CustomerCode;6))
+If (Records in selection([Customer])=0)
+QUERY([Customer];[Customer]CustomerCode=$CustomerCode)
+DUPLICATE RECORD([Customer])
+[Customer]PrimaryKey:=0
+[Customer]CustomerCode:=[Facility]FacilityCode+Substring($CustomerCode;6)
+SAVE RECORD([Customer])
+Else 
+$i:=0
+$Base:=Substring($CustomerCode;6)
+Repeat 
+$j:=5-Length(String($i;"#####"))
+$Code:=[Facility]FacilityCode+Substring($Base;1;$j)+String($i;"#####")
+$i:=$i+1
+Until (Find in field([Customer]CustomerCode;$Code)<0)
+QUERY([Customer];[Customer]CustomerCode=$CustomerCode)
+DUPLICATE RECORD([Customer])
+[Customer]PrimaryKey:=0
+[Customer]CustomerCode:=$Code
+SAVE RECORD([Customer])
+End if 
+
+//Create a Reservation
+//ORes.xml
+If (OR_ReadOResXML ="True")//Does the XML file exist?
+$vtCreatechargeTransaction:=OR_ReadOResXML ("ChargeTransaction";"Create")//Find out what the deposit value for this Facility Code is
+If ($vtCreatechargeTransaction="")//If value not found then default to True - Create Charge Transaction
+$vtCreatechargeTransaction:="TRUE"
+End if 
+Else 
+$vtCreatechargeTransaction:="TRUE"
+End if 
+CREATE RECORD([Reservation])
+[Reservation]ActiveReserve:=True
+[Reservation]CustomerCode:=[Customer]CustomerCode
+[Reservation]DateDepPaid:=!00-00-00!
+[Reservation]DepositAmt:=0
+If ($vtCreatechargeTransaction#"TRUE") | ([Facility]AgreeOnlyDeposit=True)
+[Reservation]DepositAmt:=0
+Else 
+If (OR_ReadOResXML ="True")
+$DepositAmt:=OR_ReadOResXML ("Deposit";$Facility)
+If ($DepositAmt#"")
+[Reservation]DepositAmt:=Num($DepositAmt)
+End if 
+End if 
+End if 
+[Reservation]ExpMoveIn:=Add to date(Current date;0;0;14)
+[Reservation]ReservedDate:=Current date
+[Reservation]ReservedTime:=Current time
+[Reservation]Balance:=[Reservation]DepositAmt
+[Reservation]UserLogin:="Web"
+[Reservation]CallTakenBy:="Web"
+[Reservation]OutcomeDate:=!00-00-00!
+[Reservation]OnlineRes:=True
+[Reservation]BoxnStore:=String(WS_LengthStay)+","+$Ins
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+If (WS_ORUnitRateSelected="W")
+[Reservation]Weekly:=True
+Else 
+[Reservation]Weekly:=False
+End if 
+If ([Reservation]ReserveNo="")
+$vliNextReserveNo:=[Facility]NextReserveNo
+$Continue:=False
+If (Not(Semaphore("<>bNextResNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//10285
+
+
+//If (Application type=4D Remote Mode)
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+//End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+
+//If (<>aiNextResNo{$arraypos}>[Facility]NextReserveNo)
+//ConfirmTwo (Get localized string("It appears the next reservation number of")+" "+String([Facility]NextReserveNo;"00000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//If (OK=1)
+[Reservation]ReserveNo:=String(<>aiNextResNo{$arraypos};"00000000")
+[Facility]NextReserveNo:=<>aiNextResNo{$arraypos}+1
+//Else 
+//[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+//[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+//End if 
+//Else 
+//[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+//[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+//End if 
+<>aiNextResNo{$arraypos}:=[Facility]NextReserveNo
+$Key:=<>sFacility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+//End if 
+CLEAR SEMAPHORE("<>bNextResNo")
+Else 
+Repeat 
+
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+
+$Key:=<>sFacility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+End if 
+[Reservation]RReserveNo:=$Key
+[Reservation]TaxExempt:=[Facility]TaxFreeDefault
+End if 
+SAVE RECORD([Reservation])
+
+//Reserve Units and create deposit transactions
+For ($u;1;Size of array($UnitNumbers))
+QUERY([Unit];[Unit]RUnitNo=$UnitNumbers{$u})
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]ReservedTo:=[Reservation]RReserveNo
+[Unit]ReservedDate:=Current date
+[Unit]LastStatusDate:=Current date
+[Unit]ReserveDeposit:=[UnitType]DepositAmt
+[Unit]Status:="Reserved"
+If (WS_ORUnitRateSelected="W")
+[Unit]QuotedRate:=[UnitType]WeeklyRate
+Else 
+[Unit]QuotedRate:=[UnitType]MonthlyRate
+End if 
+SAVE RECORD([Unit])
+//Create Deposit trx for Units
+If ($vtCreatechargeTransaction="TRUE")
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"DP"
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"DP")
+[Trxs]Description:=[Analysis]Description+" Unit "+[Unit]UnitNo
+[Trxs]TotAmt:=[Unit]ReserveDeposit
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Reservation]DepositAmt:=[Reservation]DepositAmt+[Trxs]TotAmt
+[Trxs]Confirmed:=False
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End for 
+
+//Set Barcode to Units
+For ($v;1;Size of array(WS_BoxIDs))
+QUERY([BarCode];[BarCode]Code=WS_BoxIDs{$v})
+[BarCode]UnitNo:=$UnitNumbers{$v}
+[BarCode]ReserveNo:=[Reservation]RReserveNo
+SAVE RECORD([BarCode])
+End for 
+
+//Copy New transactions for Receipts
+QUERY([Trxs];[Trxs]AgreeNo=WS_ResID;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+ARRAY TEXT($aAnlys;0)
+ARRAY REAL($aTotal;0)
+ARRAY TEXT($aDescription;0)
+ARRAY DATE($aDate;0)
+SELECTION TO ARRAY([Trxs]Description;$aDescription;[Trxs]AnalysisCode;$aAnlys;[Trxs]TrxDate;$aDate;[Trxs]TotAmt;$aTotal)
+For ($t;1;Size of array($aDescription))
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AnalysisCode:=[Facility]FacilityCode+Substring($aAnlys{$t};6)
+[Trxs]Description:=$aDescription{$t}
+[Trxs]UserLogin:="Web"
+[Trxs]TrxDate:=$aDate{$t}
+[Trxs]Charge:=False
+[Trxs]DateFrom:=$aDate{$t}
+[Trxs]DateTo:=$aDate{$t}
+[Trxs]TotAmt:=$aTotal{$t}
+SAVE RECORD([Trxs])
+End for 
+
+//Create Deposit MI
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"DP")
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])=1)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"DP"
+[Trxs]Description:=[Analysis]Description+" Reservation "+[Reservation]ReserveNo
+[Trxs]TotAmt:=[Analysis]DfltSellAmt//RoundAmt ([UnitType]DepositAmt)
+[Reservation]DepositAmt:=[Reservation]DepositAmt+[Trxs]TotAmt
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+
+//21/10/13 DAM Added for Tape and Bubble Wrap calculation
+$Tot:=Size of array($UnitNumbers)
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"TP";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+
+If (Records in selection([Analysis])=1)
+$Tape:=$Tot/5
+If ($Tape#Trunc($Tape;0))
+$Tape:=Trunc($Tape;0)+1
+Else 
+$Tape:=Trunc($Tape;0)
+End if 
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]Qty:=$Tape
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" Reservation "+[Reservation]ReserveNo
+[Trxs]TotAmt:=[Analysis]DfltSellAmt*$Tape//RoundAmt ([UnitType]DepositAmt)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+If ([Trxs]TotAmt#0)
+[Reservation]DepositAmt:=[Reservation]DepositAmt+[Trxs]TotAmt
+SAVE RECORD([Trxs])
+//04/06/15 DAM Analysis Code calculation
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-$Tape
+SAVE RECORD([Analysis])
+End if 
+End if 
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"BW";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+
+If (Records in selection([Analysis])=1)
+$Bubblewrap:=$Tot*0.5
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]Qty:=$Bubblewrap
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" Reservation "+[Reservation]ReserveNo
+[Trxs]TotAmt:=[Analysis]DfltSellAmt*$Bubblewrap//RoundAmt ([UnitType]DepositAmt)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+If ([Trxs]TotAmt#0)
+[Reservation]DepositAmt:=[Reservation]DepositAmt+[Trxs]TotAmt
+SAVE RECORD([Trxs])
+//04/06/15 DAM Analysis Code calculation
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-$Bubblewrap
+SAVE RECORD([Analysis])
+End if 
+End if 
+
+
+//Write off Transactions for old reservation
+QUERY([Trxs];[Trxs]AgreeNo=WS_ResID)
+ARRAY TEXT($aAnlys;0)
+ARRAY TEXT($aCustCode;0)
+ARRAY TEXT($aAgreeNo;0)
+ARRAY BOOLEAN($aCharge;0)
+ARRAY REAL($aTotal;0)
+ARRAY REAL($aTax;0)
+ARRAY TEXT($aDescription;0)
+ARRAY DATE($aDate;0)
+SELECTION TO ARRAY([Trxs]CustomerCode;$aCustCode;[Trxs]AgreeNo;$aAgreeNo;[Trxs]Charge;$aCharge;[Trxs]Description;$aDescription;[Trxs]AnalysisCode;$aAnlys;[Trxs]TrxDate;$aDate;[Trxs]TotAmt;$aTotal;[Trxs]TaxAmt;$aTax)
+For ($t;1;Size of array($aDescription))
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=$aAgreeNo{$t}
+[Trxs]CustomerCode:=$aCustCode{$t}
+[Trxs]AnalysisCode:=$aAnlys{$t}
+[Trxs]Description:=$aDescription{$t}
+[Trxs]UserLogin:="Web"
+[Trxs]TrxDate:=$aDate{$t}
+[Trxs]Charge:=$aCharge{$t}
+[Trxs]DateFrom:=$aDate{$t}
+[Trxs]DateTo:=$aDate{$t}
+[Trxs]TotAmt:=$aTotal{$t}*(-1)
+[Trxs]TaxAmt:=$aTax{$t}*(-1)
+SAVE RECORD([Trxs])
+End for 
+
+End if 
+End for 
+
+If (Size of array($UnitNumbers)#Size of array(WS_BoxIDs))
+WS_ORErrorCode:=2
+WS_ORErrorDescription:="No Units Available"
+WS_ORSuccess:=False
+End if 
+End if 
+
+Else 
+WS_ORErrorCode:=13
+WS_ORErrorDescription:="Please check entered post code and the number of boxes"
+WS_ORSuccess:=False
+End if 
+End if 
+End if 
+
+// Find weight of the boxes
+$Kg:=Size of array($UnitNumbers)*25
+$KgFlat:=Size of array($UnitNumbers)*1
+
+WSRecordLog ("KG = "+String($Kg)+" Flat KG = "+String($KgFlat))
+
+//05/06/14 DAM Added Code for setting all barcodes as not billed
+QUERY([BarCode];[BarCode]ReserveNo=WS_ReservationID)
+APPLY TO SELECTION([BarCode];[BarCode]Billed:=False)
+
+//Price for Shipping
+QUERY([Shipping];[Shipping]FacilityCode=Substring(WS_ReservationID;1;5);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+If (Records in selection([Shipping])=0)
+WS_ORErrorCode:=13
+WS_ORErrorDescription:="Please check entered post code and the number of boxes KG: "+String($Kg)+" Post Code: "+String(WS_PostCode)
+WS_ORSuccess:=False
+End if 
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_ReservationID;1;5))
+If (WS_ORSuccess=True)
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+Else 
+WS_ORErrorCode:=99
+WS_ORErrorDescription:="Incorrect password"
+WS_ORSuccess:=False
+End if 
+End if 
+
+If (Size of array($UnitNumbers)=0)
+WS_ORErrorCode:=15
+WS_ORErrorDescription:="The units cannot be found in the system"
+WS_ORSuccess:=False
+End if 
+
+If (WS_ORSuccess=True)
+QUERY([Reservation];[Reservation]RReserveNo=WS_ReservationID)
+$LengthStay:=GetTextNo ([Reservation]BoxnStore;1;",")
+$Ins:=GetTextNo ([Reservation]BoxnStore;2;",")
+$InsAmount:=GetTextNo ([Reservation]BoxnStore;3;",")
+
+//Changes to Customer
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+
+If (WS_ORCustomerName#"")
+[Customer]CustomerName:=WS_ORCustomerName
+End if 
+If (WS_StreetAddress#"")
+[Customer]StreetAddress:=WS_StreetAddress
+End if 
+If (WS_StreetSuburb#"")
+[Customer]StreetSuburb:=WS_StreetSuburb
+End if 
+If (String(WS_PostCode)#"")
+[Customer]StreetZIPCode:=String(WS_PostCode)
+End if 
+
+SAVE RECORD([Customer])
+
+If (WS_Change)
+
+QUERY([Analysis];[Analysis]Code=Substring(WS_ReservationID;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=6)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#Substring([Reservation]RReserveNo;1;5)+"DP";*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#Substring([Reservation]RReserveNo;1;5)+"BW";*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#Substring([Reservation]RReserveNo;1;5)+"TP";*)
+QUERY([Trxs]; & ;[Trxs]Description#"@from Cust to Dep@")
+
+DELETE SELECTION([Trxs])
+End if 
+
+
+For ($i;1;Size of array($UnitNumbers))
+
+If (WS_ORUnitRateSelected="W")
+[Reservation]Weekly:=True
+Else 
+[Reservation]Weekly:=False
+End if 
+SAVE RECORD([Reservation])
+
+QUERY([Unit];[Unit]RUnitNo=$UnitNumbers{$i})
+RELATE ONE([Unit]UnitTypeCode)
+
+// Rent per Unit for Storage Owing Company
+Case of 
+: ([UnitType]OrgAnalysis#"") & ([Customer]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring(WS_ReservationID;1;5)+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis#"")
+QUERY([Analysis];[Analysis]Code=Substring(WS_ReservationID;1;5)+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring(WS_ReservationID;1;5)+"RF")
+End case 
+
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" for "+[Unit]UnitNo+" x "+String(WS_LengthStay)
+If ([Reservation]Weekly=True)
+[Trxs]TotAmt:=[UnitType]WeeklyRate*WS_LengthStay
+Else 
+[Trxs]TotAmt:=[UnitType]MonthlyRate*WS_LengthStay
+End if 
+
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+SAVE RECORD([Trxs])
+
+// Rent per Unit for B&S
+QUERY([Analysis];[Analysis]Code=Substring(WS_ReservationID;1;5)+"RF1")
+If (Records in selection([Analysis])#0)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" for "+[Unit]UnitNo+" x "+String(WS_LengthStay)
+If ([Reservation]Weekly=True)
+[Trxs]TotAmt:=[Analysis]DfltSellAmt*WS_LengthStay*[Facility]RentWeeklyMthly
+Else 
+[Trxs]TotAmt:=[Analysis]DfltSellAmt*WS_LengthStay
+End if 
+
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+SAVE RECORD([Trxs])
+End if 
+
+QUERY([Analysis];[Analysis]Code=Substring(WS_ReservationID;1;5)+"IN")
+If (Records in selection([Analysis])#0)
+If ($Ins="TRUE")
+//Extra Insurance
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Extra "+[Analysis]Description+" "+$UnitNumbers{$i}+" x "+String(WS_LengthStay)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=Substring(WS_ReservationID;1;5))
+$Insurance:=Num($InsAmount)*[InsuranceRates]Premium
+If (WS_ORUnitRateSelected="W")
+[Trxs]TotAmt:=$Insurance*[Facility]InsWeeklyMthly*WS_LengthStay
+Else 
+[Trxs]TotAmt:=$Insurance*WS_LengthStay
+End if 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+[Unit]InsureValue:=Num($InsAmount)+300//$300 Compulsory insurance
+SAVE RECORD([Unit])
+End if 
+End if 
+//Compulsory insurance
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" "+$UnitNumbers{$i}+" x "+String(WS_LengthStay)
+If (WS_ORUnitRateSelected="W")
+[Trxs]TotAmt:=[Analysis]DfltSellAmt*[Facility]InsWeeklyMthly*WS_LengthStay
+Else 
+[Trxs]TotAmt:=[Analysis]DfltSellAmt*WS_LengthStay
+End if 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End for 
+
+//Delivery Price
+QUERY([Analysis];[Analysis]Code=Substring(WS_ReservationID;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=6)
+If (Records in selection([Analysis])#0)
+//From Customer to Depot
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Reservation]ExpMoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+
+//Price from Customer to depot
+QUERY([Shipping];[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]FacilityCode=Substring(WS_ReservationID;1;5);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+[Trxs]Description:=[Analysis]Description+" "+[Shipping]Type+" "+String([Shipping]PostCode)
+[Trxs]TotAmt:=[Shipping]Price
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+SAVE RECORD([Trxs])
+
+End if 
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+WS_ORTotal:=[Reservation]Balance
+//04/06/14 DAM Added for WS_AddReceiptTrx
+C_TEXT($A1;$A2;$A3)
+
+$A1:=GetTextNo ([Reservation]BoxnStore;1;",")
+$A2:=GetTextNo ([Reservation]BoxnStore;2;",")
+$A3:=GetTextNo ([Reservation]BoxnStore;3;",")
+
+[Reservation]BoxnStore:=$A1+","+$A2+","+$A3+",Remaining"
+SAVE RECORD([Reservation])
+
+// Code for StroPay
+$MonthEarlier:=Add to date(Current date;0;-1;0)
+QUERY([Facility];[Facility]SortOrder>=0;*)//Find all Facility records except the Head Office one
+QUERY([Facility]; & ;[Facility]OnlineReserveIncl=True;*)
+QUERY([Facility]; & ;[Facility]UseOnlineReservations=True;*)
+QUERY([Facility]; & ;[Facility]UpgradesPaidTo>$MonthEarlier;*)
+QUERY([Facility]; & ;[Facility]FacilityCode=Substring(WS_ReservationID;1;5))
+vtFacilityCodeSelect:=Substring(WS_ReservationID;1;5)
+CREATE SET([Facility];"OnlineReservationsEntitled")
+
+vtLoginPassword:=[Customer]Password
+vtLoginUsername:=[Reservation]ReserveNo
+
+If (WS_ORUnitRateSelected="W")
+vKinitekRef:="Remaining"+String(UTCDate (?00:00:00?;True;Add to date([Reservation]ExpMoveIn;0;0;WS_LengthStay*7)))
+Else 
+vKinitekRef:="Remaining"+String(UTCDate (?00:00:00?;True;Add to date([Reservation]ExpMoveIn;0;WS_LengthStay;0)))
+End if 
+
+KinitekStorpay 
+WS_Code:=vtOnlineReservationContent
+
+QUERY([Trxs];[Trxs]AgreeNo=WS_ReservationID;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+WS_TotAmt:=0
+If (Records in selection([Trxs])#0)
+WS_TotAmt:=Sum([Trxs]TotAmt)
+End if 
+
+If ([Facility]EmailAddress#"")
+vtDepositAmt:=String([UnitType]DepositAmt+[Analysis]DfltSellAmt)
+vtDateUnitRequired:=WS_ORDateUnitRequired
+$OK:=OR_EmailCust ("2")//("";"";"";"";"";"";False;->Attachments;"";"";"";"";"";"";"")  `Notification Email to Customer - details of email are filled in from 'OR_EmailNotice' method 
+If ($OK=False)//Email Failed
+WS_ORErrorCode:=10//Email Failed
+WS_ORErrorDescription:="Customer Notification Email failed!"
+End if 
+End if 
+READ ONLY([Customer])
+End if 
+
+If (WS_ORSuccess=False)
+WSRecordLog ("Box and Store error for Send/Receive Step failed for Reservation: "+WS_ReservationID+" ErrorCode: "+String(WS_ORErrorCode)+" Description: "+WS_ORErrorDescription)
+Else 
+For ($i;1;Size of array(WS_BoxIds))
+QUERY([BarCode];[BarCode]Code=WS_BoxIDs{$i})
+[BarCode]Billed:=True
+SAVE RECORD([BarCode])
+End for 
+End if 
+
+READ ONLY([Contacts])
+READ ONLY([Customer])
+READ ONLY([Reservation])
+READ ONLY([Unit])
+READ ONLY([Trxs])
+READ ONLY([Facility])
+READ ONLY([BarCode])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([BarCode])
+
+$String:="End WS_BnSSendReceive"+Char(13)
+$String:=$String+"WS_ORTotal: "+String(WS_ORTotal)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_ReservationID: "+WS_ReservationID+Char(13)
+$String:=$String+"WS_Code: "+WS_Code+Char(13)
+$String:=$String+"WS_TotAmt: "+String(WS_TotAmt)+Char(13)
+
+ReadOnlyAll 
+UnloadAll 
+WSRecordLog ($String)

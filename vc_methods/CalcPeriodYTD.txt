@@ -1,0 +1,81 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$StartPeriod;$StartComp;$CompPeriod)
+C_LONGINT($ActMthRound;$ActYTDRound;$BudMthRound;$BudYTDRound;$CompMthRound;$CompYTDRound;$ProfitAmt)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Calculating This Year YTD Totals")+"..."+"    ")
+ALL RECORDS([ChartAccts])
+$ActMthRound:=0
+$ActYTDRound:=0
+$BudMthRound:=0
+$BudYTDRound:=0
+$CompMthRound:=0
+$CompYTDRound:=0
+$ProfitAmt:=0
+$StartPeriod:=GetPeriod (<>dYearStart)
+While ($StartPeriod>vPeriod) & ($StartPeriod>100)
+$StartPeriod:=$StartPeriod-100
+End while 
+$StartComp:=$StartPeriod-100
+$CompPeriod:=vPeriod-100
+For ($i;1;Records in selection([ChartAccts]))
+QUERY([ChartTotals];[ChartTotals]AcctNo=[ChartAccts]AcctNo;*)
+QUERY([ChartTotals]; & ;[ChartTotals]PeriodNo>=$StartPeriod;*)
+QUERY([ChartTotals]; & ;[ChartTotals]PeriodNo<=vPeriod)
+[ChartAccts]ActualYTD:=Sum([ChartTotals]Actual)
+[ChartAccts]BudgetYTD:=Sum([ChartTotals]Budget)
+QUERY([ChartTotals];[ChartTotals]AcctNo=[ChartAccts]AcctNo;*)
+QUERY([ChartTotals]; & ;[ChartTotals]PeriodNo>=$StartComp;*)
+QUERY([ChartTotals]; & ;[ChartTotals]PeriodNo<=$CompPeriod)
+[ChartAccts]ComparativeYTD:=Sum([ChartTotals]Actual)
+QUERY SELECTION([ChartTotals];[ChartTotals]PeriodNo=$CompPeriod)
+[ChartAccts]ComparativePeriod:=[ChartTotals]Actual
+If (bWhole=1)
+[ChartAccts]ActualYTD:=Round([ChartAccts]ActualYTD;0)
+[ChartAccts]BudgetYTD:=Round([ChartAccts]BudgetYTD;0)
+[ChartAccts]ComparativeYTD:=Round([ChartAccts]ComparativeYTD;0)
+[ChartAccts]ComparativePeriod:=Round([ChartAccts]ComparativePeriod;0)
+If ([ChartAccts]AcctNo#"P&L")
+$ActYTDRound:=$ActYTDRound+[ChartAccts]ActualYTD
+$BudYTDRound:=$BudYTDRound+[ChartAccts]BudgetYTD
+$CompYTDRound:=$CompYTDRound+[ChartAccts]ComparativeYTD
+$ActMthRound:=$ActMthRound+Round([ChartTotals]Actual;0)
+$BudMthRound:=$BudMthRound+Round([ChartTotals]Budget;0)
+$CompMthRound:=$CompMthRound+[ChartAccts]ComparativePeriod
+End if 
+If ([ChartAccts]AcctType="P")
+$ProfitAmt:=$ProfitAmt+[ChartAccts]ActualYTD
+End if 
+Else 
+[ChartAccts]ActualYTD:=Round([ChartAccts]ActualYTD;2)
+[ChartTotals]Actual:=Round([ChartTotals]Actual;2)
+End if 
+SAVE RECORD([ChartTotals])
+NEXT RECORD([ChartTotals])
+End for 
+If (bWhole=1)
+QUERY([ChartAccts];[ChartAccts]AcctType="P")//Rounding account
+If (Records in selection([ChartAccts])=1)
+QUERY([ChartTotals];[ChartTotals]AcctNo=[ChartAccts]AcctNo;*)
+QUERY([ChartTotals]; & ;[ChartTotals]PeriodNo=vPeriod)
+//[Actual]PeriodAmt:=[Actual]PeriodAmt-$ActMonthRound
+[ChartAccts]ActualYTD:=[ChartAccts]ActualYTD-$ActYTDRound
+[ChartAccts]BudgetYTD:=[ChartAccts]BudgetYTD-$BudYTDRound
+[ChartAccts]ComparativeYTD:=[ChartAccts]ComparativeYTD-$CompYTDRound
+[ChartAccts]ComparativePeriod:=[ChartAccts]ComparativePeriod-$CompMthRound
+SAVE RECORD([ChartTotals])
+SAVE RECORD([ChartAccts])
+QUERY([ChartAccts];[ChartAccts]AcctNo="P&L")
+If ([ChartAccts]AcctType="P")
+If (Records in selection([ChartAccts])=1)
+//[Actual]PeriodAmt:=[Actual]PeriodAmt-$ActMonthRound
+[ChartAccts]ActualYTD:=$ProfitAmt-$ActYTDRound
+SAVE RECORD([ChartAccts])
+End if 
+Else 
+If (Records in selection([ChartAccts])=1)
+[ChartAccts]ActualYTD:=$ProfitAmt
+SAVE RECORD([ChartAccts])
+End if 
+End if 
+End if 
+End if 

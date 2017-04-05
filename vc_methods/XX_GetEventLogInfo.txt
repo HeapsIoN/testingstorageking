@@ -1,0 +1,171 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE(EventDate)
+C_TIME(EventTime)
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+SOAP DECLARATION(WS_IsAgreement;Is Boolean;SOAP input;"WS_IsAgreement")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+SOAP DECLARATION(WS_adEventDate;Date array;SOAP output;"WS_adEventDate")
+SOAP DECLARATION(WS_aiEventTime;LongInt array;SOAP output;"WS_aiEventTime")
+SOAP DECLARATION(WS_asUserLogin;Text array;SOAP output;"WS_asUserLogin")
+SOAP DECLARATION(WS_abEventAlert;Boolean array;SOAP output;"WS_abEventAlert")
+SOAP DECLARATION(WS_aiSyncStatus;LongInt array;SOAP output;"WS_aiSyncStatus")
+SOAP DECLARATION(WS_asFacilityCode;Text array;SOAP output;"WS_asFacilityCode")
+SOAP DECLARATION(WS_aiSeqNo;LongInt array;SOAP output;"WS_aiSeqNo")
+SOAP DECLARATION(WS_aiEventTable;LongInt array;SOAP output;"WS_aiEventTable")
+SOAP DECLARATION(WS_asEventType;Text array;SOAP output;"WS_asEventType")
+SOAP DECLARATION(WS_asKeyValue;Text array;SOAP output;"WS_asKeyValue")
+SOAP DECLARATION(WS_aiEventRecNo;LongInt array;SOAP output;"WS_aiEventRecNo")
+SOAP DECLARATION(WS_adTrxDate;Date array;SOAP output;"WS_adTrxDate")
+SOAP DECLARATION(WS_arTrxAmount;Real array;SOAP output;"WS_arTrxAmount")
+
+
+$String:="Start WS_GetEventLogInfo"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+If (WS_IsAgreement=True)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtAgreementNumber)
+End if 
+
+Case of 
+: (Records in selection([Agreement])=0) & (Records in selection([Reservation])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement found"
+: (Records in selection([Agreement])=1) | (Records in selection([Reservation])=1)
+If (WS_IsAgreement=True)
+RELATE ONE([Agreement]CustomerCode)
+Else 
+RELATE ONE([Reservation]CustomerCode)
+End if 
+
+If ([Customer]Password=WS_vtPassword)
+If (WS_IsAgreement=True)
+EventLogAgreement 
+Else 
+EventLogReservation 
+End if 
+EventDate:=UTCDate ([EventLog]EventTime;False;[EventLog]EventDate)
+EventTime:=UTCTime ([EventLog]EventTime;False)
+For ($j;1;Records in selection([EventLog]))
+APPEND TO ARRAY(WS_adEventDate;EventDate)
+APPEND TO ARRAY(WS_aiEventTime;EventTime)
+APPEND TO ARRAY(WS_asUserLogin;[EventLog]UserLogin)
+APPEND TO ARRAY(WS_abEventAlert;[EventLog]EventAlert)
+APPEND TO ARRAY(WS_aiSyncStatus;[EventLog]SyncStatus)
+APPEND TO ARRAY(WS_asFacilityCode;[EventLog]FacilityCode)
+APPEND TO ARRAY(WS_aiSeqNo;[EventLog]SeqNo)
+APPEND TO ARRAY(WS_aiEventTable;[EventLog]EventTable)
+APPEND TO ARRAY(WS_asEventType;[EventLog]EventType)
+APPEND TO ARRAY(WS_asKeyValue;[EventLog]KeyValue)
+APPEND TO ARRAY(WS_aiEventRecNo;[EventLog]EventRecNo)
+APPEND TO ARRAY(WS_adTrxDate;[EventLog]TrxDate)
+APPEND TO ARRAY(WS_arTrxAmount;[EventLog]TrxAmount)
+NEXT RECORD([EventLog])
+End for 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=4//There is a duplicate of agreement. 
+WS_ORErrorDescription:="There are duplicate agreements."
+
+End case 
+End if 
+
+ReadOnlyAll 
+UnloadAll 
+
+$String:="End WS_GetEventLogInfo"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+String(WS_vtAgreementNumber)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+
+
+$sizeofarray:=Size of array(WS_adEventDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adEventDate("+String($vlElem)+"):"+String(WS_adEventDate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiEventTime)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiEventTime("+String($vlElem)+"):"+String(WS_aiEventTime{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asUserLogin)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUserLogin("+String($vlElem)+"):"+WS_asUserLogin{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_abEventAlert)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_abEventAlert("+String($vlElem)+"):"+String(WS_abEventAlert{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiSyncStatus)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiSyncStatus("+String($vlElem)+"):"+String(WS_aiSyncStatus{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asFacilityCode)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asFacilityCode("+String($vlElem)+"):"+WS_asFacilityCode{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiSeqNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiSeqNo("+String($vlElem)+"):"+String(WS_aiSeqNo{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiEventTable)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiEventTable("+String($vlElem)+"):"+String(WS_aiEventTable{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+//$sizeofarray:=Size of array(WS_aiEventType)
+For ($vlElem;1;$sizeofarray)
+//$String:=$String+"WS_aiEventType("+String($vlElem)+"):"+String(WS_aiEventType{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asKeyValue)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asKeyValue("+String($vlElem)+"):"+WS_asKeyValue{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiEventRecNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiEventRecNo("+String($vlElem)+"):"+String(WS_aiEventRecNo{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_adTrxDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adTrxDate("+String($vlElem)+"):"+String(WS_adTrxDate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arTrxAmount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arTrxAmount("+String($vlElem)+"):"+String(WS_arTrxAmount{$vlElem})+Char(13)
+End for 
+
+WSRECORDLOG ($String)

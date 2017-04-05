@@ -1,0 +1,185 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$Pos)
+C_DATE($DateFrom;$DateTo)
+C_TIME($TimeFrom;$TimeTo)
+FIRST RECORD([Message])
+For ($i;1;Records in selection([Message]))
+If ([Message]CustCode>"")
+QUERY([Customer];[Customer]CustomerCode=[Message]CustCode)
+$Action:="Send Log Code "+[Message]CustCode+Char(13)+"Send Customer Code "+[Message]CustCode//Log first so it can be sent as attachment as well
+$Command:="SEND"
+Else 
+$Action:=""
+$Command:=""
+End if 
+If ([Message]Subject="SCOMMAND EXECUTE@")
+$4DCode:=True
+//Check that it came from storman.com
+//otherwise direct message back to Storman for verification
+If ([Message]Address#"@storman.com@")
+$4DCode:=False
+[Message]Address:="support@storman.com"
+$Action:="NONE"
+End if 
+Else 
+$4DCode:=False
+End if 
+If ($Action#"NONE") & ($Command#"SEND")
+$Action:=[Message]MsgBody
+[Message]MsgBody:=[Facility]BusinessName+Char(13)+Char(13)
+If ([Message]Subject="@DELETE@")
+[Message]Subject:="DELETE "+[Facility]BusinessName
+Else 
+[Message]Subject:="REPLY "+[Facility]BusinessName
+End if 
+End if 
+[Message]OutIn:=True
+[Message]SentRead:=False
+While ($Action>"")
+$Pos:=Position(Char(13);$Action;0;*)
+If ($Pos>1)
+$Command:=Substring($Action;1;$Pos-1)
+$Action:=Substring($Action;$Pos+1)
+Else 
+$Command:=$Action
+$Action:=""
+End if 
+If ($4DCode)
+If ($Command="SAVE RECORD@") & ($Command="@[System]@")
+If ($Command="@`~!#$%@")
+EXECUTE FORMULA($Command)
+Else 
+$Command:=$Command+"-FAILED - INVALID AUTHORISATION"
+End if 
+Else 
+EXECUTE FORMULA($Command)
+End if 
+[Message]MsgBody:=[Message]MsgBody+$Command+Char(13)
+Else 
+Case of 
+: ($Command="Send Log Code@")//SEND LOG CODE SMITH
+QUERY([Agreement];[Agreement]RAgreeNo=Substring($Command;15);*)
+QUERY([Agreement]; | ;[Agreement]CustomerCode=Substring($Command;15))
+If (Records in selection([Agreement])>0)
+QUERY([EventLog];[EventLog]KeyValue=[Agreement]RAgreeNo+"@";*)
+QUERY([EventLog]; | ;[EventLog]KeyValue=[Agreement]CustomerCode+"@";*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Agreement]RAgreeNo+"@";*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Agreement]CustomerCode+"@";*)
+NEXT RECORD([Agreement])
+While (End selection([Agreement])=False)
+QUERY([EventLog]; | ;[EventLog]KeyValue=[Agreement]RAgreeNo+"@";*)
+QUERY([EventLog]; | ;[EventLog]KeyValue=[Agreement]CustomerCode+"@";*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Agreement]RAgreeNo+"@";*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Agreement]CustomerCode+"@";*)
+NEXT RECORD([Agreement])
+End while 
+QUERY([EventLog])
+CREATE SET([EventLog];"ToSend")
+RELATE MANY SELECTION([Unit]AgreeNo)
+QUERY([EventLog];[EventLog]AgreeNo=[Unit]RUnitNo+"@";*)
+NEXT RECORD([Unit])
+While (End selection([Unit])=False)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Unit]RUnitNo+"@";*)
+NEXT RECORD([Unit])
+End while 
+QUERY([EventLog])
+CREATE SET([EventLog];"MoreToSend")
+UNION("ToSend";"MoreToSend";"ToSend")
+QUERY([EventLog];[EventLog]EventTable=1;*)
+QUERY([EventLog]; | ;[EventLog]EventTable=7;*)
+QUERY([EventLog]; | ;[EventLog]EventTable=8;*)
+QUERY([EventLog]; | ;[EventLog]EventTable=9;*)
+QUERY([EventLog]; & ;[EventLog]EventAlert=True)
+CREATE SET([EventLog];"MoreToSend")
+UNION("ToSend";"MoreToSend";"MoreToSend")
+USE SET("MoreToSend")
+CLEAR SET("MoreToSend")
+[Message]MsgBody:=[Message]MsgBody+Get localized string("Events for")+" "+Uppercase(Substring($Command;15;10);*)+Char(13)+Char(13)
+Else 
+[Message]MsgBody:=[Message]MsgBody+Get localized string("We were unable to locate an agreement with agreement number or customer code :")+Substring($Command;15;10)
+End if 
+: ($Command="Send Log Time@")//SEND LOG TIME 
+$Temp:=Substring($Command;15)
+$j:=Position(" ";$Temp)
+$DateFrom:=Date(Substring($Temp;1;$j-1))
+$Temp:=Substring($Temp;$j+1)
+$j:=Position(" ";$Temp)
+$TimeFrom:=Time(Substring($Temp;1;$j-1))
+$Temp:=Substring($Temp;$j+1)
+$j:=Position(" ";$Temp)
+$DateTo:=Date(Substring($Temp;1;$j-1))
+$Temp:=Substring($Temp;$j+1)
+$TimeTo:=Time($Temp)
+QUERY([EventLog];[EventLog]EventDate>=$DateFrom;*)
+QUERY([EventLog]; & ;[EventLog]EventDate<=$DateTo)
+QUERY SELECTION([EventLog];[EventLog]EventDate>$DateFrom;*)
+QUERY SELECTION([EventLog]; | ;[EventLog]EventTime>=$TimeFrom)
+QUERY SELECTION([EventLog];[EventLog]EventDate<$DateTo;*)
+QUERY SELECTION([EventLog]; | ;[EventLog]EventTime<=$TimeTo)
+[Message]MsgBody:=[Message]MsgBody+Get localized string("Events for")+" "+String($DateFrom)+" "+String($TimeFrom)+" "+String($DateTo)+" "+String($TimeTo)+Char(13)+Char(13)
+: ($Command="Send Log Table@")
+$Temp:=Substring($Command;16)
+$j:=Position(" ";$Temp)
+QUERY([EventLog];[EventLog]EventTable=Num(Substring($Temp;1;$j-1));*)
+$Temp:=Substring($Temp;$j+1)
+$j:=Position(" ";$Temp)
+$DateFrom:=Date(Substring($Temp;1;$j-1))
+$Temp:=Substring($Temp;$j+1)
+$DateTo:=Date($Temp)
+QUERY([EventLog]; & ;[EventLog]EventDate>=$DateFrom;*)
+QUERY([EventLog]; & ;[EventLog]EventDate<=$DateTo)
+[Message]MsgBody:=[Message]MsgBody+Get localized string("Events for")+" "+String([EventLog]EventTable)+" "+String($DateFrom)+" "+String($DateTo)+Char(13)+Char(13)
+: ($Command="Send Customer Code@")
+QUERY([Agreement];[Agreement]RAgreeNo=Substring($Command;20);*)
+QUERY([Agreement]; | ;[Agreement]CustomerCode=Substring($Command;20))//Agreement
+QUERY([Reservation];[Reservation]RReserveNo=Substring($Command;20);*)
+QUERY([Reservation]; | ;[Reservation]CustomerCode=Substring($Command;20))//Reservation
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode;*)
+QUERY([Customer]; | ;[Customer]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Customer]; | ;[Customer]CustomerCode=Substring($Command;20))//Customer
+RELATE MANY SELECTION([Unit]AgreeNo)//Link Unit with Agreement
+CREATE SET([Unit];"Agreemt")
+RELATE MANY SELECTION([Unit]ReservedTo)//Link Unit with Reservation
+CREATE SET([Unit];"Reserve")
+UNION("Agreemt";"Reserve";"Agreemt")
+USE SET("Agreemt")
+CLEAR SET("Agreemt")
+CLEAR SET("Reserve")
+RELATE ONE SELECTION([Unit];[UnitType])//UnitType
+RELATE MANY SELECTION([UnitHistory]AgreeNo)//UnitHistory
+RELATE MANY SELECTION([Trxs]CustomerCode)//Transaction
+RELATE MANY SELECTION([Letters]AgreeNo)//Letters
+QUERY([Contacts];[Contacts]ContactName="@"+Substring($Command;20)+"@")//Contacts
+RELATE MANY SELECTION([GateLog]CustCode)//GateLog
+RELATE MANY SELECTION([PhotosCards]Code)//PhotoCards
+RELATE MANY SELECTION([NotesHistory]CustomerCode)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+QUERY([Notices];[Notices]FacilityCode=<>sFacility)
+ALL RECORDS([MarketingTypes])
+ALL RECORDS([UserLogins])
+ExportMail ("1111111110111111100100000101")//FUULCTABNxLCGPMERxxUxxxxxUxN 28 tables
+Else 
+//Do Nothing
+End case 
+If ($Command="Send Log@") & (Records in selection([EventLog])>0)
+USE SET("ToSend")//Without all the 1,7,8,9 stuff in the body
+CLEAR SET("ToSend")
+//ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+//For ($j;1;Records in selection([EventLog]))
+//[Message]MsgBody:=[Message]MsgBody+String([EventLog]EventDate)+"-"+String([EventLog]EventTime)+"-"+GetStringfromBoolean ([EventLog]EventAlert;"Alert";"No")+"-"
+//[Message]MsgBody:=[Message]MsgBody+[EventLog]EventType+"-"+String([EventLog]EventTable)+"-"+[EventLog]KeyValue+"-"+String([EventLog]EventRecNo)+"-"
+//[Message]MsgBody:=[Message]MsgBody+[EventLog]BillPAnlys+"-"+String([EventLog]TrxDate)+"-"+String([EventLog]TrxAmount)+"-"+[EventLog]UserLogin+Char(13)
+//[Message]MsgBody:=[Message]MsgBody+FormatLog ([EventLog]LogDetail;[EventLog]EventType)+Char(13)+Char(13)
+//NEXT RECORD([EventLog])
+//If (Length([Message]MsgBody)>31000)  //Should exit loop and leave 1000 chars for footer
+//[Message]MsgBody:=[Message]MsgBody+Get localized string("Plus more events which don't fit in email...")+Char(13)+Char(13)
+//$j:=Records in selection([EventLog])+1
+//End if 
+//End for 
+End if 
+End if 
+End while 
+SAVE RECORD([Message])
+NEXT RECORD([Message])
+End for 

@@ -1,0 +1,101 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_GateCode;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_RetrivePayInf"+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_GateCode: "+WS_GateCode+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_IntUnitID;Is text;SOAP output)
+SOAP DECLARATION(WS_ExtUnitID;Is text;SOAP output)
+SOAP DECLARATION(WS_AutoPay;Is text;SOAP output)
+SOAP DECLARATION(WS_AutoPayType;Is text;SOAP output)
+SOAP DECLARATION(WS_Last4Digits;Is integer;SOAP output)
+SOAP DECLARATION(WS_MonthlyRate;Is real;SOAP output)
+SOAP DECLARATION(WS_Rent_Tax;Is real;SOAP output)
+SOAP DECLARATION(WS_InsAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_InsTax;Is real;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+SOAP DECLARATION(WS_CCMonth;Is integer;SOAP output)
+SOAP DECLARATION(WS_CCYear;Is integer;SOAP output)
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_Cust_Code;1;5))
+If (Records in selection([Facility])#0)
+QUERY([Unit];[Unit]UnitNo=WS_UnitID)
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+
+If (Records in selection([Unit])#0)
+WS_IntUnitID:=[Unit]UnitNo
+WS_ExtUnitID:=[Unit]UnitNo
+WS_RET_CODE:=True
+
+If ([Agreement]AutoPay=True)
+WS_AutoPay:="Y"
+Else 
+WS_AutoPay:="N"
+End if 
+Case of 
+: ([Agreement]AutoPayType=1)
+WS_AutoPayType:=""
+WS_Last4Digits:=""
+: ([Agreement]AutoPayType=2)
+WS_AutoPayType:="CC"
+WS_Last4Digits:=Substring([Customer]CCNo;Length([Customer]CCNo)-3;Length([Customer]CCNo))
+: ([Agreement]AutoPayType=3)
+WS_AutoPayType:="DB"
+WS_Last4Digits:=Substring([Customer]BankAcct;Length([Customer]BankAcct)-3;Length([Customer]BankAcct))
+End case 
+
+WS_MonthlyRate:=[Agreement]RegularRent
+WS_Rent_Tax:=[Agreement]RegularRent*GetTaxRate ([Agreement]NextBillDate)/100
+
+QUERY([OtherChgs];[OtherChgs]AnalysisCode=[Facility]FacilityCode+"IN")
+
+If (Records in selection([OtherChgs])#0)
+WS_InsAmt:=[OtherChgs]Amount
+WS_InsTax:=[OtherChgs]Amount*GetTaxRate ([Agreement]NextBillDate)/100
+Else 
+WS_InsAmt:=0
+WS_InsTax:=0
+End if 
+
+If ([Customer]CCExpiry#"")
+WS_CCMonth:=Num(Substring([Customer]CCExpiry;1;2))
+WS_CCYear:=2000+Num(Substring([Customer]CCExpiry;3;2))
+Else 
+WS_CCMonth:=Num(Month of([Customer]CCExpiryDate))
+WS_CCYear:=Num(Year of([Customer]CCExpiryDate))
+End if 
+
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Unit Not Found"
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Facility Not Found"
+End if 
+
+$String:="End WS_Insomniac_RetrivePayInf"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_IntUnitID: "+WS_IntUnitID+Char(13)
+$String:=$String+"WS_ExtUnitID: "+WS_ExtUnitID+Char(13)
+$String:=$String+"WS_AutoPay: "+String(WS_AutoPay)+Char(13)
+$String:=$String+"WS_AutoPayType: "+String(WS_AutoPayType)+Char(13)
+$String:=$String+"WS_Last4Digits: "+String(WS_Last4Digits)+Char(13)
+$String:=$String+"WS_MonthlyRate: "+String(WS_MonthlyRate)+Char(13)
+$String:=$String+"WS_Rent_Tax: "+String(WS_Rent_Tax)+Char(13)
+$String:=$String+"WS_InsAmt: "+String(WS_InsAmt)+Char(13)
+$String:=$String+"WS_InsTax: "+String(WS_InsTax)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+$String:=$String+"WS_CCMonth: "+String(WS_CCMonth)+Char(13)
+$String:=$String+"WS_CCYear: "+String(WS_CCYear)+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

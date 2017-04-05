@@ -1,0 +1,246 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 01/03/11, 13:50:33
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_AddChargeTrx
+// Description
+// Adds a charge to an agreement or reservation
+//
+// Parameters
+// ----------------------------------------------------
+// Standardized 
+
+
+SOAP DECLARATION(WS_SeqNo;Is longint;SOAP input)//If 0 then new transaction else find existing.
+SOAP DECLARATION(WS_AgreeNo2;Is string var;SOAP input)
+SOAP DECLARATION(WS_Analysis;Is string var;SOAP input)
+SOAP DECLARATION(WS_Customer;Is string var;SOAP input)
+SOAP DECLARATION(WS_Description;Is string var;SOAP input)
+SOAP DECLARATION(WS_TotAmt;Is real;SOAP input)
+SOAP DECLARATION(WS_TrxDate;Is date;SOAP input)
+SOAP DECLARATION(WS_UserLogin;Is string var;SOAP input)
+SOAP DECLARATION(WS_Quantity;Is real;SOAP input)
+SOAP DECLARATION(WS_Narration;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_SeqNoOut;Is longint;SOAP output)
+SOAP DECLARATION(WS_PrimKeyOut;Is longint;SOAP output)
+
+SOAP DECLARATION(WS_Success;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+ON ERR CALL("ErrorWeb")
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_AddChargeTrx"+Char(13)
+$String:=$String+"WS_SeqNo: "+String(WS_SeqNo)+Char(13)
+$String:=$String+"WS_AgreeNo2: "+WS_AgreeNo2+Char(13)
+$String:=$String+"WS_Analysis: "+WS_Analysis+Char(13)
+$String:=$String+"WS_Customer: "+WS_Customer+Char(13)
+$String:=$String+"WS_Description: "+WS_Description+Char(13)
+$String:=$String+"WS_TotAmt: "+String(WS_TotAmt)+Char(13)
+$String:=$String+"WS_TrxDate: "+String(WS_TrxDate)+Char(13)
+$String:=$String+"WS_UserLogin: "+WS_UserLogin+Char(13)
+$String:=$String+"WS_Quantity: "+String(WS_Quantity)+Char(13)
+$String:=$String+"WS_Narration: "+WS_Narration+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+If (Length(WS_AgreeNo2)=13)//It's a reservation
+vbIsReservation:=True
+Else 
+vbIsReservation:=False
+End if 
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Reservation])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+READ WRITE([Analysis])
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+If (vbIsReservation)
+QUERY([Reservation];[Reservation]RReserveNo=WS_AgreeNo2)
+RELATE ONE([Reservation]CustomerCode)
+REDUCE SELECTION([Agreement];0)
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=WS_AgreeNo2)
+RELATE ONE([Agreement]CustomerCode)
+REDUCE SELECTION([Reservation];0)
+End if 
+QUERY([Analysis];[Analysis]Code=WS_Analysis)
+Case of 
+: (Records in selection([Facility])#1)
+WSRecordLog (Get localized string("Unable to AddCharge in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Facility"))
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+WS_ORSuccess:=False
+: (Records in selection([Agreement])#1) & (Records in selection([Reservation])#1)
+If (vbIsReservation)
+WSRecordLog (Get localized string("Unable to AddCharge in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Reservation"))
+WS_ORErrorCode:=1014
+WS_ORErrorDescription:="Reservation record not found in database Storman."
+WS_ORSuccess:=False
+Else 
+WSRecordLog (Get localized string("Unable to AddCharge in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Agreement"))
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+WS_ORSuccess:=False
+End if 
+: (Records in selection([Customer])#1)
+WSRecordLog (Get localized string("Unable to AddCharge in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Customer"))
+WS_ORErrorCode:=1012
+WS_ORErrorDescription:="Customer record not found in database Storman."
+WS_ORSuccess:=False
+: (Records in selection([Analysis])#1)
+WSRecordLog (Get localized string("Unable to AddCharge in WS for")+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+Get localized string("Invalid Analysis Code"))
+WS_ORErrorCode:=1013
+WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+WS_ORSuccess:=False
+: (Locked([Customer]))
+WSRecordLog ("Unable to AddCharge in WS for"+" "+WS_AgreeNo2+" "+Get localized string("of")+" "+String(WS_TotAmt;"###,###.00")+" - "+"Locked Customer")
+WS_ORSuccess:=False
+WS_ORErrorCode:=1019
+WS_ORErrorDescription:="Customer record locked in database Storman. Please try again later."
+Else 
+If (WS_SeqNo=0)
+CREATE RECORD([Trxs])
+If (vbIsReservation)
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+Else 
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+End if 
+Else 
+If (vbIsReservation)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]SeqNo=WS_SeqNo)
+End if 
+If (Records in selection([Trxs])=1) | (WS_SeqNo=0)
+[Trxs]TrxDate:=GetValidDate (WS_TrxDate)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=WS_Analysis
+[Trxs]Description:=WS_Description
+If (WS_Description="")
+[Trxs]Description:=[Analysis]Description
+End if 
+[Trxs]TotAmt:=WS_TotAmt
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=True
+[Trxs]UserLogin:=WS_UserLogin
+[Trxs]Qty:=WS_Quantity
+[Trxs]Narration:=WS_Narration
+bFromMoveIn:=True
+$OK:=True
+If (WS_SeqNo=0)
+$Old:=0
+Else 
+$Old:=Old([Trxs]Qty)
+End if 
+If ([Analysis]InvItem) & ([Analysis]InvQtyonHand<([Trxs]Qty-$Old)) & ([Trxs]TotAmt>0)
+$OK:=False
+End if 
+If ($OK=True)
+SAVE RECORD([Trxs])
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-[Trxs]Qty+$Old
+SAVE RECORD([Analysis])
+WS_Success:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Transaction successfully added into database Storman."
+WS_SeqNoOut:=[Trxs]SeqNo
+WS_PrimKeyOut:=[Trxs]PrimaryKey
+
+
+If (Not(vbIsReservation))
+//UpdateReceipt ("Web") THIS IS NOT A RECEIPT perhaps replace with ReCalc instead
+
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match#0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+$Charge:=Sum([Trxs]TotAmt)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match#0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+$Receipt:=Sum([Trxs]TotAmt)
+
+If ($Charge#$Receipt)
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ReCalcUnpaid 
+
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+Else 
+
+[Reservation]Balance:=Round([Reservation]Balance+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+End if 
+End if 
+End if 
+End case 
+Else 
+WS_Success:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+//18/03/15 DAM added to release records.
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+
+$String:="End WS_AddChargeTrx"+Char(13)
+$String:=$String+"WS_SeqNoOut: "+String(WS_SeqNoOut)+Char(13)
+$String:=$String+"WS_PrimKeyOut: "+String(WS_PrimKeyOut)+Char(13)
+$String:=$String+"WS_Success: "+String(WS_Success)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 
+
+ON ERR CALL("ErrorLog")

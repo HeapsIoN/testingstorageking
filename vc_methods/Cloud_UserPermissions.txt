@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 23/02/16, 09:07:04
+// ----------------------------------------------------
+// Method: Cloud_UserPermissions
+// Description
+//
+// This method is used to send user permissions from Sites to Storman Hub.
+// $1 True comes from Send to Cloud and will upload all once off.
+//
+// Parameters
+// ----------------------------------------------------
+
+// **this method will need to be modified for future instances where sites move from MV to Hub
+
+
+$ProgressWin:=Open window(20;50;450;150;0)
+C_POINTER($WS_asUserGroups)
+ARRAY TEXT(WS_asUserGroups;0)
+
+SetFacility 
+WSC_CloudGroups ([Facility]FacilityCode;"C";[Groups]Buttons;[Groups]CallCentre;[Groups]GroupID;[Groups]Name;[Groups]Override;[Groups]Permissions;[Groups]PrimaryKey;[Facility]ODBCPassword)
+
+ALL RECORDS([Groups])
+For ($i;1;Records in selection([Groups]))
+GOTO XY(2;2)
+MESSAGE("Uploading Groups "+String($i)+" of "+String(Records in selection([Groups])))
+WSC_CloudGroups ([Facility]FacilityCode;"A";[Groups]Buttons;[Groups]CallCentre;[Groups]GroupID;[Groups]Name;[Groups]Override;[Groups]Permissions;[Groups]PrimaryKey;[Facility]ODBCPassword)
+NEXT RECORD([Groups])
+End for 
+
+ARRAY TEXT(WS_asUserGroups;0)
+
+//18/01/17 DM Added query for Users for this facility
+QUERY([UserLogins];[UserLogins]UserID=[Facility]FacilityCode+"@")
+
+FIRST RECORD([UserLogins])
+
+For ($i;1;Records in selection([UserLogins]))
+
+If ([UserLogins]Name="") | ([UserLogins]Name="admin") | ([UserLogins]Name="server") | ([UserLogins]Name="manager") | ([UserLogins]Name="daily") | ([UserLogins]Name="sync") | ([UserLogins]Name="syncadd") | ([UserLogins]Name="adminsupport")
+NEXT RECORD([UserLogins])
+Else 
+
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (Records in selection([UserGroup])>0)
+SELECTION TO ARRAY([UserGroup]GroupID;WS_asUserGroups)
+Else 
+DELETE FROM ARRAY(WS_asUserGroups;1;Size of array(WS_asUserGroups))
+End if 
+
+GOTO XY(2;2)
+MESSAGE("Uploading Userlogins and Usergroups: "+String($i)+" of "+String(Records in selection([UserLogins])))
+
+$WS_asUserGroups:=->WS_asUserGroups
+WSC_CloudUsers ([UserLogins]Name;[UserLogins]UserID;[UserLogins]Password;[UserLogins]ActualName;[UserLogins]Language;"A";[UserLogins]Permissions;$WS_asUserGroups;[UserLogins]AccessFacility;[Facility]FacilityCode;[Facility]ODBCPassword)
+
+If (WS_ORErrorCode=0)
+SyncRecordLog ("Uploaded "+[UserLogins]Name+" to Storman Hub successfully!")
+Else 
+AlertMessage ([UserLogins]Name+" was unable to be uploaded because "+WS_ORErrorDescription+". This may need to be added manually!")
+SyncRecordLog ([UserLogins]Name+" was unable to be uploaded because "+WS_ORErrorDescription+". This may need to be added manually!")
+End if 
+
+NEXT RECORD([UserLogins])
+End if 
+End for 
+
+CLOSE WINDOW($ProgressWin)
+AlertMessage ("Upload complete!")

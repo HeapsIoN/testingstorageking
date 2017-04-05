@@ -1,0 +1,407 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method: WWW_CustAgreemt_Update
+//Date: 27.3.2000
+C_TEXT($1;recnum;alertnotesmsg;overdue;allowaccessarrs;sendnotices;autopay;insurenewp;to;amt)
+C_TEXT(chargecode)
+C_TEXT(unitno;MoveOut;insurevalue;lastbillamt)
+C_TEXT(RemoveDiscount;RentalCredits;RentalCharges;ReverseDeposit;OtherCharges)
+C_LONGINT(vBillOther;bAll)
+C_TEXT(st)
+
+st:="/"+recnum
+
+// Goto this record number
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Reservation])
+GOTO RECORD([Agreement];Num(recnum))
+RELATE ONE([Agreement]CustomerCode)
+
+$HTML:=Char(1)
+
+If (from="bookingcancel")
+to:="modifybook"
+End if 
+
+
+If (from="agreemtcancel")
+End if 
+
+If (from="delagreemt")
+DELETE RECORD([Agreement])
+End if 
+
+If (from="convagreemt")
+ConvToAgreemt 
+to:="modifybook"
+End if 
+
+If (from="refunddeposit")
+RefundDeposit 
+to:="modifybook"
+End if 
+
+If (from="takedep")
+TakeAsRent 
+to:="modifybook"
+End if 
+
+If (from="addtranxcharge")
+WWW_AddCharge (recnum)
+End if 
+If (from="addtranxreceipt")
+WWW_AddReceipt (recnum)
+End if 
+
+If (from="billnextcharges")
+BillNextCharges 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+to:="tranx"
+End if 
+
+If (from="showothertrxs")
+bAll:=1
+to:="tranx"
+End if 
+If (from="showhistory")
+bHistory:=1
+to:="tranx"
+End if 
+
+If (from="tranx")
+If (insurenewp="")
+[Agreement]InsureNewP:=False
+Else 
+[Agreement]InsureNewP:=True
+End if 
+[Agreement]InsureCommence:=Date(InsureCommence)
+[Agreement]InsureExpire:=Date(insureexpire)
+[Agreement]InsureValue:=Num(insurevalue)
+[Agreement]InsureCertNo:=InsureCertNo
+[Customer]ArrearsComment:=arrearscomment
+[Agreement]PurchaseOrder:=purchaseorder
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+End if 
+
+If (from="printreceipt")
+<>sAgreeNo:=[Agreement]AgreeNo
+RESUME PROCESS(<>iLogMonitor)
+End if 
+
+If (from="createtranMO")
+$HTML:=$HTML+"Move Out"
+
+// Modify the entry in the database
+[Agreement]OutNoticeDate:=Date(OutNoticeDate)
+[Agreement]MoveOut:=Date(MoveOut)
+[Agreement]LastBillDate:=Date(LastBillDate)
+[Agreement]LastBillAmt:=Num(LastBillAmt)
+[Agreement]NextBillDate:=Date(NextBillDate)
+vAmt1:=Num(RemoveDiscount)
+vAmt2:=Num(RentalCredits)
+vAmt3:=Num(RentalCharges)
+vAmt4:=Num(ReverseDeposit)
+vAmt5:=Num(OtherCharges)
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+vtFormula:=""
+vWords:=""
+CreateTrxMoveOut 
+vReCalc:=True
+to:="tranx"
+End if 
+
+If (from="addcharge")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Code=chargecode)
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=[Analysis]Code
+[OtherChgs]Description:=[Analysis]Description
+If (amt#"")
+
+[OtherChgs]Amount:=Num(amt)
+Else 
+[OtherChgs]Amount:=[Analysis]DfltSellAmt
+End if 
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+UNLOAD RECORD([Analysis])
+to:="agreeno"
+End if 
+
+If (from="agreeno") | (from="remunit") | (from="unit")
+$HTML:=$HTML+"Processing Agreement No"
+// Modify the entry in the database
+[Agreement]NextBillDate:=Date(nextbilldate)
+[Customer]Notes:=comments
+If (alertnotesmsg="")
+[Agreement]AlertNotesMsg:=False
+Else 
+[Agreement]AlertNotesMsg:=True
+End if 
+C_TEXT(DaytoBill;NoticePlanNo;DepositAmt;MthsAdv;LateFeeAmt;RentAmt;Discountamt;NewRentAmt;lastnotice;GateTimeZone;AgreedDisc;RegularRent)
+[Agreement]MoveIn:=Date(Movein)
+[Agreement]DaytoBill:=Num(DaytoBill)
+[Agreement]NoticePlanNo:=Num(NoticePlanNo)
+[Agreement]DepositAmt:=Num(depositamt)
+[Agreement]AgreedDisc:=Num(agreeddisc)
+[Agreement]RegularRent:=Num(regularrent)
+
+RELATE ONE([Agreement]BillingPlanCode)
+[Agreement]BillingPlanCode:=(billplan)
+[Agreement]MthsAdv:=Num(MthsAdv)
+[Agreement]LateFeeAmt:=Num(latefeeamt)
+[Agreement]RentAmt:=Num(rentamt)
+[Agreement]DiscountAmt:=Num(Discountamt)
+[Agreement]NewRentAmt:=Num(newrentamt)
+[Agreement]NewRentFrom:=Date(newrentfrom)
+[Agreement]LateCycleStDate:=Date(latecyclestdate)
+[Agreement]LastNotice:=Num(lastnotice)
+[Customer]GatePIN:=GatePin
+[Customer]GateTimeZone:=Num(GateTimeZone)
+//ALERT("OverDue:"+overdue+", AllowAccess:"+allowaccessarrs
+//+", SendN:"+sendnotices+", AutoPay:"+autopay)
+If (overdue="")
+Case of 
+: ([Customer]Overdue=1) | ([Customer]Overdue=0)
+[Customer]Overdue:=0
+Else 
+[Customer]Overdue:=6
+End case 
+Else 
+Case of 
+: ([Customer]Overdue=2) | ([Customer]Overdue=3)
+[Customer]Overdue:=3
+: ([Customer]Overdue=4) | ([Customer]Overdue=5)
+[Customer]Overdue:=5
+Else 
+[Customer]Overdue:=1
+End case 
+End if 
+
+If (allowaccessarrs="")
+[Customer]AllowAccessArrs:=False
+Else 
+[Customer]AllowAccessArrs:=True
+End if 
+
+If (sendnotices="")
+[Agreement]SendNotices:=False
+Else 
+[Agreement]SendNotices:=True
+End if 
+
+If (autopay="")
+[Agreement]AutoPay:=False
+Else 
+[Agreement]AutoPay:=True
+End if 
+C_TEXT(NoticeDaysPrior;AutoPayAmt)
+[Agreement]NoticeDaysPrior:=Num(noticedaysprior)
+[Agreement]AutoPayAmt:=Num(autopayamt)
+
+If (Locked([Agreement]))
+$HTML:=$HTML+"LOCKED"
+End if 
+
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+End if 
+
+If (from="remunit")
+QUERY([Unit];[Unit]UnitNo=unitno;*)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]AgreeNo)
+If (Records in selection([Unit])=0)
+AlertMessage (Get localized string("There is no such unit number, or the unit has not been assigned to this agreement."))
+Else 
+RemoveUnit 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+End if 
+to:="agreeno"
+End if 
+
+If (from="unit") | (from="unitb")
+$Found:=True
+QUERY([Unit];[Unit]UnitNo=unitno)
+If (Records in selection([Unit])=0)
+AlertMessage (Get localized string("No such Unit number"))
+$Found:=False
+Else 
+If ([Unit]Vacant=False)
+AlertMessage (Get localized string("Unit already occupied by agreement")+" "+[Unit]AgreeNo)
+$Found:=False
+End if 
+End if 
+bAdd:=1
+If (from="unitb")
+SelectUnitB ($Found)
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+to:="bookingno"
+Else 
+SelectUnitA ($Found)
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+to:="agreeno"
+End if 
+End if 
+
+If (from="custinfo")
+$HTML:=$HTML+"Processing Cust Info"
+
+// Modify the entry in the database
+
+[Customer]MarketSrce:=marketsrce
+[Customer]CustType:=CustType
+[Customer]BusType:=BusType
+[Customer]CustomerName:=CustomerName
+[Customer]UserName:=UserName
+[Customer]FirstName:=Firstname
+[Customer]MailAddress:=MailAddress
+[Customer]MailCity:=MailCity
+[Customer]MailState:=MailState
+[Customer]MailPostZIPCode:=MailPostZipCode
+[Customer]PhonePrivate:=PhonePrivate
+[Customer]MobilePhone:=MobilePhone
+[Customer]EmailAddress:=EmailAddress
+[Customer]StreetAddress:=StreetAddress
+[Customer]StreetCity:=StreetCity
+[Customer]StreetState:=StreetState
+[Customer]StreetZIPCode:=StreetZipCode
+[Customer]Employer:=Employer
+[Customer]PhoneBus:=PhoneBus
+[Customer]AltContact:=AltContact
+[Customer]AccessList:=AccessList
+[Customer]CarRego:=CarRego
+[Customer]CCName:=CCType
+[Customer]CCExpiry:=CCExpiry
+[Customer]LicenceNo:=LicenceNo
+//[Customer]CCNo:=Tokenizer (CCNo;True)  //FB11185
+Encode256 ([Customer]CCNo)
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+End if 
+
+
+If (from="moveout")
+$HTML:=$HTML+"Move Out"
+
+// Modify the entry in the database
+[Agreement]OutNoticeDate:=Date(OutNoticeDate)
+[Agreement]MoveOut:=Date(MoveOut)
+[Agreement]LastBillDate:=Date(LastBillDate)
+[Agreement]LastBillAmt:=Num(LastBillAmt)
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+End if 
+
+If (from="notes")
+
+SAVE RECORD([Agreement])
+End if 
+
+If (from="delbook")
+GOTO RECORD([Reservation];Num(recnum))
+DELETE RECORD([Reservation])
+to:="modifybook"
+
+End if 
+
+
+If (from="bookingno")
+GOTO RECORD([Reservation];Num(recnum))
+RELATE ONE([Reservation]CustomerCode)
+C_TEXT(DepositAmt)
+$HTML:=$HTML+bookeddate
+[Reservation]ReservedDate:=Date(bookeddate)
+[Reservation]ExpMoveIn:=Date(ExpMoveIn)
+[Reservation]DepositAmt:=Num(DepositAmt)
+[Reservation]DateDepPaid:=Date(DateDepPaid)
+[Reservation]Outcome:=outcome
+[Reservation]OutcomeDate:=Date(OutcomeDate)
+[Trxs]DateBanked:=Date(DateBanked)
+SAVE RECORD([Reservation])
+SAVE RECORD([Trxs])
+to:="modifybook"
+
+End if 
+
+
+If (from="custinfo2")
+GOTO RECORD([Reservation];Num(recnum))
+RELATE ONE([Reservation]CustomerCode)
+// Modify the entry in the database
+[Customer]MarketSrce:=marketsrce
+[Customer]CustType:=CustType
+[Customer]BusType:=BusType
+[Customer]CustomerName:=CustomerName
+[Customer]UserName:=UserName
+[Customer]FirstName:=Firstname
+[Customer]MailAddress:=MailAddress
+[Customer]MailCity:=MailCity
+[Customer]MailState:=MailState
+[Customer]MailPostZIPCode:=MailPostZipCode
+[Customer]PhonePrivate:=PhonePrivate
+[Customer]MobilePhone:=MobilePhone
+[Customer]EmailAddress:=EmailAddress
+[Customer]StreetAddress:=StreetAddress
+[Customer]StreetCity:=StreetCity
+[Customer]StreetState:=StreetState
+[Customer]StreetZIPCode:=StreetZipCode
+[Customer]Employer:=Employer
+[Customer]PhoneBus:=PhoneBus
+[Customer]AltContact:=AltContact
+[Customer]AccessList:=AccessList
+[Customer]CarRego:=CarRego
+[Customer]CCName:=CCType
+[Customer]CCExpiry:=CCExpiry
+[Customer]LicenceNo:=LicenceNo
+//[Customer]CCNo:=Tokenizer (CCNo;True)  //FB11185
+Encode256 ([Customer]CCNo)
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+to:="modifybook"
+End if 
+If (vRecalc=True)
+ReCalc 
+SAVE RECORD([Agreement])
+End if 
+vtTable:=$HTML+Char(13)
+overdue:=""
+autopay:=""
+allowaccessarrs:=""
+sendnotices:=""
+alertnotesmsg:=""
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+READ ONLY([Reservation])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Reservation])
+
+// Redirect back to required page
+// If "to" is not specied return to the main page
+Case of 
+: (to="agreemtno")
+WWW_GoBack (("/2"+st))
+: (to="custinfo")
+WWW_GoBack (("/5"+st))
+: (to="tranx")
+WWW_GoBack (("/6"+st))
+: (to="moveout")
+WWW_GoBack (("/7"+st))
+: (to="notes")
+WWW_GoBack (("/8"+st))
+: (to="modifybook")
+WWW_GoBack (("/9"+st))
+: (to="bookingno")
+WWW_GoBack (("/10"+st))
+Else 
+WWW_GoBack ("/1")
+End case 

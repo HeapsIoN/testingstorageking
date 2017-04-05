@@ -1,0 +1,59 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE(vEDate;vSDate)
+LogAction (False;"Rental Variation History Report started.")// records the report being started in the eventlog
+If (PermissionsControl (158))
+SetFacility 
+bCalc:=0
+If (<>tBatch=False)
+vEDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vSDate:=GetDate (1;Month of(vEDate);Year of(vEDate))
+Open window((Screen width/2)-200;(Screen height/2)-147;(Screen width/2)+200;(Screen height/2)+147;5;Get localized string("Rental Variation History Report"))
+DIALOG([EventLog];"RVHistoryDialog")
+CLOSE WINDOW
+Else 
+vEDate:=vMthDate
+vSDate:=GetDate (1;Month of(vEDate);Year of(vEDate))
+End if 
+
+If (bOK=1)//---8875
+QUERY([EventLog];[EventLog]EventDate>=UTCDate (?00:00:00?;True;vSDate);*)
+QUERY([EventLog]; & ;[EventLog]EventDate<=UTCDate (?23:59:59?;True;vEDate);*)
+QUERY([EventLog]; & ;[EventLog]FacilityCode=<>sFacility;*)
+QUERY([EventLog]; & ;[EventLog]EventTable=3;*)
+//QUERY([EventLog]; & ;[EventLog]BillPAnlys#"")
+QUERY([EventLog]; & ;[EventLog]BillPAnlys>"")
+
+If (bCalc=0)
+CREATE EMPTY SET([EventLog];"RVHistory")
+For ($i;1;Records in selection([EventLog]))
+If (Num([EventLog]BillPAnlys)#([EventLog]TrxAmount))
+ADD TO SET([EventLog];"RVHistory")
+End if 
+NEXT RECORD([EventLog])
+End for 
+USE SET("RVHistory")
+CLEAR SET("RVHistory")
+End if 
+
+If (bCalc#0)//fb8874 by eugene 23/04/2015
+CREATE EMPTY SET([EventLog];"RVHistory")
+For ($i;1;Records in selection([EventLog]))
+If (Num([EventLog]BillPAnlys)#([EventLog]TrxAmount)) | (Num([EventLog]BillPAnlys)=([EventLog]TrxAmount))
+ADD TO SET([EventLog];"RVHistory")
+End if 
+NEXT RECORD([EventLog])
+End for 
+USE SET("RVHistory")
+CLEAR SET("RVHistory")
+End if 
+
+
+ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+FORM SET OUTPUT([EventLog];"RVHistory")
+PrintSelection ("P";->[EventLog])
+FORM SET OUTPUT([EventLog];"Output")
+End if 
+
+
+End if 
+LogAction (True;"Rental Variation History Report ended.")

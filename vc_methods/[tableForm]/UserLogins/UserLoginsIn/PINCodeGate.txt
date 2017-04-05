@@ -1,0 +1,33 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$Count)
+C_TEXT($PIN)
+$i:=0
+Case of 
+: ([UserLogins]PinCode="0@")
+AlertMessage (Get localized string("PIN cannot contain leading zeros!"))
+[UserLogins]PinCode:=""
+: ([Facility]GateSysType=5) & ([Facility]SerialPortNo>0) & (Num([UserLogins]PinCode)>65535)//(Num($1->)>65535)
+AlertMessage (Get localized string("When using Access Ezy with Card Prefix the GatePIN cannot be greater than 65535!"))
+[UserLogins]PinCode:=""
+: ((Length([UserLogins]PinCode)<4) | (Length([UserLogins]PinCode)>10)) & (([Facility]GateSysType#5) | ([Facility]SerialPortNo=0)) & ([Facility]ProxCard=False)
+AlertMessage (Get localized string("Gate PIN must be between 4 & 10 digits"))
+[UserLogins]PinCode:=""
+: ([Facility]PrefixPIN=True) & ([UserLogins]PinCode#(String([UserLogins]UserNo)+"@"))
+AlertMessage (Get localized string("PIN must be prefixed by User Number"))
+Else 
+$PIN:=[UserLogins]PinCode
+SET QUERY DESTINATION(3;$i)
+QUERY([PhotosCards];[PhotosCards]PINCardNo=$PIN)
+$Count:=$i
+QUERY([Customer];[Customer]GatePIN=$PIN)
+$Count:=$Count+$i
+QUERY([UserLogins];[UserLogins]PinCode=$PIN)
+$Count:=$Count+$i
+QUERY([StaffPINS];[StaffPINS]PINNumber=$PIN)
+$Count:=$Count+$i
+SET QUERY DESTINATION(0)
+If ($Count>0) & ([UserLogins]PinCode#"")// | ([Facility]GateSysType<7))  `Duplicates allowed for Digigate & Sentinel
+AlertMessage (Get localized string("WARNING - There are")+" "+String($Count)+" "+Get localized string("customer(s) or staff member(s) using PIN number")+" "+[UserLogins]PinCode+".  "+Get localized string("Please change this PIN number."))
+[UserLogins]PinCode:=""
+End if 
+End case 

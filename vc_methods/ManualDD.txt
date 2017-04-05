@@ -1,0 +1,281 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): Hamidreza Zarei
+// Date and time: 1/7/2015
+// ----------------------------------------------------
+// Method: Add DD
+// Description
+// This method is to add Direct Debits
+//
+// Parameters
+// $1 - Calling method
+// ----------------------------------------------------
+C_TEXT($Date)
+C_LONGINT($i)
+C_REAL(vInvoiceModAmt;$BalanceOwing;$BalanceOwingOriginal;$Surcharge;$Value)
+C_TEXT($EziPayRef;$DigKey;$Success;$CustomerDDID)
+gError:="OK"
+
+If (bAddRefund=1)
+$Value:=VMINUS
+Else 
+$Value:=vPlus
+End if 
+
+//*****************************
+
+
+//If ([Analysis]SpecialOptions#57) //commented by eugene, fb9942
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If (Records in selection([Analysis])=1)
+[Trxs]TotAmt:=$Value
+If ([Trxs]TotAmt>0) & (bAddRec=1)
+vPlus:=[Trxs]TotAmt
+If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))
+//ConfirmTwo ("Do you want the receipt amount to be "+String(vPlus)+" including or excluding the surcharge?";"Excluding";"Including") //Commented by Hamid - 12/2/2016
+//If (OK=1)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Value:=vPlus
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+//End if 
+End if 
+End if 
+
+ConfirmTwo (Get localized string("Process direct debit")+" "+vCCName+" "+Get localized string("for")+" "+String([Trxs]TotAmt;"###,###.00")+"?";Get localized string("Yes");Get localized string("No"))
+
+//$BalanceOwing:=$Value
+//$Surcharge:=0
+//If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)))
+//$BalanceOwing:=Round(($BalanceOwing*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+//$Surcharge:=$BalanceOwing-$Value
+//End if 
+
+
+If (OK=1)
+$DigKey:=String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+$EziPayRef:=Generate UUID//FieldAgNo+Substring(String(Year of(Current date));2)+String(Month of(Current date))+String(Day of(Current date))+Substring(Replace string(String(Current time);":";"");1;5)
+
+$trxDate:=Current date
+//[Customer]DDPaymentProfileID
+
+$CustomerDDID:=[Customer]DDProfileID
+
+//$Success:=WSC_EziAddPayment ($DigKey;"";$CustomerDDID;String(Current date);String($Value*100;"######0");$EziPayRef;"";False;$trxDate) //- Commented by Hamid 12/02/2016
+$Success:=WSC_EziAddPayment ($DigKey;$CustomerDDID;"";String(Current date);String($Value*100;"######0");$EziPayRef;"";False;$trxDate)
+If ($Success="S") | ($Success="P")
+
+//CREATE RECORD([Trxs])
+//[Trxs]CustomerCode:=[Agreement]CustomerCode
+//[Trxs]AgreeNo:=[Agreement]RAgreeNo
+
+[Trxs]TrxDate:=$trxDate
+[Trxs]Charge:=False
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=Substring([Analysis]Description;1;80)
+
+//[Trxs]TotAmt:=Round([Agreement]NoticeAmtToBill;2)
+[Trxs]Confirmed:=False
+[Trxs]CCTransID:=$EziPayRef
+If ([Analysis]SetBankedDate)
+[Trxs]DateBanked:=Current date
+End if 
+[Agreement]LastPmtDate:=[Trxs]TrxDate
+
+//If (GetTextNo ([Facility]MerchantDetails;10;",")="False")
+$Success:=WSC_EziGetPaymentDetail ($DigKey;$EziPayRef)
+Case of 
+: ($Success="S")
+//Successful
+[Trxs]Confirmed:=True
+[Agreement]NoticeBilled:="Successful"
+If (([Trxs]CCAuthNo="") | ([Trxs]CCAuthNo="S") | ([Trxs]CCAuthNo="W") | ([Trxs]CCAuthNo="P") | ([Trxs]CCAuthNo="D") | ([Trxs]CCAuthNo="F"))
+[Trxs]CCAuthNo:="S"
+End if 
+: ($Success="W")
+//Queued
+[Trxs]CCAuthNo:="W"
+[Agreement]NoticeBilled:="Queued"
+: ($Success="P")
+//Pending
+[Trxs]CCAuthNo:="P"
+[Agreement]NoticeBilled:="Pending"
+: ($Success="D")
+//Dishonour
+[Trxs]CCAuthNo:="D"
+[Agreement]NoticeBilled:="Dishonoured"
+ADD TO SET([Trxs];"$ToReverse")
+: ($Success="F")
+//Fatal Dishonour/Failed
+[Trxs]CCAuthNo:="F"
+[Agreement]NoticeBilled:="ERROR"
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Trxs]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:="Attempted Direct Debit for Amount: "+String([Trxs]TotAmt;"###,###.00")+", Result="+$Success+", Message="+gError
+SAVE RECORD([NotesHistory])
+//ADD TO SET([Transaction];"$ToReverse")
+Else 
+//Error
+[Trxs]Description:="Error"
+End case 
+
+//End if 
+[Trxs]OriginalReceipt:="MDD"//FB10215
+SAVE RECORD([Trxs])
+READ WRITE([Customer])
+If (ReservationAgreement)
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt;2)
+//[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+Else 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+//[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+End if 
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+
+
+
+
+//If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+//[Customer]LatestTrxDate:=[Trxs]TrxDate
+//End if 
+
+//Surcharge
+//QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+//If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))
+//$ReceiptAmount:=[Trxs]TotAmt
+//$TrxDate:=[Trxs]TrxDate
+//$Facility:=Substring([Trxs]CustomerCode;1;5)
+//$Agree:=[Trxs]AgreeNo
+//$Cust:=[Trxs]CustomerCode
+//$Fixed:=[Analysis]ReceiptFeeFixed
+//$Percent:=[Analysis]ReceiptFeePerc
+//QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]ReceiptFeeAnalysis)
+//If (Records in selection([Analysis])>=1)
+//CREATE RECORD([Trxs])
+//[Trxs]AnalysisCode:=[Analysis]Code
+//[Trxs]Description:=[Analysis]Description
+//[Trxs]TrxDate:=GetValidDate ($TrxDate)
+//[Trxs]DateFrom:=$TrxDate
+//[Trxs]DateTo:=$TrxDate
+//[Trxs]AgreeNo:=$Agree
+//[Trxs]CustomerCode:=$Cust
+//[Trxs]Charge:=True
+//
+//$PercCalc:=$ReceiptAmount-$Fixed
+//$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))  //$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+//
+//[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+//[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+//
+//SAVE RECORD([Trxs])
+//
+//If (ReservationAgreement)
+//[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+//[Customer]Balance:=[Reservation]Balance
+//Else 
+//[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+//[Customer]Balance:=[Agreement]BalanceOwing
+//End if 
+//  //[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+//[Customer]LatestTrxDate:=[Trxs]TrxDate
+//End if 
+//
+//End if 
+
+If (ReservationAgreement)
+SAVE RECORD([Reservation])
+End if 
+
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+
+gError:="OK"
+//  Added bAccept:=1 to trigger UpdateReceipt method
+bAccept:=1
+
+ACCEPT
+Else 
+ERR_Ezi 
+AlertMessage (vCCText)
+If (vCCText="")
+vCCText:=gError
+End if 
+SyncRecordLog (vCCText+Char(Carriage return)+Char(Line feed)+Char(Carriage return)+Char(Line feed)+"Customer Reference: "+[Customer]DDProfileID)
+
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:="Attempted Direct Debit for Amount: "+String([Trxs]TotAmt;"###,###.00")+", Result="+$Success+", Message="+gError
+SAVE RECORD([NotesHistory])
+gError:="ERROR"
+
+//08/07/15 DAM Added failed surcharges
+If ([Analysis]FailedFeeAnalysis>"") & (([Analysis]FailedFeeFixed#0) | ([Analysis]FailedFeePerc#0)) & ([Trxs]TotAmt>0)//& (vNewReceipt=True)
+AlertMessage ("The Analysis code has a surcharge for failed transactions setup, a failed fee transaction will be added to the customer: "+[Customer]CustomerName)
+$ReceiptAmount:=[Trxs]TotAmt
+//$TrxDate:=[Trxs]TrxDate
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Agree:=[Trxs]AgreeNo
+$Cust:=[Trxs]CustomerCode
+$Fixed:=[Analysis]FailedFeeFixed
+$Percent:=[Analysis]FailedFeePerc
+QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]FailedFeeAnalysis)
+If (Records in selection([Analysis])>=1)
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ($TrxDate)
+[Trxs]DateFrom:=$TrxDate
+[Trxs]DateTo:=$TrxDate
+[Trxs]AgreeNo:=$Agree
+[Trxs]CustomerCode:=$Cust
+[Trxs]Charge:=True
+
+[Trxs]Narration:="Failed Surcharge for Receipt Amt: "+String($ReceiptAmount)+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"Fixed Surcharge Amount: "+String($Fixed)+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"% Surcharge Amount: "+String($Percent)+"%"+Char(Line feed)
+
+$PercCalc:=$ReceiptAmount-$Fixed
+$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))//$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+[Trxs]Narration:=[Trxs]Narration+"Calculated % surchage: "+String(Round($PercCalc;2))+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"Total Amount: "+String(Round($Fixed;2))+"+"+String(Round($PercCalc;2))+"="+String(Round($Fixed+$PercCalc;2))
+
+[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+SAVE RECORD([Trxs])
+gError:="OKFCCS"//- 9529
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+End if 
+End if 
+
+End if 
+Else 
+
+If (OK=0)
+gError:="Cancel"
+End if 
+End if 
+
+Else // Error message
+AlertMessage (Get localized string("The Direct Debit analysis code must be selected before you select Use Account on File!"))
+gError:="Cancel"
+ok:=0
+End if 
+
+//End if 

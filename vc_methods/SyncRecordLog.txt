@@ -1,0 +1,73 @@
+//%attributes = {"executedOnServer":true,"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//Line to add to Log
+C_TEXT($2;$3;$WinError)
+C_TIME($Doc)
+C_LONGINT($Size)
+C_TEXT($cr)
+If (Not(Semaphore("<>bSyncLogRecord";1800)))
+$cr:=Char(13)
+If (<>iPlatform=3)
+$cr:=$cr+Char(10)
+End if 
+$Message:=""
+If (Count parameters>1)//This should only execute on server
+If ($2="TrafficCount")
+$File:=<>sLogsPath+"SyncTrafficCount.txt"
+If (Semaphore("SyncLogTrafficFlag";300)=False)
+If (Test path name($File)=Is a document)
+$Doc:=Append document($File)
+Else 
+$Doc:=Create document($File)
+End if 
+SEND PACKET($Doc;String(Current date)+Char(9)+String(Current time)+Char(9)+$1+$cr)
+CLOSE DOCUMENT($Doc)
+CLEAR SEMAPHORE("SyncLogTrafficFlag")
+End if 
+Else 
+//$Message:=Get localized string("SyncRecordLog called with too many parameters!")+String(Count parameters)+$2
+$File:=<>sLogsPath+$2+".txt"
+If (<>iPlatform=3) & ($2="ErrorLog")
+$WinError:="Check error log at "+$File+" for details"
+LOG EVENT(Into Windows log events;$WinError;Error message)
+End if 
+If (Semaphore($2+"Flag";300)=False)
+If (Test path name($File)=Is a document)
+$Doc:=Append document($File)
+Else 
+$Doc:=Create document($File)
+End if 
+SEND PACKET($Doc;String(Current date)+Char(9)+String(Current time)+Char(9)+$1+$cr)
+CLOSE DOCUMENT($Doc)
+CLEAR SEMAPHORE($2+"Flag")
+End if 
+//16/04/15 DAM Added to create new files when size is too big
+$Size:=Round(Get document size($File)/1024;0)//KB
+$File2:=Replace string($File;".txt";GetDateString (Current date;7)+".txt")
+If ($Size>255) & (Test path name($File2)#Is a document)
+MOVE DOCUMENT($File;$File2)
+End if 
+End if 
+End if 
+If ($1>" ") & (Count parameters=1)
+$File:=<>sLogsPath+"SyncLog.txt"
+If (Semaphore("SyncLogFlag";300)=False)
+If (Test path name($File)=Is a document)
+$Doc:=Append document($File)
+Else 
+$Doc:=Create document($File)
+End if 
+SEND PACKET($Doc;String(Current date)+Char(9)+String(Current time)+Char(9)+$1+$cr)
+If ($Message>"")
+SEND PACKET($Doc;String(Current date)+Char(9)+String(Current time)+Char(9)+$Message+$cr)
+End if 
+CLOSE DOCUMENT($Doc)
+CLEAR SEMAPHORE("SyncLogFlag")
+End if 
+$Size:=Round(Get document size($File)/1024;0)//KB
+$File2:=Replace string($File;".txt";GetDateString (Current date;7)+".txt")
+If ($Size>255) & (Test path name($File2)#Is a document)
+MOVE DOCUMENT($File;$File2)
+End if 
+End if 
+CLEAR SEMAPHORE("<>bSyncLogRecord")
+End if 

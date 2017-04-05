@@ -1,0 +1,88 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: SyncSendEvents
+// Description
+// 
+// This method uses a web services to send events to MV and Cloud server.
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($0)//True if receives events successfully
+C_TEXT($1;$EventType)//FacilityCode
+C_LONGINT($2;$Count;$Interval;$EventCount)//NextSeqNo
+C_DATE($3)//VersionDate
+C_TEXT($Result)
+C_TEXT($CurErr)
+
+vDate:=$3//RR and JW had to define this, as it was erroring for an unknown reason when testing Storman Hub
+$CurErr:=Method called on error
+$0:=False
+$Tickcount:=Tickcount
+$EventType:="SND"
+$Result:=""
+SET BLOB SIZE(vbEventContent;0)
+$Server:="MV"
+If ($2=-7)
+$Server:="SHOF"
+End if 
+SyncGetEvents ($2)
+$Count:=Records in selection([EventLog])
+vError:=False
+ON ERR CALL("ErrorWS")
+WEB SERVICE SET PARAMETER("WS_FacilityCode";$1)
+WEB SERVICE SET PARAMETER("WS_RequestType";$EventType)
+WEB SERVICE SET PARAMETER("WS_SeqNo";$2)
+WEB SERVICE SET PARAMETER("WS_VersionDate";$3)
+WEB SERVICE SET PARAMETER("WS_EventCountIn";$Count)
+WEB SERVICE SET PARAMETER("WS_EventBlobIn";vbEventContent)
+
+WEB SERVICE CALL("https://"+GetDNS ($Server;True)+"/4DSOAP/";"Storman#WS_Sync";"WS_Sync";"http://www.storpay.com/webservices";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT($Result;"WS_SuccessMsg")
+WEB SERVICE GET RESULT($Interval;"WS_ConnectAgainInterval")
+WEB SERVICE GET RESULT($EventCount;"WS_EventCountOut")
+WEB SERVICE GET RESULT(vbEventContent;"WS_EventBlobOut";*)// Memory clean-up on the final return value.
+ON ERR CALL($CurErr)
+
+vtNextSyncTime:=Current time+$Interval
+If ($Result="301@")
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]CentralAddress:=Substring($Result;5)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+$0:=True
+End if 
+If ($Result="Confirmed Received")
+//Set Events to Synced
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+For ($i;1;Records in selection([EventLog]))
+[EventLog]SyncStatus:=1
+[EventLog]SeqNo:=$2
+If ([EventLog]SeqNo=-7)
+[EventLog]SyncStatus:=101
+End if 
+SET BLOB SIZE([EventLog]LogBlob;0)
+SAVE RECORD([EventLog])
+NEXT RECORD([EventLog])
+End for 
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+$0:=True
+$Result:="Sent "+String($Count)+" events for "+$1+" to "+$Server+". - SeqNo "+String($2)+" - Elapsed time = "+String((Tickcount-$Tickcount)/60;"####.00")
+Else 
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Syncing Error at")+" "+$1;Get localized string("Attempted to Send for")+" "+$1+" - "+String($Count)+"events - Server Host Error"+" #"+$Result+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+End if 
+SyncRecordLog ("WSS - "+$Result)
+Else 
+ON ERR CALL($CurErr)
+SyncRecordLog ("WSS - Webservice send call failed - try again in 10 minutes")
+vtNextSyncTime:=Current time+600
+End if 

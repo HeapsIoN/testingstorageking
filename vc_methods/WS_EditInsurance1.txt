@@ -1,0 +1,151 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 09/03/16, 14:30:10
+// ----------------------------------------------------
+// Method: WS_EditInsurance1
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_ORFacilityCode;Is text;SOAP input)
+SOAP DECLARATION(WS_RAgreeNo;Is text;SOAP input)
+SOAP DECLARATION(WS_UpdateAgree;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_InsureCert;Is text;SOAP input)
+SOAP DECLARATION(WS_InsureAmt;Is real;SOAP input)
+SOAP DECLARATION(WS_asUnitNo;Text array;SOAP input)
+SOAP DECLARATION(WS_asInsureCert;Text array;SOAP input)
+SOAP DECLARATION(WS_asInsureAmt;Real array;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+C_TEXT($pass)
+C_TEXT($String)
+C_TEXT(vName)
+$String:=""
+$String:=$String+"Start WS_EditInsurance1"+Char(13)
+$String:=$String+"WS_ORFacilityCode: "+WS_ORFacilityCode+Char(13)
+$String:=$String+"WS_UpdateAgree: "+String(WS_UpdateAgree)+" "+Char(13)
+$String:=$String+"WS_InsureCert: "+WS_InsureCert+" "+Char(13)
+$String:=$String+"WS_InsureAmt: "+String(WS_InsureAmt)+" "+Char(13)
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asUnitNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUnitNo("+String($vlElem)+"):"+WS_asUnitNo{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asInsureCert)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asInsureCert("+String($vlElem)+"):"+WS_asInsureCert{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asInsureAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asInsureAmt("+String($vlElem)+"):"+String(WS_asInsureAmt{$vlElem})+Char(13)
+End for 
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+
+QUERY([Facility];[Facility]FacilityCode=WS_ORFacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If ([Facility]ODBCPassword#"") & ([Facility]ODBCPassword=WS_WebServicePassword)
+
+READ WRITE([Agreement])
+READ WRITE([Unit])
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_RAgreeNo;*)
+QUERY([Agreement];[Agreement]ActiveAgreemt=True)
+
+If (Records in selection([Agreement])=1)
+
+If (WS_UpdateAgree=True)//update agreement insruance
+
+[Agreement]InsureCertNo:=WS_InsureCert
+[Agreement]InsureValue:=WS_InsureAmt
+SAVE RECORD([Agreement])
+
+If (Size of array(WS_asUnitNo)>0)
+
+For ($i;1;(Size of array(WS_asUnitNo)))
+QUERY([Unit];[Unit]RUnitNo=WS_asUnitNo{$i})
+[Unit]InsureCertNo:=WS_asInsureCert{$i}
+[Unit]InsureValue:=WS_asInsureAmt{$i}
+SAVE RECORD([Unit])
+InsuranceCalc (True;False;True;True)
+End for 
+
+End if 
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+Else //update units insruance only
+
+For ($i;1;(Size of array(WS_asUnitNo)))
+QUERY([Unit];[Unit]RUnitNo=WS_asUnitNo{$i})
+//;*)
+//QUERY([Unit]; & ;[Unit]Status="Rented";*)
+//QUERY([Unit]; | ;[Unit]Status="OnSite";*)
+//QUERY([Unit]; | ;[Unit]Status="Locked")
+
+If (Records in selection([Unit])=1)
+[Unit]InsureCertNo:=WS_asInsureCert{$i}
+[Unit]InsureValue:=WS_asInsureAmt{$i}
+SAVE RECORD([Unit])
+InsuranceCalc (True;False;True;True)
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1007
+WS_ORErrorDescription:="Unit "+WS_asUnitNo{$i}+" not found in database Storman."
+End if 
+End for 
+
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman, or is inactive."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+
+$String:="End WS_EditInsurance1"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

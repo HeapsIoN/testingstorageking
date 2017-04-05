@@ -1,0 +1,160 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 28/03/11, 14:56:35
+// ----------------------------------------------------
+// Method: WS_ChangeUnitStatus
+// Description
+// Changes unit status to the appropriate status selected, cannot change rented>vacant and vice versa
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_RUnitNo;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitStatus;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+//WS_OLD=SOAP DECLARATION(WS_Error;Is Text;SOAP Output)
+//WS_OLD=SOAP DECLARATION(WS_Edit;Is Boolean;SOAP Output)
+SOAP DECLARATION(WS_RUnitNoOut;Is text;SOAP output)
+SOAP DECLARATION(WS_UnitStatusOut;Is text;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+
+$String:="Start WS_ChangeUnitStatus"+Char(13)
+$String:=$String+"WS_RUnitNo: "+WS_RUnitNo+Char(13)
+$String:=$String+"WS_UnitStatus: "+WS_UnitStatus+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_RUnitNo;1;5))
+If (Records in selection([Facility])=1)
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+Case of 
+: ([Facility]FacilityCode="SSCSD")
+$UnitStatus:=Get localized string("ChangeSiteBox-SSCSD")
+$UnitCategory:="RVVROVRRX"
+: ([Facility]ProductCode="@R")
+$UnitStatus:=Get localized string("ChangeSiteAppliance")
+$UnitCategory:="RVVROVRXX"
+: ([Facility]ProductCode="@B")
+$UnitStatus:=Get localized string("ChangeSiteBerth")//First three are used by system and must exist
+$UnitCategory:="RVVOOVRRX"
+Else 
+$UnitStatus:=Get localized string("ChangeSiteBox")
+$UnitCategory:="RVVOOVRRX"//Unavail is used by ReCalcUnits
+End case 
+
+ARRAY TEXT(asUnitCategory;Length($UnitCategory))
+ARRAY TEXT(asUnitStatus;Size of array(asUnitCategory))
+
+For ($i;1;Size of array(asUnitCategory))
+asUnitCategory{$i}:=Substring($UnitCategory;$i;1)
+$Pos:=Position(",";$UnitStatus)
+asUnitStatus{$i}:=Substring($UnitStatus;1;$Pos-1)
+$UnitStatus:=Substring($UnitStatus;$Pos+1)
+End for 
+
+READ WRITE([Unit])
+QUERY([Unit];[Unit]RUnitNo=WS_RUnitNo)
+If (Records in selection([Unit])=1)
+$j:=Find in array(asUnitStatus;WS_UnitStatus)
+$k:=Find in array(asUnitStatus;[Unit]Status)
+If ($j>0) & ($k>0)
+
+If ((asUnitCategory{$j}="R") & (asUnitCategory{$k}="R")) | ((asUnitCategory{$j}#"R") & (asUnitCategory{$k}#"R"))
+[Unit]Status:=WS_UnitStatus
+SAVE RECORD([Unit])
+//WS_OLD=WS_Edit:=True
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Unit Status successfully changed in database Storman."
+Else 
+If (asUnitCategory{$k}#"R")
+//WS_OLD=WS_Error:="Cannot change unit status from vacant type to rented type"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1026
+WS_ORErrorDescription:="Cannot change Unit Status from Vacant to Rented"
+Else 
+//WS_OLD=WS_Error:="Cannot change unit status from rented type to vacant type"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1026
+WS_ORErrorDescription:="Cannot change Unit Status from Rented to Vacant."
+End if 
+End if 
+
+Else 
+//WS_OLD=WS_Error:="Invalid unit status"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1025
+WS_ORErrorDescription:="Invalid Unit Status."
+End if 
+
+WS_RUnitNoOut:=[Unit]RUnitNo
+WS_UnitStatusOut:=[Unit]Status
+
+Else 
+//WS_OLD=WS_Error:="Unit not found"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1007
+WS_ORErrorDescription:="Unit record not found in database Storman."
+End if 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+Else 
+//WS_OLD=WS_Error:="Incorrect password"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+Else 
+//WS_OLD=WS_Error:="Facility not found"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([BillPlan])
+UNLOAD RECORD([BillPlan])
+
+$String:="End WS_ChangeUnitStatus"+Char(13)
+$String:=$String+"WS_RUnitNoOut: "+WS_RUnitNoOut+Char(13)
+$String:=$String+"WS_UnitStatusOut: "+WS_UnitStatusOut+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

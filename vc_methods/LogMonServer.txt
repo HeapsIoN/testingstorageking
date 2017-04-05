@@ -1,0 +1,526 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT(<>sServerProg;<>sVersion;<>sUserCode;$Facility)//LogMonLoopCode
+C_BOOLEAN($1)//True on first launch, False on subsequent launches
+C_LONGINT(<>iTrafficRecv;<>iTrafficSent;$i)v
+C_LONGINT(<>iDailyProcNo)
+C_BOOLEAN(<>tCentralHost;<>tLoop;<>tAlive;<>tDaily;$BillingSent)
+C_TEXT($ProcName)
+C_TIME($LastMirrorLogSendTime)
+C_LONGINT($ProcState;$ProcTime;$ProcPos)
+
+
+//TRACE
+
+$BillingSent:=False
+$LastMirrorLogSendTime:=Current time
+<>tLoop:=Semaphore("DontAllowClient")
+<>tAlive:=Semaphore("LogMonAlive")
+<>iDailyProcNo:=0
+READ ONLY(*)
+ALL RECORDS([Facility])
+//READ WRITE([Progress])
+//ALL RECORDS([Progress])
+//If (Records in selection([Progress])=0)
+//CREATE RECORD([Progress])
+//End if 
+//[Progress]MsgTime:=Current time
+//[Progress]Note:="Launching"
+//SAVE RECORD([Progress])
+Initialise 
+<>tUtilities:=[Facility]Utilities
+<>iWeekEndDay:=[Facility]WeekEndDay
+
+<>iGateSysType:=[Facility]GateSysType
+<>tGateSys:=[Facility]UseGateSys
+<>tCashBook:=[Facility]UseCashBook
+If (<>tGateSys)
+<>tGateOn:=[Facility]GateOnStart
+End if 
+<>iSetGate:=0
+<>tLoop:=True
+<>tUpdateAnalysis:=True
+<>tCentralHost:=False
+If ([Facility]ProductCode="M@") & ([Facility]MaxSites>1)
+<>tCentralHost:=True
+End if 
+If ([Facility]TutorialData)
+<>sUserCode:="Demo Data"
+Else 
+If (Length([Facility]UserCode)<5)
+<>sUserCode:="Unlicenced"
+Else 
+<>sUserCode:="User:"+[Facility]UserCode
+End if 
+End if 
+Case of 
+: (<>iPlatform=3)
+If (Substring(String(<>iVersion);4;1)="0")
+<>sVersion:="Win: "+Insert string(Insert string(Substring(String(<>iVersion);1;3)+Substring(String(<>iVersion);5);".";3);".";5)
+Else 
+<>sVersion:="Win: "+Insert string(Insert string(String(<>iVersion);".";3);".";5)
+End if 
+Else 
+If (Substring(String(<>iVersion);4;1)="0")
+<>sVersion:="Mac: "+Insert string(Insert string(Substring(String(<>iVersion);1;3)+Substring(String(<>iVersion);5);".";3);".";5)
+Else 
+<>sVersion:="Mac: "+Insert string(Insert string(String(<>iVersion);".";3);".";5)
+End if 
+End case 
+InitLoopCode 
+tBoolean:=False
+//If ([Facility]ShowServerProcess)  //SDD 25/07/10 Not possible from v8.2 onwards
+//$WinRef:=Open window(Screen width-241;35;Screen width-20;135;-Palette form window)
+//tBoolean:=True
+//End if 
+$TrafficHour:=Num(Substring(String(Current time);1;2))+1
+If ($1)//Only do this on first launch
+//This caused problems by others restarting and choosing "Yes"
+//If (◊dCompileDate>[Facility]VersionDate)
+//If ([Facility]ProductCode="M@")
+//CONFIRM("This update has a later compile date than previous versions.  Send to all sites?";"Yes";"No")
+//End if 
+//If ([Facility]ProductCode#"M@") | (OK=1)
+//UpdateSystem (146;->◊dCompileDate;"Unable to update VersionDate as Facility Record is locked.")
+//End if 
+//End if 
+MESSAGES OFF
+InitSites 
+InitNextPrimaryKeys 
+If ([Facility]ProductCode="MV") | (<>tClient=True)//This must happen after InitSites is complete `added 2nd condition 27/3/06
+<>iTrafficRecv:=0
+<>iTrafficSent:=0
+If (<>iPlatform=3)
+$sSeparator:="\\"//Windows
+Else 
+$sSeparator:=":"//Macintosh
+End if 
+
+$sApplication:=Application file
+$j:=Length($sApplication)
+While ($j>2) & (Substring($sApplication;$j;1)#$sSeparator)
+$j:=$j-1
+End while 
+$sApplication:=Substring($sApplication;1;$j)
+$sApplication:=$sApplication+"webserverclient.txt"
+
+If (Test path name($sApplication)#Is a document)
+SyncRecordLog (Get localized string("Webserver commenced");"TrafficCount")
+C_TEXT($CipherList)
+//$CipherList:="HIGH:+MEDIUM:!SSLv2:!EXP:!ADH:!aNULL:!eNULL:!NULL"
+$CipherList:="ECDH+AESGCM:ECDH+AES256:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS:!TLSv1"
+SET DATABASE PARAMETER(SSL cipher list;$CipherList)
+WEB START SERVER
+End if 
+
+If (<>iVersion>[Facility]Version)
+//ConfirmTwo (Get localized string("This is a new version")+" "+String(<>iVersion)+"!  "+Get localized string("Update now?");Get localized string("Yes");Get localized string("No"))
+//If (OK=1)
+CheckVersion 
+//AlertMessage (Get localized string("Update complete!"))
+//Else 
+//QUIT 4D  //SDD 18/5/08 Added this else statement otherwise the new version update code could be ignored.
+//End if 
+End if 
+
+
+If (OK=1)
+<>tWebServer:=True
+Else 
+AlertMessage (Get localized string("WebServer could not be started. TCP/IP may be unavailable, or a firewall is blocking it. Please seek assistance from Technical Support."))
+End if 
+End if 
+End if 
+$Date:=Current date
+Case of 
+: (Current time>?17:00:00?)
+$Time:=?17:00:00?
+: (Current time>?13:00:00?)
+$Time:=?13:00:00?
+: (Current time>?09:00:00?)
+$Time:=?09:00:00?
+Else 
+$Time:=?02:00:00?
+End case 
+If ([Facility]ReCalcActivity>[Facility]LastDaily)
+vDate:=[Facility]LastDaily-10
+UpdateSystem (165;->vDate;Get localized string("Unable to update ReCalcActivity date as System is locked!"))
+End if 
+If ([Facility]ReCalcActivity<([Facility]LastDaily-40))
+vDate:=[Facility]LastDaily-40
+UpdateSystem (165;->vDate;Get localized string("Unable to update ReCalcActivity date as System is locked!"))
+End if 
+CREATE EMPTY SET([EventLog];"LockedRecs")
+If (<>tGateOn)
+InitGateSystem 
+End if 
+
+CLEAR SEMAPHORE("DontAllowClient")
+//TRACE
+Repeat //Main Loop Begins Here
+//trace
+ALL RECORDS([Facility])
+//14/05/15 DAM Added Code for checking any 0 in the <>aiDailyProcNo array
+For ($z;1;Size of array(<>aiDailyProcNo))
+If (<>aiDailyProcNo{$z}#0)
+<>iDailyProcNo:=<>aiDailyProcNo{$z}
+End if 
+End for 
+//TRACE
+If (<>iDailyProcNo=0)//SDD Don't run anything if Daily Processing is happening
+
+If (Records in selection([Facility])#Size of array(<>asSiteCodes))
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Starting InitSites"))
+End if 
+InitSites 
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Ending InitSites"))
+End if 
+ALL RECORDS([Facility])
+End if 
+//If (tBoolean=False) & ([Facility]ShowServerProcess)
+//$WinRef:=Open window(Screen width-221;35;Screen width-20;135;-Palette form window)
+//tBoolean:=True
+//End if 
+//If (tBoolean) & ([Facility]ShowServerProcess=False)
+//CLOSE WINDOW($WinRef)
+//tBoolean:=False
+//End if 
+
+If (<>tUpdateAnalysis)//On server for Central contains all Analysis codes for All sites for Trx Trigger
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Starting tUpdateAnalysis Code"))
+End if 
+ARRAY TEXT(<>asCharges;0)
+ARRAY TEXT(<>asChargeDesc;0)
+ARRAY TEXT(<>asChargeCat;0)
+QUERY([Analysis];[Analysis]SortOrder<=50)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Description;>)
+SELECTION TO ARRAY([Analysis]Code;<>asCharges;[Analysis]Description;<>asChargeDesc;[Analysis]KeyStatsCategory;<>asChargeCat)
+ARRAY TEXT(<>asReceipts;0)
+ARRAY TEXT(<>asReceiptDesc;0)
+QUERY([Analysis];[Analysis]SortOrder>50)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Description;>)
+SELECTION TO ARRAY([Analysis]Code;<>asReceipts;[Analysis]Description;<>asReceiptDesc)
+<>tUpdateAnalysis:=False
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Ending tUpdateAnalysis Code"))
+End if 
+End if 
+
+
+QUERY([Authenticate];[Authenticate]DateAuth=!1985-01-01!;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress#"100")
+If (Records in selection([Authenticate])>=1)//Server process to recalc balances //Changed to >=1 incase there is a crash during customer balances
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+$Facility:=<>sFacility
+<>sFacility:=[Authenticate]RAgreeNo
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+If (<>sProduct#"M@")
+CalcBalance (True;True;False;True)
+End if 
+[Authenticate]IPAddress:="100"
+SAVE RECORD([Authenticate])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+<>sFacility:=$Facility
+ALL RECORDS([Facility])
+End if 
+
+
+If (Current time>?23:59:00?)//Added this block in 4.1.0 - Only do at midnight
+$i:=200//Days of Event Log to retain - just over six months
+If (<>sProduct="M@")//SDD 24/02/13 Changed for MV to improve performance
+$i:=65//For Central retain just over two months otherwise performance suffers
+End if 
+READ WRITE([EventLog])
+QUERY([EventLog];[EventLog]EventDate<(Current date-$i))//Just over six months
+If (Records in selection([EventLog])>0) & (Records in selection([EventLog])<(Records in table([EventLog])/1.25))// In case date set wrong
+DELETE SELECTION([EventLog])
+End if 
+QUERY([EventLog];[EventLog]EventDate<(Current date-2);*)
+QUERY([EventLog]; & ;[EventLog]EventTable=13;*)//GateLogEvents
+QUERY([EventLog]; & ;[EventLog]SyncStatus#2;*)
+QUERY([EventLog]; & ;[EventLog]SyncStatus#0)
+If (Records in selection([EventLog])>0)
+DELETE SELECTION([EventLog])
+End if 
+READ ONLY([EventLog])
+QUERY([EventLog];[EventLog]EventDate=Current date;*)
+QUERY([EventLog]; & ;[EventLog]SyncStatus=10;*)
+QUERY([EventLog]; & ;[EventLog]EventTable=6)
+If (Records in selection([EventLog])>0)
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Event Log records for")+" "+[Facility]FacilityCode+" - "+String(Current date);String(Records in selection([EventLog]))+" "+Get localized string("Events - Set to SyncStatus 10 today - Please check these!"))
+End if 
+READ WRITE([Facility])//SDD Added rest of this block on 24/5/05 to update arrays to disk each night
+For ($i;1;Size of array(<>asSiteCodes))
+QUERY([Facility];[Facility]FacilityCode=<>asSiteCodes{$i})
+//QUERY([Transaction];[Transaction]AgreeNo=◊asSiteCodes{$i}+"@";*)
+//QUERY([Transaction]; & ;[Transaction]SeqNo>=◊aiTrxSeqNo{$i})
+//If (Records in selection([Transaction])>0)
+//ORDER BY([Transaction];[Transaction]SeqNo;<)
+//◊aiTrxSeqNo{$i}:=[Transaction]SeqNo
+//End if 
+[Facility]TrxSeqNo:=<>aiTrxSeqNo{$i}
+[Facility]EventSeqNo:=<>aiEventSeqNo{$i}
+SAVE RECORD([Facility])
+End for 
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+End if 
+
+//If ([Facility]MirrorSendLogEveryMins>0)  //SDD We are sending a 4D Log file for integration to a mirror database
+//If (Current time>($LastMirrorLogSendTime+(60*[Facility]MirrorSendLogEveryMins)))  //Correct interval of time assume one hour
+//  //Load the Backup Preferences
+//C_BOOLEAN(vbBackupPrefsLoaded)
+//vbBackupPrefsLoaded:=LoadBackupPrefs 
+//If (vbBackupPrefsLoaded=True)
+//  //On Err Call here in case something goes wrong
+//$LogFileName:=New log file
+//  //on err call off
+//  //Send LogFileName to Backup Folder for retrieval by Mirror
+//$i:=Length($LogFileName)
+
+//Repeat 
+//$i:=$i-1
+//Until (Substring($LogFileName;$i;1)=GetFolderDelimiter ) | ($i<3)
+//If ($i>2)
+//$i:=$i+1
+
+//  ////////MOVE DOCUMENT($LogFileName;vtBackupDestinationFolder+Substring($LogFileName;$i))  //Initialise - <>sBackupPath
+//BackupIncr1 ($LogFileName;vtBackupDestinationFolder;$i)
+
+//End if 
+//SyncRecordLog ("Activated New Journal Log File and Log moved to Backups folder. FileName "+$LogFileName;"JournalLogFile")
+//$LastMirrorLogSendTime:=Current time
+//End if 
+//End if 
+//If (Current time<?00:50:00?) & ($LastMirrorLogSendTime>?13:00:00?)  //Change of day
+//$LastMirrorLogSendTime:=Current time
+//End if 
+//End if 
+
+If (<>tLoop)
+$LoopCodeSecs:=<>iLoopCodeSecs
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Starting LogMonLoopCode"))
+End if 
+<>iLoopCodeSecs:=LogMonLoopCode (0)
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Ending LogMonLoopCode"))
+End if 
+If (<>iWebServerCounter>0)
+SyncRecordLog ("LoopCodeSecs="+String($LoopCodeSecs)+" - "+Get localized string("No of 302's sent")+" = "+String(<>iWebServerCounter))
+End if 
+<>iWebServerCounter:=0
+End if 
+If (<>iTrafficRecv>0) & (Current time>Time(String($TrafficHour)+":00:00"))
+SyncRecordLog (Get localized string("Total Received")+" = "+String(<>iTrafficRecv/1024;"###,###,##0")+"KB, "+Get localized string("Total Sent")+" = "+String(<>iTrafficSent/1024;"###,###,##0")+" KB";"TrafficCount")
+<>iTrafficRecv:=0
+<>iTrafficSent:=0
+$TrafficHour:=$TrafficHour+1
+If ($TrafficHour>24)
+$TrafficHour:=1
+End if 
+End if 
+
+//JCW Commented the below section from Billing
+//Next condition added by SDD 14/03/10 to send sales billing report from MV
+//If (<>sHOFacility="STHOF")
+//If (Day number(Current date)#Sunday)
+//$BillingSent:=False
+//Else 
+//If ($BillingSent=False)
+//$BillingSent:=EmailWeeklySales (Current date-1)
+//End if 
+//End if 
+//End if 
+
+
+//Detect if HOF has sent through a sync code to upload exported datafile
+If (<>sProduct#"M@") & (<>sProduct#"")
+CREATE SET([Facility];"CurrentLogMonServerFacility")
+QUERY([Facility];[Facility]SyncError="405@";*)
+QUERY([Facility]; | ;[Facility]SyncError="406@")
+
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+FIRST RECORD([Facility])
+For ($FacilityCounter;1;Records in selection([Facility]))
+If (Read only state([Facility])=False) & (Locked([Facility])=False)
+Case of 
+: (Substring([Facility]SyncError;1;3)="405")//Export datafile, Upload to FTP server, Tell MV to import
+$Table:=Num(Substring([Facility]SyncError;5))
+SyncCreateAll ($Table;True;True;True;True;True)//Table; Set Records to Synced; Send Letters and Contacts; Upload to FTP; Import at MV; Called By LogMon
+
+: (Substring([Facility]SyncError;1;3)="406")//Export datafile, Upload to FTP server
+$Table:=Num(Substring([Facility]SyncError;5))
+SyncCreateAll ($Table;True;True;True;False;True)//Table; Set Records to Synced; Send Letters and Contacts; Upload to FTP
+End case 
+[Facility]SyncError:=""
+SAVE RECORD([Facility])
+End if 
+NEXT RECORD([Facility])
+End for 
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+USE SET("CurrentLogMonServerFacility")
+CLEAR SET("CurrentLogMonServerFacility")
+End if 
+//Is there an instruction to import any datafiles into MV?
+If (<>sProduct="M@")
+CREATE SET([Facility];"CurrentLogMonServerFacility")
+QUERY([Facility];[Facility]SyncError="401@";*)//Download from FTP server and Import
+QUERY([Facility]; | ;[Facility]SyncError="402@")//Assume txt file is already downloaded and Import
+READ WRITE([Facility])
+FIRST RECORD([Facility])
+For ($FacilityCounter;1;Records in selection([Facility]))
+If (Read only state([Facility])=False) & (Locked([Facility])=False)
+Case of 
+: ([Facility]SyncError="401@")
+$Table:=Num(Substring([Facility]SyncError;5))
+SyncReceive (True;True;[Facility]FacilityCode+String($Table;"00")+".txt";True;vDatafileRebuild)//Download from FTP
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]SyncError:="302"//Set to Sync Delay after import
+SAVE RECORD([Facility])
+: ([Facility]SyncError="402@")
+$Table:=Num(Substring([Facility]SyncError;5))
+SyncReceive (True;True;[Facility]FacilityCode+String($Table;"00")+".txt";False;vDatafileRebuild)//Assume file already on Disk, Don't download from FTP
+//Set last parameter of above line to True if rebuilding entire datafile which will delete event log as it goes - much faster for full rebuild
+//This parameter is set in InitLoopCode and is read from the Overnight.vml document
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]SyncError:="302"//Set to Sync Delay after import
+SAVE RECORD([Facility])
+End case 
+End if 
+NEXT RECORD([Facility])
+End for 
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+USE SET("CurrentLogMonServerFacility")
+CLEAR SET("CurrentLogMonServerFacility")
+End if 
+
+Else //<>iDailyProcNo has a process number
+//Check if Daily is still running
+
+PROCESS PROPERTIES(<>iDailyProcNo;$ProcName;$ProcState;$ProcTime)
+If ($ProcState<0) | ($ProcName#"Dail@")//Means that process does not exist or is aborted or is used by another
+
+//14/05/15 DAM added to reset the array for daily processing
+$ProcPos:=Find in array(<>aiDailyProcNo;<>iDailyProcNo)
+<>iDailyProcNo:=0
+If ($ProcPos>0)
+<>aiDailyProcNo{$ProcPos}:=0
+End if 
+
+End if 
+End if //End of <>iDailyProcNo If statement
+
+Case of 
+: (<>iDailyProcNo>0)
+<>sProgress:="Daily P"+String(<>iDailyProcNo)
+: (Current time<UTCTime ([Facility]LastSyncTime;False)) & ([Facility]SyncingOn) & ([Facility]CentralAddress>"")
+<>sProgress:="Sync Delay"
+: (vMax>3)
+<>sProgress:="Sync Fail"
+: (<>tWebServer=True)
+If (<>iLoopCodeSecs<100)
+<>sProgress:="WebServer "+String(<>iLoopCodeSecs)
+Else 
+<>sProgress:=Substring("WebServ"+String(<>iLoopCodeSecs);1;12)
+End if 
+Else 
+<>sProgress:="Paused... "
+End case 
+<>sServerProg:=<>sProgress
+//[Progress]Progress:=<>sProgress
+//[Progress]MsgTime:=Current time
+//SAVE RECORD([Progress])
+
+If (tBoolean)
+//ERASE WINDOW
+//GOTO XY(1;1)
+//MESSAGE(<>sProgress+"    ")
+//GOTO XY(1;3)
+//MESSAGE(<>sUserCode)
+//GOTO XY(1;5)
+//MESSAGE(<>sVersion)
+End if 
+
+If ([Facility]ProductCode="MV") & (Current date>=$Date) & (Current time>=$Time)//SyncRecordLog
+CheckUpdate 
+ALL RECORDS([Facility])
+$File:=<>sLogsPath+"SyncLog.txt"
+$Message:=Get localized string("No report available - Error in opening SyncLog.txt document!")
+If (Test path name($File)=Is a document)
+ON ERR CALL("ErrorNone")
+$Doc:=Open document($File)
+If (Get document size($Doc)>30000)
+SET DOCUMENT POSITION($Doc;-30000;2)
+End if 
+RECEIVE PACKET($Doc;$Message;30000)
+CLOSE DOCUMENT($Doc)
+ON ERR CALL("ErrorLog")
+End if 
+QUERY([Facility];[Facility]FacilityCode#<>sHOFacility)
+ORDER BY([Facility];[Facility]LastSyncDate;>;[Facility]LastSyncTime;>)
+$Prefix:=""
+For ($i;1;Records in selection([Facility]))
+$Prefix:=$Prefix+PadString ([Facility]ShortName;15)+String(UTCDate ([Facility]LastSyncTime;False;[Facility]LastSyncDate);1)+" - "+String(UTCTime ([Facility]LastSyncTime;False))+Char(13)
+NEXT RECORD([Facility])
+End for 
+ALL RECORDS([Facility])
+//SendEmail ("Centrallogs@storman.com";"Central Log - "+[Facility]FacilityCode+" - "+String(Current date)+" "+String(Current time);$Prefix+Char(13)+$Message)
+$File:=<>sLogsPath+"SyncTrafficCount.txt"//Syncrecordlog
+If (Test path name($File)=Is a document)
+ON ERR CALL("ErrorNone")
+$Doc:=Open document($File)
+If (Get document size($Doc)>30000)
+SET DOCUMENT POSITION($Doc;-30000;2)
+End if 
+RECEIVE PACKET($Doc;$Message;30000)
+CLOSE DOCUMENT($Doc)
+ON ERR CALL("ErrorLog")
+//SendEmail ("Centrallogs@storman.com";"Central Traffic Count - "+[Facility]FacilityCode+" - "+String(Current date)+" "+String(Current time);$Message)
+End if 
+Case of 
+: (Current time>?17:00:00?)
+$Date:=$Date+1
+$Time:=?09:00:00?
+: (Current time>?13:00:00?)
+$Time:=?17:00:00?
+: (Current time>?09:00:00?)
+$Time:=?13:00:00?
+Else 
+$Time:=?09:00:00?
+End case 
+Else 
+If (Shift down) & ((Windows Alt down) | (Macintosh option down))
+DELAY PROCESS(Current process;120)//Force wait of 2 seconds before it will come up
+$i:=1
+If (Shift down) & ((Windows Alt down) | (Macintosh option down))
+$i:=Num(RequestMessage (Get localized string("Delay LogMonitor for how many minutes? (1-30)");"5"))
+End if 
+If (OK=1) & ($i<=30) & ($i>=1)
+DELAY PROCESS(Current process;60*60*$i)
+End if 
+Else 
+DELAY PROCESS(Current process;600)//10 seconds between each running
+End if 
+End if 
+
+Until (<>tLoggingOn=False)// & (◊dReCalc>=[Facility]ReCalcActivity)
+CloseLoopCode 
+<>sProgress:="  Aborted "
+<>iLogMonitor:=0
+<>sServerProg:=<>sProgress
+//[Progress]MsgTime:=Current time
+//SAVE RECORD([Progress])
+If (tBoolean)
+//GOTO XY(1;1)
+//MESSAGE(<>sProgress+"     ")
+End if 

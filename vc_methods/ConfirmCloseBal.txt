@@ -1,0 +1,262 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($z;$s)
+C_REAL(vTotDbt;vTotCrdt;$UnrecTot)
+$UnrecTot:=0
+Case of 
+: ((<>sProduct="MV") & ([Facility]CentralSite=False))
+AlertMessage (Get localized string("You cannot process this bank reconciliation as bank reconciliation are performed at the site."))
+: ((<>sProduct#"MV") & ([Facility]CentralSite=True))
+AlertMessage (Get localized string("You cannot process the bank reconciliation, as bank reconciliation are performed at Head Office!"))
+: (vTotal#vBankClose)
+AlertMessage (Get localized string("The closing balance must match the closing balance of the bank statement."))
+Else 
+//CONFIRM("Do you want to print the bank reconciliation?";"Yes";"No")
+CREATE SET([Trxs];"ToDisplay")
+vBankBal:=vTotal
+//comment out printing of bank rec and unreconciled trx 27/6/08 NLT - should be printing at end of routine
+//QUERY SELECTION([Transaction];[Transaction]Reconciled=True)
+//PrintRec 
+//USE SET("ToDisplay")
+//QUERY SELECTION([Transaction];[Transaction]Reconciled=False)
+//vTotDbt:=0
+//vTotCrdt:=0
+//For ($s;1;Records in selection([Transaction]))  `this to get the totals in the Header, 05/2006
+//If ([Transaction]TaxAmt<0)
+//vTotDbt:=vTotDbt+[Transaction]TaxAmt
+//Else 
+//vTotCrdt:=vTotCrdt+[Transaction]TaxAmt
+//End if 
+//NEXT RECORD([Transaction])
+//End for 
+//vCashBkBal:=vBankBal+vTotDbt+vTotCrdt
+//ORDER BY([Transaction];[Transaction]Reconciled;>;[Transaction]DateReconciled;>;[Transaction]DateBanked;>;[Transaction]Analysis;>;[Transaction]TaxAmt;>)
+//$UnrecTot:=Round(Sum([Transaction]TaxAmt);2)
+//vUser:=◊sCurrentUser
+//ACCUMULATE([Transaction]DateReconciled)
+//BREAK LEVEL(4)
+//OUTPUT FORM([Transaction];"UnreconciledTrx")
+//PrintSelection ("P";->[Transaction])
+//OUTPUT FORM([Transaction];"TransOut")
+vCloseDate:=vBSDate
+USE SET("ToDisplay")//all trxs that were in selection when clicking the confirm button
+QUERY SELECTION([Trxs];[Trxs]DateReconciled=vBSDate)
+QUERY SELECTION([Trxs];[Trxs]Reconciled=True)
+If (Records in selection([Trxs])>0)
+USE SET("ToDisplay")
+//finds trxs that have just been reconciled, sets them & their related trxs to reconciled and sets their date reconciled 
+QUERY([Trxs];[Trxs]DateReconciled=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]Reconciled=True;*)
+QUERY([Trxs]; & ;[Trxs]Match=-1000)//need to treat the bank trxs separately.
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=True)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=vBSDate)
+
+QUERY([Trxs];[Trxs]DateReconciled=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]Reconciled=True;*)
+QUERY([Trxs]; & ;[Trxs]Match#-1000;*)//need to treat the bank trxs separately.
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@")
+
+If (Records in selection([Trxs])>0)
+CREATE SET([Trxs];"ToReconcile")
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=True)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=vBSDate)
+ARRAY LONGINT($NumRecs;Records in set("ToReconcile"))
+USE SET("ToReconcile")
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+$NumRecs{$j}:=Record number([Trxs])
+NEXT RECORD([Trxs])
+End for 
+For ($i;1;Size of array($NumRecs))
+GOTO RECORD([Trxs];$NumRecs{$i})
+$DateBanked:=[Trxs]DateBanked
+$Analysis:=[Trxs]AnalysisCode
+QUERY([Analysis];[Analysis]Code=$Analysis)
+QUERY([Analysis];[Analysis]GLCode=[Analysis]GLCode;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If ([Supplier]UserName="SUM")
+If (Records in selection([Analysis])>1)
+SELECTION TO ARRAY([Analysis]Code;asCodes)
+//to find records related to the totals trxs that have been ticked off as reconciled
+For ($z;1;Size of array(asCodes))
+QUERY([Trxs];[Trxs]Reconciled=False;*)// - may need to reset the date of already reconciled trxs
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=asCodes{$z};*)
+QUERY([Trxs]; & ;[Trxs]DateBanked=$DateBanked;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled=vBSDate)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=True)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=vBSDate)
+End for 
+Else 
+QUERY([Trxs];[Trxs]Reconciled=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked=$DateBanked;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled=vBSDate)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=True)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=vBSDate)
+End if 
+End if 
+End for 
+End if 
+//******************************************************************************************************************************
+//finds trxs that remain unreconciled ``````````````````````````(or were ticked as unreconciled from a previous reconciliation, & sets date to 0)
+//QUERY([Transaction];[Transaction]DateReconciled#!00/00/00!;*) - commented out 27/7/06, and replaced with:
+QUERY([Trxs];[Trxs]DateReconciled=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Reconciled=False;*)
+QUERY([Trxs]; & ;[Trxs]Match=-1000)//need to treat bank trxs separately if generated in this current rec, as has temp record num
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+
+//QUERY([Transaction];[Transaction]DateReconciled#!00/00/00!;*) - commented out 27/7/06, and replaced with:
+QUERY([Trxs];[Trxs]DateReconciled=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Reconciled=False;*)//need to find related ones if unreconciling
+QUERY([Trxs]; & ;[Trxs]Match#-1000)//need to treat bank trxs sep in case generated during this rec
+
+If (Records in selection([Trxs])>0)
+CREATE SET([Trxs];"ToReconcile")
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+ARRAY LONGINT($NumRecs;Records in set("ToReconcile"))
+USE SET("ToReconcile")
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+$NumRecs{$j}:=Record number([Trxs])
+NEXT RECORD([Trxs])
+End for 
+$j:=0
+For ($j;1;Size of array($NumRecs))
+GOTO RECORD([Trxs];$NumRecs{$j})
+$DateBanked:=[Trxs]DateBanked
+$Analysis:=[Trxs]AnalysisCode
+QUERY([Analysis];[Analysis]Code=$Analysis)
+QUERY([Analysis];[Analysis]GLCode=[Analysis]GLCode;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If ([Supplier]UserName="SUM")
+If (Records in selection([Analysis])>1)
+SELECTION TO ARRAY([Analysis]Code;asCodes)
+//to find records related to the totals trxs that have been ticked off as reconciled
+For ($z;1;Size of array(asCodes))
+QUERY([Trxs];[Trxs]Reconciled=True;*)// - may need to reset the date of already reconciled trxs
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=asCodes{$z};*)
+QUERY([Trxs]; & ;[Trxs]DateBanked=$DateBanked)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+End for 
+Else 
+QUERY([Trxs];[Trxs]Reconciled=True;*)// - may need to reset the date of already reconciled trxs
+QUERY([Trxs]; & ;[Trxs]DateBanked=$DateBanked;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=$Analysis)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+End if 
+End if 
+End for 
+End if 
+//******************************************************************************************************************************
+Else 
+//finds trxs that remain unreconciled ``````````````````````````(or were ticked as unreconciled from a previous reconciliation, & sets date to 0)
+//QUERY([Transaction];[Transaction]DateReconciled#!00/00/00!;*) - commented out 27/7/06, and replaced with:
+QUERY([Trxs];[Trxs]DateReconciled=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Reconciled=False;*)
+QUERY([Trxs]; & ;[Trxs]Match=-1000)//need to treat bank trxs separately if generated in this current rec, as has temp record num
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+
+//QUERY([Transaction];[Transaction]DateReconciled#!00/00/00!;*) - commented out 27/7/06, and replaced with:
+QUERY([Trxs];[Trxs]DateReconciled=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Reconciled=False;*)//need to find related ones if unreconciling
+QUERY([Trxs]; & ;[Trxs]Match#-1000)//need to treat bank trxs sep in case generated during this rec
+
+If (Records in selection([Trxs])>0)
+CREATE SET([Trxs];"ToReconcile")
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+ARRAY LONGINT($NumRecs;Records in set("ToReconcile"))
+USE SET("ToReconcile")
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+$NumRecs{$j}:=Record number([Trxs])
+NEXT RECORD([Trxs])
+End for 
+$j:=0
+For ($j;1;Size of array($NumRecs))
+GOTO RECORD([Trxs];$NumRecs{$j})
+$DateBanked:=[Trxs]DateBanked
+$Analysis:=[Trxs]AnalysisCode
+QUERY([Analysis];[Analysis]Code=$Analysis)
+QUERY([Analysis];[Analysis]GLCode=[Analysis]GLCode;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If ([Supplier]UserName="SUM")
+If (Records in selection([Analysis])>1)
+SELECTION TO ARRAY([Analysis]Code;asCodes)
+//to find records related to the totals trxs that have been ticked off as reconciled
+For ($z;1;Size of array(asCodes))
+QUERY([Trxs];[Trxs]Reconciled=True;*)// - may need to reset the date of already reconciled trxs
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=asCodes{$z};*)
+QUERY([Trxs]; & ;[Trxs]DateBanked=$DateBanked)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+End for 
+Else 
+QUERY([Trxs];[Trxs]Reconciled=True;*)// - may need to reset the date of already reconciled trxs
+QUERY([Trxs]; & ;[Trxs]DateBanked=$DateBanked;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=$Analysis)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+End if 
+End if 
+End for 
+End if 
+End if 
+[ChartAccts]OpeningBal:=Round(vBankBal;2)//Round(vTotal;2)
+[ChartAccts]BankBalDate:=vCloseDate
+//vBankBal:=[ChartAccts]OpeningBal
+READ WRITE([Facility])
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+[Facility]LastBankRec:=vCloseDate
+[Facility]BankRecBal:=vBankBal
+[Facility]UnrecTot:=$UnrecTot
+SAVE RECORD([Facility])
+ACCEPT
+VALIDATE TRANSACTION
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+
+//Add printing to end of routine
+QUERY([Trxs];[Trxs]Match=-1000;*)//added 9/9/08
+QUERY([Trxs]; & ;[Trxs]DateReconciled=vCloseDate;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@")
+CREATE SET([Trxs];"NewOther")
+UNION("ToDisplay";"NewOther";"ToDisplay")
+USE SET("ToDisplay")
+QUERY SELECTION([Trxs];[Trxs]Reconciled=True)
+PrintRec //FB10624 re-enabled 
+USE SET("ToDisplay")
+QUERY SELECTION([Trxs];[Trxs]Reconciled=False)
+vTotDbt:=0
+vTotCrdt:=0
+For ($s;1;Records in selection([Trxs]))//this to get the totals in the Header, 05/2006
+If ([Trxs]TaxAmt<0)
+vTotDbt:=vTotDbt+[Trxs]TaxAmt
+Else 
+vTotCrdt:=vTotCrdt+[Trxs]TaxAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+vCashBkBal:=vBankBal+vTotDbt+vTotCrdt
+ORDER BY([Trxs];[Trxs]Reconciled;>;[Trxs]DateReconciled;>;[Trxs]DateBanked;>;[Trxs]AnalysisCode;>;[Trxs]TaxAmt;>)
+$UnrecTot:=Round(Sum([Trxs]TaxAmt);2)
+vUser:=<>sCurrentUser
+ACCUMULATE([Trxs]DateReconciled)
+BREAK LEVEL(4)
+FORM SET OUTPUT([Trxs];"UnreconciledTrx")
+//PrintSelection ("P";->[Trxs])//FB10624 
+PrintSelection ("P";->[Trxs];False;False)
+FORM SET OUTPUT([Trxs];"TransOut")
+//******************************************************************************************************************************
+End case 

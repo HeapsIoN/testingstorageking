@@ -1,0 +1,78 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Token;$error)
+If (Form event=On Clicked)
+If (aDescriptions=2)
+ConfirmTwo ("Do you wish to delete all customer's profiles?";"Yes";"No")
+
+If (Read only state([Customer])=True)
+READ WRITE([Customer])
+End if 
+
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=<>SFACILITY+"@";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+<>ProgressInd:=1
+Open window(20;50;400;150;0)
+FIRST RECORD([Customer])
+$TotAgree:=Records in selection([Customer])
+For ($i;1;Records in selection([Customer]))
+GOTO XY(2;2)
+MESSAGE("Deleting Customer profile "+String($i)+" of "+String(Records in selection([Customer])))//Johnno
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+$error:=WSC_AdvamDeleteStoredPAN ([Customer]customerProfileID;GetTextNo ([Facility]MerchantDetails;2;",");GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");Num(GetTextNo ([Facility]MerchantDetails;5;","));Num(GetTextNo ([Facility]MerchantDetails;6;",")))
+NEXT RECORD([Customer])
+End for 
+
+If (Records in selection([Customer])>0)//8376
+AlertMessage ("Customer profiles deleted successfully!")
+Else 
+AlertMessage ("There are no records Successfully deleted.")
+End if 
+
+<>ProgressInd:=100
+Else 
+$Token:=RequestMessage ("Please enter customer profile ID:")
+If ($Token#"") & (OK=1)
+QUERY([Customer];[Customer]customerProfileID=$Token)
+If (Records in selection([Customer])=1)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+ConfirmTwo ("There is a customer with this token ID, name: "+[Customer]CustomerName+" agreement: "+[Agreement]AgreeNo+". Do you wish to delete customer's profiles?";"Yes";"No")
+If (OK=1)
+$error:=WSC_AdvamDeleteStoredPAN ($Token;GetTextNo ([Facility]MerchantDetails;2;",");GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");Num(GetTextNo ([Facility]MerchantDetails;5;","));Num(GetTextNo ([Facility]MerchantDetails;6;",")))
+If ($error#"ERR@")//8376
+AlertMessage ("Customer successfully deleted.")
+[Customer]customerProfileID:=""
+SAVE RECORD([Customer])
+UNLOAD RECORD([Customer])
+Else 
+AlertMessage ("Couldn't delete customer's profile - "+String($Token)+" Error: "+String($error))
+End if 
+End if 
+End if 
+End if 
+End if 
+READ ONLY([Customer])
+Else 
+$Token:=RequestMessage ("Please enter customer profile ID:")
+If ($Token#"") & (OK=1)
+QUERY([Customer];[Customer]customerProfileID=$Token)
+If (Records in selection([Customer])#0)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+AlertMessage ("There is a customer with this token ID, name: "+[Customer]CustomerName+" agreement: "+[Agreement]AgreeNo)
+Else 
+Case of 
+//: (aDescriptions=3)  // Advam StoredPan
+//$error:=WSC_AdvamDeleteStoredPAN ($Token;GetTextNo ([Facility]MerchantDetails;2;",");GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");Num(GetTextNo ([Facility]MerchantDetails;5;","));Num(GetTextNo ([Facility]MerchantDetails;6;",")))
+
+: (aDescriptions=7)// BPoint
+$error:=wsc_bpoint_DeleteToken (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");GetTextNo ([Facility]MerchantDetails;2;",");$Token)
+If ($error#"ERROR@")
+AlertMessage ("Token successfully deleted")
+Else 
+AlertMessage ($error+" - "+errMessage_t)
+End if 
+End case 
+End if 
+End if 
+End if 
+End if 

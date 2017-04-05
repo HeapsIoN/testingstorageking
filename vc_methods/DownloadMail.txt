@@ -1,0 +1,156 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0;$error;$DeleteMail)
+C_LONGINT($1;$2;$i;$pop3_id;$Count;$OtherMsg)
+C_TEXT($Message;$thincCust)
+
+$DeleteMail:=True
+//If (Shift down)
+//ConfirmTwo (Get localized string("Delete Mail Messages after receiving?");Get localized string("No");Get localized string("Yes"))
+//If (OK=1)
+//$DeleteMail:=False
+//End if 
+//End if 
+$error:=False
+$pop3_id:=$1
+$Message:=""
+$OtherMsg:=0
+If ($2>0)
+ARRAY TEXT(aPageID;1)
+aPageID{1}:=Get localized string("From1")+":"
+ARRAY LONGINT(aLongint;0)
+ARRAY TEXT(asAgreemt;0)
+ARRAY TEXT(atHeader;1;0)
+Open window(20;50;400;150;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Checking Mail Account")+" "+[Facility]POPMailBox+" "+Get localized string("on Mailserver")+" "+[Facility]POPHostName+"    ")
+If (ErrorMail ("POP3_MsgLst";POP3_MsgLst ($pop3_id;1;$2;aPageID;aLongint;asAgreemt;atHeader)))
+ERASE WINDOW
+ARRAY BOOLEAN($aDeleteMail;$2)//Used to control deletion of messages
+For ($i;1;$2)
+$thincCust:=""
+GOTO XY(2;2)
+MESSAGE(Get localized string("Receiving message")+" "+String($i)+" "+Get localized string("of")+" "+String($2)+"    ")
+$aDeleteMail{$i}:=$DeleteMail
+$Count:=Position(Char(64);atHeader{1}{$i};0;*)
+If ([Facility]POPOnlyStorman=False) | (Substring(atHeader{1}{$i};$Count+1)="storman.com@") | (Substring(atHeader{1}{$i};$Count+1)="storpay.com@") | (Substring(atHeader{1}{$i};$Count+1)="storman.com.au@") | (Substring(atHeader{1}{$i};$Count+1)="storman.co.nz@") | (Substring(atHeader{1}{$i};$Count+1)="stormansoftware.co.uk@") | (Substring(atHeader{1}{$i};$Count+1)="stormansms.com@") | (Substring(atHeader{1}{$i};$Count+1)="marinasoftware.com@") | (Substring(atHeader{1}{$i};$Count+1)="hiresoftware.info@") | (Substring(atHeader{1}{$i};$Count+1)="depositboxsoftware.com@")
+If (ErrorMail ("POP3_Download";POP3_Download ($pop3_id;$i;0;<>sStormanPath+"TempMsg.txt")))
+//    ("POP3_GetMessage";POP3_GetMessage ($pop3_id;$i;0;128000;$Message)))
+CREATE RECORD([Message])
+DOCUMENT TO BLOB(<>sStormanPath+"TempMsg.txt";[Message]EmailMsg)
+If (ErrorMail ("MSG_GetHeaders";MSG_GetHeaders (<>sStormanPath+"TempMsg.txt";0;128000;$Message)))
+[Message]SentDate:=ConvertDate (FindinHeader ($Message;"Date:"))
+[Message]Address:=Substring(FindinHeader ($Message;"From:");1;50)//in case it is too long
+[Message]Subject:=Substring(FindinHeader ($Message;"Subject:");1;80)
+[Message]Facility:=[Facility]FacilityCode
+
+//Thinc SMS - Read in Subject to check for agreement details and save headers to NotesHistory
+If (Position("[Ref=";[Message]Subject)>0)
+$Position:=Position("]";[Message]Subject)
+If ($Position<1)
+$PositionLength:=5
+Else 
+$PositionLength:=$Position-(Position("[Ref=";[Message]Subject)+5)
+End if 
+$thincCust:=Substring([Message]Subject;Position("[Ref=";[Message]Subject)+5;$PositionLength)
+TRACE
+
+QUERY([Customer];[Customer]CustomerCode=$thincCust)
+If (Records in selection([Customer])>0)
+READ WRITE([NotesHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]Note:=$Message+"\n\n"
+[NotesHistory]Category:="Storman SMS"
+[NotesHistory]UserLogin:="System"
+SAVE RECORD([NotesHistory])
+DELETE RECORD([Message])
+Else 
+
+QUERY([Contacts];[Contacts]ContactNo=$thincCust)
+If (Records in selection([Contacts])>0)
+READ WRITE([NotesHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=Substring([Contacts]ContactNo;1;5)
+[NotesHistory]ContactNo:=[Contacts]ContactNo
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]Note:=$Message+"\n\n"
+[NotesHistory]Category:="Storman SMS"
+[NotesHistory]UserLogin:="System"
+SAVE RECORD([NotesHistory])
+DELETE RECORD([Message])
+Else 
+$thincCust:=""
+End if 
+
+
+End if 
+
+End if 
+End if 
+If (ErrorMail ("MSG_GetBody";MSG_GetBody (<>sStormanPath+"TempMsg.txt";0;128000;$Message)))
+[Message]MsgBody:=$Message
+//Thinc SMS - Save body to notes history
+If ($thincCust#"")
+[NotesHistory]Note:=[NotesHistory]Note+$Message
+SAVE RECORD([NotesHistory])
+READ ONLY([NotesHistory])
+End if 
+Else 
+$aDeleteMail{$i}:=False
+[Message]MsgBody:=Get localized string("Unable to retrieve message - Not deleted from server!")
+End if 
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+If (ErrorMail ("MSG_HasAttach";MSG_HasAttach (<>sStormanPath+"TempMsg.txt";$Count)))
+If ($Count>0)
+ARRAY TEXT(aText;0)
+If (ErrorMail ("MSG_Extract";MSG_Extract (<>sStormanPath+"TempMsg.txt";1;"";aText)))
+[Message]Attachments:=""
+For ($j;1;Size of array(aText))
+[Message]Attachments:=[Message]Attachments+aText{$j}+Char(13)
+End for 
+Else 
+$aDeleteMail{$i}:=False
+End if 
+End if 
+End if 
+SAVE RECORD([Message])
+If (ErrorMail ("MSG_Delete";MSG_Delete (<>sStormanPath+"TempMsg.txt";0))=False)
+AlertMessage (Get localized string("The temporary file 'TempMsg.txt' could not be deleted!"))
+End if 
+Else 
+$i:=$2//dump out of For loop
+$error:=True
+End if 
+Else 
+$OtherMsg:=$OtherMsg+1
+$aDeleteMail{$i}:=False
+End if 
+End for 
+For ($i;$2;1;-1)//Must be deleted in reverse order
+If ($aDeleteMail{$i}=True)//if we should delete the message from the server
+$error:=Not(ErrorMail ("POP3_Delete";POP3_Delete ($pop3_id;$i;$i)))//they aren't _really_ deleted until a successful POP3_LogOut
+End if 
+End for 
+End if 
+CLOSE WINDOW
+If ($OtherMsg>0)
+C_TEXT($Name)// Initialize the variables   
+C_LONGINT($State)
+C_LONGINT($Time)
+If (vbShowAlert=True)
+AlertMessage (Get localized string("There are")+" "+String($OtherMsg)+" "+Get localized string("email(s) not from")+" "+<>sOEMName+" "+Get localized string("waiting to be retrieved!"))
+End if 
+End if 
+Else 
+C_TEXT($Name)// Initialize the variables   
+C_LONGINT($State)
+C_LONGINT($Time)
+If (vbShowAlert=True)
+AlertMessage (Get localized string("There are no emails to be received."))
+End if 
+End if 
+$0:=$error

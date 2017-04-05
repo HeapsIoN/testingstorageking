@@ -1,0 +1,390 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT(<>sProgress)//LogMonServer  `Initialise  LogMonLoopCode
+C_BOOLEAN($SendLog;$SendActivity)
+C_TIME($NextFollowup;$LastUserAction;$NextActTime;$LastDailyTime;$CheckTime)
+C_DATE($NextActDate)
+C_LONGINT($i;$LastMainTime;$LastProcTime;$x)
+C_TEXT($LastKeyStroke)
+C_LONGINT($LastMouseX;$MouseX;$LastMouseY;$MouseY)
+
+DELAY PROCESS(Current process;60)//Delay 1 sec to give chance for Floating to start
+
+If (<>sOpenDataFile>"")//SDD 02/10/13 New Code to open Facility Datafile
+If (Test path name(<>sOpenDataFile)=Is a document)
+OPEN DATA FILE(<>sOpenDataFile)
+End if 
+Else 
+
+DEFAULT TABLE([Facility])
+<>tCentralHost:=False
+<>tDetailLog:=False
+$LastKeyStroke:=""
+
+//Next 3 lines moved from just above the 'InitLoopCode' line - [Facility] had no selected record so WebServer wasn't started
+vErrors:="None"
+READ ONLY(*)
+ALL RECORDS([Facility])//LogMonitor to always use first record
+FIRST RECORD([Facility])
+
+If (<>tClient=False)
+If ([Facility]ProductCode="M@") | ([Facility]UseWebServer)
+//<>tWebServer:=True - sg - This variable changed from within 'StartWebServer' method
+StartWebServer 
+Else 
+<>tWebServer:=False
+//DISABLE MENU ITEM(1;11)
+End if 
+End if 
+
+InitLoopCode 
+If (<>tGateOn) & (<>tClient=False)
+InitGateSystem 
+End if 
+$NextActDate:=UTCDate ([Facility]LastSyncTime;False;[Facility]LastSyncDate)+1
+$NextActTime:=UTCTime ([Facility]LastSyncTime;False)
+If ([Facility]TimetoSend>$NextActTime)
+$NextActTime:=[Facility]TimetoSend
+End if 
+$NextFollowup:=Current time+1800//Wait half an hour
+If ($NextFollowup<?00:30:00?)//Wait at midnight
+$NextFollowup:=?23:59:59?
+End if 
+ARRAY TEXT(aAnlys;0)
+$LastUserAction:=Current time
+$LastMainTime:=0
+$LastProcTime:=0
+$LastDailyTime:=?11:00:00?
+If (<>tClient=False)
+If ([Facility]ReCalcActivity>[Facility]LastDaily)
+vDate:=[Facility]LastDaily-10
+UpdateSystem (165;->vDate;Get localized string("Unable to update ReCalcActivity date as System is locked!"))
+End if 
+If ([Facility]ReCalcActivity<([Facility]LastDaily-40))
+vDate:=[Facility]LastDaily-40
+UpdateSystem (165;->vDate;Get localized string("Unable to update ReCalcActivity date as System is locked!"))
+End if 
+End if 
+CREATE EMPTY SET([EventLog];"LockedRecs")
+MESSAGES OFF
+$CheckTime:=?00:00:00?
+$Alert:=False
+Repeat 
+ALL RECORDS([Facility])
+FIRST RECORD([Facility])
+If ([Facility]ProductCode="MV") & (Application type=4D Remote mode) & (Is compiled mode) & (<>sCurrentUser="AdminSupport") & (<>bLoggedIn=True)
+If (Current time>($CheckTime+?01:00:00?))// & (Current time>?08:00:00?) & (Current time<?19:00:00?)  //Syncren
+QUERY([Facility];[Facility]LastSyncDate<UTCDate (Current time;True;Current date);*)
+QUERY([Facility]; | ;[Facility]LastSyncTime<(UTCTime (Current time;True)-?01:00:00?);*)
+QUERY([Facility]; & ;[Facility]FacilityCode#<>sHOFacility;*)
+QUERY([Facility]; & ;[Facility]EventSeqNo>1;*)
+QUERY([Facility]; & ;[Facility]SortOrder>0;*)//In case the facility code is not HOF
+QUERY([Facility]; & ;[Facility]SortOrder<1000)
+If (Records in selection([Facility])>0)
+$Sites:=""
+While (End selection([Facility])=False)
+$Sites:=$Sites+[Facility]FacilityCode+", "
+NEXT RECORD([Facility])
+End while 
+AlertMessage (Get localized string("The following sites have not synced during the past hour")+" : "+$Sites)
+$CheckTime:=Current time
+End if 
+QUERY([Facility];[Facility]LastDaily<(Current date-2);*)
+QUERY([Facility]; & ;[Facility]FacilityCode#<>sHOFacility;*)
+QUERY([Facility]; & ;[Facility]EventSeqNo>1;*)
+QUERY([Facility]; & ;[Facility]SortOrder>0;*)//In case the facility code is not HOF
+QUERY([Facility]; & ;[Facility]SortOrder<1000)
+If (Records in selection([Facility])>0)
+$Sites:=""
+While (End selection([Facility])=False)
+$Sites:=$Sites+[Facility]FacilityCode+", "
+NEXT RECORD([Facility])
+End while 
+AlertMessage ("The following sites have not updated LastDaily in the last 3 days : "+$Sites)
+$CheckTime:=Current time
+End if 
+ALL RECORDS([Facility])
+End if 
+End if 
+If (Application type=4D Remote mode)
+While (Test semaphore("DontAllowClient")=True) & (<>sCurrentUser#"AdminSupport") & (Current user#"Designer")//LogMonServer
+ConfirmTwo (Get localized string("The server has not completed starting up, or has an Alert message that requires attention. Check when Storman Server has started up.");Get localized string("Continue");Get localized string("Quit"))
+If (OK#1)
+QUIT 4D
+End if 
+End while 
+If (Test semaphore("LogMonAlive")=False)//Changed to not complain about this which could have serious results!
+If (<>sCurrentUser="AdminSupport") & ($Alert=False)
+AlertMessage (Get localized string("It appears the process 'LogMonServer' on Storman Server has stopped. Please check Storman Server!"))
+$Alert:=True
+End if 
+End if 
+If (<>sCurrentUser#<>sLastUser)
+UNREGISTER CLIENT
+REGISTER CLIENT(<>sCurrentUser)
+<>sLastUser:=<>sCurrentUser
+End if 
+End if 
+If ([Facility]LastDaily<Current date) & (Current time>$LastDailyTime) & ([Facility]BillonFirst=False) & ([Facility]TutorialData=False) & (<>sProduct#"MV") & (Current user#"Designer") & (<>sCurrentUser>"") & (<>bLoggedIn=True)//Remind every hour from 11AM
+AlertMessage (Get localized string("DailyNotRunError"))
+$LastDailyTime:=Current time+?01:00:00?
+End if 
+LogMonUpdateGate 
+//PROCESS PROPERTIES(1;$ProcName;$ProcState;$MainTime)
+//$TotProcTime:=0
+//For ($i;2;Size of array(◊iProcess))
+//PROCESS PROPERTIES($i;$ProcName;$ProcState;$ProcTime)
+//$TotProcTime:=$TotProcTime+$ProcTime
+//End for 
+//This for testing only  
+//◊sVersion:=String($MainTime-$LastMainTime)+":"+String($TotProcTime-$LastProcTim
+//CALL PROCESS(◊iFloating)
+//If ($MainTime-$LastMainTime>9) | ($TotProcTime-$LastProcTime#0)  `Tolerance for nothing happening within cycle
+//$LastUserAction:=Current time
+//End if 
+//$LastMainTime:=$MainTime
+//$LastProcTime:=$TotProcTime
+ALL RECORDS([Facility])
+FIRST RECORD([Facility])
+If ([Facility]AutoLogoutOnInactivity=False)//If [Facility]AutoLogoutOnInactivity=False then Mouse movement and Key presses will cancel timeout
+GET MOUSE($MouseX;$MouseY;$MouseButton;*)
+If ($LastKeyStroke#Keystroke) | ($MouseX#$LastMouseX) | ($MouseY#$LastMouseY)
+$LastUserAction:=Current time
+End if 
+$LastKeyStroke:=Keystroke
+$LastMouseX:=$MouseX
+$LastMouseY:=$MouseY
+End if 
+ALL RECORDS([Facility])
+FIRST RECORD([Facility])
+
+// DAM & HRZ added for 10805
+If ([Facility]AutoShutdown)
+If ([Facility]AutoShutdownTime#?00:00:00?) & (String(Current time;Hour min)=String([Facility]AutoShutdownTime;Hour min))
+If (Application type=4D Server)
+$process:=Execute on server("Quit4DMethod";400000;"Quit4DMethod")
+End if 
+QUIT 4D
+End if 
+End if 
+
+
+If ([Facility]AutoLogoutTime>0) & (Current time>($LastUserAction+([Facility]AutoLogoutTime*60)))
+//TRACE
+$Message:=GetProcessNames (True)
+If (<>sCurrentUser#"") & (Application type#4D Server) & ($Message#"@Daily@")
+$LoginProcess:=New process("Login";400000;"Login")
+End if 
+$LastUserAction:=Current time
+End if 
+If (<>tLogging=True)//LogAction
+If (<>tClient=False)//Otherwise done on server
+<>iLoopCodeSecs:=LogMonLoopCode (0)
+End if 
+//Gate Stuff    
+If (<>tGateSys) & (<>tGateOn=False)
+QUERY([QueueLog];[QueueLog]Order>=0;*)//1-20000 for Gate, 20001+ for Activity Queue
+QUERY([QueueLog]; & ;[QueueLog]Order<20000)
+If (Records in selection([QueueLog])=0)
+viCount:=0
+Else 
+viCount:=viCount+1
+If (viCount>90)
+AlertMessage (Get localized string("WARNING - There are items waiting to be downloaded to the gate. Please turn Gate On!"))
+viCount:=0
+End if 
+End if 
+End if 
+ALL RECORDS([Facility])
+FIRST RECORD([Facility])
+//Start Email    
+//FloatMessage (Get localized string("Email")+"...  ")  //Only do this if primary workstation
+FloatMessage (Get localized string("Email..."))//Only do this if primary workstation
+If ([Facility]TimetoSend#?00:00:00?)
+If (Current date>$NextActDate) | ((Current date=$NextActDate) & (Current time>$NextActTime))
+<>tSendData:=True
+End if 
+End if 
+$SendLog:=False
+$SendActivity:=False
+If (Length([Facility]SmtpHostName)>5) & (Length([Facility]EmailAddress)>5)
+$x:=Find in array(<>asEmailSendToCode;"@L")
+If ($x>0)
+$SendLog:=<>tSendData
+End if 
+$x:=Find in array(<>asEmailSendToCode;"A@")
+If ($x>0)
+QUERY([Activity];[Activity]Updated=True)
+If (Records in selection([Activity])>0)
+$SendActivity:=<>tSendData
+End if 
+End if 
+<>tSendData:=False
+End if 
+If ($SendLog) | ($SendActivity)
+If ([Facility]InternetConnection=True)//Permanent connection
+$i:=1
+Else 
+$i:=ConfirmThree (Get localized string("Ready to send Email.");Get localized string("Send Now");Get localized string("Wait 5 mins");Get localized string("Leave"))//Testing this line
+End if 
+If ($i=1)
+//If (ErrorMail ("IT_MacTCPInit";IT_MacTCPInit ))
+If ($SendLog)
+$SendLog:=SendAlertsMail 
+Else 
+$SendLog:=True
+End if 
+If ($SendActivity) & ($SendLog)//Modified in 3.3 as Activity was not sent when Log was not scheduled.
+If (SendActivity )
+$i:=3//Update cycle below
+vDate:=Current date
+vDoc:=Current time
+If (UpdateSystem (96;->vDate;Get localized string("Unable to update Last Log Sent Date!")))
+UpdateSystem (97;->vDoc;Get localized string("Unable to update Last Log Sent Time!"))
+End if 
+End if 
+End if 
+//Else 
+//$i:=2
+//End if 
+If ([Facility]TutorialData=False) & (Length([Facility]UserCode)=5) & ([Facility]LastUpdateCheck<(Current date-3))//Check every 3 days
+CheckUpdate 
+End if 
+End if 
+If ($i=2)
+$NextActTime:=Current time+(5*60)//Wait 5 minutes
+End if 
+If ($i=3)//Leave until next schedule
+$NextActDate:=Current date+1
+End if 
+End if 
+If ([Facility]POPHostName>"") & ([Facility]POPMailBox>"") & ([Facility]POPPassword>"") & ([Facility]InternetConnection)
+ReceiveMailProcess (False)
+End if 
+//EndEmail
+//Gate Stuff was here
+
+If (Current time>$NextFollowup) & (<>sProduct#"MV") & (Current user#"Designer")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]InvItem=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)//InvItem is now used by receipt codes for something else
+QUERY SELECTION BY FORMULA([Analysis];[Analysis]InvAlertQty>=[Analysis]InvQtyonHand)
+If (Records in selection([Analysis])>0)
+If (<>iCalendar>0)//If calendar open then shut it
+<>tCloseCalendar:=True
+CALL PROCESS(Process number("Calendar"))
+DELAY PROCESS(Current process;10)//Wait a few ticks to get the calendar shut
+End if 
+QUERY([Activity];[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=Current date)
+$Note:=""
+For ($i;1;Records in selection([Analysis]))
+If (Find in array(aAnlys;[Analysis]Code)<0)
+INSERT IN ARRAY(aAnlys;0)
+aAnlys{1}:=[Analysis]Code
+$Message:=Get localized string("REMINDER - Inventory on Hand for")+" "+[Analysis]Code+":"+[Analysis]Description+" "+Get localized string("has reduced to")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("units. You may need to re-order this item!")
+If (Position($Message;[Activity]CalendarNotes)<1)//Don't repeat message if already there
+$Note:=$Message+Char(13)+$Note
+End if 
+End if 
+NEXT RECORD([Analysis])
+End for 
+If (Length($Note)>5)//Dont write if it only contains CR
+READ WRITE([Activity])
+LOAD RECORD([Activity])
+[Activity]CalendarNotes:=$Note+Char(13)+[Activity]CalendarNotes
+SAVE RECORD([Activity])
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+End if 
+$Note:=""
+//If (◊iCalendar=0)
+//  ◊iCalendar:=New process("CalendarOpen";128000;"Calendar")
+//End if 
+End if 
+ALL RECORDS([Facility])
+FIRST RECORD([Facility])
+If ([Facility]RemindFollowups)
+SET QUERY DESTINATION(3;$i)
+QUERY([Contacts];[Contacts]FollowUpDate<=Current date;*)
+QUERY([Contacts]; & ;[Contacts]FollowUpDate#!00-00-00!;*)
+QUERY([Contacts]; & ;[Contacts]FollowUpDone=False)
+SET QUERY DESTINATION(0)
+If ($i>0)
+$i:=Size of array(<>iProcess)+1
+If ($i<4)//Only do if a few processes are open
+INSERT IN ARRAY(<>iProcess;$i;1)
+INSERT IN ARRAY(<>aButton;$i;1)
+<>iProcess{$i}:=New process("Contacts";128000;"Sale"+String($i-1);True;"")
+<>aButton{$i}:="Sale"+String($i-1)
+<>aButton:=$i
+CALL PROCESS(<>iFloating)
+End if 
+End if 
+End if 
+$NextFollowup:=Current time+?02:00:00?//Wait two hours
+If ($NextFollowup<?02:00:00?)//Wait at midnight
+$NextFollowup:=?23:59:59?
+End if 
+End if 
+//If (Application type#4D Server)
+//If (<>TAPI_deviceID#0)
+//$err:=hmTAPI_Open (<>TAPI_deviceID)
+//$err:=hmTAPI_GetMessage (<>TAPI_deviceID;$msgno;$param1;$param2;$param3;$countMsg)
+//If ($msgno=23)
+//$err:=hmTAPI_GetCallInfo ($param2;<>vCallerID;<>vCallerIDName;$CalledIDName)
+//AlertMessage (Get localized string("Call")+": "+<>vCallerID+" "+<>vCallerIDName;Get localized string("Accept");Get localized string("Ignore"))
+//If (OK=1)
+//<>CallID:=$param2
+//$err:=hmTAPI_Accept (<>CallID)
+//CALL PROCESS(<>iKSSFloat)  //To update end call button
+//End if 
+//End if 
+//$err:=hmTAPI_Close 
+//End if 
+//End if 
+
+DELAY PROCESS(Current process;60)//1 second between each running
+Case of 
+: (Current time<UTCTime ([Facility]LastSyncTime;False)) & ([Facility]SyncingOn) & ([Facility]CentralAddress>"")
+FloatMessage (Get localized string("Sync Delay"))
+: (vMax>3)
+FloatMessage (Get localized string("Sync Fail"))
+: (<>tWebServer=True)
+FloatMessage (Get localized string("WebServer"))
+Else 
+FloatMessage (Get localized string("Paused")+"... ")
+End case 
+Else 
+FloatMessage (Get localized string("LoggingOff"))
+End if 
+
+
+//Detect if HOF has sent through a sync code to upload exported datafile
+If (<>sProduct#"M@") & (<>sProduct#"") & (Substring([Facility]SyncError;1;3)="40@") & (Application type#4D Remote mode)
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+
+If (Read only state([Facility])=False) & (Locked([Facility])=False)
+Case of 
+: (Substring([Facility]SyncError;1;3)="405")//Export datafile, Upload to FTP server, Tell MV to import
+$Table:=Num(Substring([Facility]SyncError;5))
+SyncCreateAll ($Table;True;True;True;True;True)//Table; Set Records to Synced; Send Letters and Contacts; Upload to FTP; Import at MV; Called By LogMon
+
+: (Substring([Facility]SyncError;1;3)="406")//Export datafile, Upload to FTP server
+$Table:=Num(Substring([Facility]SyncError;5))
+SyncCreateAll ($Table;True;True;True;False;True)//Table; Set Records to Synced; Send Letters and Contacts; Upload to FTP
+End case 
+[Facility]SyncError:=""
+SAVE RECORD([Facility])
+End if 
+READ ONLY([Facility])
+UNLOAD RECORD([Facility])
+End if 
+
+DELAY PROCESS(Current process;600)//10 seconds between each running
+Until (<>tLoggingOn=False)// & ((◊dReCalc>=[Facility]ReCalcActivity) | (<>tClient))
+CloseLoopCode 
+FloatMessage ("  "+Get localized string("Aborted")+" ")
+End if 
+<>iLogMonitor:=0

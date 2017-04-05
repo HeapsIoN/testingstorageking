@@ -1,0 +1,206 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//09/05/14
+
+//Accounting Report - Revenue Report
+LogAction (False;"Revenue Report started.")// records the report being started in the eventlog
+
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+vDate:=RequestDate ("Please enter start date:";GetDate (1;Month of(vMthDate);Year of(vMthDate)))
+If (OK=1)
+vMthDate:=RequestDate ("Please enter end date:";GetDate (1;Month of(Current date);Year of(Current date))-1)
+End if 
+
+If (OK=1)
+//1) Income Charged Report - this will work correctly if all analysis codes haev Keystat categories
+Open window(50;100;500;200;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE("Processing Income Charged")
+ARRAY TEXT(asData;100;100)
+C_REAL($TotalCharg;$TotalRec;$CreitDeposit;$TotalPrepaid)
+$TotalPrepaid:=0
+$CreitDeposit:=0
+$TotalCharg:=0
+$TotalRec:=0
+asData{1}{2}:="Key Category"
+asData{2}{2}:="Net"
+asData{3}{2}:="Tax"
+asData{4}{2}:="Total"
+
+asData{1}{3}:=<>asChgCategory{1}
+asData{1}{4}:=<>asChgCategory{2}
+asData{1}{5}:=<>asChgCategory{3}
+asData{1}{6}:=<>asChgCategory{4}
+asData{1}{7}:=<>asChgCategory{5}
+asData{1}{8}:=<>asChgCategory{6}
+
+For ($i;1;Size of array(<>asChgCategory))
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=<>asChgCategory{$i};*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+asData{2}{$i+2}:=String(Sum([Trxs]TotAmt)-Sum([Trxs]TaxAmt))
+asData{3}{$i+2}:=String(Sum([Trxs]TaxAmt))
+asData{4}{$i+2}:=String(Sum([Trxs]TotAmt))
+
+$TotalCharg:=$TotalCharg+Num(asData{4}{$i+2})
+End for 
+asData{1}{9}:="Total:"
+asData{4}{9}:=String($TotalCharg)
+
+// 2) Banking Summary report - uses Datebanked
+GOTO XY(2;2)
+MESSAGE("Processing Banking Summary")
+ARRAY TEXT(asDescription;6)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Description;asDescription)
+
+asData{1}{11}:="Analysis Code"
+asData{2}{11}:="Collected"
+asData{3}{11}:=""
+asData{4}{11}:=""
+
+For ($j;1;Size of array(asDescription))
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]DateBanked>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Analysis]Description=asDescription{$j};*)
+QUERY([Trxs]; & ;[Analysis]Inactive=False)
+
+asData{1}{11+$j}:=asDescription{$j}
+asData{2}{11+$j}:=String(Sum([Trxs]TotAmt))
+$TotalRec:=$TotalRec+Sum([Trxs]TotAmt)
+End for 
+asData{1}{11+$j}:="Total:"
+asData{2}{11+$j}:=String($TotalRec)
+
+//3) Deposit Charged part based on Trx line 13
+GOTO XY(2;2)
+MESSAGE("Processing Deposits")
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Deposit";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt>0)
+
+asData{1}{13+$j}:="Charged"
+asData{2}{13+$j}:=String(Sum([Trxs]TotAmt))
+
+//  //Deposot Absorbed
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Deposit";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt<0)
+
+$CreitDeposit:=Sum([Trxs]TotAmt)
+
+ARRAY TEXT($AgreeNo;0)
+ARRAY DATE($TrxDate;0)
+ARRAY REAL($TotalAmt;0)
+//Rental Fee Transaction has to be the same day as Credit Deposit
+SELECTION TO ARRAY([Trxs]AgreeNo;$AgreeNo;[Trxs]TrxDate;$TrxDate;[Trxs]TotAmt;$TotalAmt)
+asData{3}{13+$j}:="Absorbed"
+For ($z;1;Size of array($AgreeNo))
+QUERY([Trxs];[Trxs]AgreeNo=$AgreeNo{$z};*)
+QUERY([Trxs]; & ;[Trxs]TotAmt=Abs($TotalAmt{$z});*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=$TrxDate{$z};*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=(<>sFacility+"RF"))
+
+If (Records in selection([Trxs])=1)
+asData{4}{13+$j}:=String(Num(asData{4}{13+$j})+[Trxs]TotAmt)
+End if 
+End for 
+
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Deposit";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=Current date)
+
+asData{1}{14+$j}:="Total Deposit"
+asData{2}{14+$j}:=String(Sum([Trxs]TotAmt))
+asData{3}{14+$j}:=""
+asData{4}{14+$j}:=""
+
+//4. Customer balances Report
+
+asData{1}{16+$j}:="Prev Mth Bal"
+asData{2}{16+$j}:="Charges"
+asData{3}{16+$j}:="Payments"
+asData{4}{16+$j}:="Bal Mth End"
+
+CalcCustBals (False;vMthDate;<>sFacility)
+
+///////////fb 8967 by eugene, 28.04.2015//////
+For ($s;1;Size of array(aOBal))
+asData{1}{17+$j}:=""
+asData{2}{17+$j}:=""
+asData{3}{17+$j}:=""
+asData{4}{17+$j}:=""
+End for 
+//////////////////
+
+
+For ($s;1;Size of array(aOBal))
+asData{1}{17+$j}:=String(Num(asData{1}{17+$j})+aOBal{$s})
+asData{2}{17+$j}:=String(Num(asData{2}{17+$j})+aChgs{$s})
+asData{3}{17+$j}:=String(Num(asData{3}{17+$j})+aRecs{$s})
+asData{4}{17+$j}:=String(Num(asData{4}{17+$j})+aCBal{$s})
+End for 
+
+
+//5.Prepaid report
+
+ARRAY TEXT(aCustName;0)
+ARRAY TEXT(asData1;0)
+ARRAY TEXT(asData2;0)
+ARRAY TEXT(asData3;0)
+ARRAY TEXT(asData4;0)
+ARRAY TEXT(asData5;0)
+ARRAY TEXT(asData6;0)
+ARRAY TEXT(asData7;0)
+ARRAY TEXT(asData8;0)
+ARRAY TEXT(asData9;0)
+
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+vReportSettings:=[Facility]ReportSettings
+tExTax:=Num(vReportSettings[[26]])
+DEFAULT TABLE([Agreement])
+bAdd:=1
+GOTO XY(2;2)
+MESSAGE("Processing Rent In Advance")
+RentinAdvanceCalc (<>sFacility;vMthDate;[Facility]RentAdvFlag;True)
+
+If (Size of array(aPrepaidAnalysis)>0)
+For ($g;1;Size of array(aPrepaidAnalysis))
+asData{1}{18+$j+$g}:=aPrepaidAnalysis{$g}
+If (tExTax=1)
+asData{2}{18+$j+$g}:=String(aOBal{$g}-CalcTaxAmt (aOBal{$g};"";vMthDate;vMthDate;2))//added 15/5/06
+Else 
+asData{2}{18+$j+$g}:=String(aOBal{$g})
+End if 
+$TotalPrepaid:=$TotalPrepaid+Num(asData{2}{18+$j+$g})
+End for 
+asData{1}{18+$j+$g}:="Total"
+asData{2}{18+$j+$g}:=String($TotalPrepaid)
+End if 
+CLOSE WINDOW
+ALL RECORDS([Trxs])
+REDUCE SELECTION([Trxs];20+Size of array(asDescription)+Size of array(aPrepaidAnalysis))
+FORM SET OUTPUT([Trxs];"RevenueReport")
+BREAK LEVEL(1)
+ACCUMULATE([Trxs]TaxAmt;[Trxs]TotAmt;vAmt2)
+PrintSelection ("P";->[Trxs])
+End if 
+LogAction (True;"Revenue Report ended.")

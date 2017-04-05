@@ -1,0 +1,50 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): eugene.dorokhov
+// Date and time: 19/01/17, 14:08:31
+// ----------------------------------------------------
+// Method: Encode256
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($1)//CC num
+C_TEXT($encrypted;$decrypted;$my_password;$my_data;$key;$iv)
+C_BLOB($password;$data;$data2;$key1;$iv1)
+
+//19-01-17 DM Added extra condition to find Facility record
+If (Records in selection([Facility])=0)
+SetFacility 
+End if 
+
+If ([Facility]CCEncrypted)
+$key:="45de539e81fad35a92d14babf4d9f43e74ec4bf156376e4fea6f914254db7e73e3c0f15f5d56a61c3468563de685d47e616c5c2540d75e90ec655cf1b34a2a2c2a9521f4883642ad976f95ce28f8ca841776978292d5986e88908be787c6db22e29dc67fa310ee53f5eb7751138b775cb5fc33687b7129730c7955742e8"+"cffc3c1fe61771b15c79a0bcaa2ee488c9b85862ae07a85ef2b02ad669354a98035094eb45dbc7fcf2623cfa9eeed7f0b2dd4a10f3dd3c73ae7aaeff4596a4587efcf1c8c1828d9d33cf6cef2a454be5e7b85198f803d201c0633aca02f462bb46754fbe9d8b5fb84ff083f175a63815a6d21f00d04971919f47ff72fb9"+"4fa9f80034"
+
+CONVERT FROM TEXT($key;"utf-8";$password)
+CONVERT FROM TEXT("";"utf-8";$key1)
+CONVERT FROM TEXT("";"utf-8";$iv1)
+
+READ WRITE([Customer])
+
+$my_data:=$1
+
+CONVERT FROM TEXT($my_data;"utf-8";$data)
+//$encrypted:=AES256 ($data;$password;Crypto Encrypt;Crypto AES ECB;Crypto BASE64)
+
+$encrypted:=AES256 ($data;$password;Crypto Encrypt;Crypto AES ECB;Crypto BASE64;Crypto AES No padding;$key1;$iv1)
+
+BASE64 DECODE($encrypted;$data)
+
+[Customer]id_photo:=$data
+COMPRESS BLOB([Customer]id_photo;Fast compression mode)
+
+//DM masked CC Number to CCno
+[Customer]CCNo:="xxxxxxxxxxxx"+Substring($my_data;Length($my_data)-3;4)
+
+SAVE RECORD([Customer])
+Else 
+[Customer]CCNo:=$1
+End if 

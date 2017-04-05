@@ -1,0 +1,49 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($1;$2;$HasFooter)//no of columns on report, no. of records in selection (columns x rows)
+C_TEXT($3)//Footer Text
+numofFields:=$1
+numofRecords:=$2
+If (Count parameters>2)
+$HasFooter:=1
+Else 
+$HasFooter:=0
+End if 
+sheet1.xml_Ref:=DOM Create XML Ref("worksheet")
+DOM SET XML ATTRIBUTE(sheet1.xml_Ref;"xmlns";"http://schemas.openxmlformats.org/spreadsheetml/2006/main";"xmlns:r";"http://schemas.openxmlformats.org/officeDocument/2006/relationships")
+endRow:=$2+2+$HasFooter
+endColumn:=Char(64+$1)
+xElement:=DOM Create XML element(sheet1.xml_Ref;"/worksheet/dimension/";"ref";"A1:"+endColumn+String(endRow))
+xElement:=DOM Create XML element(sheet1.xml_Ref;"/worksheet/sheetViews/sheetView/";"tabSelected";"1";"workbookViewId";"0")
+//not needed??  xElement:=DOM Create XML element(sheet1.xml_Ref;"/worksheet/sheetViews/sheetView/selection";"sqref";"A1")
+xElement:=DOM Create XML element(sheet1.xml_Ref;"/worksheet/sheetFormatPr/";"defaultRowHeight";"15")
+xElement:=DOM Create XML element(sheet1.xml_Ref;"/worksheet/cols/col";"min";"1";"max";String(numofFields);"width";"15";"customWidth";"1")//;"style";"1"
+xPath:="/worksheet/sheetData/"
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row/";"r";"1";"spans";"1:"+String(numofFields))
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row/c/";"r";"A1";"t";"s")//"s";"1"
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row/c/v/")
+DOM SET XML ELEMENT VALUE(xElement;"0")
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row/";"r";"2";"spans";"1:"+String(numofFields))//"ht";"18.75")
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row[2]/c/";"r";"A2";"t";"s")//;"s";"2"
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row[2]/c/v/")
+DOM SET XML ELEMENT VALUE(xElement;"1")
+
+$temp:=2
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row/";"r";"3";"spans";"1:"+String(numofFields))
+For ($column;1;numOfFields)
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row[3]/c["+String($column)+"]/";"r";Char(64+$column)+"3";"t";"s")// removed s=3 ;"s";"3" `
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row[3]/c["+String($column)+"]/v/")
+DOM SET XML ELEMENT VALUE(xElement;String($temp))
+$temp:=$temp+1
+End for 
+For ($row;1;numOfRecords)
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row/";"r";String($row+3);"spans";"1:"+String(numofFields))
+For ($column;1;numOfFields)
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row["+String($row+3)+"]/c["+String($column)+"]/";"r";Char(64+$column)+String($row+3);"t";"s")//removed s=4 "s";"4"
+xElement:=DOM Create XML element(sheet1.xml_Ref;xPath+"row["+String($row+3)+"]/c["+String($column)+"]/v/")
+DOM SET XML ELEMENT VALUE(xElement;String($temp))
+$temp:=$temp+1
+End for 
+End for 
+xElement:=DOM Create XML element(sheet1.xml_Ref;"/worksheet/pageMargins/";"left";"0.7";"right";"0.7";"top";"0.75";"bottom";"0.75";"header";"0.3";"footer";"0.3")
+DOM EXPORT TO FILE(sheet1.xml_Ref;appPath+"xl"+<>pathSpacer+"worksheets"+<>pathSpacer+"sheet1.xml")
+DOM CLOSE XML(sheet1.xml_Ref)

@@ -1,0 +1,59 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (PermissionsControl (121))
+ARRAY TEXT(asDescription;0)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Description;asDescription)
+INSERT IN ARRAY(asDescription;0)
+asDescription{1}:="All Analysis Codes"
+asDescription:=1
+Open window((Screen width/2)-210;(Screen height/2)-197;(Screen width/2)+210;(Screen height/2)+197;5;Get localized string("Banking Summary"))
+DIALOG([Trxs];"BankDialog2")
+CLOSE WINDOW
+If (OK=1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+If (asDescription=1)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+vCol1:=<>sFacility+"@"
+Else 
+QUERY([Analysis]; & ;[Analysis]Description=asDescription{asDescription};*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+vCol1:=[Analysis]Code
+End if 
+If (Records in selection([Analysis])=0)
+AlertMessage (Get localized string("You have not selected a valid receipts Analysis Code."))
+Else 
+DEFAULT TABLE([Trxs])
+If (bAll=1)
+QUERY([Trxs];[Trxs]DateBanked=!00-00-00!;*)
+Else 
+If (bCode=1)
+QUERY([Trxs];[Trxs]DateBanked>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=vRptDate;*)
+Else 
+QUERY([Trxs];[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vRptDate;*)
+End if 
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=vCol1)
+If (Records in selection>0)
+If (bAll=1)
+vLegend:=asDescription{asDescription}+" "+Get localized string("since last banking report")
+Else 
+vLegend:=asDescription{asDescription}+" "+Lowercase(Get localized string("From"))+" "+String(vDate;6)+" "+Get localized string("to")+" "+String(vRptDate;6)
+End if 
+FORM SET OUTPUT([Trxs];"BankingSumry")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]CustomerCode;>)
+BREAK LEVEL(0)
+ACCUMULATE([Trxs]TotAmt)
+PrintSelection ("P")
+Else 
+AlertMessage (Get localized string("There are no transactions for analysis code")+" "+asDescription{asDescription}+" "+Get localized string("in the date range specified!"))
+End if 
+End if 
+End if 
+End if 

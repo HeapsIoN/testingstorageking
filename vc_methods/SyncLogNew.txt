@@ -1,0 +1,84 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//New version of SyncLog that uses webservices - Created SDD 17/3/11
+
+//Called from LogMonLoopCode   TriggerLog  LogEvent  SetupArrays   LogMonitor  On Startup  LogMonServer  Initialise   storman9    made4sales
+//SyncStatus   SyncCreateAll    SyncCreateCust  Documentation   SyncReceive CheckUpdate
+//0=Created by Local System
+//1=Sent to Remote System
+//2=Received from Remote system
+//3=Updated on Remote System
+//4=Target record is locked - Try again in 10 seconds
+//5=Not to ever be synced - Facility="HOF"
+//6=ERROR - Damaged Blob couldn't be expanded
+//7=ERROR - Fields do not match
+//8=ERROR - Field number expected
+//9=ERROR - Record not found or on saving record or duplicate key
+//10=ERROR - Probably damaged Event Log record - Previously jammed syncing
+//11=ERROR - Record has invalid facility code
+//12=ERROR - Updating this record may have resulted in a duplicate transaction
+//13=ERROR - Blob size is greater than 500K so cannot sync due to time constraint
+//100=Created by Local for StormanHOF
+//101=Sent to StormanHOF
+//102=Received from StormanHOF
+//103=Updated on Remote System
+//106=ERROR Facility BusinessName Mismatch - not written
+//Greater than 13 is 4D record number on saving the record
+//[UserLogins]RecordStatus 0=Record Everything, 1=Don't Log Activity, 2=Don't Create EventLog, 3=Don't do either, -1=Record to File
+C_BLOB(vbEventContent;vbRecord;vbField;vbResponse)
+C_TIME(vtNextSyncTime)
+C_LONGINT($i)
+
+If ([Facility]LastSyncDate<UTCDate (Current time;True;Current date)) & ([Facility]LastSyncTime#?00:00:00?)
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]LastSyncTime:=?00:00:00?
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+If ((Current time>vtNextSyncTime) & (UTCTime (Current time;True)>[Facility]LastSyncTime) & (vMax<3)) | (Shift down)//Dont send at night so server can backup etc (Current time>?07:00:00?) & (Current time<?19:00:00?) & 
+
+$NextSeqNo:=0
+$Pos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+If ($Pos>0)
+$NextSeqNo:=<>aiEventSeqNo{$Pos}+1
+
+If (SyncRequestEvents ([Facility]FacilityCode;$NextSeqNo;<>dCompileDate))//SyncToSite
+QUERY([EventLog];[EventLog]SyncStatus=0)
+If (Records in selection([EventLog])>0)
+$NextSeqNo:=<>aiEventSeqNo{$Pos}+1
+If (SyncSendEvents ([Facility]FacilityCode;$NextSeqNo;<>dCompileDate))
+SyncRecordLog ("Setting Event Seq No to "+String($NextSeqNo))
+<>aiEventSeqNo{$Pos}:=$NextSeqNo//Was SyncToMaster  SyncLog
+End if 
+End if 
+//SyncDecode   SyncUpdate
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]LastSyncTime:=UTCTime (Current time;True)
+[Facility]LastSyncDate:=UTCDate (Current time;True;Current date)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+End if 
+//Between 5pm & 7pm to run compile checksum of balances and send to host
+//Only Send in 1st 15 secs otherwise more than one in the same minute - try to avoid all coming at once
+If (Current time>?17:00:00?) & (Current time<?19:00:00?)
+$i:=Num(Substring([Facility]UserCode;4;2))
+If ($i>59)
+$i:=$i-50
+End if 
+If (Substring(String(Current time);4;2)=String($i;"00")) & (Substring(String(Current time);7;2)<"14")
+SyncSendCheckSums 
+End if 
+End if 
+Else 
+If (vtNextSyncTime>?23:30:00?) & (Current time>?00:10:00?) & (Current time<?23:30:00?)//SDD Modified 02/10/13
+vtNextSyncTime:=?00:10:00?
+End if 
+If (vMax>=3)
+vMax:=0
+vtNextSyncTime:=vtNextSyncTime+?00:15:00?//Try again in 15 mins
+End if 
+End if 

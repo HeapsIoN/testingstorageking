@@ -1,0 +1,257 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)
+C_LONGINT($i)
+$0:=False
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Deposit")
+
+$Amount:=0
+For ($i;1;Records in selection([Analysis]))
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code)
+$Amount:=$Amount+Sum([Trxs]TotAmt)
+NEXT RECORD([Analysis])
+End for 
+
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]TotAmt=$Amount)
+$ResAmount:=$Amount
+If (Records in selection([Trxs])>=1)
+ConfirmTwo (Get localized string("Create a refund for this deposit of")+" "+String($Amount;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+
+If (OK=1)
+
+If ([Reservation]Balance<0)
+ConfirmTwo (Get localized string("Refund additional remaining balance of")+" "+String([Reservation]Balance;"###,##0.00")+" "+Get localized string("as well?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Amount:=$Amount+([Reservation]Balance*-1)
+End if 
+End if 
+
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+QUERY([Analysis];[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=53)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Trxs]Description="")
+[Trxs]Description:=[Analysis]Description
+End if 
+End if 
+End if 
+[Trxs]TotAmt:=$Amount*(-1)
+
+SAVE RECORD([Trxs])
+FORM SET INPUT([Trxs];"ModReceipts")
+bFromMoveIn:=True
+vtReverse:=True
+MODIFY RECORD([Trxs];*)
+
+If (OK=1)
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+QUERY([Analysis];[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"DP")
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Credit "+[Analysis]Description
+End if 
+[Trxs]TotAmt:=$ResAmount*(-1)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+LOAD RECORD([Trxs])
+ReCalc (True)
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Refunded"
+[Reservation]OutcomeDate:=Current date
+vActive:="Non-Active"
+READ WRITE([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+For ($i;1;Records in selection([Unit]))
+If ([Unit]Status="Reserved")
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]ReservedTo:=""
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+
+AlertMessage (Get localized string("Refund successfully created. You can now print an invoice / receipt."))
+$0:=True
+Else 
+DELETE RECORD([Trxs])
+End if 
+End if 
+Else 
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Deposit")
+
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code;*)
+
+If (Records in selection([Analysis])>1)
+For ($i;2;Records in selection([Analysis]))
+QUERY([Trxs]; | ;[Trxs]AnalysisCode=[Analysis]Code;*)
+NEXT RECORD([Analysis])
+End for 
+End if 
+
+QUERY([Trxs]; & ;[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Reservation]RReserveNo)
+
+If (Records in selection([Trxs])>0)
+ConfirmTwo (Get localized string("The deposit was charged but not paid - create a credit for the deposit?"))
+
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+QUERY([Analysis];[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"DP")
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Credit "+[Analysis]Description
+End if 
+[Trxs]TotAmt:=$Amount*(-1)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+LOAD RECORD([Trxs])
+ReCalc (True)
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Refunded"
+[Reservation]OutcomeDate:=Current date
+vActive:="Non-Active"
+READ WRITE([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+For ($i;1;Records in selection([Unit]))
+If ([Unit]Status="Reserved")
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]ReservedTo:=""
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+Else 
+
+If ([Reservation]Balance<0)
+ConfirmTwo (Get localized string("Refund remaining balance of")+" "+String([Reservation]Balance;"###,##0.00")+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Amount:=[Reservation]Balance*-1
+End if 
+End if 
+
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+QUERY([Analysis];[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=53)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Trxs]Description="")
+[Trxs]Description:=[Analysis]Description
+End if 
+End if 
+End if 
+[Trxs]TotAmt:=$Amount*(-1)
+
+SAVE RECORD([Trxs])
+FORM SET INPUT([Trxs];"ModReceipts")
+bFromMoveIn:=True
+vtReverse:=True
+MODIFY RECORD([Trxs];*)
+
+If (OK=1)
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+READ ONLY([Trxs])
+LOAD RECORD([Trxs])
+ReCalc (True)
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Refunded"
+[Reservation]OutcomeDate:=Current date
+vActive:="Non-Active"
+READ WRITE([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+For ($i;1;Records in selection([Unit]))
+If ([Unit]Status="Reserved")
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]ReservedTo:=""
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+
+AlertMessage (Get localized string("Refund successfully created. You can now print an invoice / receipt."))
+$0:=True
+Else 
+DELETE RECORD([Trxs])
+End if 
+
+End if 
+End if 

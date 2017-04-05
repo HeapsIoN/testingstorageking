@@ -1,0 +1,166 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method to handle the actual sending of an email message
+//Syntax to use:  OR_NewMailMessage ($FromAddress;$ToAddress;$CCAddress;$BCCAddress;$Subject;$Message;False;->Attachments;$ReplyToAddress;$SMTPHost;$SMTPUsername;$SMTPPassword;$POPHost;$POPUsername;$POPPassword)
+
+
+C_TEXT($1;$FromAddress;$2;$ToAddress;$3;$CCAddress;$4;$BCCAddress;$5;$Subject;$6;$Message;$UseHOFSMTPText)
+C_BOOLEAN($0;$7;$UseHOFSMTP)
+C_POINTER($8)
+C_TEXT($9;$ReplyToAddress;$10;$SMTPHost;$11;$SMTPUsername;$12;$SMTPPassword;$13;$POPHost;$14;$POPUsername;$15;$POPPassword;$TempTo;$TempCC;$TempBCC)
+C_LONGINT($smtp_id;$pop3_id;$i;$PopPort;$SMTPPort;$PortPos)
+
+$pop3_id:=0
+$smtp_id:=0
+$ErrorMethod:=Method called on error
+ON ERR CALL("ErrorNone")
+$cr:=Char(Carriage return)
+OR_ErrorMail ("IT_SetTimeOut";IT_SetTimeOut (10))
+$0:=False
+
+$FromAddress:=$1
+$ToAddress:=$2
+$CCAddress:=$3
+$BCCAddress:=$4
+$Subject:=$5
+$Message:=$6
+$Attach:=$7
+$UseHOFSMTP:=False
+
+If (OR_ReadOResXML ="True")//Does the XML file exist?
+$UseHOFSMTPText:=OR_ReadOResXML ("UseHOFSMTP")//Find out what the deposit value for this Facility Code is
+If ($UseHOFSMTPText="@TRUE@")
+$UseHOFSMTP:=True
+End if 
+End if 
+
+If ($1="")
+$FromAddress:=[Facility]EmailAddress
+End if 
+$FacilityCode:=[Facility]FacilityCode
+
+If ($UseHOFSMTP)
+ALL RECORDS([Facility])
+//ORDER BY([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+QUERY([Facility];[Facility]FacilityCode=<>sHOFacility)
+If (Records in selection([Facility])<1)
+QUERY([Facility];[Facility]FacilityCode=$FacilityCode)
+End if 
+End if 
+If ($9#"")//Have specified a ReplyToAddress
+$ReplyToAddress:=$9
+Else 
+$ReplyToAddress:=""
+End if 
+If ($10#"")//Have specified a SMTPHost
+$SMTPHost:=$10
+Else 
+$SMTPHost:=[Facility]SmtpHostName
+End if 
+If ($11#"")//Have specified a SMTPUsername
+$SMTPUsername:=$11
+Else 
+$SMTPUsername:=[Facility]SMTPLogin
+End if 
+If ($12#"")//Have specified an SMTPPassword
+$SMTPPassword:=$12
+Else 
+$SMTPPassword:=[Facility]SMTPPassword
+End if 
+If ($13#"")//Have specified a POPHost
+$POPHost:=$13
+Else 
+$POPHost:=[Facility]POPHostName
+End if 
+If ($14#"")//Have specified a POPUsername
+$POPUsername:=$14
+Else 
+$POPUsername:=[Facility]POPMailBox
+End if 
+If ($15#"")//Have specified a POPPassword
+$POPPassword:=$15
+Else 
+$POPPassword:=[Facility]POPPassword
+End if 
+
+$SMTPSSL:=[Facility]SMTPSSL
+$POP3SSL:=[Facility]POP3SSL
+$ReplyToAddress:=$FromAddress
+$TempTo:=$ToAddress
+$TempCC:=$CCAddress
+$TempBCC:=$BCCAddress
+If (Substring($ToAddress;Length($ToAddress);1)#";")
+$ToAddress:=$ToAddress+";"
+End if 
+
+//Extract the PopPort Number (when entered) from the Host Name
+$PortPos:=Position(":";$POPHost)
+If ($PortPos>0)
+$PopPort:=Num(Substring($POPHost;$PortPos+1))
+$POPHost:=Substring($POPHost;1;$PortPos-1)
+Else 
+$PopPort:=110
+End if 
+If ($SMTPHost#"")
+If ($POP3SSL=1)
+OR_ErrorMail ("IT_SetPort";IT_SetPort (13;$PopPort))//POP Port
+Else 
+OR_ErrorMail ("IT_SetPort";IT_SetPort (3;$PopPort))//POP Port
+End if 
+
+//Extract the SMTP Port Number (when entered) from the Host Name
+$PortPos:=Position(":";$SMTPHost)
+If ($PortPos>0)
+$SMTPPort:=Num(Substring($SMTPHost;$PortPos+1))
+$SMTPHost:=Substring($SMTPHost;1;$PortPos-1)
+Else 
+$SMTPPort:=25
+End if 
+If ($SMTPSSL=1)
+OR_ErrorMail ("IT_SetPort";IT_SetPort (12;$SMTPPort))//SMTP Port
+Else 
+OR_ErrorMail ("IT_SetPort";IT_SetPort (2;$SMTPPort))//SMTP Port
+End if 
+
+
+If ($SMTPUsername="") | ($SMTPPassword="")//Require POP Login for Sending verification if SMTP Auth not used
+If (OR_ErrorMail ("POP3_Login";POP3_Login ($POPHost;$POPUsername;$POPPassword;0;$pop3_id;$POP3SSL)))
+OR_ErrorMail ("POP3_Logout";POP3_Logout ($pop3_id))
+End if 
+End if 
+
+$Pos:=Position(";";$ToAddress;*)
+If ($Pos>0)
+$ToAddress:=Substring($ToAddress;1;$Pos-1)
+End if 
+
+$Pos:=Position(";";$FromAddress;*)
+If ($Pos>0)
+$FromAddress:=Substring($FromAddress;1;$Pos-1)
+End if 
+
+
+EMail_Send_SetPreferences ($SMTPHost;$FromAddress;$SMTPUsername;$SMTPPassword)
+$err:=IT_SetTimeOut (120)
+$err:=EMail_Send ($Subject;$Message;$ToAddress;"";"";$8;$SMTPSSL)
+$err:=IT_SetTimeOut (30)
+Else 
+$err:=5
+End if 
+
+
+If ($err=0)
+$0:=True
+Else 
+SyncRecordLog ("Online Reservation email error: "+String($err)+" ;"+$Subject+" ;"+$Message+" ;"+$ToAddress+" :"+$SMTPHost+" ;"+$FromAddress+" ;"+$SMTPUsername+" ;"+$SMTPPassword)
+End if 
+
+$ToAddress:=$TempTo
+$CCAddress:=$TempCC
+$BCCAddress:=$TempBCC
+
+If ($UseHOFSMTP)
+QUERY([Facility];[Facility]FacilityCode=$FacilityCode)
+End if 
+
+OK:=BooleanToInteger ($0)

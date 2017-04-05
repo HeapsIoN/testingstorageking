@@ -1,0 +1,217 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Import settings files
+C_BOOLEAN($1;$FromStartup)
+C_LONGINT($i;$Choice)
+C_TEXT($BusName;$CoName;$FacilityName)
+C_TEXT($FacilityCode;$UserCode;$Product)
+C_DATE($LastDaily;$LastBanking;$LastGateLoad;$ExpiryDate)
+C_BOOLEAN($UseGate;$UsePhotos;$TutData;$LicRented)
+C_LONGINT($NextAgreemt;$MaxUnits;$GateSysType;$NextBookingNo)
+C_BLOB($Blob)
+C_TEXT($Path)
+$FromStartup:=False
+If (Count parameters>0)
+$FromStartup:=$1
+End if 
+If (PermissionsControl (117))
+If (Shift down) | ($FromStartup)
+OK:=0
+If ([Facility]TutorialData=False) & (Records in table([Facility])>0)
+ConfirmTwo (Get localized string("This is a live datafile - You should normally use a Tutorial!");Get localized string("Quit");Get localized string("Continue"))
+End if 
+If (OK=0)
+$Path:="Import"
+ARRAY TEXT($aFolders;0)
+FOLDER LIST(<>sTutPath;$aFolders)
+$i:=Find in array($aFolders;"Import@")
+If ($i>0)
+$Path:=$aFolders{$i}
+End if 
+ConfirmTwo (Get localized string("This will import files")+" '"+$Path+"' "+Get localized string("folder inside Tutorial!");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Choice:=1
+Else 
+$Choice:=3
+End if 
+If ($Choice<3)
+$Path:=<>sTutPath+$Path
+If (Test path name($Path)=0)
+ARRAY TEXT($aFiles;0)
+DOCUMENT LIST($Path;$aFiles)
+READ WRITE(*)
+If (Records in table([Facility])>0)
+ConfirmTwo (Get localized string("Delete all existing files first?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ConfirmTwo (Get localized string("Delete all existing files - This could be fatal - Are you sure?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+For ($i;1;Get last table number)
+DEFAULT TABLE(Table($i)->)
+ALL RECORDS
+DELETE SELECTION
+End for 
+End if 
+End if 
+End if 
+For ($i;1;Size of array($aFiles))
+If ($aFiles{$i}#".@")//OS X hidden files start with .
+If (<>iPlatform<3)//Macintosh set file types otherwise 4D Crashes
+SET DOCUMENT CREATOR($Path+<>sSeparator+$aFiles{$i};"4D06")
+SET DOCUMENT TYPE($Path+<>sSeparator+$aFiles{$i};"TEXT")
+End if 
+$TutData:=True
+If (($aFiles{$i}="System@") | ($aFiles{$i}="Facility@")) & (Records in table([Facility])>0)
+ConfirmTwo (Get localized string("Delete All Existing Facility Records?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ALL RECORDS([Facility])
+DELETE SELECTION([Facility])
+Else 
+$TutData:=False
+End if 
+End if 
+If ($aFiles{$i}="UserLogin@")
+ALL RECORDS([UserLogins])
+DELETE SELECTION([UserLogins])
+End if 
+If ($TutData)
+If ($Choice=2)
+DOCUMENT TO BLOB(<>sTutPath+"TableDef"+<>sSeparator+"Old"+Substring($aFiles{$i};1;Length($aFiles{$i})-4)+".4SI";$Blob)
+Else 
+DOCUMENT TO BLOB(<>sTutPath+"TableDef"+<>sSeparator+Substring($aFiles{$i};1;Length($aFiles{$i})-4)+".4SI";$Blob)
+End if 
+IMPORT DATA($Path+<>sSeparator+$aFiles{$i};$Blob)
+If ($aFiles{$i}="Facility@")
+APPEND TO ARRAY(<>asSiteCodes;[Facility]FacilityCode)
+End if 
+If ($aFiles{$i}="Unit@") & ($aFiles{$i}#"UnitStatus@")
+ALL RECORDS([UnitStatusTrx])
+DELETE SELECTION([UnitStatusTrx])
+End if 
+End if 
+End if 
+End for 
+ALL RECORDS([Facility])
+[Facility]CentralAddress:=""
+[Facility]SyncingOn:=False
+[Facility]GateOnStart:=False
+[Facility]MaxUnits:=32000
+SAVE RECORD([Facility])
+READ ONLY(*)
+UnloadAll 
+Else 
+AlertMessage (Get localized string("The 'Import' folder could not be found inside the 'Tutorial' folder!"))
+End if 
+End if 
+End if 
+Else 
+ConfirmTwo (Get localized string("This will import System Setup settings, Billing Plans, Analysis Codes, and Notices Details from the 'Facility' folder inside 'Tutorial' folder and overwrite existing settings.  Are you sure you wish to do this?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ConfirmTwo (Get localized string("This may seriously change your existing setup.  Are you completely sure you want to do this?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Path:=<>sTutPath+"Facility"+<>sSeparator
+$i:=Test path name($Path+"Analysis.slk")
+If ($i#1)
+Repeat 
+AlertMessage (Get localized string("Please open the file called 'Analysis.slk' inside the 'Facility' folder at the next dialog!"))
+//AlertMessage (Get localized string("Please open the file called 'Analysis.slk' inside the 'Facility' folder at the next dialog! Or select .4e7 file.")) //ask
+$Doc:=Open document("")
+CLOSE DOCUMENT($Doc)
+If (OK=1)
+// If ((Substring(Document;Length(Document)-11)="Analysis.slk") | (Substring(Document;Length(Document)-3)=".4e7"))
+If (Substring(Document;Length(Document)-11)="Analysis.slk")
+
+$Path:=Substring(Document;1;Length(Document)-12)
+Else 
+AlertMessage (Get localized string("You have not opened the correct file which must be called 'Analysis.slk'! Please try again."))
+End if 
+Else 
+AlertMessage (Get localized string("Settings files could not be imported!"))
+ABORT
+End if 
+Until (Length($Path)>2)
+End if 
+READ WRITE([Facility])
+If (Test path name($Path+"System.txt")=Is a document)
+ALL RECORDS([Facility])
+$BusName:=[Facility]BusinessName
+$FacilityName:=[Facility]FacilityName
+$CoName:=[Facility]CompanyName
+$FacilityCode:=[Facility]FacilityCode
+$UserCode:=[Facility]UserCode
+$MaxUnits:=[Facility]MaxUnits
+$ExpiryDate:=[Facility]LicExpiryDate
+$LicRented:=[Facility]LicRentExpWarn
+$TutData:=[Facility]TutorialData
+$Product:=[Facility]ProductCode
+$UseGate:=[Facility]UseGateSys
+$UsePhotos:=[Facility]SyncingOn
+$UseCashBook:=[Facility]UseCashBook
+$LastDaily:=[Facility]LastDaily
+$NextAgreemt:=[Facility]NextAgreeNo
+$LastBanking:=[Facility]LastBanking
+$GateSysType:=[Facility]GateSysType
+$LastGateLoad:=[Facility]LastGateLoad
+$NextBookingNo:=[Facility]NextReserveNo
+DELETE RECORD([Facility])
+SET CHANNEL(10;$Path+"System.txt")
+RECEIVE RECORD([Facility])
+SET CHANNEL(11)
+[Facility]BusinessName:=$BusName
+[Facility]FacilityCode:=$FacilityCode
+[Facility]UserCode:=$UserCode
+[Facility]LastDaily:=$LastDaily
+[Facility]NextAgreeNo:=$NextAgreemt
+[Facility]UseGateSys:=$UseGate
+[Facility]TutorialData:=$TutData
+[Facility]ProductCode:=$Product
+[Facility]LastBanking:=$LastBanking
+[Facility]MaxUnits:=$MaxUnits
+[Facility]GateSysType:=$GateSysType
+[Facility]FacilityName:=$FacilityName
+[Facility]SyncingOn:=$UsePhotos
+[Facility]UseCashBook:=$UseCashBook
+[Facility]LastGateLoad:=$LastGateLoad
+[Facility]LicExpiryDate:=$ExpiryDate
+[Facility]LicRentExpWarn:=$LicRented
+[Facility]CompanyName:=$CoName
+[Facility]NextReserveNo:=$NextBookingNo
+SAVE RECORD([Facility])
+Else 
+AlertMessage (Get localized string("The System record could not be imported!"))
+End if 
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+Open window(20;50;450;150;0)
+ARRAY TEXT(asFiles;9)
+For ($i;7;9)
+asFiles{$i}:=Substring(Table name($i);1;8)+".slk"
+GOTO XY(2;2)
+MESSAGE(Get localized string("Importing from")+" "+asFiles{$i}+"          ")
+$p:=Table($i)
+DEFAULT TABLE($p->)
+READ WRITE($p->)
+ALL RECORDS
+DELETE SELECTION
+FORM SET INPUT("Output")
+IMPORT SYLK($Path+asFiles{$i})
+READ ONLY($p->)
+UNLOAD RECORD($p->)
+End for 
+READ WRITE([Analysis])
+ALL RECORDS([Analysis])
+APPLY TO SELECTION([Analysis];[Analysis]Groups:="ALL")
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+GOTO XY(2;2)
+MESSAGE(Get localized string("Loading Sample Notices Letters")+"                                     ")
+DEFAULT TABLE([Notices])
+READ WRITE([Notices])
+ALL RECORDS
+//LoadLetters ($Path)
+LoadEmail ($Path)
+CLOSE WINDOW
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("You must be Admin to Import Data!"))
+End if 

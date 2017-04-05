@@ -1,0 +1,160 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 30/09/14, 16:09:59
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_DoMoveOut
+// Description
+// Ability to move out a Customer from Agreement
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_RAgreeNo;Is string var;SOAP input;"WS_RAgreeNo")
+SOAP DECLARATION(WS_End_Date;Is date;SOAP input)
+SOAP DECLARATION(WS_RsnForMoveOut;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_DoMoveOut"+Char(13)
+$String:=$String+"WS_End_Date: "+String(WS_End_Date)+Char(13)
+$String:=$String+"WS_RsnForMoveOut: "+WS_RsnForMoveOut+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True//checkme
+
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([UnitHistory])
+
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_RAgreeNo;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_RAgreeNo;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+
+Case of 
+: (Records in selection([Agreement])#1)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+: (Records in selection([Unit])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1030
+WS_ORErrorDescription:="There are no units assigned to the Agrement: "+[Agreement]RAgreeNo
+: (WS_End_Date<[Facility]CantModPrior)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1031
+WS_ORErrorDescription:=Get localized string("The move out date cannot be earlier than")+" "+String([Facility]CantModPrior)+". "+Get localized string("Please check the Expected Move Out date.")
+Else 
+
+[Agreement]MoveOut:=WS_End_Date
+vMoveOutDate:=WS_End_Date
+
+While ([Agreement]LastBillDate>Current date)
+tRentTrx:=False
+bAdd:=0
+bAll:=0
+asShowHistory:=0
+viMatch:=0
+<>iRound:=[Facility]RoundDefault
+<>iRoundMethod:=[Facility]RoundMethod
+vFacility:=[Facility]FacilityCode
+vTotal:=0
+
+vOthInsurance:=[Agreement]InsureValue-Sum([Unit]InsureValue)
+vOldOthInsurance:=vOthInsurance
+
+BillNextCharges (8)
+SAVE RECORD([Agreement])
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+End while 
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vAmt5:=0
+vAmt6:=0
+vTotBal:=0
+
+If ([Agreement]MoveOut#!00-00-00!) & ([Agreement]ActiveAgreemt)
+MoveOutCalc 
+End if 
+
+If ([Facility]RequireZeroBal) & (vTotBal#0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1032
+WS_ORErrorDescription:="Agreement cannot be moved out because there is a balance owing: "+String([Agreement]BalanceOwing)
+[Agreement]MoveOut:=Old([Agreement]MoveOut)
+Else 
+vtFormula:=""
+vWords:=""
+CreateTrxMoveOut (True)
+
+If (WS_ORSuccess=True)
+[Customer]ReasonMoveout:=WS_RsnForMoveOut
+SAVE RECORD([Customer])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Customer successfully moved out."
+End if 
+End if 
+
+End case 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([Customer])
+READ ONLY([Unit])
+READ ONLY([Trxs])
+READ ONLY([UnitHistory])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([UnitHistory])
+UNLOAD RECORD([Facility])
+
+$String:="End WS_DoMoveOut"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

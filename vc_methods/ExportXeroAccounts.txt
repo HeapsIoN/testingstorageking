@@ -1,0 +1,101 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//C_DATE()
+C_TEXT(vLoc;$OldLoc;$Ext;$t;$Type;$TaxCode;$NominalAc;$tempor;$type;$Tax_Code;$Name)
+C_LONGINT($0;vlSize1;vlSize2;$vlElem1;$vlElem2)
+
+$Ext:="csv"
+$t:=","
+$cr:=Char(13)
+
+vLoc:=Select folder("Please select where you would like to save this export")
+
+ARRAY TEXT(orig_anlCodes;0)
+ARRAY TEXT(dist_anlCodes;0)
+
+SetFacility 
+
+ALL RECORDS([ChartAccts])
+
+SELECTION TO ARRAY([ChartAccts]AcctNo;orig_anlCodes)
+DISTINCT VALUES([ChartAccts]AcctNo;dist_anlCodes)
+
+FIRST RECORD([ChartAccts])
+
+vlSize1:=Size of array(orig_anlCodes)
+vlSize2:=Size of array(dist_anlCodes)
+
+If (vlSize1#vlSize2)
+$0:=0
+Else 
+$DocRef:=Create document(vLoc+"XeroAccounts"+Replace string(String(Current date);"/";"");$Ext)
+SEND PACKET($DocRef;"*Code,*Name,*Type,*Tax Code,Description,Dashboard,Expense Claims,Enable Payments,Balance"+$cr)
+
+For ($i;1;Records in selection([ChartAccts]))
+QUERY([Analysis];[Analysis]GLCode=[ChartAccts]AcctNo)
+
+Case of 
+: ([ChartAccts]AcctType="C")
+$type:="Current Liability"
+: ([ChartAccts]AcctType="P")
+$type:="Revenue"
+: ([ChartAccts]AcctType="S")
+$type:="Equity"
+: ([ChartAccts]AcctType="D")
+$type:="Current Asset"
+Else 
+
+End case 
+
+//If ([Facility]Country="AU")
+//If ([Analysis]Taxable)
+//$Tax_Code:="GST on Income"
+//Else 
+//$Tax_Code:="BAS Excluded"
+//End if 
+//Else 
+//If ([Analysis]Taxable)
+//$Tax_Code:="15% GST on Income"
+//Else 
+//$Tax_Code:="No GST"
+//End if 
+//End if 
+
+//fb11256
+//fb11256
+Case of 
+: ([Facility]Country="AU")
+If ([Analysis]Taxable)
+$Tax_Code:="GST on Income"
+Else 
+$Tax_Code:="BAS Excluded"
+End if 
+: ([Facility]Country="NZ")
+If ([Analysis]Taxable)
+$Tax_Code:="15% GST on Income"
+Else 
+$Tax_Code:="No GST"
+End if 
+
+: ([Facility]Country="GB")
+If ([Analysis]Taxable)
+$Tax_Code:="20% (VAT on Income)"
+Else 
+$Tax_Code:="No VAT"
+End if 
+
+End case 
+
+$Name:=[ChartAccts]Description
+
+//$tempor:=String([ChartAccts]AcctNo)+$t+$name+$t+$type+$t+$Tax_Code+$t+[ChartAccts]Description+$t+"No"+$t+"No"+$t+"No"+$t+""+$cr
+$tempor:=String([ChartAccts]AcctNo)+$t+$name+$t+$type+$t+$Tax_Code+$t+""+$t+"No"+$t+"No"+$t+"No"+$t+""+$cr
+
+SEND PACKET($DocRef;$tempor)
+NEXT RECORD([ChartAccts])
+End for 
+
+CLOSE DOCUMENT($DocRef)
+AlertMessage (Get localized string("Export Complete!"))
+
+$0:=1
+End if 

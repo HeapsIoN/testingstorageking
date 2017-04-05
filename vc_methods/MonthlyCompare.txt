@@ -1,0 +1,53 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($Month)
+C_DATE($Date)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Monthly Comparison Report started.")// records the report being started in the eventlog
+If (PermissionsControl (54))
+QUERY([Activity];[Activity]FacilityCode=<>sFacility)
+ORDER BY([Activity];[Activity]ActivityDate;>)
+$Date:=GetDate (1;Month of([Activity]ActivityDate);Year of([Activity]ActivityDate))
+OK:=1
+If (<>tBatch=False)
+$Date:=RequestDate (Get localized string("Print Report from what date:");$Date)
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1//Last day of prior month
+End if 
+If (OK=1)
+SetFacility 
+QUERY([Activity];[Activity]FacilityCode=<>sFacility;*)
+$Month:=((Year of($Date)-2000)*100)+Month of($Date)
+QUERY([Activity]; & ;[Activity]ActivityMonth>=$Month;*)
+$Month:=((Year of(vMthDate)-2000)*100)+Month of(vMthDate)
+QUERY([Activity]; & ;[Activity]ActivityMonth<=$Month)
+//QUERY([Activity]; & ;[Activity]ActivityDate<=[System]ReCalcActivity)
+If (Records in selection([Activity])>0)
+READ WRITE([Activity])
+FIRST RECORD([Activity])
+APPLY TO SELECTION([Activity];[Activity]SortReport:=Month of([Activity]ActivityDate))
+READ ONLY([Activity])
+ORDER BY FORMULA([Activity];[Activity]SortReport;>;[Activity]ActivityMonth;>;[Activity]ActivityDate;>)
+BREAK LEVEL(2)
+ACCUMULATE([Activity]InquiriesTaken;[Activity]MoveIns;[Activity]MoveOuts;[Activity]CashRec;[Activity]CreditRec)
+vTitle:=Get localized string("MenuReportmonthlyComparison")
+vLegend:=""
+Case of 
+: (<>sProduct="@B")
+vMI:=Get localized string("Arrivals")
+vMO:=Get localized string("Departures")
+: (<>sProduct="@R")
+vMI:=Get localized string("Rentals")
+vMO:=Get localized string("Returns")
+Else 
+vMI:=Get localized string("Move-Ins")
+vMO:=Get localized string("Move-Outs")
+End case 
+FORM SET OUTPUT([Activity];"MonthlyCompare")
+PrintSelection ("P";->[Activity])
+FORM SET OUTPUT([Activity];"Output")
+Else 
+AlertMessage (Get localized string("MonthlyComparison"))
+End if 
+End if 
+End if 
+LogAction (True;"Monthly Comparison Report ended.")

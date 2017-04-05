@@ -1,0 +1,66 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+////KSS30D_Refund
+//// 10281 by eugene
+
+//If (If (<>sFacility="KE@"))
+//end if
+C_LONGINT($DateDiff;$vlRecord)
+C_TEXT(vCol1)
+///C_LONGINT(bPrtRec;bEmailReceipt;bAll;asShowHistory)
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+
+SetFacility 
+READ WRITE([Trxs])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Agreement];[Agreement]BalanceOwing<0;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Customer]CustType#"National Accounts";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#[Facility]FacilityCode+"MISCL";*)//11/06/16
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#[Facility]FacilityCode+"#@")
+SET AUTOMATIC RELATIONS(False;False)
+
+If ((Records in selection([Agreement])>0))// 
+FIRST RECORD([Agreement])
+For ($vlRecord;1;Records in selection([Agreement]))
+$DateDiff:=Abs(Current date-[Agreement]MoveOut)
+
+If ($DateDiff>=[Facility]InactiveRefundDays)// DAM 
+
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]TotAmt:=(-1)*[Agreement]BalanceOwing
+[Trxs]TrxDate:=Current date///Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+
+QUERY([Analysis];[Analysis]Code=<>SFACILITY+"UNC")
+
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+
+If ([Trxs]AnalysisCode#"")
+SAVE RECORD([Trxs])
+ReCalc 
+
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+Else 
+SyncRecordLog ([Trxs]AgreeNo+"- [Analysis]Code not found ")
+End if 
+
+End if 
+NEXT RECORD([Agreement])
+End for 
+End if 

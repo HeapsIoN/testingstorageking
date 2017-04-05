@@ -1,0 +1,151 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If ([Contacts]ContactName>"")
+$OK:=True
+
+If (vSelectRUnitType>"")
+[Contacts]Facility:=Substring(vSelectRUnitType;1;5)
+Else 
+[Contacts]Facility:=<>sHOFacility
+End if 
+If ([Contacts]Facility#Old([Contacts]Facility))
+QUERY([Facility];[Facility]FacilityCode=[Contacts]Facility)
+If (<>sProduct="MV")
+vOldContact:=500001
+Else 
+vOldContact:=[Facility]NextContactNo
+End if 
+$Continue:=False
+If (Not(Semaphore("<>bNextSalesInqNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+If (<>aiNextSalesInqNo{$arraypos}>vOldContact)
+//If (<>sProduct#"MV")
+//ConfirmTwo (Get localized string("It appears the next sales inquiry number of")+" "+String(vOldContact;"0000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//Else 
+//OK:=1
+//End if 
+//If (OK=1)
+[Contacts]ContactNo:=[Facility]FacilityCode+String(<>aiNextSalesInqNo{$arraypos};"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=<>aiNextSalesInqNo{$arraypos}+1
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+Else 
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+End if 
+//Else 
+//[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+//vOldContact:=vOldContact+1
+//If (<>sProduct#"MV")
+//[Facility]NextContactNo:=[Facility]NextContactNo+1
+//<>aiNextSalesInqNo{$arraypos}:=vOldContact
+//End if 
+//End if 
+Else 
+[Contacts]ContactNo:=[Facility]FacilityCode+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+<>aiNextSalesInqNo{$arraypos}:=vOldContact
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+End if 
+CLEAR SEMAPHORE("<>bNextSalesInqNo")
+Else 
+Repeat 
+[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+End if 
+
+QUERY([UnitType];[UnitType]RUnitType=vSelectRUnitType)
+CREATE RECORD([Quote])
+[Quote]ContactNo:=[Contacts]ContactNo
+Case of 
+: ([UnitType]OrgAnalysis>"") & ([Contacts]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis>"")
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+"RF")
+End case 
+[Quote]AnalysisCode:=[Analysis]Code
+Case of 
+: (<>sProduct="@B")
+[Quote]Size:=Get localized string("Berth Type")+": "+[UnitType]Description
+: (<>sProduct="@R")
+[Quote]Size:=Get localized string("Appliance Type")+": "+[UnitType]Description
+: (<>sFacility="ST@")
+[Quote]Size:=Get localized string("Support Plan Type")+": "+[UnitType]Description
+: (<>sProduct="@C")
+[Quote]Size:=Get localized string("Space Type")+": "+[UnitType]Description
+Else 
+[Quote]Size:=Get localized string("Unit Type")+": "+[UnitType]Description
+End case 
+[Quote]UnitTypeCode:=[UnitType]RUnitType
+[Quote]Price:=CalculateBaseRate (0;2)
+SAVE RECORD([Quote])
+
+[Contacts]PreferredUnits:=[Quote]UnitTypeCode
+[Contacts]OnWaitingList:=True
+
+If (bReserveAfter=1)
+$OK:=False
+If (ConvSaleBooking )
+SAVE RECORD([Facility])
+VALIDATE TRANSACTION
+ACCEPT
+ReserveProc ([Reservation]ReserveNo;True)
+End if 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+
+If (bAgreeAfter=1)
+$OK:=False
+If (ConvSaleAgreemt )
+SAVE RECORD([Facility])
+VALIDATE TRANSACTION
+ACCEPT
+CustProcess ([Agreement]AgreeNo;0;True)
+End if 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+
+If ($OK=True)
+SAVE RECORD([Facility])
+VALIDATE TRANSACTION
+ACCEPT
+End if 
+
+Else 
+AlertMessage (Get localized string("Please enter the customers name"))
+End if 

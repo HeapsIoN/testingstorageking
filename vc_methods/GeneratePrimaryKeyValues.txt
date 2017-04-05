@@ -1,0 +1,92 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//For every Facility record in the current selection, generate PrimaryKey for each Syncing Table.   Verify that no tables already have PrimaryKey values and regenerate if optional parameter is 'true'
+
+C_BOOLEAN($1;$Regenerate;vbSyncingOn;vbGateOn)//Optionally regenerate PrimaryKey values if parameter is 'true'
+C_LONGINT($i;$j;$k)
+C_LONGINT($NextAvail;$NextAvail2)
+
+$Regenerate:=False
+$NoPrimaryKeys:=False
+vbSyncingOn:=False
+vbGateOn:=<>tGateOn//Store the Gate on state
+
+If (vbGateOn=True)
+AlertMessage (Get localized string("The Gate System will now be temporarily be disabled while the Primary Keys are being generated."))
+<>iSetGate:=9//Temporarily turn Gate System off
+End if 
+
+If (UpdateSystem (60;->vbSyncingOn;Get localized string("Unable to disable syncing as Facility record is locked, Primary Key generation has been cancelled! - Please correct and run 'GeneratePrimaryKeyValues' method."))=True)//Syncing has been successfully been turned off 
+$InvalidRecords:=False
+$ErrorAlert:=False
+<>ProgressInd:=0
+
+READ WRITE(*)
+Open window(20;50;600;150;0)
+//Disable Activity and EventLog record creation
+$Name:=SetSyncUser ("Sync";3)//Don't record activity
+
+If ([UserLogins]RecordStatus=3)
+
+ORDER BY([Facility];[Facility]FacilityCode;>)
+
+For ($j;1;Records in selection([Facility]))
+
+$PrimaryKeyMax:=[Facility]PrimaryKeyMax
+$PrimaryKeyMin:=[Facility]PrimaryKeyMin
+$ProductCode:=[Facility]ProductCode
+
+For ($i;2;Size of array(<>aiPrimaryKeyField))//SetupArrays
+If (<>aiPrimaryKeyField{$i}>0) & (<>aiFacilityField{$i}>0)
+$pTable:=Table($i)
+$pPrimary:=Field($i;<>aiPrimaryKeyField{$i})
+$pFacility:=Field($i;<>aiFacilityField{$i})
+If ([Facility]ProductCode="M@")
+QUERY($pTable->;$pPrimary->>$PrimaryKeyMin;*)
+QUERY($pTable->; | ;$pPrimary-><$PrimaryKeyMax;*)
+QUERY($pTable->; | ;$pPrimary->=0;*)
+QUERY($pTable->; & ;$pFacility->=[Facility]FacilityCode+"@")
+$NextAvail:=$PrimaryKeyMin-1
+Else 
+QUERY($pTable->;$pPrimary-><$PrimaryKeyMin;*)
+QUERY($pTable->; | ;$pPrimary->>$PrimaryKeyMax;*)
+QUERY($pTable->; | ;$pPrimary->=0;*)
+QUERY($pTable->; & ;$pFacility->=[Facility]FacilityCode+"@")
+$NextAvail:=$PrimaryKeyMin+1
+End if 
+$NextAvail2:=$NextAvail
+For ($k;1;Records in selection($pTable->))
+GOTO XY(2;2)
+MESSAGE("Assigning new Primary Key to record "+String($k)+" of "+String(Records in selection($pTable->))+" for table: "+Table name($pTable))//Johnno
+While (Find in field($pPrimary->;$NextAvail2)>-1)
+If ([Facility]ProductCode="M@")
+$NextAvail:=$NextAvail-1
+Else 
+$NextAvail:=$NextAvail+1
+End if 
+$NextAvail2:=$NextAvail
+End while 
+$pPrimary->:=$NextAvail
+SAVE RECORD($pTable->)
+NEXT RECORD($pTable->)
+End for 
+End if 
+End for 
+NEXT RECORD([Facility])
+End for 
+End if 
+SetSyncUser ("Sync";2)
+SetSyncUser ($Name)
+
+<>ProgressInd:=100
+READ ONLY(*)
+UnloadAll 
+SetFacility 
+End if 
+//If the Gate System was on at the start, then restart it now.
+If (vbGateOn=True)
+<>iSetGate:=1
+AlertMessage (Get localized string("The Gate System has now been restarted."))
+End if 
+//If the Gate System was on at the start, then restart it now.
+AlertMessage ("Primary Keys Complete!")//xliffme
+LogAction (<>tLogging;"Primary Keys have been regenerated.")

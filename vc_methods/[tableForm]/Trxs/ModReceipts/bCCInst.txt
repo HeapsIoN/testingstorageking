@@ -1,0 +1,140 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//  //This is for Ezidebit
+//
+//SwipeCard (True;False;True)
+//This is for Ezidebit
+//SwipeCard (True;False;True)
+
+C_TEXT(EziPCIErrMsg,ResualtEziDebit)
+C_REAL(TrxsTotAmt)
+If ([Customer]SpecialOption=0) | ([Customer]SpecialOption=62)
+$SpecOptions:=54
+Else 
+$SpecOptions:=[Customer]SpecialOption
+End if 
+
+If ([Analysis]SpecialOptions#$SpecOptions)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+
+End if 
+
+If ([Trxs]TotAmt=0)
+AlertMessage (Get localized string("Cannot process a credit card for")+" "+<>sCurrency+"0!")
+Else 
+If (GetTextNo ([Facility]MerchantDetails2;1;",")="")
+AlertMessage (Get localized string("EziDebit Public Key"))
+
+Else 
+
+If (Records in selection([Analysis])>0)
+txtEziDebit:="ChargeCard"
+EziPCIErrMsg:=""
+TrxsTotAmt:=[Trxs]TotAmt
+ResualtEziDebit:=""
+$Window22:=Open form window("EziDebitPCI")
+DIALOG("EziDebitPCI")
+
+//25/02/16 DAM added btnCancelEziDebit not to send ccfail email when cancel button is clicked. FB 10411
+If (btnCancelEziDebit#1)
+//CalSurChargeEzidebit ($DigitalKey;"";"";"WEB";"";True;False)
+If ([Trxs]CCAuthNo#"") & (VPLUS#0)
+//OBJECT SET ENABLED(VPLUS;False)
+//OBJECT SET ENABLED(*;"vDate1";False)
+//OBJECT SET ENABLED(*;"vDate2";False)
+//OBJECT SET ENABLED(bLoad;False)
+//OBJECT SET ENABLED(bCCInst;False)
+//OBJECT SET ENABLED(bBoth;False)
+//OBJECT SET ENABLED(bDelete;False)
+//OBJECT SET ENABLED(asReceiptDesc;False)
+//OBJECT SET ENABLED(*;"Field9";False)
+//OBJECT SET ENABLED(*;"Field11";False)
+//OBJECT SET ENABLED(*;"Field12";False)
+//OBJECT SET ENABLED(bCancel;False)
+//OBJECT SET ENABLED(*;"Field14";False)
+//ACCEPT
+
+vInvoiceModAmt:=[Trxs]TotAmt//Set the invoice modifier so invoice has correct totals
+vAutoNotice:=True
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt;2)
+Else 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+End if 
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Customer])
+If ([Customer]AutoEmailCC=True)
+//Check if AutoCCVSuccess notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCSuccess")//AutoCCVSuccess
+If (Records in selection([Notices])>0)
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card had a previous charge for")+" "+<>sCurrency+String(Abs([Trxs]TotAmt))+" "+Get localized string("voided, at")+" "+String(Current time)+" "+Lowercase(Get localized string("On1"))+" "+String([Trxs]TrxDate)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+End if 
+vPayments:=vPayments+[Trxs]TotAmt
+[Trxs]CashReceived:=[Trxs]TotAmt
+bAccept:=1
+//If (bFromMoveIn=False)
+bAbortArray:=1
+//End if 
+ACCEPT
+
+Else 
+If ([Customer]AutoEmailCC=True)
+//Check if AutoCCVFailure notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCFailure")//AutoCCVFailure
+If (Records in selection([Notices])>0)
+vInvoiceModAmt:=0//Set the invoice modifier so invoice has correct totals
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card failed to have a charge voided for")+" "+<>sCurrency+String(Abs([Trxs]TotAmt))+" "+Get localized string("at")+" "+String(Current time)+" "+Lowercase(Get localized string("On1"))+" "+String([Trxs]TrxDate)+" "+Get localized string("The error received was")+" "+[Trxs]CCAuthNo
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+End if 
+OBJECT SET ENABLED(bAccept;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bCancel;True)
+bCancel:=1
+vOriginalReceipt:=""
+CANCEL
+
+End if 
+End if 
+
+Else 
+AlertMessage (Get localized string("(Special Option : 54)"))
+End if 
+
+End if 
+End if 

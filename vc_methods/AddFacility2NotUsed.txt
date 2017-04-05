@@ -1,0 +1,143 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//NB SyncError was AgreeNoPrefix
+C_LONGINT($i;$Saved;$Count)//AddFacility2
+C_TEXT($Facility)
+C_PICTURE($Blank)
+C_DATE($Date)
+ALL RECORDS([Facility])
+READ WRITE(*)
+$Date:=!00-00-00!
+$CurrentUser:=SetSyncUser ("Sync";3)
+$Facility:=[Facility]FacilityCode
+Open window(20;50;300;150;0;"Progress")
+$Saved:=0
+$Count:=0
+ALL RECORDS([Notices])
+For ($i;1;Records in selection([Notices]))
+GOTO XY(2;2)
+MESSAGE("Notices "+String($i)+" of "+String(Records in selection([Notices]))+"     ")
+//Deleted section here from AddFacilityCode method
+[Notices]FacilityCode:=$Facility
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+If ($Count>0)
+AlertMessage ("There were "+String($Count)+" Notices which could not be converted sucessfully. These should be restored from"+" a backup. Contact Technical Support for further assistance.")
+$Count:=0
+End if 
+QUERY([Letters];[Letters]AgreeNo="UNIT@")
+APPLY TO SELECTION([Letters];[Letters]DateSent:=!2001-01-01!)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$Facility+[Letters]AgreeNo)
+QUERY([Letters];[Letters]DateSent<!1970-01-01!)
+DELETE SELECTION([Letters])
+QUERY([Letters];[Letters]AgreeNo#$Facility+"UNIT@")
+ORDER BY([Letters];[Letters]AgreeNo;>)
+For ($i;1;Records in selection([Letters]))
+$Count:=0
+GOTO XY(2;2)
+MESSAGE("Letters "+String($i)+" of "+String(Records in selection([Letters]))+"     ")
+//If (Picture size([Letters]Letter_)>0)
+//bConfirm:=True
+//$Doc:=WR New offscreen area 
+//ON ERR CALL("ErrorBlob")
+//WR PICTURE TO AREA ($Doc;[Letters]Letter_)
+//ON ERR CALL("")
+//If (bConfirm)
+//[Letters]LetterBLOB:=WR Area to blob ($Doc;1)
+//COMPRESS BLOB([Letters]LetterBLOB;Fast compression mode)
+//Else 
+//$Count:=$Count+1
+//If ($Date<[Letters]DateSent)
+//$Date:=[Letters]DateSent
+//End if 
+//End if 
+//WR DELETE OFFSCREEN AREA ($Doc)
+//$Saved:=$Saved+Picture size([Letters]Letter_)-BLOB size([Letters]LetterBLOB)
+//End if 
+//[Letters]Letter_:=$Blank
+[Letters]Size:=BLOB size([Letters]LetterBLOB)
+[Letters]AgreeNo:=$Facility+[Letters]AgreeNo
+SAVE RECORD([Letters])
+NEXT RECORD([Letters])
+End for 
+If ($Count>0)
+AlertMessage ("There were "+String($Count)+" customer letters which could not be converted sucessfully. The most recent was "+String($Date)+"!")
+$Count:=0
+$Date:=!00-00-00!
+End if 
+QUERY([Contacts];[Contacts]CallDate<!1970-01-01!)
+DELETE SELECTION([Contacts])
+ALL RECORDS([Contacts])
+For ($i;1;Records in selection([Contacts]))
+GOTO XY(2;2)
+MESSAGE("Contacts "+String($i)+" of "+String(Records in selection([Contacts]))+"     ")
+If (Picture size([Contacts]Letter_)>0)
+bConfirm:=True
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorBlob")
+WR PICTURE TO AREA ($Doc;[Contacts]Letter_)
+ON ERR CALL("ErrorLog")
+If (bConfirm)
+[Contacts]Letter:=WR Area to blob ($Doc;1)
+COMPRESS BLOB([Contacts]Letter;Fast compression mode)
+Else 
+$Count:=$Count+1
+If ($Date<[Contacts]CallDate)
+$Date:=[Contacts]CallDate
+End if 
+End if 
+WR DELETE OFFSCREEN AREA ($Doc)
+$Saved:=$Saved+Picture size([Contacts]Letter_)-BLOB size([Contacts]Letter)
+End if 
+If (Picture size([Contacts]Email_)>0)
+bConfirm:=True
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorBlob")
+WR PICTURE TO AREA ($Doc;[Contacts]Email_)
+ON ERR CALL("ErrorLog")
+If (bConfirm)
+[Contacts]Email:=WR Area to blob ($Doc;1)
+COMPRESS BLOB([Contacts]Email;Fast compression mode)
+Else 
+$Count:=$Count+1
+If ($Date<[Contacts]CallDate)
+$Date:=[Contacts]CallDate
+End if 
+End if 
+WR DELETE OFFSCREEN AREA ($Doc)
+$Saved:=$Saved+Picture size([Contacts]Email_)-BLOB size([Contacts]Email)
+End if 
+[Contacts]Letter_:=$Blank
+[Contacts]Email_:=$Blank
+[Contacts]Size:=BLOB size([Contacts]Letter)+BLOB size([Contacts]Email)
+[Contacts]Facility:=$Facility
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+End for 
+If ($Count>0)
+AlertMessage ("There were "+String($Count)+" contact letters which could not be converted sucessfully. The most recent was "+String($Date)+"!")
+$Count:=0
+$Date:=!00-00-00!
+End if 
+CLOSE WINDOW
+ALL RECORDS([GateLog])
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$Facility+[GateLog]CustCode)
+ALL RECORDS([NotesHistory])
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$Facility+[NotesHistory]CustomerCode)
+QUERY([Activity];[Activity]FacilityCode#$Facility)
+APPLY TO SELECTION([Activity];[Activity]FacilityCode:=$Facility)
+//ALL RECORDS([UserLogins])
+//APPLY TO SELECTION([UserLogins];[UserLogins]Facility:=$Facility)
+SetSyncUser ("Sync";2)
+SetSyncUser ($CurrentUser)
+UNLOAD RECORD([Agreement])
+SET INDEX([Agreement]RAgreeNo;False)
+SET INDEX([Agreement]RAgreeNo;True)
+Case of 
+: ($Saved>(1024*1024))
+AlertMessage ("SUGGESTION - Run 4D Tools Compact - Space saved = "+String(Round($Saved/1024/1024;3))+" MB")
+: ($Saved>1024)
+AlertMessage ("SUGGESTION - Run 4D Tools Compact - Space saved = "+String(Round($Saved/1024;3))+" kb")
+Else 
+AlertMessage ("WARNING - Space saved = "+String($Saved)+" bytes!")
+End case 

@@ -1,0 +1,384 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//NB SyncError was AgreeNoPrefix
+C_LONGINT($i;$Rec;$Try;$Saved;$Count)//AddFacility2
+C_TEXT($Facility)
+C_TEXT($OldCode;$NewCode)
+C_PICTURE($Blank)
+C_DATE($Date)
+$Facility:=""
+$Date:=!00-00-00!
+READ WRITE(*)
+Repeat 
+$OK:=True
+QUERY([Customer];[Customer]CustomerCode="@,@")
+If (Records in selection([Customer])>0)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Customer]))+" "+Get localized string("customers with commas in the Code that will be repaired now.");Get localized string("Continue"))
+CREATE SET([Customer];"Temp")
+For ($i;1;Records in selection([Customer]))
+USE SET("Temp")
+GOTO SELECTED RECORD([Customer];$i)
+$Try:=90
+$Rec:=0
+While ($Rec>=0) & ($Try>64)
+$NewCode:=Uppercase(Replace string([Customer]CustomerCode;",";Char($Try);0;*);*)
+$Rec:=Find in field([Customer]CustomerCode;$NewCode)
+$Try:=$Try-1
+End while 
+If ($Rec>=0)
+$OK:=False
+AlertMessage (Get localized string("Customer Code")+" "+[Customer]CustomerCode+" "+Get localized string("has a comma which cannot be removed."))
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([Trxs];[Trxs]CustomerCode:=$NewCode)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([Agreement];[Agreement]RAgreeNo:=$Facility+[Agreement]AgreeNo)//To enable code to be set without trigger error
+APPLY TO SELECTION([Agreement];[Agreement]CustomerCode:=$NewCode)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([Reservation];[Reservation]RReserveNo:=$Facility+[Reservation]ReserveNo)
+APPLY TO SELECTION([Reservation];[Reservation]CustomerCode:=$NewCode)
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=$NewCode)
+QUERY([GateLog];[GateLog]CustCode=[Customer]CustomerCode)
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$NewCode)
+[Customer]CustomerCode:=$NewCode
+SAVE RECORD([Customer])
+End if 
+End for 
+End if 
+QUERY([Trxs];[Trxs]TrxDate<!1970-01-01!)
+If (Records in selection([Trxs])>0)
+ConfirmTwo (Get localized string("There are transactions with dates prior to 1/1/1970. Please check!");Get localized string("Fix Now");Get localized string("View"))
+If (OK=1)
+APPLY TO SELECTION([Trxs];[Trxs]TrxDate:=[Trxs]DateBanked)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<!1970-01-01!)
+APPLY TO SELECTION([Trxs];[Trxs]TrxDate:=!1990-01-01!)
+Else 
+$OK:=False
+End if 
+End if 
+If ([Facility]SyncError>"")
+QUERY([Agreement];[Agreement]AgreeNo#[Facility]SyncError+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"MISCL";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"PETTY")
+If (Records in selection([Agreement])>0)
+AlertMessage (Get localized string("There are agreements which do not begin with the Agreement No Prefix. Please check!"))
+$OK:=False
+End if 
+End if 
+QUERY([Contacts];[Contacts]CallDate<!1970-01-01!)
+If (Records in selection([Contacts])>0)
+ConfirmTwo (Get localized string("There are call dates with dates prior to 1/1/1970. Please check!");Get localized string("Fix Now");Get localized string("View"))
+If (OK=1)
+APPLY TO SELECTION([Contacts];[Contacts]CallDate:=!1990-01-01!)
+Else 
+$OK:=False
+End if 
+End if 
+QUERY([UnitHistory];[UnitHistory]MoveIn<!1970-01-01!;*)
+QUERY([UnitHistory]; | ;[UnitHistory]AgreeNo="";*)
+QUERY([UnitHistory]; | ;[UnitHistory]UnitNo="")
+If (Records in selection([UnitHistory])>0)
+ConfirmTwo (Get localized string("There are [UnitHistory]Movein dates with dates prior to 1/1/1970 or blank AgreeNo or UnitNo.  Please check!");Get localized string("Fix Now");Get localized string("View"))
+If (OK=1)
+CREATE SET([UnitHistory];"Temp")
+QUERY([UnitHistory];[UnitHistory]AgreeNo="";*)
+QUERY([UnitHistory]; | ;[UnitHistory]UnitNo="")
+DELETE SELECTION([UnitHistory])
+USE SET("Temp")
+CLEAR SET("Temp")
+QUERY SELECTION([UnitHistory];[UnitHistory]MoveIn<!1970-01-01!)
+APPLY TO SELECTION([UnitHistory];[UnitHistory]MoveIn:=!1990-01-01!)
+Else 
+$OK:=False
+End if 
+End if 
+If ($OK)
+$CurrentUser:=SetSyncUser ("Sync";3)
+$Facility:=[Facility]FacilityCode
+ALL RECORDS([UnitType])
+APPLY TO SELECTION([UnitType];[UnitType]RUnitType:=$Facility+[UnitType]UnitTypeCode)
+Open window(20;50;300;150;0;Get localized string("Progress"))
+ALL RECORDS([Unit])
+For ($i;1;Records in selection([Unit]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Unit")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Unit]))+"     ")
+[Unit]RUnitNo:=$Facility+[Unit]UnitNo
+[Unit]UnitTypeCode:=$Facility+[Unit]UnitTypeCode
+If ([Unit]AgreeNo>"")
+If ([Facility]SyncError="")
+[Unit]AgreeNo:=$Facility+[Unit]AgreeNo
+Else 
+[Unit]AgreeNo:=$Facility+"0"+Substring([Unit]AgreeNo;2)
+End if 
+End if 
+If ([Unit]ReservedTo>"")
+If ([Facility]SyncError="")
+[Unit]ReservedTo:=$Facility+[Unit]ReservedTo
+Else 
+[Unit]ReservedTo:=$Facility+"0"+Substring([Unit]ReservedTo;2)
+End if 
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+ALL RECORDS([Agreement])
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Agreement")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"     ")
+If ([Facility]SyncError="") | ([Agreement]AgreeNo="MISCL")
+[Agreement]RAgreeNo:=$Facility+[Agreement]AgreeNo
+Else 
+[Agreement]RAgreeNo:=$Facility+"0"+Substring([Agreement]AgreeNo;2)
+[Agreement]AgreeNo:="0"+Substring([Agreement]AgreeNo;2)
+End if 
+[Agreement]CustomerCode:=$Facility+[Agreement]CustomerCode
+[Agreement]BillingPlanCode:=$Facility+[Agreement]BillingPlanCode
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+ALL RECORDS([Trxs])
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE("Transaction "+String($i)+" of "+String(Records in selection([Trxs]))+"     ")
+[Trxs]CustomerCode:=$Facility+[Trxs]CustomerCode
+If ([Facility]SyncError="") | ([Trxs]AgreeNo="MISCL")
+[Trxs]AgreeNo:=$Facility+[Trxs]AgreeNo
+Else 
+[Trxs]AgreeNo:=$Facility+"0"+Substring([Trxs]AgreeNo;2)
+End if 
+[Trxs]AnalysisCode:=$Facility+[Trxs]AnalysisCode
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+ALL RECORDS([Reservation])
+For ($i;1;Records in selection([Reservation]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Reservation")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Reservation]))+"     ")
+If ([Facility]SyncError#"")
+[Reservation]ReserveNo:="0"+Substring([Reservation]ReserveNo;2)
+End if 
+[Reservation]RReserveNo:=$Facility+[Reservation]ReserveNo
+[Reservation]CustomerCode:=$Facility+[Reservation]CustomerCode
+SAVE RECORD([Reservation])
+NEXT RECORD([Reservation])
+End for 
+ALL RECORDS([UnitHistory])
+For ($i;1;Records in selection([UnitHistory]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("UnitHistory")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"     ")
+[UnitHistory]UnitNo:=$Facility+[UnitHistory]UnitNo
+If ([Facility]SyncError="")
+[UnitHistory]AgreeNo:=$Facility+[UnitHistory]AgreeNo
+Else 
+[UnitHistory]AgreeNo:=$Facility+"0"+Substring([UnitHistory]AgreeNo;2)
+End if 
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+QUERY([PhotosCards];[PhotosCards]Name="";*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0;*)//No photo
+QUERY([PhotosCards]; & ;[PhotosCards]PINCardNo="")//and no PIN number
+DELETE SELECTION([PhotosCards])
+ALL RECORDS([PhotosCards])
+ORDER BY([PhotosCards];[PhotosCards]Code;>)
+$j:=1
+$OldCode:=[PhotosCards]Code
+For ($i;1;Records in selection([PhotosCards]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("PhotoCards")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([PhotosCards]))+"     ")
+[PhotosCards]Code:=$Facility+[PhotosCards]Code
+[PhotosCards]SeqNo:=$j
+SAVE RECORD([PhotosCards])
+NEXT RECORD([PhotosCards])
+$j:=$j+1
+If ([PhotosCards]Code#$OldCode)
+$OldCode:=[PhotosCards]Code
+$j:=1
+End if 
+End for 
+$Saved:=0
+$Count:=0
+ALL RECORDS([Notices])
+For ($i;1;Records in selection([Notices]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Notices")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Notices]))+"     ")
+//If (Picture size([Notices]Letter_)>0)
+//  `bConfirm:=True
+//  `$Doc:=WR New offscreen area 
+//  `ON ERR CALL("ErrorBlob")
+//  `WR PICTURE TO AREA ($Doc;[Notices]Letter_)
+//  `ON ERR CALL("")
+//  `If (bConfirm)
+//  `[Notices]Letter:=WR Area to blob ($Doc;1)
+//  `COMPRESS BLOB([Notices]Letter)
+//  `Else 
+//  `$Count:=$Count+1
+//  `End if 
+//  `WR DELETE OFFSCREEN AREA ($Doc)
+//  `$Saved:=$Saved+Picture size([Notices]Letter_)-BLOB size([Notices]Letter)
+//  `End if 
+//  `If (Picture size([Notices]Email_)>0)
+//  `bConfirm:=True
+//  `$Doc:=WR New offscreen area 
+//  `ON ERR CALL("ErrorBlob")
+//  `WR PICTURE TO AREA ($Doc;[Notices]Email_)
+//  `ON ERR CALL("")
+//  `If (bConfirm)
+//  `[Notices]Email:=WR Area to blob ($Doc;1)
+//  `COMPRESS BLOB([Notices]Email)
+//  `Else 
+//  `$Count:=$Count+1
+//  `End if 
+//  `WR DELETE OFFSCREEN AREA ($Doc)
+//  `$Saved:=$Saved+Picture size([Notices]Email_)-BLOB size([Notices]Email)
+//End if 
+//[Notices]Letter_:=$Blank
+//[Notices]Email_:=$Blank
+[Notices]FacilityCode:=$Facility
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+If ($Count>0)
+AlertMessage (Get localized string("There were")+" "+String($Count)+" "+Get localized string("Notices which could not be converted sucessfully. These should be restored from a backup."))
+$Count:=0
+End if 
+QUERY([Letters];[Letters]AgreeNo="UNIT@")
+APPLY TO SELECTION([Letters];[Letters]DateSent:=!2001-01-01!)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$Facility+[Letters]AgreeNo)
+QUERY([Letters];[Letters]DateSent<!1970-01-01!)
+DELETE SELECTION([Letters])
+QUERY([Letters];[Letters]AgreeNo#$Facility+"UNIT@")
+ORDER BY([Letters];[Letters]AgreeNo;>)
+For ($i;1;Records in selection([Letters]))
+$Count:=0
+GOTO XY(2;2)
+MESSAGE(Get localized string("Letters")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Letters]))+"     ")
+//If (Picture size([Letters]Letter_)>0)
+//bConfirm:=True
+//$Doc:=WR New offscreen area 
+//ON ERR CALL("ErrorBlob")
+//WR PICTURE TO AREA ($Doc;[Letters]Letter_)
+//ON ERR CALL("")
+//If (bConfirm)
+//[Letters]LetterBLOB:=WR Area to blob ($Doc;1)
+//COMPRESS BLOB([Letters]LetterBLOB;Fast compression mode)
+//Else 
+//$Count:=$Count+1
+//If ($Date<[Letters]DateSent)
+//$Date:=[Letters]DateSent
+//End if 
+//End if 
+//WR DELETE OFFSCREEN AREA ($Doc)
+//$Saved:=$Saved+Picture size([Letters]Letter_)-BLOB size([Letters]LetterBLOB)
+//End if 
+//[Letters]Letter_:=$Blank
+[Letters]Size:=BLOB size([Letters]LetterBLOB)
+If ([Facility]SyncError="")
+[Letters]AgreeNo:=$Facility+[Letters]AgreeNo
+Else 
+[Letters]AgreeNo:=$Facility+"0"+Substring([Letters]AgreeNo;2)
+End if 
+SAVE RECORD([Letters])
+NEXT RECORD([Letters])
+End for 
+If ($Count>0)
+AlertMessage (Get localized string("There were")+" "+String($Count)+" "+Get localized string("customer letters which could not be converted sucessfully. The most recent was")+" "+String($Date)+"!")
+$Count:=0
+$Date:=!00-00-00!
+End if 
+QUERY([Contacts];[Contacts]CallDate<!1970-01-01!)
+DELETE SELECTION([Contacts])
+ALL RECORDS([Contacts])
+For ($i;1;Records in selection([Contacts]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Contacts")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Contacts]))+"     ")
+If (Picture size([Contacts]Letter_)>0)
+bConfirm:=True
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorBlob")
+WR PICTURE TO AREA ($Doc;[Contacts]Letter_)
+ON ERR CALL("ErrorLog")
+If (bConfirm)
+[Contacts]Letter:=WR Area to blob ($Doc;1)
+COMPRESS BLOB([Contacts]Letter;Fast compression mode)
+Else 
+$Count:=$Count+1
+If ($Date<[Contacts]CallDate)
+$Date:=[Contacts]CallDate
+End if 
+End if 
+WR DELETE OFFSCREEN AREA ($Doc)
+$Saved:=$Saved+Picture size([Contacts]Letter_)-BLOB size([Contacts]Letter)
+End if 
+If (Picture size([Contacts]Email_)>0)
+bConfirm:=True
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorBlob")
+WR PICTURE TO AREA ($Doc;[Contacts]Email_)
+ON ERR CALL("ErrorLog")
+If (bConfirm)
+[Contacts]Email:=WR Area to blob ($Doc;1)
+COMPRESS BLOB([Contacts]Email;Fast compression mode)
+Else 
+$Count:=$Count+1
+If ($Date<[Contacts]CallDate)
+$Date:=[Contacts]CallDate
+End if 
+End if 
+WR DELETE OFFSCREEN AREA ($Doc)
+$Saved:=$Saved+Picture size([Contacts]Email_)-BLOB size([Contacts]Email)
+End if 
+[Contacts]Letter_:=$Blank
+[Contacts]Email_:=$Blank
+[Contacts]Size:=BLOB size([Contacts]Letter)+BLOB size([Contacts]Email)
+[Contacts]Facility:=$Facility
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+End for 
+If ($Count>0)
+AlertMessage (Get localized string("There were")+" "+String($Count)+" "+Get localized string("contact letters which could not be converted sucessfully.  Most recent was")+" "+String($Date)+"!")
+$Count:=0
+$Date:=!00-00-00!
+End if 
+CLOSE WINDOW
+ALL RECORDS([Customer])
+APPLY TO SELECTION([Customer];[Customer]CustomerCode:=$Facility+[Customer]CustomerCode)
+ALL RECORDS([Analysis])
+APPLY TO SELECTION([Analysis];[Analysis]Code:=$Facility+[Analysis]Code)
+ALL RECORDS([BillPlan])
+APPLY TO SELECTION([BillPlan];[BillPlan]Code:=$Facility+[BillPlan]Code)
+ALL RECORDS([GateLog])
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$Facility+[GateLog]CustCode)
+ALL RECORDS([NotesHistory])
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$Facility+[NotesHistory]CustomerCode)
+QUERY([Activity];[Activity]FacilityCode#$Facility)
+APPLY TO SELECTION([Activity];[Activity]FacilityCode:=$Facility)
+//ALL RECORDS([UserLogins])
+//APPLY TO SELECTION([UserLogins];[UserLogins]Facility:=$Facility)
+SetSyncUser ("Sync";2)
+SetSyncUser ($CurrentUser)
+UNLOAD RECORD([Agreement])
+SET INDEX([Agreement]RAgreeNo;False)
+SET INDEX([Agreement]RAgreeNo;True)
+Case of 
+: ($Saved>(1024*1024))
+AlertMessage (Get localized string("SUGGESTION - Run 4D Tools Compact - Space saved")+" = "+String(Round($Saved/1024/1024;3))+" MB")
+: ($Saved>1024)
+AlertMessage (Get localized string("SUGGESTION - Run 4D Tools Compact - Space saved")+" = "+String(Round($Saved/1024;3))+" kb")
+Else 
+AlertMessage (Get localized string("WARNING - Space saved")+" = "+String($Saved)+" "+Get localized string("bytes!"))
+End case 
+Else 
+CLOSE WINDOW
+If (<>sCurrentUser#"Admin@") & (Current user#"Designer")
+AlertMessage (Get localized string("Please login as Admin to correct problems:"))
+Login 
+End if 
+Search 
+ALL RECORDS([Facility])
+READ WRITE(*)
+Open window(20;100;300;200;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Upgrading to new version. Please wait")+"..."+"    ")
+End if 
+Until ($OK)

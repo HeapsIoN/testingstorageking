@@ -1,0 +1,938 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 15/12/09, 14:32:02
+// ----------------------------------------------------
+// Method: EmailAutoCC
+// Description
+// This method is used by SwipeCard and DailyAutoPay to send a custom email to a customer 
+// to notify if their Credit Card processing succeeded or not.
+//
+// Parameters
+// 
+// ----------------------------------------------------
+
+//C_LONGINT(veLetter)
+C_REAL(vInvoiceModAmt)
+
+C_REAL($last_CC)
+C_LONGINT($seq_num)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+//veLetter:=WR New offscreen area 
+
+//If (vInvoiceModAmt#0)  //This will fix the balance on the invoices as it is not modified or saved earlier
+//[Customer]Balance:=[Customer]Balance-vInvoiceModAmt
+//End if 
+
+SAVE RECORD([Customer])
+
+CREATE SET([Customer];"EmailAutoCC")
+CREATE SET([Trxs];"AutoCC")
+If (Records in selection([Agreement])>1)
+REMOVE FROM SET([Agreement];"CCCharge")
+End if 
+
+If ([Notices]Description="@Success@")
+
+//04/08/15 DAM Added for Panama
+If ([Facility]Country="PA")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+ARRAY LONGINT(arMatchNo;0)
+ARRAY TEXT(arAnalysisCode;0)
+ARRAY REAL(arTotalAmt;0)
+SELECTION TO ARRAY([Trxs]Match;arMatchNo;[Trxs]AnalysisCode;arAnalysisCode;[Trxs]TotAmt;arTotalAmt)
+
+If ([Facility]InvUseAgrBalFwd)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+End if 
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ReCalcUnpaid 
+
+USE SET("AutoCC")
+End if 
+
+BLOB PROPERTIES([Notices]Email;$comp)
+If ($comp#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+
+//Create the Email Message
+CREATE RECORD([Message])
+[Message]Subject:=[Notices]EmailSubject
+[Message]Address:=[Customer]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//If ([Reservation]RReserveNo>"")
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Reservation]RReserveNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Reservation]RReserveNo
+//Else 
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Agreement]RAgreeNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Agreement]RAgreeNo
+//End if 
+//If ((Test path name($Document)=Is a document))
+//$vhDocRef:=Open document($Document)  // Select the document of your choice
+//CLOSE DOCUMENT($vhDocRef)
+//DOCUMENT TO BLOB(Document;$Blob74)
+//$Blobtext74:=BLOB to text($Blob74;Mac text without length)
+//$Blobtext74:=Replace string($Blobtext74;"./images/";<>sTutPath+"images\\")
+//$Blobtext74:=Replace string($Blobtext74;"<p>";"<br>")
+//$Blobtext74:=Replace string($Blobtext74;"</p>";"<br>")
+//TEXT TO BLOB($Blobtext74;[Message]EmailMsg;Mac text without length)
+//DELETE DOCUMENT($Document)
+//Else 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+//End if 
+
+
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+
+//Add the invoice if an Agreement
+If ([Agreement]AgreeNo>"")
+
+$Document:=<>sPDFDocsPath+"Inv"+[Agreement]RAgreeNo+".pdf"
+
+If (Test path name($Document)=Is a document)
+DELETE DOCUMENT($Document)
+End if 
+
+$Document:=<>sPDFDocsPath+"Statement"+[Agreement]RAgreeNo+".pdf"
+
+If (Test path name($Document)=Is a document)
+DELETE DOCUMENT($Document)
+End if 
+
+Case of 
+: ([Notices]AttachInvoice=2)
+$SentwithInv:=[Agreement]SendInvoices
+: ([Notices]AttachInvoice=1)
+$SentwithInv:=True
+Else 
+$SentwithInv:=False
+End case 
+Case of 
+: ([Notices]AttachStatement=2)
+$SentwithStatement:=[Agreement]SendStatements
+: ([Notices]AttachStatement=1)
+$SentwithStatement:=True
+Else 
+$SentwithStatement:=False
+End case 
+
+If ($SentwithInv) | ($SentwithStatement)
+vReprintCopy:=False
+SAVE RECORD([Agreement])
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+//If ([Facility]InvAgreeCust=True)
+//Else 
+//ORDER BY([Agreement];[Agreement]AgreeNo;>) //Commented out due to causing invoices to be generated for incorrect agreement Modified by: nicholas.wykes (28/10/2010)
+//End if 
+//For ($i;1;Records in selection([Agreement]))
+CREATE EMPTY SET([Trxs];"ToPrint")//This was prev above the loop which caused errors 3.0.0
+RELATE ONE([Agreement]CustomerCode)
+//If (vInvoiceModAmt#0)  //This will fix the balance on the invoices as it is not modified or saved earlier
+//[Agreement]BalanceOwing:=[Agreement]BalanceOwing-vInvoiceModAmt
+//End if 
+If ([Facility]InvUseAgrBalFwd)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+End if 
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+If ($SentwithInv)
+Case of 
+: ([Facility]InvStatement=2)
+QUERY SELECTION([Trxs];[Trxs]InvNo=0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+DISTINCT VALUES([Trxs]TrxDate;$TrxDate)
+CREATE SET([Trxs];"SearchInvNo")
+For ($inv;1;Size of array($TrxDate))
+$InvContinue:=False
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+//CLEAR SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+LOAD RECORD([Trxs])
+PrintInvRecCode (1;"";True)
+USE SET("SearchInvNo")
+End for 
+CLEAR SET("SearchInvNo")
+: ([Facility]InvStatement=1)
+QUERY SELECTION([Trxs];[Trxs]InvNo=0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+CREATE SET([Trxs];"SearchInvNo")
+$InvContinue:=False
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+CLEAR SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+LOAD RECORD([Trxs])
+[Customer]FooterBalance:=Sum([Trxs]TotAmt)
+[Customer]BalFwd:=0
+[Agreement]FooterBalance:=Sum([Trxs]TotAmt)
+[Agreement]BalFwd:=0
+Else 
+PrintInvRecCode (1;"";True)
+USE SET("ToPrint")
+End case 
+End if 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+If ([Facility]InvUseAgrBalFwd)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+Else 
+ORDER BY([Trxs];[Trxs]CustomerCode;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+End if 
+SET PRINT PREVIEW(False)
+If ($SentwithInv) & (Records in selection([Trxs])>0)
+SelectPDFDoc (2;<>sPDFDocsPath+"Inv"+[Agreement]RAgreeNo+".pdf")
+//If ([Facility]InvStatement=1)
+PrintInvRecCode (4;"";False)
+//Else 
+//PrintInvRecCode (4;"";True)
+//End if 
+SelectPDFDoc (4;<>sPDFDocsPath+"Inv"+[Agreement]RAgreeNo+".pdf")
+End if 
+
+If ([Facility]InvStatement=2)
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]InvNo=0)
+DISTINCT VALUES([Trxs]TrxDate;$TrxDate)
+CREATE SET([Trxs];"SearchInvNo")
+For ($inv;1;Size of array($TrxDate))
+$InvContinue:=False
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+End for 
+CLEAR SET("SearchInvNo")
+//READ ONLY([Transaction])
+UNLOAD RECORD([Trxs])
+End if 
+
+If ($SentwithStatement)
+vtInvAgree:=""
+If ([Reservation]RReserveNo>"")
+$Date1:=[Reservation]ReservedDate
+Else 
+If ([Agreement]PriorLastBill#!00-00-00!)
+$Date1:=[Agreement]PriorLastBill
+Else 
+$Date1:=[Agreement]LastBillDate
+End if 
+End if 
+
+If ([Facility]StatementLastZeroBal=True)
+If ([Facility]InvUseAgrBalFwd=True)
+If ([Reservation]RReserveNo>"")
+$Date3:=CalculateLastZeroBalance (2)
+Else 
+$Date3:=CalculateLastZeroBalance (1)
+End if 
+Else 
+$Date3:=CalculateLastZeroBalance (0)
+End if 
+Else 
+$Date3:=$Date1
+End if 
+
+If ($Date3<$Date1)
+$Date1:=$Date3
+End if 
+
+If ($Date1>Current date)
+$Date1:=Current date
+End if 
+
+vOpenBalText:=Get localized string("Opening balance as at")+" "+String($Date1)
+vCloseBalText:=Get localized string("Closing balance")
+If ([Facility]InvUseAgrBalFwd=True)
+If ([Reservation]RReserveNo>"")
+vOpenBal:=BalanceDateCalc (0;$Date1;True;[Reservation]RReserveNo)
+vCloseBal:=BalanceDateCalc (0;!00-00-00!;False;[Reservation]RReserveNo)
+Else 
+vOpenBal:=BalanceDateCalc (0;$Date1;True;[Agreement]RAgreeNo)
+vCloseBal:=BalanceDateCalc (0;!00-00-00!;False;[Agreement]RAgreeNo)
+End if 
+Else 
+If ([Reservation]RReserveNo>"")
+vOpenBal:=BalanceDateCalc (1;$Date1;True;[Reservation]CustomerCode)
+vCloseBal:=BalanceDateCalc (1;!00-00-00!;False;[Reservation]CustomerCode)
+Else 
+vOpenBal:=BalanceDateCalc (1;$Date1;True;[Agreement]CustomerCode)
+vCloseBal:=BalanceDateCalc (1;!00-00-00!;False;[Agreement]CustomerCode)
+End if 
+End if 
+If ([Facility]InvUseAgrBalFwd=True)
+If ([Reservation]RReserveNo>"")
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+End if 
+Else 
+If ([Reservation]RReserveNo>"")
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode;*)
+End if 
+
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$Date1)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+
+//CREATE SET([Trxs];"TempAutoCC")
+
+If ([Facility]InvStatement>0)
+
+CREATE SET([Trxs];"TempAutoCC")//fb10061////
+
+CREATE EMPTY SET([Trxs];"Statement")
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=False)
+
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+USE SET("TempAutoCC")
+
+QUERY SELECTION([Trxs];[Trxs]InvDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+USE SET("Statement")
+ARRAY DATE(adTransactionDate;0)
+ARRAY TEXT(asTransactionDescription;0)
+ARRAY REAL(arTransactionCharge;0)
+ARRAY REAL(arTransactionReceipt;0)
+ARRAY LONGINT(aiTransactionInvNo;0)
+DISTINCT VALUES([Trxs]InvNo;aiTransactionInvNo)
+For ($i;1;Size of array(aiTransactionInvNo))
+If (aiTransactionInvNo{$i}=0)
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:=[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=0
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+Else 
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+If ([Facility]StatementDetail)
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+If ([Facility]InvStatement=2)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+Else 
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+End if 
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)+" "+[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=[Trxs]TotAmt
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+NEXT RECORD([Trxs])
+End for 
+Else 
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=Sum([Trxs]TotAmt)
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+End if 
+End if 
+USE SET("Statement")
+End for 
+REDUCE SELECTION([Trxs];Size of array(adTransactionDate))
+SORT ARRAY(adTransactionDate;asTransactionDescription;arTransactionCharge;arTransactionReceipt;>)
+vi:=1
+Case of 
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False) & ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintFooterTwo")
+: ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintTwo")
+Else 
+FORM SET OUTPUT([Trxs];"InquiryPrintNew")
+End case 
+Else 
+/////////////////////////fb10061////
+LAST RECORD([Trxs])
+$seq_num:=[Trxs]SeqNo
+$last_CC:=[Trxs]Balance
+READ WRITE([Trxs])
+[Trxs]Balance:=[Agreement]BalanceOwing
+SAVE RECORD([Trxs])
+CREATE SET([Trxs];"TempAutoCC")
+///////////////////////////
+FORM SET OUTPUT([Trxs];"InquiryPrint")
+End if 
+If (Records in selection([Trxs])>0)
+SelectPDFDoc (2;<>sPDFDocsPath+"Statement"+[Agreement]RAgreeNo+".pdf")
+PrintSelection ("P";->[Trxs])
+SelectPDFDoc (4;<>sPDFDocsPath+"Statement"+[Agreement]RAgreeNo+".pdf")
+End if 
+FORM SET OUTPUT([Trxs];"TransOut")
+
+/////////fb10061////
+If ([Facility]InvStatement>0)
+// nothing
+Else 
+QUERY([Trxs];[Trxs]SeqNo=$seq_num)
+[Trxs]Balance:=$last_CC
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+End if 
+//////////
+End if 
+
+
+//$vhTimeStart:=Current time
+//Repeat 
+//$vhTimeStart:=$vhTimeStart
+//Until ((Current time-$vhTimeStart)>=?00:00:02?)
+//End for 
+SelectPDFDoc (3;$Name)
+<>tPrintPDF:=False
+LOAD RECORD([Letters])
+If ($SentwithInv) & (([Facility]UsePDFWriter) | (<>iPlatform=2))
+$Document:=<>sPDFDocsPath+"Inv"+[Agreement]RAgreeNo+".pdf"
+If ((Test path name($Document)=Is a document))
+DOCUMENT TO BLOB($Document;[Message]AttachmentBlob)
+COMPRESS BLOB([Message]AttachmentBlob)
+[Message]Attachments:="Inv"+[Agreement]RAgreeNo+".pdf"
+End if 
+End if 
+If ($SentwithStatement) & (([Facility]UsePDFWriter) | (<>iPlatform=2))
+$Document:=<>sPDFDocsPath+"Statement"+[Agreement]RAgreeNo+".pdf"
+If ((Test path name($Document)=Is a document))
+If (BLOB size([Message]AttachmentBlob)>0)
+DOCUMENT TO BLOB($Document;[Message]AttachmentBlob2)
+COMPRESS BLOB([Message]AttachmentBlob2)
+Else 
+DOCUMENT TO BLOB($Document;[Message]AttachmentBlob)
+COMPRESS BLOB([Message]AttachmentBlob)
+End if 
+If ([Message]Attachments#"")
+[Message]Attachments:=[Message]Attachments+Char(13)+"Statement"+[Agreement]RAgreeNo+".pdf"
+Else 
+[Message]Attachments:="Statement"+[Agreement]RAgreeNo+".pdf"
+End if 
+End if 
+End if 
+Else 
+[Message]Attachments:=""
+End if 
+End if 
+
+
+//Add the invoice if a Reservation
+If ([Reservation]ReserveNo>"")
+
+$Document:=<>sPDFDocsPath+"Inv"+[Reservation]RReserveNo+".pdf"
+
+If (Test path name($Document)=Is a document)
+DELETE DOCUMENT($Document)
+End if 
+
+$Document:=<>sPDFDocsPath+"Statement"+[Reservation]RReserveNo+".pdf"
+
+If (Test path name($Document)=Is a document)
+DELETE DOCUMENT($Document)
+End if 
+
+Case of 
+: ([Notices]AttachInvoice=2)
+$SentwithInv:=True
+: ([Notices]AttachInvoice=1)
+$SentwithInv:=True
+Else 
+$SentwithInv:=False
+End case 
+Case of 
+: ([Notices]AttachStatement=2)
+$SentwithStatement:=True
+: ([Notices]AttachStatement=1)
+$SentwithStatement:=True
+Else 
+$SentwithStatement:=False
+End case 
+
+If ($SentwithInv) | ($SentwithStatement)
+vReprintCopy:=False
+SAVE RECORD([Reservation])
+<>tPrintPDF:=True
+vPDFName:=[Facility]PDFName
+$Name:=SelectPDFDoc (1)
+//QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+//If ([Facility]InvAgreeCust=True)
+//ORDER BY([Reservation];[Reservation]CustomerCode;>)
+//Else 
+//ORDER BY([Reservation];[Reservation]ReserveNo;>)
+//End if 
+//For ($i;1;Records in selection([Reservation]))
+CREATE EMPTY SET([Trxs];"ToPrint")//This was prev above the loop which caused errors 3.0.0
+RELATE ONE([Reservation]CustomerCode)
+If ([Facility]InvUseAgrBalFwd)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode)
+End if 
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+If ($SentwithInv)
+Case of 
+: ([Facility]InvStatement=2)
+QUERY SELECTION([Trxs];[Trxs]InvNo=0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+CREATE SET([Trxs];"SearchInvNo")
+$InvContinue:=False
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+//CLEAR SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+LOAD RECORD([Trxs])
+PrintInvRecCode (1;"";True)
+USE SET("SearchInvNo")
+CLEAR SET("SearchInvNo")
+: ([Facility]InvStatement=1)
+QUERY SELECTION([Trxs];[Trxs]InvNo=0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+CREATE SET([Trxs];"SearchInvNo")
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+CLEAR SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+LOAD RECORD([Trxs])
+[Customer]FooterBalance:=Sum([Trxs]TotAmt)
+[Customer]BalFwd:=0
+Else 
+PrintInvRecCode (1;[Reservation]RReserveNo;True)
+USE SET("ToPrint")
+End case 
+End if 
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+If ([Facility]InvUseAgrBalFwd)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+Else 
+ORDER BY([Trxs];[Trxs]CustomerCode;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+End if 
+SET PRINT PREVIEW(False)
+
+If ($SentwithInv) & (Records in selection([Trxs])>0)
+SelectPDFDoc (2;<>sPDFDocsPath+"Inv"+[Reservation]RReserveNo+".pdf")
+//If ([Notices]AttachInvoice) & ([Facility]InvStatement=1)
+PrintInvRecCode (4;"";False)
+//Else 
+//PrintInvRecCode (4;"";True)
+//End if 
+SelectPDFDoc (4;<>sPDFDocsPath+"Inv"+[Reservation]RReserveNo+".pdf")
+End if 
+
+If ([Facility]InvStatement=2)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]BalanceOwing#([Agreement]LastBillAmt-[Agreement]LastDiscAmt+Sum([OtherChgs]Amount))) & ([Agreement]BalanceOwing#0)
+$SentwithStatement:=True
+Else 
+$SentwithStatement:=False
+End if 
+End if 
+
+
+If ($SentwithStatement)
+vOpenBalText:="Opening balance"
+vCloseBalText:=Get localized string("Closing balance")
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+CREATE SET([Trxs];"TempAutoCC")
+If ([Facility]InvStatement>0)
+CREATE EMPTY SET([Trxs];"Statement")
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+USE SET("TempAutoCC")
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+USE SET("Statement")
+ARRAY DATE(adTransactionDate;0)
+ARRAY TEXT(asTransactionDescription;0)
+ARRAY REAL(arTransactionCharge;0)
+ARRAY REAL(arTransactionReceipt;0)
+ARRAY LONGINT(aiTransactionInvNo;0)
+DISTINCT VALUES([Trxs]InvNo;aiTransactionInvNo)
+For ($i;1;Size of array(aiTransactionInvNo))
+If (aiTransactionInvNo{$i}=0)
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:=[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=0
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+Else 
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+If ([Facility]StatementDetail)
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+If ([Facility]InvStatement=2)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+Else 
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+End if 
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)+" "+[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=[Trxs]TotAmt
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+NEXT RECORD([Trxs])
+End for 
+Else 
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=Sum([Trxs]TotAmt)
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+End if 
+End if 
+USE SET("Statement")
+End for 
+REDUCE SELECTION([Trxs];Size of array(adTransactionDate))
+SORT ARRAY(adTransactionDate;asTransactionDescription;arTransactionCharge;arTransactionReceipt;>)
+vi:=1
+Case of 
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False) & ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintFooterTwo")
+: ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintTwo")
+Else 
+FORM SET OUTPUT([Trxs];"InquiryPrintNew")
+End case 
+Else 
+FORM SET OUTPUT([Trxs];"InquiryPrint")
+End if 
+If (Records in selection([Trxs])>0)
+SelectPDFDoc (2;<>sPDFDocsPath+"Statement"+[Reservation]RReserveNo+".pdf")
+PrintSelection ("P";->[Trxs])
+SelectPDFDoc (4;<>sPDFDocsPath+"Statement"+[Reservation]RReserveNo+".pdf")
+End if 
+FORM SET OUTPUT([Trxs];"TransOut")
+End if 
+
+//$vhTimeStart:=Current time
+//Repeat 
+//$vhTimeStart:=$vhTimeStart
+//Until ((Current time-$vhTimeStart)>=?00:00:02?)
+//End for 
+SelectPDFDoc (3;$Name)
+<>tPrintPDF:=False
+LOAD RECORD([Letters])
+If ($SentwithInv) & (([Facility]UsePDFWriter) | (<>iPlatform=2))
+$Document:=<>sPDFDocsPath+"Inv"+[Reservation]RReserveNo+".pdf"
+If ((Test path name($Document)=Is a document))
+DOCUMENT TO BLOB($Document;[Message]AttachmentBlob)
+COMPRESS BLOB([Message]AttachmentBlob)
+[Message]Attachments:="Inv"+[Reservation]RReserveNo+".pdf"
+End if 
+End if 
+
+If ($SentwithStatement) & (([Facility]UsePDFWriter) | (<>iPlatform=2))
+
+$Document:=<>sPDFDocsPath+"Statement"+[Reservation]RReserveNo+".pdf"
+
+If ((Test path name($Document)=Is a document))
+If (BLOB size([Message]AttachmentBlob)>0)
+DOCUMENT TO BLOB($Document;[Message]AttachmentBlob2)
+COMPRESS BLOB([Message]AttachmentBlob2)
+Else 
+DOCUMENT TO BLOB($Document;[Message]AttachmentBlob)
+COMPRESS BLOB([Message]AttachmentBlob)
+End if 
+If ([Message]Attachments#"")
+[Message]Attachments:=[Message]Attachments+Char(13)+"Statement"+[Reservation]RReserveNo+".pdf"
+Else 
+[Message]Attachments:="Statement"+[Reservation]RReserveNo+".pdf"
+End if 
+End if 
+End if 
+Else 
+[Message]Attachments:=""
+End if 
+End if 
+SAVE RECORD([Message])
+
+CREATE SET([Message];"Messages")
+
+USE SET("EmailAutoCC")
+USE SET("AutoCC")
+
+SendMail 
+
+USE SET("EmailAutoCC")
+USE SET("AutoCC")
+USE SET("Messages")
+CLEAR SET("Messages")
+
+//Create the Letter 
+READ WRITE([Letters])
+CREATE RECORD([Letters])
+//For ($i;WR Count (veLetter;wr nb objects);1;-1)  //Reverse order as ref no changes as freezes happen
+//WR SELECT (veLetter;1;$i)  //Select reference
+//WR GET REFERENCE (veLetter;$Table;$Field;$Name;$Type2;$NumFormat;$DateFormat;$TimeFormat)
+//If ($Table#29)  //Freeze everything except pictures
+//WR EXECUTE COMMAND (veLetter;wr cmd freeze references)
+//End if 
+//End for 
+If ([Reservation]ReserveNo>"")
+[Letters]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Letters]LetterDesc:=[Notices]Description
+[Letters]SentViaEmail:=True
+//[Letters]LetterBLOB:=WR Area to blob (veLetter;1)
+
+[Letters]Attachments:=<>sPDFDocsPath+[Message]Attachments//fb11178
+
+BLOB PROPERTIES([Message]EmailMsg;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Message]EmailMsg)
+End if 
+[Letters]LetterBLOB:=[Message]EmailMsg
+[Letters]DateSent:=Current date
+COMPRESS BLOB([Letters]LetterBLOB)
+COMPRESS BLOB([Message]EmailMsg)
+SAVE RECORD([Letters])
+//WR DELETE OFFSCREEN AREA (veLetter)
+
+USE SET("EmailAutoCC")
+CLEAR SET("EmailAutoCC")
+USE SET("AutoCC")
+CLEAR SET("AutoCC")
+CLEAR SET("TempAutoCC")

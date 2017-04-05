@@ -1,0 +1,114 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+
+Case of 
+: (asStat{asStat}="Rented") | (asStat{asStat}="Locked") | (asStat{asStat}="Onsite") | (asStat{asStat}="Arrears") | (asStat{asStat}="Sublet")
+CustProcess (asAgreemtNo{asAgreemtNo})//asUnit{asUnit})  `changed to using unit for searching agreements created as HOF customers but has unit at local site.
+: (asStat{asStat}="CrdSale")
+CreditSaleProc (asAgreemtNo{asAgreemtNo})
+: (asStat{asStat}="Reserved")
+ReserveProc (asAgreemtNo{asAgreemtNo})
+: (asStat{asStat}="SalesInq") | (asStat{asStat}="SalesEnq")
+ContactProc (asCust{asCust})
+Else 
+//Must be vacant
+Case of 
+: (<>sProduct="@R")
+$i:=ConfirmThree (Get localized string("Do what with vacant appliance")+" "+asUnit{asUnit}+"?";Get localized string("New MoveIn");Get localized string("Change Status");Get localized string("Cancel"))
+: (<>sProduct="@B")
+$i:=ConfirmThree (Get localized string("Do what with vacant berth")+" "+asUnit{asUnit}+"?";Get localized string("New MoveIn");Get localized string("Change Status");Get localized string("Cancel"))
+: (<>sProduct="@C")
+$i:=ConfirmThree (Get localized string("Do what with vacant space")+" "+asUnit{asUnit}+"?";Get localized string("New MoveIn");Get localized string("Change Status");Get localized string("Cancel"))
+Else 
+If (asUnit#0)
+$i:=ConfirmThree (Get localized string("Do what with vacant unit")+" "+asUnit{asUnit}+"?";Get localized string("New MoveIn");Get localized string("Change Status");Get localized string("Cancel"))
+End if 
+End case 
+If ($i=1)
+If ([Facility]SaleInqRequest=True)
+ConfirmTwo (Get localized string("You need to create a Sales Enquiry before doing a Move In. Press convert to agreement when finished."))
+If (OK=1)
+ContactProc ("New")
+End if 
+Else 
+SelectButtonMethod (8)
+//CustProcess (asUnit{asUnit})  // Commented by Hamid 25/11/2014 -7087
+End if 
+End if 
+If ($i=2)
+Case of 
+: (<>sProduct="@R")
+vTitle:=Get localized string("Modify Appliances...")
+vLeg1:=Get localized string("Appl No")
+vLeg2:=Get localized string("Make/Model")
+vLeg3:=Get localized string("Serial Number")
+vLeg4:=Get localized string("Cost Price")
+vLeg5:=Get localized string("Depreciation Rate")
+vLeg7:=Get localized string("Costs")
+vLeg13:=Get localized string("Sale Price")
+vLeg9:=Get localized string("Purchase Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=Substring(Get localized string("Invoice Number:");1;Length(Get localized string("Invoice Number:"))-1)
+vLeg12:=Get localized string("Disposal Date")
+vHeight:=""
+OBJECT SET VISIBLE([Unit]Height;False)
+: (<>sProduct="@B")
+vTitle:=Get localized string("Modify Berths...")
+vLeg1:=Get localized string("Berth No")
+vLeg2:=Get localized string("Berth Size LxW")
+vLeg3:=Get localized string("Door Size WxH")
+vLeg4:=Get localized string("Area Size")
+vLeg5:=Get localized string("Length")
+vLeg7:=Get localized string("Dimensions")
+vLeg13:=Get localized string("Width")
+vLeg9:=Get localized string("Creation Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=""
+vLeg12:=Get localized string("End Date")
+vHeight:="Water Depth"
+: (<>sProduct="@C")
+vTitle:=Get localized string("Modify Spaces...")
+vLeg1:=Get localized string("Space No")
+vLeg2:=Get localized string("Space Size LxW")
+vLeg3:=Get localized string("Door Size WxH")
+vLeg4:=Get localized string("Area Size")
+vLeg5:=Get localized string("Length")
+vLeg7:=Get localized string("Dimensions")
+vLeg13:=Get localized string("Width")
+vLeg9:=Get localized string("Creation Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=""
+vLeg12:=Get localized string("End Date")
+vHeight:="Height"
+Else 
+vTitle:=Get localized string("Modify Units...")
+vLeg1:=Get localized string("Unit No")
+vLeg2:=Get localized string("Unit Size LxW")
+vLeg3:=Get localized string("Door Size WxH")
+vLeg4:=Get localized string("Area Size")
+vLeg5:=Get localized string("Length")
+vLeg7:=Get localized string("Dimensions")
+vLeg13:=Get localized string("Width")
+vLeg9:=Get localized string("Creation Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=""
+vLeg12:=Get localized string("End Date")
+vHeight:="Height"
+End case 
+bStop:=1
+bAddNew:=False
+FORM SET INPUT([Unit];"UnitIn")
+READ WRITE([Unit])
+READ WRITE([UnitHistory])
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+asUnit{asUnit})
+SET AUTOMATIC RELATIONS(True;False)
+If (Records in selection([Unit])>0)
+MODIFY RECORD([Unit])
+Else 
+AlertMessage (Get localized string("Unit not found")+".")
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+End case 

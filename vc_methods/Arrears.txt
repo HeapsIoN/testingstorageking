@@ -1,0 +1,532 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 
+// ----------------------------------------------------
+// Method: Arrears
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+
+C_BOOLEAN($1;$Web)
+C_BOOLEAN(forCompleted)
+C_LONGINT($i;$k)
+C_REAL($totReceipts)
+C_DATE(vTransDate;$j)
+C_TEXT($2);//sFacility
+forCompleted:=False
+$Web:=False
+LogAction (False;"Arrears Report started.")// records the report being started in the eventlog
+///If (Count parameters=1)
+If (Count parameters=2)
+$Web:=$1
+End if 
+
+If (PermissionsControl (70)) | ($Web)
+SetFacility 
+DEFAULT TABLE([Customer])
+OK:=1
+
+If ($Web=False)
+If (<>tBatch=False)
+vDate:=Current date
+$ProgressWin:=Open window((Screen width/2)-203;(Screen height/2)-235;(Screen width/2)+203;(Screen height/2)+235;5;Get localized string("MenuReportarrearsReport"))
+DIALOG([Customer];"ArrearsDialog")
+CLOSE WINDOW($ProgressWin)
+Else 
+bInactive:=0
+vDate:=vMthDate
+vMax:=Num(Substring([Facility]ReportSettings;17;2))
+If (vMax=0)
+vMax:=5
+End if 
+If (vMax=-1)
+sAll:=1
+sCust:=0
+vMax:=0
+bCalc:=1
+Else 
+sAll:=0
+sCust:=1
+bCalc:=1
+End if 
+bAll:=1
+rRefund1:=1
+rRefund2:=0
+rRefund3:=0
+End if 
+Else 
+OK:=1
+End if 
+
+If (OK=1)
+If (sAll=1)
+vMax:=-1
+End if 
+vReportSettings:=Substring([Facility]ReportSettings;1;16)+String(vMax;"00")+Substring([Facility]ReportSettings;19;12)
+If (vReportSettings#[Facility]ReportSettings) & (<>tBatch=False)
+UpdateSystem (128;->vReportSettings;Get localized string("KeyStatsDialogMethod"))
+End if 
+If (bCalc=1)
+//If (sAll=1)
+
+If ($Web=False)
+Else 
+//$dd:=String(vDate)
+//vDate:=Date(Substring($dd;9;2)+"/"+Substring($dd;6;2)+"/"+Substring($dd;1;4))  //OLR
+End if 
+
+$Date:=vDate
+//Else 
+//$Date:=vDate-vMax
+//End if 
+READ WRITE([Customer])
+READ WRITE([Trxs])
+
+If ($Web=True)
+QUERY([Customer];[Customer]CustomerCode=$2+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#$2+"PETTY";*)
+Else 
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#<>sFacility+"PETTY";*)
+End if 
+
+If (bInactive=1)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts=0;*)
+End if 
+QUERY([Customer]; & ;[Customer]Balance>0)
+ORDER BY([Customer];[Customer]CustomerCode;>)
+//Open window(50;50;500;150;0;Get localized string("Progress"))
+$ProgressWin:=Open window(20;50;450;150;0)
+For ($i;1;Records in selection)
+GOTO XY(2;2)
+MESSAGE("Calculating Arrears for Customer "+String($i)+" of "+String(Records in selection([Customer])))
+
+//GOTO XY(2;2)
+//MESSAGE(Get localized string("Processing Customer")+" : "+[Customer]CustomerCode+"    ")
+//GOTO XY(2;3)
+//MESSAGE(Get localized string("Processing :")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection)+"    ")
+RELATE MANY([Customer]CustomerCode)
+CREATE SET([Trxs];"Cust")
+
+//Charges
+If (sAll=1)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+Else 
+$j:=vDate-vMax
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=$j)
+End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+[Customer]BalFwd:=Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Refunds
+USE SET("Cust")
+//If (sAll=1)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+//QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+[Customer]BalFwd:=[Customer]BalFwd-Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Receipts
+USE SET("Cust")
+//If (sAll=1)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//QUERY SELECTION([Transaction]; & ;[Transaction]Match=0)
+//[Customer]BalFwd:=0
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+//$totReceipts:=0
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+$totReceipts:=Round(Sum([Trxs]TotAmt);2)
+
+//Credits
+USE SET("Cust")
+//If (sAll=1)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+
+$totReceipts:=$totReceipts-Round(Sum([Trxs]TotAmt);2)
+
+$k:=0
+[Customer]BalFwd:=Round([Customer]BalFwd-$totReceipts;2)
+//For ($j;1;Records in selection([Transaction]))
+//If ([Transaction]Charge=True)
+//[Customer]BalFwd:=[Customer]BalFwd+[Transaction]TotAmt
+//Else 
+//[Customer]BalFwd:=[Customer]BalFwd-[Transaction]TotAmt
+//$totReceipts:=$totReceipts+[Transaction]TotAmt
+//End if 
+//  `If (bAll#1)
+//[Transaction]Balance:=Round([Customer]BalFwd;2)
+//SAVE RECORD([Transaction])
+//  `End if 
+//NEXT RECORD([Transaction])
+//End for 
+RELATE MANY([Customer]CustomerCode)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date;*)
+//QUERY SELECTION([Transaction]; & ;[Transaction]Balance<=0)
+//QUERY SELECTION([Transaction];[Transaction]Charge=True)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+While ($totReceipts>=0)
+$k:=$k+1
+If ($k>Records in selection([Trxs]))
+If ($Web=False)
+////AlertMessage (Get localized string("Transactions for Customer ")+[Customer]CustomerCode+Get localized string(" not equal to Customer's balance. Report may be inaccurate."))
+End if 
+$totReceipts:=-1
+End if 
+If ([Trxs]Charge=True) & ([Trxs]TotAmt>=0)
+$totReceipts:=$totReceipts-[Trxs]TotAmt
+End if 
+If ([Trxs]Charge=False) & ([Trxs]TotAmt<0)
+$totReceipts:=$totReceipts+[Trxs]TotAmt
+End if 
+If ($totReceipts<0)
+vTransDate:=[Trxs]TrxDate
+End if 
+NEXT RECORD([Trxs])
+End while 
+//vTransDate:=[Transaction]TrxDate
+//RELATE MANY([Customer]CustomerCode)
+//QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date;*)
+//QUERY SELECTION([Transaction]; & ;[Transaction]TrxDate>=vTransDate;*)
+//QUERY SELECTION([Transaction]; & ;[Transaction]Balance>0)
+//ORDER BY([Transaction];[Transaction]Charge;<;[Transaction]TrxDate;>)
+
+//vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+//If ($Web=False)
+//Else 
+//$dd:=String($Date)
+//vDate:=Date(Substring($dd;9;2)+"/"+Substring($dd;6;2)+"/"+Substring($dd;1;4))  //OLR
+//End if 
+
+[Customer]One:=vDate-vTransDate
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+CLOSE WINDOW($ProgressWin)
+READ ONLY(*)
+Else 
+//30/07/14 DAM Added the lines below (else statement) because if untick recalc balances the no records in selection for customers
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#<>sFacility+"PETTY";*)
+If (bInactive=1)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts=0;*)
+End if 
+QUERY([Customer]; & ;[Customer]Balance>0)
+End if 
+QUERY SELECTION([Customer];[Customer]BalFwd>[Facility]MinBalArrears)
+If (sAll=1)
+CREATE EMPTY SET([Customer];"ToPrint")
+For ($i;1;Records in selection([Customer]))
+RELATE MANY([Customer]CustomerCode)
+If (Sum([Agreement]RentAmt)<=[Customer]BalFwd)
+ADD TO SET([Customer];"ToPrint")
+End if 
+NEXT RECORD([Customer])
+End for 
+USE SET("ToPrint")
+CLEAR SET("ToPrint")
+End if 
+Case of 
+: (rRefund1=1)
+ORDER BY([Customer];[Customer]BalFwd;<)
+: (rRefund2=1)
+ORDER BY([Customer];[Customer]One;<;[Customer]BalFwd;<)
+Else 
+SortbyUnits 
+End case 
+
+If ($Web=False)
+BREAK LEVEL(0)
+ACCUMULATE([Customer]BalFwd)
+If (bAll=1)
+FORM SET OUTPUT([Customer];"ArrearsSum")
+PrintSelection ("L")
+Else 
+FORM SET OUTPUT([Customer];"Arrears")
+PrintSelection ("P")
+End if 
+End if 
+
+CLEAR SET("Result")
+CLEAR SET("Cust")
+End if 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+
+LogAction (True;"Arrears Report ended.")
+
+
+
+
+//
+//C_BOOLEAN($1;$Web)
+//C_LONGINT($i;$k)
+//C_REAL($totReceipts)
+//C_DATE(vTransDate;$j)
+//$Web:=False
+//LogAction (False;"Arrears Report started.")  // records the report being started in the eventlog
+//If (Count parameters=1)
+//$Web:=$1
+//End if 
+
+//If (PermissionsControl (70)) | ($Web)
+//SetFacility 
+//DEFAULT TABLE([Customer])
+//OK:=1
+
+//If ($Web=False)
+//If (<>tBatch=False)
+//vDate:=Current date
+//Open window((Screen width/2)-203;(Screen height/2)-235;(Screen width/2)+203;(Screen height/2)+235;5;Get localized string("MenuReportarrearsReport"))
+//DIALOG([Customer];"ArrearsDialog")
+//CLOSE WINDOW
+//Else 
+//bInactive:=0
+//vDate:=vMthDate
+//vMax:=Num(Substring([Facility]ReportSettings;17;2))
+//If (vMax=0)
+//vMax:=5
+//End if 
+//If (vMax=-1)
+//sAll:=1
+//sCust:=0
+//vMax:=0
+//bCalc:=1
+//Else 
+//sAll:=0
+//sCust:=1
+//bCalc:=1
+//End if 
+//bAll:=1
+//rRefund1:=1
+//rRefund2:=0
+//rRefund3:=0
+//End if 
+//Else 
+//OK:=1
+//End if 
+
+//If (OK=1)
+//If (sAll=1)
+//vMax:=-1
+//End if 
+//vReportSettings:=Substring([Facility]ReportSettings;1;16)+String(vMax;"00")+Substring([Facility]ReportSettings;19;12)
+//If (vReportSettings#[Facility]ReportSettings) & (<>tBatch=False)
+//UpdateSystem (128;->vReportSettings;Get localized string("KeyStatsDialogMethod"))
+//End if 
+//If (bCalc=1)
+//  //If (sAll=1)
+//$Date:=vDate
+//  //Else 
+//  //$Date:=vDate-vMax
+//  //End if 
+//READ WRITE([Customer])
+//READ WRITE([Trxs])
+//QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@";*)
+//QUERY([Customer]; & ;[Customer]CustomerCode#<>sFacility+"PETTY";*)
+//If (bInactive=1)
+//QUERY([Customer]; & ;[Customer]NoActiveAgreemts=0;*)
+//End if 
+//QUERY([Customer]; & ;[Customer]Balance>0)
+//ORDER BY([Customer];[Customer]CustomerCode;>)
+//Open window(50;50;500;150;0;Get localized string("Progress"))
+
+//For ($i;1;Records in selection)
+//GOTO XY(2;2)
+//MESSAGE(Get localized string("Processing Customer")+" : "+[Customer]CustomerCode+"    ")
+//GOTO XY(2;3)
+//MESSAGE(Get localized string("Processing :")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection)+"    ")
+//RELATE MANY([Customer]CustomerCode)
+//CREATE SET([Trxs];"Cust")
+
+//  //Charges
+//If (sAll=1)
+//QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+//Else 
+//$j:=vDate-vMax
+//QUERY SELECTION([Trxs];[Trxs]TrxDate<=$j)
+//End if 
+//QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+//QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//  //QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+//[Customer]BalFwd:=Sum([Trxs]TotAmt)
+//CREATE SET([Trxs];"Result")
+//DIFFERENCE("Cust";"Result";"Cust")
+
+//  //Refunds
+//USE SET("Cust")
+//  //If (sAll=1)
+//QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+//  //Else 
+//  //$j:=vDate-vMax
+//  //QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//  //End if 
+//QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+//QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+//  //QUERY SELECTION([Transaction]; | ;[Transaction]TotAmt<0;*)
+//[Customer]BalFwd:=[Customer]BalFwd-Sum([Trxs]TotAmt)
+//CREATE SET([Trxs];"Result")
+//DIFFERENCE("Cust";"Result";"Cust")
+
+//  //Receipts
+//USE SET("Cust")
+//  //If (sAll=1)
+//QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+//  //Else 
+//  //$j:=vDate-vMax
+//  //QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//  //End if 
+//QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+//QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+//  //QUERY SELECTION([Transaction]; & ;[Transaction]Match=0)
+//  //[Customer]BalFwd:=0
+//ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+//  //$totReceipts:=0
+//CREATE SET([Trxs];"Result")
+//DIFFERENCE("Cust";"Result";"Cust")
+
+//$totReceipts:=Round(Sum([Trxs]TotAmt);2)
+
+//  //Credits
+//USE SET("Cust")
+//  //If (sAll=1)
+//QUERY SELECTION([Trxs];[Trxs]TrxDate<=$Date)
+//  //Else 
+//  //$j:=vDate-vMax
+//  //QUERY SELECTION([Transaction];[Transaction]TrxDate<=$j)
+//  //End if 
+//QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+//QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+
+//$totReceipts:=$totReceipts-Round(Sum([Trxs]TotAmt);2)
+
+//$k:=0
+//[Customer]BalFwd:=Round([Customer]BalFwd-$totReceipts;2)
+//  //For ($j;1;Records in selection([Transaction]))
+//  //If ([Transaction]Charge=True)
+//  //[Customer]BalFwd:=[Customer]BalFwd+[Transaction]TotAmt
+//  //Else 
+//  //[Customer]BalFwd:=[Customer]BalFwd-[Transaction]TotAmt
+//  //$totReceipts:=$totReceipts+[Transaction]TotAmt
+//  //End if 
+//  //  `If (bAll#1)
+//  //[Transaction]Balance:=Round([Customer]BalFwd;2)
+//  //SAVE RECORD([Transaction])
+//  //  `End if 
+//  //NEXT RECORD([Transaction])
+//  //End for 
+//RELATE MANY([Customer]CustomerCode)
+//  //QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date;*)
+//  //QUERY SELECTION([Transaction]; & ;[Transaction]Balance<=0)
+//  //QUERY SELECTION([Transaction];[Transaction]Charge=True)
+//ORDER BY([Trxs];[Trxs]TrxDate;>)
+//While ($totReceipts>=0)
+//$k:=$k+1
+//If ($k>Records in selection([Trxs]))
+//If ($Web=False)
+//AlertMessage (Get localized string("Transactions for Customer ")+[Customer]CustomerCode+Get localized string(" not equal to Customer's balance. Report may be inaccurate."))
+//End if 
+//$totReceipts:=-1
+//End if 
+//If ([Trxs]Charge=True) & ([Trxs]TotAmt>=0)
+//$totReceipts:=$totReceipts-[Trxs]TotAmt
+//End if 
+//If ([Trxs]Charge=False) & ([Trxs]TotAmt<0)
+//$totReceipts:=$totReceipts+[Trxs]TotAmt
+//End if 
+//If ($totReceipts<0)
+//vTransDate:=[Trxs]TrxDate
+//End if 
+//NEXT RECORD([Trxs])
+//End while 
+//  //vTransDate:=[Transaction]TrxDate
+//  //RELATE MANY([Customer]CustomerCode)
+//  //QUERY SELECTION([Transaction];[Transaction]TrxDate<=$Date;*)
+//  //QUERY SELECTION([Transaction]; & ;[Transaction]TrxDate>=vTransDate;*)
+//  //QUERY SELECTION([Transaction]; & ;[Transaction]Balance>0)
+//  //ORDER BY([Transaction];[Transaction]Charge;<;[Transaction]TrxDate;>)
+//[Customer]One:=vDate-vTransDate
+//SAVE RECORD([Customer])
+//NEXT RECORD([Customer])
+//End for 
+//CLOSE WINDOW
+//READ ONLY(*)
+//Else 
+//  //30/07/14 DAM Added the lines below (else statement) because if untick recalc balances the no records in selection for customers
+//QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@";*)
+//QUERY([Customer]; & ;[Customer]CustomerCode#<>sFacility+"PETTY";*)
+//If (bInactive=1)
+//QUERY([Customer]; & ;[Customer]NoActiveAgreemts=0;*)
+//End if 
+//QUERY([Customer]; & ;[Customer]Balance>0)
+//End if 
+//QUERY SELECTION([Customer];[Customer]BalFwd>[Facility]MinBalArrears)
+//If (sAll=1)
+//CREATE EMPTY SET([Customer];"ToPrint")
+//For ($i;1;Records in selection([Customer]))
+//RELATE MANY([Customer]CustomerCode)
+//If (Sum([Agreement]RentAmt)<=[Customer]BalFwd)
+//ADD TO SET([Customer];"ToPrint")
+//End if 
+//NEXT RECORD([Customer])
+//End for 
+//USE SET("ToPrint")
+//CLEAR SET("ToPrint")
+//End if 
+//Case of 
+//: (rRefund1=1)
+//ORDER BY([Customer];[Customer]BalFwd;<)
+//: (rRefund2=1)
+//ORDER BY([Customer];[Customer]One;<;[Customer]BalFwd;<)
+//Else 
+//SortbyUnits 
+//End case 
+
+//If ($Web=False)
+//BREAK LEVEL(0)
+//ACCUMULATE([Customer]BalFwd)
+//If (bAll=1)
+//FORM SET OUTPUT([Customer];"ArrearsSum")
+//PrintSelection ("L")
+//Else 
+//FORM SET OUTPUT([Customer];"Arrears")
+//PrintSelection ("P")
+//End if 
+//End if 
+
+//CLEAR SET("Result")
+//CLEAR SET("Cust")
+//End if 
+//READ ONLY([Customer])
+//UNLOAD RECORD([Customer])
+//End if 

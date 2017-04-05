@@ -1,0 +1,153 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SelectUnit (False)
+//bChange:=True
+//bNewChange:=True
+
+C_BOOLEAN($1)//True is from reservation
+C_TEXT(vExisting)
+C_BOOLEAN($Add)
+C_LONGINT($Pos)
+C_DATE($Date)
+bOkNext:=False
+$Res:=False
+$Add:=True
+
+Open window((Screen width/2)-200;(Screen height/2)-119;(Screen width/2)+200;(Screen height/2)+119;5;"Select "+<>vtUnitsCap+"")
+DIALOG([Facility];"SelectUnit")
+CLOSE WINDOW
+If (OK=1)
+$Found:=True
+If (bSelect2=1)
+ARRAY TEXT(asFacilities;0)
+ARRAY TEXT(asSiteCodes;0)
+COPY ARRAY(<>asFacilities;asFacilities)
+COPY ARRAY(<>asSiteCodes;asSiteCodes)
+asFacilities:=Find in array(asSiteCodes;<>sFacility)
+If ($Res)
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@")
+Else 
+QUERY([UnitType];[UnitType]NoVacant>0;*)
+QUERY([UnitType]; | ;[UnitType]NoExpMoveOut>0;*)
+QUERY([UnitType]; & ;[UnitType]RUnitType=<>sFacility+"@")
+End if 
+ORDER BY([UnitType];[UnitType]MonthlyRate;>)
+FORM SET OUTPUT([Unit];"UnitSelection")
+$Window:=Open form window("UnitSelect")
+DIALOG("UnitSelect")
+//DISPLAY SELECTION([UnitType];Single Selection ;*)
+//DISPLAY SELECTION([Facility])
+If (OK=1)
+$Date:=Current date+31
+If ($Res)
+If (([Reservation]ExpMoveIn+31)>$Date)
+$Date:=[Reservation]ExpMoveIn+31
+End if 
+End if 
+//LOAD RECORD([UnitType])
+//RELATE MANY([UnitType]RUnitType)
+//QUERY SELECTION([Unit];[Unit]Vacant=False;*)
+//QUERY SELECTION([Unit]; & ;[Unit]MoveOut#!00/00/00!;*)
+//QUERY SELECTION([Unit]; & ;[Unit]MoveOut<$Date;*)  `Extra condition added 12/6/05
+//QUERY SELECTION([Unit]; | ;[Unit]Vacant=True;*)
+//QUERY SELECTION([Unit]; & ;[Unit]Status#"Unavail")
+//ORDER BY([Unit];[Unit]Status;<;[Unit]UnitNo;>)
+//tBoolean:=$1
+//OUTPUT FORM([Unit];"SelectUnit")
+//DISPLAY SELECTION([Unit];Single Selection ;*)
+If (OK=1)
+LOAD RECORD([Unit])
+If (Records in selection([Unit])=0)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("You must select a single berth before clicking 'Select'!"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("You must select a single appliance before clicking 'Select'!"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("You must select a single space before clicking 'Select'!"))
+Else 
+AlertMessage (Get localized string("You must select a single unit before clicking 'Select'!"))
+End case 
+$Found:=False
+End if 
+If ([Unit]Vacant=False) & ($Res=False)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("Berth already occupied by Agreement")+" "+[Unit]AgreeNo)
+: (<>sProduct="@R")
+AlertMessage (Get localized string("Appliance already occupied by Agreement")+" "+[Unit]AgreeNo)
+: (<>sProduct="@C")
+AlertMessage (Get localized string("Space already occupied by Agreement")+" "+[Unit]AgreeNo)
+Else 
+AlertMessage (Get localized string("Unit already occupied by Agreement")+" "+[Unit]AgreeNo)
+End case 
+$Found:=False
+End if 
+Else 
+$Found:=False
+End if 
+Else 
+$Found:=False
+End if 
+Else 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+vExisting;*)
+QUERY([Unit]; | ;[Unit]RUnitNo=vExisting)
+If (Records in selection([Unit])=0)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("No such Berth number"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("No such Appiance number"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("No such Space number"))
+Else 
+AlertMessage (Get localized string("No such Unit number"))
+End case 
+$Found:=False
+Else 
+If ([Unit]Vacant=False) & ($Res=False)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("Berth already occupied by Agreement")+" "+[Unit]AgreeNo)
+: (<>sProduct="@R")
+AlertMessage (Get localized string("Appliance already occupied by Agreement")+" "+[Unit]AgreeNo)
+: (<>sProduct="@C")
+AlertMessage (Get localized string("Space already occupied by Agreement")+" "+[Unit]AgreeNo)
+Else 
+AlertMessage (Get localized string("Unit already occupied by Agreement")+" "+[Unit]AgreeNo)
+End case 
+$Found:=False
+End if 
+End if 
+End if 
+
+
+
+$Pos:=Find in array(aUnitNoMI;[Unit]UnitNo)
+Case of 
+: (Size of array(aUnitNoMI)=1) & ([Facility]UnitPerAgreement=True)
+$Add:=False
+$Pos:=0
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("You cannot select more than one Berth because your system has the 'Only allow one berth per agreement' option enabled in System Setup"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("You cannot select more than one Appliance because your system has the 'Only allow one applicance per agreement' option enabled in System Setup"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("You cannot select more than one Space because your system has the 'Only allow one space per agreement' option enabled in System Setup"))
+Else 
+AlertMessage (Get localized string("You cannot select more than one Unit because your system has the 'Only allow one unit per agreement' option enabled in System Setup"))
+End case 
+: ($Pos>0)
+AlertMessage ("You have already selected the unit "+[Unit]UnitNo)
+$Add:=False
+End case 
+
+If ($Add)
+If ($Res)
+SelectUnitB ($Found)
+Else 
+SelectUnitTransfer ($Found;False;True;vDate;False;False)
+End if 
+End if 
+
+End if 

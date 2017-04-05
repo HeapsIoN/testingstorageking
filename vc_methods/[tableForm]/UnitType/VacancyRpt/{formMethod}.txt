@@ -1,0 +1,86 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_TEXT(vtBillPlanDesc)
+C_REAL(vrSpecialRate)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Berth Report"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Appliance Report"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Space Report"))
+Else 
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Unit Report"))
+End case 
+End if 
+
+If (Form event=On Header)
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Berth Report"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Appliance Report"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Space Report"))
+Else 
+OBJECT SET TITLE(*;"Text13";Get localized string("Vacant Unit Report"))
+End case 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+If (Form event=On Printing Detail)
+If ([UnitType]VariableLength)
+vUnitBaseRate:=[UnitType]UnitTypeLength*[UnitType]MonthlyRate
+Else 
+vUnitBaseRate:=[UnitType]MonthlyRate
+End if 
+If ([UnitType]BillPlanCode>"")
+QUERY([BillPlan];[BillPlan]Code=[UnitType]BillPlanCode)
+vtBillPlanDesc:=[BillPlan]Description
+If ([BillPlan]PlanPeriod="Week")
+If ([UnitType]VariableLength)
+vrSpecialRate:=Round(((((([UnitType]UnitTypeLength*[UnitType]WeeklyRate)*[BillPlan]PeriodstoPay)*(1-([BillPlan]DiscPercentage/100)))/([BillPlan]PeriodstoPay+[BillPlan]FreePeriods))-[BillPlan]DiscFixedAmt)/0.2308;2)
+Else 
+vrSpecialRate:=Round((((([UnitType]WeeklyRate*[BillPlan]PeriodstoPay)*(1-([BillPlan]DiscPercentage/100)))/([BillPlan]PeriodstoPay+[BillPlan]FreePeriods))-[BillPlan]DiscFixedAmt)/0.2308;2)
+End if 
+Else 
+vrSpecialRate:=Round((((vUnitBaseRate*[BillPlan]PeriodstoPay)*(1-([BillPlan]DiscPercentage/100)))/([BillPlan]PeriodstoPay+[BillPlan]FreePeriods))-[BillPlan]DiscFixedAmt;2)
+End if 
+OBJECT SET VISIBLE(vtBillPlanDesc;True)
+OBJECT SET VISIBLE(vrSpecialRate;True)
+Else 
+vtBillPlanDesc:=""
+vrSpecialRate:=0
+OBJECT SET VISIBLE(vtBillPlanDesc;False)
+OBJECT SET VISIBLE(vrSpecialRate;False)
+End if 
+ListVacantUnits 
+If ([UnitType]RCSpecial=True)
+OBJECT SET VISIBLE(*;"SpecialStar";True)
+Else 
+OBJECT SET VISIBLE(*;"SpecialStar";False)
+End if 
+End if 

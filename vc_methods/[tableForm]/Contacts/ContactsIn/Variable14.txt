@@ -1,0 +1,49 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode#"")
+[Contacts]Quote_UnitType:=""
+For ($i;1;Records in selection([Quote]))
+$Pos:=Position("Type:";[Quote]Size)
+[Contacts]Quote_UnitType:=[Contacts]Quote_UnitType+Substring([Quote]Size;$Pos+6)+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Quote]Price;"###,##0.00")+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+[Quote]Note+Char(13)
+NEXT RECORD([Quote])
+End for 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode="")
+[Contacts]Quote_Other:=""
+For ($i;1;Records in selection([Quote]))
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+[Contacts]Quote_Other:=[Contacts]Quote_Other+[Analysis]Description+" x "+[Quote]Size+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Quote]Price;"###,##0.00")+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+[Quote]Note+Char(13)
+NEXT RECORD([Quote])
+End for 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+FORM SET INPUT([Letters];"LettersInBig")
+CREATE RECORD([Letters])
+[Letters]ContactNo:=[Contacts]ContactNo
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]Description="Default";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+If (Records in selection([Notices])=1)
+[Letters]LetterBLOB:=[Notices]Letter
+[Letters]LetterDesc:=[Notices]Description
+
+Else 
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; | ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+ORDER BY([Notices];[Notices]DaysAfter;>;[Notices]Description;>)
+LOAD RECORD([Notices])
+[Letters]LetterBLOB:=[Notices]Letter
+[Letters]LetterDesc:=[Notices]Description
+
+
+End if 
+[Letters]DateSent:=Current date
+SAVE RECORD([Letters])
+MODIFY RECORD([Letters];*)//No scroll bars
+If (bCancel=1)
+DELETE RECORD([Letters])
+End if 
+QUERY([Letters];[Letters]ContactNo=[Contacts]ContactNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)

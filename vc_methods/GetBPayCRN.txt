@@ -1,0 +1,84 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//Digital Key
+C_TEXT($2;$YourPayerNumber)//YourPayerNumber 
+C_TEXT($3)//Username
+C_TEXT($BPayBillerCode)
+C_TEXT($BPayCRN)
+C_LONGINT($Error)
+C_TEXT($ErrorMessage;$Message)
+C_TEXT($root)
+C_TEXT($subElem)
+C_TEXT($nameSpace)
+$nameSpace:="https://px.ezidebit.com.au/"
+$root:=DOM Create XML Ref("GetBPayCRN";$nameSpace)
+
+$subElem:=DOM Create XML element($root;"/GetBPayCRN/DigitalKey")
+DOM SET XML ELEMENT VALUE($subElem;$1)
+
+$subElem:=DOM Create XML element($root;"/GetBPayCRN/YourPayerNumber")
+
+If (Num($2)<0)//for Credit Sales
+$YourPayerNumber:=String(Num($2)*-1)
+Else 
+$YourPayerNumber:=$2
+End if 
+
+DOM SET XML ELEMENT VALUE($subElem;$YourPayerNumber)
+
+$subElem:=DOM Create XML element($root;"/GetBPayCRN/Username")
+DOM SET XML ELEMENT VALUE($subElem;$3)
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+DOM EXPORT TO VAR($root;$Message)
+SyncRecordLog ("EziDebit GetBPayCRN. Request: "+$Message)
+
+If ([Facility]Highlander)
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetBPayCRN";"GetBPayCRN";"https://px.ezidebit.com.au/";Web Service manual)
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetBPayCRN";"GetBPayCRN";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+Else 
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetBPayCRN";"GetBPayCRN";"https://px.ezidebit.com.au/";Web Service manual)
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetBPayCRN";"GetBPayCRN";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+End if 
+
+$EziResult:=Num(WEB SERVICE Get info(0))
+If ($EziResult=0)
+If (OK=1)
+C_BLOB($blob)
+C_TEXT($resRoot)
+C_TEXT($resSubElem)
+WEB SERVICE GET RESULT($blob;"XMLOut";*)
+$resRoot:=DOM Parse XML variable($blob)
+
+DOM EXPORT TO VAR($resroot;$Message)
+SyncRecordLog ("EziDebit GetBPayCRN Response: "+$Message)
+
+$resSubElem:=DOM Find XML element($resRoot;"/GetBPayCRNResponse/GetBPayCRNResult/Error")
+DOM GET XML ELEMENT VALUE($resSubElem;$Error)
+
+If ($Error=0)
+$resSubElem:=DOM Find XML element($resRoot;"/GetBPayCRNResponse/GetBPayCRNResult/Data/BPayBillerCode")
+DOM GET XML ELEMENT VALUE($resSubElem;$BPayBillerCode)
+
+$resSubElem:=DOM Find XML element($resRoot;"/GetBPayCRNResponse/GetBPayCRNResult/Data/BPayCRN")
+DOM GET XML ELEMENT VALUE($resSubElem;$BPayCRN)
+[Customer]CRN:=$BPayCRN
+$0:="S"
+Else 
+$resSubElem:=DOM Find XML element($resRoot;"/GetBPayCRNResponse/GetBPayCRNResult/ErrorMessage")
+DOM GET XML ELEMENT VALUE($resSubElem;$ErrorMessage)
+$0:="ERR"+String($Error)
+End if 
+End if 
+DOM CLOSE XML($resRoot)
+Else 
+SyncRecordLog ("EziDebit GetBPayCRN call result: "+String($EziResult))
+AlertMessage ("EziDebit call result, error code: "+String($EziResult)+" (Unable to process update)")
+$0:="Err"+String($EziResult)
+End if 
+DOM CLOSE XML($root)

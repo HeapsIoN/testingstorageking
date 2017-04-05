@@ -1,0 +1,195 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 01/10/13 Changes to allow correct calculation of ORC Amounts when changing from different [BillPlan]PlanPeriods
+
+C_BOOLEAN($1;$2;$FromWeb;$3)//True if ChangetoMthly, True if ChangetoWeekly, FromWeb=true if called from Web
+C_TEXT($Desc1;$Desc2)
+C_LONGINT($i)
+
+$FromWeb:=False
+If (Count parameters>2)
+$FromWeb:=$3
+End if 
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+$rPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+$rPlan:=52.18
+Else 
+$rPlan:=12
+End case 
+If (([Agreement]MthsAdv#viMthsAdv) & ($1=False) & ($2=False)) | ($rPlan#vrPlan) | ($1=True) | ($2=True)//last two so still gets executed when number of mths in cycle = no of weeks in cycle
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([OtherChgs])>0)
+//If ($1)
+//APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount/[Facility]InsWeeklyMthly;2))
+//APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount/[Facility]InsWeeklyMthly;2))
+//End if 
+//If ($2)
+//APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*[Facility]InsWeeklyMthly;2))
+//APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount*[Facility]InsWeeklyMthly;2))
+//End if 
+
+If (viMthsAdv>=1)//SDD 01/10/13 Following formula changed to correctly update ORC Amounts on changing a billing plan.  Above lines commented out as now included in this calculation
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=RoundAmt ([OtherChgs]Amount*vrPlan/viMthsAdv*([Agreement]MthsAdv+[BillPlan]FreePeriods)/$rPlan))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=RoundAmt ([OtherChgs]NewAmount*vrPlan/viMthsAdv*([Agreement]MthsAdv+[BillPlan]FreePeriods)/$rPlan))
+End if 
+
+For ($q;1;Records in selection([UnitAgree]))
+InsuranceCalc (True;False;False;True)
+NEXT RECORD([UnitAgree])
+End for 
+
+If (Records in selection([UnitAgree])=0)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($q;1;Records in selection([Unit]))
+InsuranceCalc (True;False;False;True)
+NEXT RECORD([Unit])
+End for 
+End if 
+InsuranceCalc (False;False;False;True)
+
+
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+vOthTotal:=Sum([OtherChgs]Amount)
+vNewOthTotal:=Sum([OtherChgs]NewAmount)
+[Agreement]AgreedDisc:=Round(vTotal-[Agreement]RegularRent;2)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vNewOthTotal;2)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+
+If ([Agreement]TotRentUnpaid>=([Agreement]LastBillAmt-[Agreement]LastDiscAmt)) & ([Agreement]MoveIn#[Agreement]NextBillDate)
+GetAnalysis 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Agreement]LastBillDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+//If (Records in selection([Trxs])=1)
+If ([Trxs]TrxDate<[Facility]CantModPrior) & ([Trxs]TrxDate#!00-00-00!)
+AlertMessage (Get localized string("Cannot update last rent billed transaction because it is prior to last accounting reports.  This must be adjusted manually!"))
+Else 
+QUERY([BillPlan];[BillPlan]Code=Old([Agreement]BillingPlanCode))
+If ([BillPlan]PlanPeriod="Week")
+$Desc1:=" "+Get localized string("Week")
+$i:=7
+Else 
+$Desc1:=" "+Get localized string("Month")
+$i:=30
+End if 
+If (viMthsAdv>1)
+$Desc1:=$Desc1+"s"
+End if 
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]PlanPeriod="Week")
+$Desc2:=" "+Get localized string("Week")
+Else 
+$Desc2:=" "+Get localized string("Month")
+End if 
+If ([Agreement]MthsAdv>1)
+$Desc2:=$Desc2+"s"
+End if 
+
+If ($FromWeb=False)
+ConfirmTwo (Get localized string("Last rent billed")+":"+String([Trxs]TrxDate)+" "+Get localized string("for")+" "+String(Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/$i;0))+$Desc1+".  "+Get localized string("Delete this billing & rebill for")+" "+String([Agreement]MthsAdv)+$Desc2+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+BillNextCharges (8)//Undo last rent
+BillNextCharges (6)//Add rent again
+//[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-Old([Transaction]TotAmt);2)
+//[Agreement]TotRentUnpaid:=Round([Agreement]TotRentUnpaid-Old([Transaction]TotAmt);2)
+//[Customer]Balance:=Round([Customer]Balance-Old([Transaction]TotAmt);2)
+//READ WRITE([Transaction])
+//LOAD RECORD([Transaction])
+//DELETE RECORD([Transaction])
+//[Agreement]NextBillDate:=[Agreement]LastBillDate
+//UpdateNewRent 
+//DoBillNext ("RentOnly")
+$i:=9999
+//READ ONLY([Transaction])
+//UNLOAD RECORD([Transaction])
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+End if 
+End if 
+//End if 
+If ($i#9999)
+AlertMessage (Get localized string("Warning - New Billing Plan will not come into effect until next rent charge date")+" "+String([Agreement]NextBillDate)+"!")
+End if 
+End if 
+If ([BillPlan]PlanPeriod="Week")
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied weekly")
+Else 
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied monthly")
+End if 
+
+OBJECT SET VISIBLE(vtPeriodicBilling;[BillPlan]PeriodicBilling)
+viMthsAdv:=[Agreement]MthsAdv+[BillPlan]FreePeriods
+vrPlan:=$rPlan
+End if 

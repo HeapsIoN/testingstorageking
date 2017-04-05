@@ -1,0 +1,91 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//$1 - Advam Account No
+//$2 - Originator Phone No
+//$3 - UserName
+//$4 - Password
+//$5 - Recipient Phone Numbers separated by comma ','
+//$6 - Message that you wish to send - Max 160 Characters
+//$7 - Reference text - Max 20 Characters
+C_TEXT($1;$2;$3;$4;$Acct)
+C_TEXT($5;$6;$7;$0;$vtRequest;$vtResponse)
+C_BOOLEAN($Test)
+ARRAY TEXT(vtaPhoneNumber;0)
+ARRAY TEXT(vtaMessageID;0)
+ARRAY TEXT(vtaMessageStatus;0)
+
+$0:="A response was not received from the SMS gateway."
+
+SetFacility 
+$Test:=False
+$Acct:=$1
+If ($1="Test-@")
+$Test:=True
+$Acct:=Substring($Acct;6)
+End if 
+$vtRequest:=""
+$vtResponse:=""
+$vtRequest:=$vtRequest+"&AA="+$Acct
+$vtRequest:=$vtRequest+"&OID="+$3
+$vtRequest:=$vtRequest+"&OPW="+$4
+If (Count parameters=7)
+If ($7#"")//There is a reference being passed in
+$vtRequest:=$vtRequest+"&RE="+Substring($7;1;20)
+End if 
+End if 
+$vtRequest:=$vtRequest+"&RC="+$5
+$vtRequest:=$vtRequest+"&MSG="+URLEncode (Substring($6;1;160))
+$vtRequest:=$vtRequest+"&MO="+$2
+
+//Make the request and receive the response
+If ($Test)
+$vtResponse:=SendReceiveHTTP ("demo-gateway.advam.com";"443";"/smsgateway/smsgateway.php";$vtRequest)
+Else 
+$vtResponse:=SendReceiveHTTP ("gateway.advam.com";"443";"/smsgateway/smsgateway.php";$vtRequest)
+End if 
+$crlf:=GetCRLF ($vtResponse)
+//Remove the TCP header info
+//$vtResponse:=Substring($vtResponse;Position($crlf+$crlf;$vtResponse)+(2*Length($crlf)))
+$vtDetail:=""
+If ($vtResponse>"")
+$i:=1
+While (Character code(Substring($vtResponse;$i;1))<14) & (Length($vtResponse)>$i)
+$i:=$i+1
+End while 
+//The Detail is the interesting part of the Response
+$vtDetail:=Substring($vtResponse;$i)
+End if 
+If ($vtDetail>"")
+ARRAY TEXT($atResultValue;0)
+$vtDetail:=$vtDetail+":"
+Repeat 
+$Pos:=Position(":";$vtDetail)
+$Value:=Substring($vtDetail;1;$Pos-1)
+INSERT IN ARRAY($atResultValue;Size of array($atResultValue)+1;1)
+$atResultValue{Size of array($atResultValue)}:=$Value
+$vtDetail:=Substring($vtDetail;$Pos+1)
+Until (Length($vtDetail)=0)
+$vtDetail:=""
+
+If ($atResultValue{1}="True")
+$0:="T"
+Else 
+$0:="F"
+End if 
+If (Size of array($atResultValue)>=3)
+$0:=$0+":"+$atResultValue{3}
+End if 
+
+
+//If ($atResultValue{1}="True")
+//$0:="Sent"
+//Else 
+//If (Size of array($atResultValue)>=3)
+//$0:=$atResultValue{3}
+//End if 
+//End if 
+End if 
+
+
+
+
+

@@ -1,0 +1,83 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Trigger event=On Saving New Record Event) | (Trigger event=On Saving Existing Record Event)
+
+If (Trigger event=On Saving New Record Event)
+//Save new PrimaryKey value
+If ([Unit]PrimaryKey=0)
+[Unit]PrimaryKey:=<>aliPrimaryKeys{Table(->[Unit])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[Unit])}:=<>aliPrimaryKeys{Table(->[Unit])}-1
+Else 
+<>aliPrimaryKeys{Table(->[Unit])}:=<>aliPrimaryKeys{Table(->[Unit])}+1
+End if 
+End if 
+End if 
+
+If ([Unit]XCoordinate<0)
+[Unit]XCoordinate:=0
+End if 
+
+If ([Unit]YCoordinate<0)
+[Unit]YCoordinate:=0
+End if 
+
+If ([Unit]Status#"Unavail") & ([Unit]EndDate#!00-00-00!)
+[Unit]EndDate:=!00-00-00!
+End if 
+
+If ([Unit]Vacant=True)
+[Unit]LockStatus:=0
+[Unit]LastInc:=!00-00-00!
+[Unit]LastRentAmt:=0
+If ([Unit]MaxLength#0)
+[Unit]UnitLength:=[Unit]MaxLength
+[Unit]UnitAreaSize:=Round([Unit]UnitLength*[Unit]UnitWidth;2)
+End if 
+End if 
+
+If ([Unit]ReservedTo="")
+If ([Unit]MaxLength#0)
+[Unit]ReservedLength:=[Unit]MaxLength
+End if 
+End if 
+
+If ([Unit]Status#Old([Unit]Status)) | ([Unit]LockStatus#Old([Unit]LockStatus))
+CREATE RECORD([UnitStatusTrx])
+[UnitStatusTrx]UnitNo:=[Unit]RUnitNo
+[UnitStatusTrx]DateUnitStatus:=Current date
+If (Old([Unit]Status)="Locked")
+[UnitStatusTrx]Unlocked:=True
+End if 
+[UnitStatusTrx]Status:=[Unit]Status
+[UnitStatusTrx]OldNo:=""
+[UnitStatusTrx]LockStatus:=[Unit]LockStatus
+SAVE RECORD([UnitStatusTrx])
+End if 
+If ([Unit]RUnitNo#Old([Unit]RUnitNo))
+CREATE RECORD([UnitStatusTrx])
+[UnitStatusTrx]UnitNo:=[Unit]RUnitNo
+[UnitStatusTrx]DateUnitStatus:=Current date
+[UnitStatusTrx]Status:=""
+[UnitStatusTrx]OldNo:=Old([Unit]RUnitNo)
+[UnitStatusTrx]LockStatus:=0
+SAVE RECORD([UnitStatusTrx])
+End if 
+End if 
+
+Case of 
+: ([Unit]RUnitNo="") & (Trigger event#On Deleting Record Event)
+$0:=-16103//Error if RUnitNo not set
+: (Substring([Unit]RUnitNo;1;5)#Substring([Unit]UnitTypeCode;1;5)) & (Trigger event#On Deleting Record Event)
+$0:=-16002
+: (Substring([Unit]RUnitNo;1;5)#Substring([Unit]AgreeNo;1;5)) & (Substring([Unit]AgreeNo;1;5)#<>sHOFacility) & (Length([Unit]AgreeNo)>5) & (Trigger event#On Deleting Record Event) & (<>sProduct="M@")
+$0:=-16002
+: (Substring([Unit]RUnitNo;1;5)#Substring([Unit]ReservedTo;1;5)) & (Substring([Unit]ReservedTo;1;5)#<>sHOFacility) & (Length([Unit]ReservedTo)>5) & (Trigger event#On Deleting Record Event) & (<>sProduct="M@")
+$0:=-16002
+Else 
+If ([Unit]RentedValue#Old([Unit]RentedValue)) | ([Unit]MoveIn#Old([Unit]MoveIn))
+TriggerLog (3;"056";String([Unit]ListPrice);!00-00-00!;[Unit]RentedValue;"U";Substring([Unit]RUnitNo;1;5);[Unit]RUnitNo)
+Else 
+TriggerLog (3;"056";"";!00-00-00!;0;"U";Substring([Unit]RUnitNo;1;5);[Unit]RUnitNo)
+End if 
+$0:=0
+End case 

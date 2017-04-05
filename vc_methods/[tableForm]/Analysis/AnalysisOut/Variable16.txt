@@ -1,0 +1,90 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+vTitle:=Get localized string("Import Data")+"..."
+vtFormula:=Get localized string("Maintenance - Analysis Codes1")
+
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Analysis Codes"))
+vImportDialog:=True
+vShowCancel:=True
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+If (OK=1)
+LogAction (False;Get localized string("Import Analysis Codes commenced"))
+If (<>tLogging=False)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+If (Records in selection([Analysis])>0)
+BEEP
+ConfirmTwo (Get localized string("Delete the")+" "+String(Records in selection([Analysis]))+" "+Get localized string("existing analysis codes before importing?"))
+If (OK=1)
+BEEP
+BEEP
+BEEP
+ConfirmTwo (Get localized string("WARNING - Delete")+" "+String(Records in selection([Analysis]))+" "+Get localized string("analysis codes. Are you absolutely certain?"))
+If (OK=1)
+DELETE SELECTION([Analysis])
+End if 
+End if 
+End if 
+FORM SET INPUT([Analysis];"Import")
+ON ERR CALL("ErrorImport")
+If (rRefund1=1)
+IMPORT TEXT("")
+Else 
+IMPORT SYLK("")
+End if 
+ON ERR CALL("ErrorLog")
+QUERY([Analysis];[Analysis]Code="")
+DELETE SELECTION([Analysis])
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+Repeat 
+$Date:=RequestDate (Get localized string("Enter date for brought forward balances?");Current date)
+If (Abs(Current date-$Date)>34)
+AlertMessage (Get localized string("Date for brought forward balances must be within 1 month of current date."))
+End if 
+Until (OK=1) & ($Date>=(Current date-35)) & ($Date<=(Current date+35))
+If (OK=1)
+For ($i;1;Records in selection([Analysis]))
+If ([Analysis]InvQtyonHand#0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=""
+[Trxs]AgreeNo:=""
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=Get localized string("Brought Forward")
+[Trxs]TotAmt:=0
+[Trxs]TaxAmt:=0
+[Trxs]Qty:=[Analysis]InvQtyonHand
+[Trxs]Match:=-999
+[Trxs]Confirmed:=True
+SAVE RECORD([Trxs])
+End if 
+NEXT RECORD([Analysis])
+End for 
+End if 
+FORM SET INPUT([Analysis];"AnalysisIn")
+vtFormula:=Get localized string("There are")+" "+String(Records in selection([Analysis]))+Get localized string("Maintenance - Analysis Codes2")
+
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Analysis Codes"))
+vImportDialog:=True
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+READ WRITE([Analysis])
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+APPLY TO SELECTION([Analysis];[Analysis]Groups:="ALL")
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+If (aAnalysis=1)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+Else 
+QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+End if 
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+LogAction (True;Get localized string("Import Analysis Codes finished"))
+Else 
+LogAction (True;Get localized string("Import Analysis Codes finished"))
+End if 
+End if 

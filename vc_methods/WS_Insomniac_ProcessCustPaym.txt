@@ -1,0 +1,173 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+SOAP DECLARATION(WS_PaymAmount;Is real;SOAP input)
+SOAP DECLARATION(WS_PaymMethod;Is text;SOAP input)
+SOAP DECLARATION(WS_CCType;Is text;SOAP input)
+SOAP DECLARATION(WS_CCNo;Is text;SOAP input)
+SOAP DECLARATION(WS_RoutingN;Is text;SOAP input)
+SOAP DECLARATION(WS_Expirdate;Is text;SOAP input)
+SOAP DECLARATION(WS_CCStreetAdr;Is text;SOAP input)
+SOAP DECLARATION(WS_CCPostCode;Is text;SOAP input)
+SOAP DECLARATION(WS_CCCVV;Is text;SOAP input)
+SOAP DECLARATION(WS_Track;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_ProcessCustPaym"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+$String:=$String+"WS_PaymAmount: "+String(WS_PaymAmount)+Char(13)
+$String:=$String+"WS_PaymMethod: "+WS_PaymMethod+Char(13)
+$String:=$String+"WS_CCType: "+WS_CCType+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_RoutingN: "+WS_RoutingN+Char(13)
+$String:=$String+"WS_Expirdate: "+WS_Expirdate+Char(13)
+$String:=$String+"WS_CCStreetAdr: "+WS_CCStreetAdr+Char(13)
+$String:=$String+"WS_CCPostCode: "+WS_CCPostCode+Char(13)
+$String:=$String+"WS_CCCVV: "+WS_CCCVV+Char(13)
+$String:=$String+"WS_Track: "+WS_Track+Char(13)
+
+WSRecordLog ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+If (Records in selection([Facility])#0)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_Cust_Code)
+RELATE ONE([Agreement]CustomerCode)
+
+If (Records in selection([Agreement])#0)
+WS_RET_CODE:=True
+$Create:=False
+Case of 
+: (WS_PaymMethod="CC")
+$SpecOptions:=54
+If (WS_CCNo="37@") | (WS_CCNo="34@")//It is an Amex card
+$SpecOptions:=55
+End if 
+If ((WS_CCNo="300@") | (WS_CCNo="301@") | (WS_CCNo="38@") | (WS_CCNo="39@") | (WS_CCNo="309@") | (WS_CCNo="302@") | (WS_CCNo="303@") | (WS_CCNo="304@") | (WS_CCNo="305@") | (WS_CCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$SpecOptions:=56
+End if 
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="CA")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"CA")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="CK")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"CH")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="DB")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"EF")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="ACH")
+//Need adhoc direct debit support added
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Payment method is Unavailable"
+End case 
+
+If ($Create=True)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=WS_PaymAmount
+
+If (WS_PaymMethod="CK")
+[Trxs]Confirmed:=False
+[Trxs]Narration:="Check:"+WS_CCNo+"/"+WS_RoutingN
+[Trxs]Description:="Check:"+WS_CCNo+"/"+WS_RoutingN
+[Trxs]Drawer:="Check:"+WS_CCNo+"/"+WS_RoutingN
+Else 
+[Trxs]Confirmed:=True
+End if 
+[Trxs]TrxTime:=Current time
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+If ([Analysis]SetBankedDate=True) & (Records in selection([Analysis])=1)
+[Trxs]DateBanked:=Current date
+End if 
+[Trxs]UserLogin:="Insomniac"
+If (WS_PaymMethod="CC")
+WS_Expirdate:=Substring(WS_Expirdate;1;2)+Substring(WS_Expirdate;5;2)
+If (CheckCCExpiry (WS_Expirdate))
+[Trxs]CCAuthNo:=ProcCreditCard (False;"P";WS_PaymAmount;WS_CCNo;WS_Expirdate;"";[Agreement]RAgreeNo;[Analysis]Description;[Agreement]CustomerCode;[Customer]CustomerName;WS_CCStreetAdr;WS_CCPostCode;"";"";"";[Agreement]TaxExempt;True;"";False)
+Else 
+[Trxs]CCAuthNo:="ERR: CC- Expiry"
+End if 
+End if 
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+SAVE RECORD([Trxs])
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+vNewReceipt:=False
+UpdateReceipt ("Web";True)
+
+//03/02/15 DAM Added for setting the gate to be updated
+READ WRITE([Unit])
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Unit];[Unit]UpdateGate:=True)
+APPLY TO SELECTION([Unit];[Unit]UpdatePULS:=<>tUtilities)
+READ ONLY([Unit])
+SAVE RECORD([Agreement])
+
+Else 
+WS_ERROR:="Payment by Credit Card is not Successful"
+WS_RET_CODE:=False
+End if 
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+End if 
+Else 
+WS_ERROR:="Customer Not Found"
+WS_RET_CODE:=False
+End if 
+Else 
+WS_ERROR:="Facility Not Found"
+WS_RET_CODE:=False
+End if 
+
+$String:="End WS_Insomniac_ProcessCustPaym"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

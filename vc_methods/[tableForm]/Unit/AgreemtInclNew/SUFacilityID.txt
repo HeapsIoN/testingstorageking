@@ -1,0 +1,47 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Data Change)
+C_LONGINT($Index)
+
+Case of 
+: ([Unit]SUFacilityID=0) & (Old([Unit]SUFacilityID)#0)//Changing it to '0' from another number effectively resetting the setting
+
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;Char(Line feed);";";1;String(Num(Old([Unit]SUFacilityID))))//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+If ($Index#-1)
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$Index);"")
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;Char(Line feed)+Char(Line feed);Char(Line feed))
+Else 
+AlertMessage (Get localized string("The SU Facility details were not able to be removed from Agreement")+" "+[Agreement]AgreeNo)
+End if 
+
+: ([Unit]SUFacilityID=0) & (Old([Unit]SUFacilityID)=0)//Leaving it unset
+
+: ([Unit]SUFacilityID#0) & (Old([Unit]SUFacilityID)#0)//Leaving it assigned, either to the existing Facility or a New Facility
+
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;Char(Line feed);";";1;String(Num(Old([Unit]SUFacilityID))))//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+If ($Index#-1)
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$Index);"")
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;Char(Line feed)+Char(Line feed);Char(Line feed))
+Else 
+AlertMessage (Get localized string("The SU Facility details were not able to be removed from Agreement")+" "+[Agreement]AgreeNo)
+End if 
+If (Position(String([Unit]SUFacilityID)+",";[Agreement]SUFacilitiesUpdated)=0)
+SyncRecordLog (Get localized string("Linking Facility to Agreement")+" "+[Agreement]RAgreeNo)
+[Agreement]SUFacilitiesUpdated:=[Agreement]SUFacilitiesUpdated+String(Num([Unit]SUFacilityID))+","
+End if 
+
+Else // ([Unit]SUFacilityID#0) and Old([Unit]SUFacilityID)=0 - Assigning it to a new Facility
+$Index:=Find in field([Unit]SUFacilityID;[Unit]SUFacilityID)
+If ($Index#-1)//Another Unit has this Facility ID
+AlertMessage (Get localized string("Another Unit has this Facility Assigned to it"))
+[Unit]SUFacilityID:=Old([Unit]SUFacilityID)
+Else 
+If (Position(","+String([Unit]SUFacilityID)+",";[Agreement]SUFacilitiesUpdated)=0)
+If (Position(",";[Agreement]SUFacilitiesUpdated)#1)
+[Agreement]SUFacilitiesUpdated:=","+[Agreement]SUFacilitiesUpdated
+End if 
+SyncRecordLog (Get localized string("Linking Facility to Agreement")+" "+[Agreement]RAgreeNo+" "+Get localized string("was")+" 0")
+[Agreement]SUFacilitiesUpdated:=[Agreement]SUFacilitiesUpdated+String(Num([Unit]SUFacilityID))+","
+End if 
+End if 
+End case 
+End if 

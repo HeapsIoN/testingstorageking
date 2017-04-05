@@ -1,0 +1,53 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1)
+QUERY([Letters];[Letters]AgreeNo=<>sFacility+"@";*)
+QUERY([Letters]; & ;[Letters]DateSent=$1;*)
+QUERY([Letters]; & ;[Letters]LetterDesc="@Rent@Increase@")
+If (Records in selection([Letters])>0)
+RELATE ONE SELECTION([Letters];[Agreement])
+If ([Facility]RentIncreaseAP=1)
+ConfirmTwo (Get localized string("Print")+" "+String(Records in selection([Agreement]))+" "+Get localized string("AP's for customers with a rent increase notice?"))
+Else 
+If ([Facility]RentIncreaseAP=4)
+OK:=0
+Else 
+OK:=1
+End if 
+End if 
+If (OK=1)
+If ([Facility]RentIncreaseAP=1)
+ConfirmTwo (Get localized string("Print AP's for all customers, or just those paying by autopay?");Get localized string("Autopay Only");Get localized string("All"))
+Else 
+If ([Facility]RentIncreaseAP=3)
+OK:=1
+Else 
+OK:=0
+End if 
+End if 
+If (OK=1)
+QUERY SELECTION([Agreement];[Agreement]AutoPay=True;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]AutoPayType=1)
+End if 
+If (Records in selection([Agreement])>0)
+If ([Facility]Country="AU")
+FORM SET OUTPUT([Agreement];"AutoPayFormAust")
+Else 
+FORM SET OUTPUT([Agreement];"AutoPayFormNZ")
+End if 
+If (<>tWinLetterFormat#"A4")
+PAGE SETUP([Facility];"ClientSetup")//US Letter Portrait full size
+End if 
+ORDER BY([Agreement];[Agreement]CustomerCode;>)
+//PRINT SETTINGS
+For ($i;1;Records in selection([Agreement]))
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+vBal:=Round([Agreement]NewRentAmt+Sum([OtherChgs]Amount);2)
+vDate:=[Agreement]NewRentFrom
+PRINT RECORD([Agreement];*)
+NEXT RECORD([Agreement])
+End for 
+FORM SET OUTPUT([Agreement];"UnitHistOut")
+
+End if 
+End if 
+End if 

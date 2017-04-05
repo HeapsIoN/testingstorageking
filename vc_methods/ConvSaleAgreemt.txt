@@ -1,0 +1,248 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//If successful
+C_LONGINT($i)
+C_TEXT($AgreeNo)
+C_BOOLEAN($Valid)
+C_POINTER($p)
+$0:=False
+$Continue:=True
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode>"")
+If (Records in selection([Quote])>0)
+$Date:=Current date
+QUERY([Unit];[Unit]Vacant=False;*)
+QUERY([Unit]; & ;[Unit]MoveOut#!00-00-00!;*)
+QUERY([Unit]; & ;[Unit]MoveOut<$Date;*)//Extra condition added 12/6/05
+QUERY([Unit]; | ;[Unit]Vacant=True;*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail")
+QUERY SELECTION([Unit];[Unit]UnitTypeCode=[Quote]UnitTypeCode;*)
+For ($i;1;Records in selection([Quote]))
+QUERY SELECTION([Unit]; | ;[Unit]UnitTypeCode=[Quote]UnitTypeCode;*)
+NEXT RECORD([Quote])
+End for 
+QUERY SELECTION([Unit]; | ;[Unit]UnitTypeCode=[Quote]UnitTypeCode)
+If (Records in selection([Unit])<=0)
+ConfirmTwo (Get localized string("None of the quoted unit types are available, do you wish to continue?");Get localized string("Yes");Get localized string("No"))
+If (OK=0)
+$Continue:=False
+End if 
+End if 
+End if 
+If ($Continue=True)
+If (CreateSalesCustomer )
+Repeat 
+$Continue:=False
+If (Not(Semaphore("<>bNextAgreeNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+If (<>aiNextAgreeNo{$arraypos}>[Facility]NextAgreeNo)
+ConfirmTwo (Get localized string("It appears the next agreement number of")+" "+String([Facility]NextAgreeNo;"000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$AgreeNo:=String(<>aiNextAgreeNo{$arraypos};"000000000")
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$arraypos}+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+Else 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+Else 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+vOldUser:=[Facility]NextAgreeNo
+
+$Key:=<>sFacility+$AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+End if 
+Else 
+AlertMessage ("Could not get next agreement number")
+Repeat 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+vOldUser:=[Facility]NextAgreeNo
+$Key:=<>sFacility+$AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+End if 
+If ($Continue)
+CLEAR SEMAPHORE("<>bNextAgreeNo")
+End if 
+$AgreeNo:=RequestMessage (Get localized string("New agreement number for this contact")+" "+[Contacts]ContactName+":";$AgreeNo)
+If (OK=1)
+$Valid:=True
+$Found:=Match regex("^[0-9]+$";$AgreeNo)
+$Found2:=Match regex("\\d+";$AgreeNo)
+If (Length($AgreeNo)#9) | (Num($AgreeNo)<=0) | ($Found=False) | ($Found2=False)
+AlertMessage (Get localized string("Agreement number must be five digits")+".")
+$Valid:=False
+End if 
+SET QUERY DESTINATION(3;$i)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+$AgreeNo)
+SET QUERY DESTINATION(0)
+If ($i>0)
+AlertMessage (Get localized string("There is already an agreement number")+" "+$AgreeNo+" "+Get localized string("on file.  Please try again!"))
+$Valid:=False
+End if 
+End if 
+Until ($Valid=True) | (OK#1)
+If (OK=1)
+vOldUser:=[Facility]NextAgreeNo
+$p:=Get pointer("vOldUser")
+UpdateSystem (20;$p;Get localized string("The next agreement number could not be incremented. You must increase the next agreement number in System Setup before proceeding!"))
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:=$AgreeNo
+[Agreement]RAgreeNo:=<>sFacility+$AgreeNo
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+[Agreement]CustomerCode:=[Customer]CustomerCode
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+[Agreement]DepositAmt:=[Analysis]DfltSellAmt
+[Agreement]ContactNo:=[Contacts]ContactNo
+[Agreement]CallTakenBy:=[Contacts]CallTakenBy
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+SAVE RECORD([Customer])
+[Agreement]MoveIn:=Current date
+[Agreement]MthsAdv:=1
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+[Agreement]NextBillDate:=[Agreement]MoveIn
+If ([Facility]BillonFirst)
+[Agreement]DaytoBill:=1
+[Agreement]NextBillDate:=GetDate (1;Month of([Agreement]MoveIn+30);Year of([Agreement]MoveIn+30))
+End if 
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+[Agreement]LastBillDate:=[Agreement]MoveIn
+[Agreement]ActiveAgreemt:=True
+[Agreement]BillUtilities:=<>tUtilities
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]SortOrder=1)
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+
+If (<>sFacility="KE@") & ([Customer]CustType="National Account")
+ARRAY DATE(asSQLNBD;0)
+ARRAY LONGINT(asSQLBillMths;0)
+ARRAY REAL(asSQLDisc;0)
+ARRAY TEXT(asSQLBillPlan;0)
+KSSKosmoKustomers ("SelectMoveIn";[Customer]CustomerName)
+
+If (Size of array(asSQLNBD)>0)
+[Agreement]NextBillDate:=asSQLNBD{1}
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+
+If (Size of array(asSQLBillMths)>0)
+[Agreement]MthsAdv:=asSQLBillMths{1}
+End if 
+
+If (Size of array(asSQLBillPlan)>0)
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]Description=asSQLBillPlan{1})
+If (Records in selection([BillPlan])>0)
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+Else 
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]SortOrder=1)
+End if 
+End if 
+
+
+
+End if 
+
+
+[Agreement]RentAmt:=0
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+[Agreement]ActiveAgreemt:=True
+
+[Agreement]ContactNo:=[Contacts]ContactNo
+[Agreement]CallTakenBy:=[Contacts]CallTakenBy
+[Agreement]KQ1:=[Contacts]KQ1
+[Agreement]KQ2:=[Contacts]KQ2
+[Agreement]KQ3:=[Contacts]KQ3
+[Agreement]KQ4:=[Contacts]KQ4
+[Agreement]KQ5:=[Contacts]KQ5
+[Agreement]KQ6:=[Contacts]KQ6
+[Agreement]KQ7:=[Contacts]KQ7
+[Agreement]KQ8:=[Contacts]KQ8
+[Agreement]KQ9:=[Contacts]KQ9
+[Agreement]KQ10:=[Contacts]KQ10
+[Agreement]KTS:=[Contacts]KTS
+[Agreement]KCN:=[Contacts]KCN
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]RefDateField=11;*)
+QUERY([Notices]; & ;[Notices]DaysAfter<0)
+If (Records in selection([Notices])>0)
+[Agreement]NoticeDaysPrior:=Abs([Notices]DaysAfter)
+End if 
+
+READ WRITE([NotesHistory])
+
+// 10/08/2016 JCW Added them below, because any notes in a sales enquiry would be lost when converting to an agreement
+QUERY([NotesHistory];[NotesHistory]ContactNo=[Contacts]ContactNo)
+If (Records in selection([NotesHistory])>0)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=[Customer]CustomerCode)
+SAVE RECORD([NotesHistory])
+End if 
+
+
+LOAD RECORD([NotesHistory])
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+For ($i;1;Records in selection([Quote]))
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+If ([Quote]UnitTypeCode>"")
+[NotesHistory]Note:="Unit Quote: "+[Quote]UnitTypeCode+"; Size: "+[Quote]Size+"; Price: $"+String([Quote]Price)+"; Note: "+[Quote]Note
+Else 
+[NotesHistory]Note:="Quote: "+[Quote]AnalysisCode+"; Quantity: "+[Quote]Size+"; Price: $"+String([Quote]Price)+"; Note: "+[Quote]Note
+End if 
+SAVE RECORD([NotesHistory])
+NEXT RECORD([Quote])
+End for 
+READ ONLY([NotesHistory])
+UNLOAD RECORD([NotesHistory])
+UpdateCalendar (!00-00-00!;[Contacts]FollowUpDate;"Contact "+vName+", Followup")
+[Contacts]Outcome:="Rented"
+[Contacts]OutComeDate:=Current date
+[Contacts]FollowUpDone:=True
+[Contacts]FollowUpDate:=!00-00-00!
+[Contacts]OnWaitingList:=False
+SAVE RECORD([Contacts])
+SelectUnitContact (False)
+SAVE RECORD([Agreement])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+LOAD RECORD([Agreement])
+$0:=True
+End if 
+Else 
+AlertMessage (Get localized string("This sales contact was not converted to an agreement."))
+End if 
+End if 

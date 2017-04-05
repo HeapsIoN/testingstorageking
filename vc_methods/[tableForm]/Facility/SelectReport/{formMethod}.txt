@@ -1,0 +1,156 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_TEXT($Report)
+C_TEXT($Text)
+C_LONGINT($Format;bWhole;$i)
+bWhole:=0
+bFile:=0
+bDontCalc:=0
+vEdDate:=GetPeriodEndDate (vPeriod)
+vDatePick1:=vEdDate
+vStDate:=GetPeriodEndDate (vPeriod;True)
+vDatePick:=vStDate
+End if 
+If (Form event=On Clicked)
+If (bMod=1)
+ALL RECORDS([ChartAccts])
+ORDER BY([ChartAccts];[ChartAccts]AcctNo;>)
+ARRAY TEXT(<>asGLAccounts;Records in selection([ChartAccts]))
+ARRAY LONGINT(<>aiRecNum;Records in selection([ChartAccts]))
+For ($i;1;Records in selection([ChartAccts]))
+<>asGLAccounts{$i}:=[ChartAccts]AcctNo+"  "+[ChartAccts]Description
+NEXT RECORD([ChartAccts])
+End for 
+QUERY([ChartAccts];[ChartAccts]ReportName=asReports{asReports})
+ARRAY TEXT(asCommands;0)
+vText:=[ChartAccts]ReportCode
+Repeat 
+INSERT IN ARRAY(asCommands;999;1)
+asCommands{Size of array(asCommands)}:=GetGLNextLine 
+Until (vText="")
+ARRAY TEXT(asCommandMenu;19)
+asCommandMenu{1}:="Command Menu"
+asCommandMenu{2}:="PRINT HEADER"
+asCommandMenu{3}:="PRINT RANGE"
+asCommandMenu{4}:="PRINT SUMRANGE"
+asCommandMenu{5}:="PRINT SUBRANGE"
+asCommandMenu{6}:="PRINT SUBTOTAL"
+asCommandMenu{7}:="PRINT TOTAL"
+asCommandMenu{8}:="PRINT GRAND"
+asCommandMenu{9}:="CLEAR SUBTOTAL"
+asCommandMenu{10}:="CLEAR TOTAL"
+asCommandMenu{11}:="CLEAR GRAND"
+asCommandMenu{12}:="ACCUMULATE"
+asCommandMenu{13}:="ACCUM SUBRANGE"
+asCommandMenu{14}:="PRINT ACCUM"
+asCommandMenu{15}:="PRINT PROFIT"
+asCommandMenu{16}:="PERCENTAGES ON"
+asCommandMenu{17}:="REPORT TITLE"
+asCommandMenu{18}:="REPORT LEGEND"
+asCommandMenu{19}:="PAGE BREAK"
+asCommandMenu:=1
+Open window(10;50;741;494;5;"Design Report")
+DIALOG([Facility];"DesignReport")
+CLOSE WINDOW
+End if 
+If (bDelete=1)
+QUERY([ChartAccts];[ChartAccts]ReportName=asReports{asReports})
+If (Records in selection([ChartAccts])>0)
+ConfirmTwo (Get localized string("Delete report format '")+[ChartAccts]ReportName+"' - "+Get localized string("Are you sure?"))
+If (OK=1)
+[ChartAccts]ReportName:=""
+[ChartAccts]ReportCode:=""
+SAVE RECORD([ChartAccts])
+DELETE FROM ARRAY(asReportSelect;asReports;1)
+DELETE FROM ARRAY(asReports;asReports;1)
+asReports:=1
+End if 
+End if 
+End if 
+If (bClone=1)
+QUERY([ChartAccts];[ChartAccts]ReportName=asReports{asReports})
+If (Records in selection([ChartAccts])>0)
+ConfirmTwo (Get localized string("Duplicate report format '")+[ChartAccts]ReportName+"' - "+Get localized string("Are you sure?"))
+If (OK=1)
+$Report:=RequestMessage (Get localized string("Enter new name for Report:"))
+If (OK=1)
+$Text:=[ChartAccts]ReportCode
+QUERY([ChartAccts];[ChartAccts]ReportName="")
+If (Records in selection([ChartAccts])>0)
+[ChartAccts]ReportName:=$Report
+[ChartAccts]ReportCode:=$Text
+SAVE RECORD([ChartAccts])
+INSERT IN ARRAY(asReports;999;1)
+INSERT IN ARRAY(asReportSelect;999;1)
+asReports{Size of array(asReports)}:=[ChartAccts]ReportName
+End if 
+End if 
+End if 
+End if 
+End if 
+If (bExport=1)
+QUERY([ChartAccts];[ChartAccts]ReportName=asReports{asReports})
+$Doc:=Create document("")
+If (OK=1)
+SEND PACKET($Doc;[ChartAccts]ReportCode)
+CLOSE DOCUMENT($Doc)
+End if 
+End if 
+If (bImport=1)
+$Doc:=Open document("";"TEXT")
+If (OK=1)
+RECEIVE PACKET($Doc;$Text;32000)
+CLOSE DOCUMENT($Doc)
+QUERY([ChartAccts];[ChartAccts]ReportName="")
+$Report:=RequestMessage (Get localized string("Enter new name for Report:"))
+If (OK=1) & (Records in selection([ChartAccts])>0)
+[ChartAccts]ReportName:=$Report
+[ChartAccts]ReportCode:=$Text
+SAVE RECORD([ChartAccts])
+INSERT IN ARRAY(asReports;999;1)
+INSERT IN ARRAY(asReportSelect;999;1)
+asReports{Size of array(asReports)}:=[ChartAccts]ReportName
+End if 
+End if 
+End if 
+If (bNew=1)
+Repeat 
+DIALOG([Facility];"SelectFormat")
+Case of 
+: (sFmt1=1)
+$Format:=1
+: (sFmt2=1)
+$Format:=2
+: (sFmt3=1)
+$Format:=3
+: (sFmt4=1)
+$Format:=4
+: (sFmt5=1)
+$Format:=5
+: (sFmt6=1)
+$Format:=6
+: (sFmt7=1)
+$Format:=7
+Else 
+$Format:=0
+End case 
+If (Length(vReptName)>20)
+AlertMessage (Get localized string("The Report Code cannot be greater than 20 characters."))
+End if 
+If ($Format=0)
+AlertMessage (Get localized string("The Report Format must be selected."))
+End if 
+Until ((($Format#0) & (Length(vReptName)<=20)) | (OK=0))
+If (OK=1)
+QUERY([ChartAccts];[ChartAccts]ReportName="")
+If (Records in selection([ChartAccts])>0)
+[ChartAccts]ReportName:=vReptName
+[ChartAccts]ReportCode:="USE LAYOUT "+String($Format)+Char(13)
+SAVE RECORD([ChartAccts])
+INSERT IN ARRAY(asReports;999;1)
+INSERT IN ARRAY(asReportSelect;999;1)
+asReports{Size of array(asReports)}:=[ChartAccts]ReportName
+End if 
+End if 
+End if 
+End if 

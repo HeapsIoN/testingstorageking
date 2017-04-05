@@ -1,0 +1,204 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($0)//Error return code
+C_DATE($1)//Date to run procedure for
+C_LONGINT($2;$3)//2=Force calculation of Arrears, 0=Do not calc, 1=calc if zero,  $3=CalcRented
+C_BOOLEAN($4)//Force CaUnlc
+C_LONGINT($i;$Tickcount;$CalcRented)
+If (<>sProduct#"M@") | ($4) | ([Facility]LastSyncDate<(UTCDate (Current time;True;Current date)-1)) | (([Facility]LastSyncDate=(UTCDate (Current time;True;Current date)-1)) & ([Facility]LastSyncTime<UTCTime (Current time;False)))
+$CalcRented:=$3
+READ WRITE([Activity])
+QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=$1)
+If (Records in selection([Activity])=0)
+CREATE RECORD([Activity])
+[Activity]FacilityCode:=[Facility]FacilityCode
+[Activity]ActivityDate:=$1
+[Activity]ActivityWeek:=GetWeekMonthNo (1;$1)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;$1)
+SAVE RECORD([Activity])
+End if 
+$Tickcount:=Tickcount+600//Wait ten seconds if necessary
+If (<>sProduct="MV")
+//SyncRecordLog (Get localized string("DailyActivity to line 20 for")+" "+[Facility]FacilityCode+" "+Get localized string("executed!"))
+End if 
+While (Locked([Activity])) & ($Tickcount<Tickcount)//Wait if locked
+IDLE
+End while 
+If (<>sProduct="MV")
+//SyncRecordLog (Get localized string("DailyActivity to line 25 for")+" "+[Facility]FacilityCode+" "+Get localized string("executed!"))
+End if 
+If (Locked([Activity]))
+$0:=-16000
+//SyncRecordLog (Get localized string("DailyActivity to line 31 for")+" "+[Facility]FacilityCode+" "+Get localized string("executed - Activity record locked!"))
+Else 
+ARRAY REAL(aTotal;19)
+//01/09/15 DAM
+//14 OtherRentedUnitNo
+//15 OtherRentedOccupArea
+//16 OtherRentedValue
+//17 OtherRentedValActua
+//18 [Activity]OtherDiscUnitNo
+//19 [Activity]OtherDiscArea
+
+For ($i;1;19)
+aTotal{$i}:=0
+End for 
+If (<>sProduct="MV")
+//SyncRecordLog (Get localized string("DailyActivity to line 37 for")+" "+[Facility]FacilityCode+" "+Get localized string("executed, about to CalcRentedValues!"))
+End if 
+If ($CalcRented=2)
+CalcRentedValues ([Facility]FacilityCode;$1;True;False;False;True)//Added in 4.1.0 to make sure calcs are correct
+End if 
+If (<>sProduct="MV")
+//SyncRecordLog (Get localized string("DailyActivity to line 42 for")+" "+[Facility]FacilityCode+" "+Get localized string("executed - CalcRentedValues completed!"))
+End if 
+[Activity]OccupUnitNo:=Round(aTotal{4};0)
+[Activity]VacantUnitNo:=Round(aTotal{10};0)
+[Activity]OtherUnitNo:=Round(aTotal{1};0)
+[Activity]DiscUnitNo:=Round(aTotal{8};0)
+[Activity]OccupArea:=Round(aTotal{5};0)
+[Activity]VacantArea:=Round(aTotal{11};0)
+[Activity]OtherArea:=Round(aTotal{2};0)
+[Activity]OccupValue:=Round(aTotal{6};0)
+[Activity]OccupValActual:=Round(aTotal{7};0)
+[Activity]VacantValue:=Round(aTotal{12};0)
+[Activity]OtherValue:=Round(aTotal{3};0)
+[Activity]DiscArea:=Round(aTotal{9};0)
+
+//SK Sites only
+[Activity]OtherRentedUnitNo:=Round(aTotal{14};0)
+[Activity]OtherRentedArea:=Round(aTotal{15};0)
+[Activity]OtherRentedValue:=Round(aTotal{16};0)
+[Activity]OtherRentedValActual:=Round(aTotal{17};0)
+[Activity]OtherDiscUnitNo:=Round(aTotal{18};0)
+[Activity]OtherDiscArea:=Round(aTotal{19};0)
+
+
+ARRAY REAL(aTotal;0)
+[Activity]TotUnitNo:=Round([Activity]OccupUnitNo+[Activity]VacantUnitNo+[Activity]OtherUnitNo+[Activity]OtherRentedUnitNo;0)
+[Activity]TotUnitArea:=Round([Activity]OccupArea+[Activity]VacantArea+[Activity]OtherArea+[Activity]OtherRentedArea;0)
+[Activity]TotValue:=Round([Activity]OccupValue+[Activity]VacantValue+[Activity]OtherValue+[Activity]OtherRentedValue;0)
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Deposit")
+RELATE MANY SELECTION([Trxs]AnalysisCode)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=[Activity]ActivityDate)
+[Activity]DepositsHeld:=Sum([Trxs]TotAmt)
+//
+//QUERY([Transaction];[Transaction]CustomerCode=[Facility]FacilityCode+"@";*)
+//For ($i;1;Records in selection([Analysis]))
+//QUERY SELECTION([Transaction]; & ;[Transaction]AnalysisCode="Deposit";*)
+//
+//NEXT RECORD([Analysis])
+//End for 
+//QUERY SELECTION([Transaction]; & ;[Analysis]KeyStatsCategory="Deposit")
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; | ;[Agreement]MoveOut>$1;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=$1;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+[Activity]ActiveAgreemts:=Records in selection([Agreement])
+//[Activity]DepositsHeld:=Sum([Agreement]DepositAmt)
+//QUERY([Reservation];[Reservation]ActiveReserve=True;*)
+//QUERY([Reservation]; | ;[Reservation]OutcomeDate>$1;*)
+//QUERY([Reservation]; & ;[Reservation]ReservedDate<=$1;*)
+//QUERY([Reservation]; & ;[Reservation]RReserveNo=[Facility]FacilityCode+"@")
+//[Activity]DepositsHeld:=[Activity]DepositsHeld+Sum([Reservation]DepositAmt)
+//QUERY([PhotosCards];[PhotosCards]Code=[Facility]FacilityCode+"@";*)
+//QUERY([PhotosCards]; & ;[PhotosCards]Size=0;*)
+//QUERY([PhotosCards]; & ;[PhotosCards]Deposit>0)
+//[Activity]DepositsHeld:=[Activity]DepositsHeld+Sum([PhotosCards]Deposit)
+QUERY SELECTION([Agreement];[Agreement]InsureValue>0;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]InsureCommence<=$1)
+QUERY SELECTION([Agreement];[Agreement]InsureExpire=!00-00-00!;*)
+QUERY SELECTION([Agreement]; | ;[Agreement]InsureExpire>$1)
+[Activity]InsureAgreemts:=Records in selection([Agreement])
+RELATE MANY SELECTION([Unit]AgreeNo)
+[Activity]InsureUnits:=Records in selection([Unit])
+[Activity]InsureValue:=Sum([Agreement]InsureValue)
+If ($2>0) & (($2=2) | (([Activity]Arrears1No=0) & ([Activity]Arrears1Value=0)))
+QUERY([Customer];[Customer]LatestTrxDate>(Current date-92);*)//Don't calculate for old customers whose balance is zero.
+QUERY([Customer]; | ;[Customer]LatestTrxDate=!00-00-00!;*)
+QUERY([Customer]; | ;[Customer]Balance#0;*)
+QUERY([Customer]; | ;[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+CalcAgedDebtors ($1;->[Customer];False)
+[Activity]Arrears1No:=0
+[Activity]Arrears2No:=0
+[Activity]Arrears3No:=0
+[Activity]Arrears4No:=0
+[Activity]AdvanceBillNo:=0
+[Activity]AdvancePaidNo:=0
+[Activity]Arrears1Value:=0
+[Activity]Arrears2Value:=0
+[Activity]Arrears3Value:=0
+[Activity]Arrears4Value:=0
+[Activity]AdvBillRntValue:=0
+[Activity]AdvanceBillOtherValue:=0
+[Activity]AdvBillLateValue:=0
+[Activity]AdvBillInsValue:=0
+[Activity]AdvancePaidValue:=0
+[Activity]ArrearsInactiveNo:=0
+[Activity]ArrearsInactiveValue:=0
+For ($i;1;Size of array(aCustCode))
+//ARRAY REAL(aTotals;11;Size of array(aCustCode))
+//{1} is Balance Owing at Date
+//{2} is up to 30 days
+//{3} is up to 60 days
+//{4} is up to 90 days
+//{5} is over 90 days
+//{6} is Rent Billed in Advance
+//{7} is Paid in Advance
+//{8} is Category as above but 1 = owing nothing
+//{9} is Fees Owing for Planet
+//{10} is Bal Owing for Inactive Customers for Kennards
+//{11} is Other Billed in Advance
+//{12} is Late Fees Billed in Advance
+//{13} is Insurance Billed in Advance
+Case of 
+: (aTotals{10}{$i}>0)
+[Activity]ArrearsInactiveNo:=[Activity]ArrearsInactiveNo+1
+: (aTotals{5}{$i}>0)
+[Activity]Arrears4No:=[Activity]Arrears4No+1
+: (aTotals{4}{$i}>0)
+[Activity]Arrears3No:=[Activity]Arrears3No+1
+: (aTotals{3}{$i}>0)
+[Activity]Arrears2No:=[Activity]Arrears2No+1
+: (aTotals{2}{$i}>0)
+[Activity]Arrears1No:=[Activity]Arrears1No+1
+Else 
+//Do Nothing
+End case 
+If (aTotals{6}{$i}>0)
+[Activity]AdvanceBillNo:=[Activity]AdvanceBillNo+1
+End if 
+If (aTotals{7}{$i}>0)
+[Activity]AdvancePaidNo:=[Activity]AdvancePaidNo+1
+End if 
+[Activity]Arrears1Value:=[Activity]Arrears1Value+aTotals{2}{$i}
+[Activity]Arrears2Value:=[Activity]Arrears2Value+aTotals{3}{$i}
+[Activity]Arrears3Value:=[Activity]Arrears3Value+aTotals{4}{$i}
+[Activity]Arrears4Value:=[Activity]Arrears4Value+aTotals{5}{$i}
+[Activity]AdvBillRntValue:=[Activity]AdvBillRntValue+aTotals{6}{$i}
+[Activity]AdvanceBillOtherValue:=[Activity]AdvanceBillOtherValue+aTotals{11}{$i}
+[Activity]AdvBillLateValue:=[Activity]AdvBillLateValue+aTotals{12}{$i}
+[Activity]AdvBillInsValue:=[Activity]AdvBillInsValue+aTotals{13}{$i}
+[Activity]AdvancePaidValue:=[Activity]AdvancePaidValue+aTotals{7}{$i}
+[Activity]ArrearsInactiveValue:=[Activity]ArrearsInactiveValue+aTotals{10}{$i}
+End for 
+If ([Facility]UseCashBook) & (Day of([Activity]ActivityDate+1)=1)//Last day of month
+If ([Facility]CashAccrual)
+JournalPrepaid ([Activity]ActivityDate;[Activity]AdvancePaidValue)
+Else 
+JournalPrepaid ([Activity]ActivityDate;[Activity]AdvBillRntValue)
+End if 
+End if 
+End if 
+[Activity]Updated:=True
+If (<>sProduct#"M@")
+TriggerLogActivity 
+End if 
+SAVE RECORD([Activity])
+$0:=0
+End if 
+End if 

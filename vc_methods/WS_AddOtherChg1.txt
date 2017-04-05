@@ -1,0 +1,241 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 02/06/15, 14:45:55
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_AddOtherChg
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+// Standardized
+
+
+SOAP DECLARATION(WS_RAgreeNo;Is text;SOAP input)
+SOAP DECLARATION(WS_AnalysisCode;Is text;SOAP input)
+SOAP DECLARATION(WS_Description;Is text;SOAP input)
+SOAP DECLARATION(WS_Amount;Is real;SOAP input)
+SOAP DECLARATION(WS_ProrataCharge;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_NewAmount;Is real;SOAP input)
+SOAP DECLARATION(WS_NewAmountFrom;Is date;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_AddOtherChg"+Char(13)
+$String:=$String+"WS_RAgreeNo: "+WS_RAgreeNo+Char(13)
+$String:=$String+"WS_AnalysisCode: "+WS_AnalysisCode+Char(13)
+$String:=$String+"WS_Description: "+WS_Description+Char(13)
+$String:=$String+"WS_Amount: "+String(WS_Amount)+Char(13)
+$String:=$String+"WS_ProrataCharge: "+String(WS_ProrataCharge)+Char(13)
+$String:=$String+"WS_NewAmount: "+String(WS_NewAmount)+Char(13)
+$String:=$String+"WS_NewAmountFrom: "+String(WS_NewAmountFrom)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([Customer])
+
+LOAD RECORD([Agreement])
+LOAD RECORD([Unit])
+LOAD RECORD([Trxs])
+LOAD RECORD([Customer])
+
+WS_CustomerID:="Invalid"
+bAdd:=0
+bAll:=0
+asShowHistory:=0
+viMatch:=-1
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_RAgreeNo;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_RAgreeNo;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+If (Records in selection([Agreement])=1)
+WS_CustomerID:=[Agreement]CustomerCode
+QUERY([Analysis];[Analysis]Code=WS_AnalysisCode)
+
+If (Records in selection([Analysis])=1)
+
+CREATE RECORD([OtherChgs])
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+[OtherChgs]Amount:=WS_Amount
+[OtherChgs]AnalysisCode:=[Analysis]Code
+[OtherChgs]Description:=WS_Description
+[OtherChgs]IncreaseFrom:=WS_NewAmountFrom
+[OtherChgs]NewAmount:=WS_NewAmount
+SAVE RECORD([OtherChgs])
+
+QUERY([Analysis];[Analysis]Code=[OtherChgs]AnalysisCode)
+If ([Analysis]InvItem=False)
+$yDays:=[Agreement]NextBillDate-Current date
+If ($yDays<2)
+//AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String(Old([Agreement]NextBillDate);6)+", "+Get localized string("Next Bill Date")+" "+Get localized string("is")+" "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+Else 
+If ([BillPlan]PlanPeriod="Week")
+$Month:=7
+Else 
+$Month:=Month of(Current date)
+If ($Month>=1) & ($Month<=12)
+If ($Month=2)
+$TestDate:=Add to date(Date(String(<>aLastDay{$Month})+"/"+String($Month)+"/"+String(Year of(Current date)));0;0;1)
+$LeapYear:=Month of($TestDate)
+If ($Month=$LeapYear)
+$Month:=<>aLastDay{$Month}+1
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+Else 
+$Month:=30
+End if 
+End if 
+$Rate:=[OtherChgs]Amount/([Agreement]MthsAdv+[BillPlan]FreePeriods)
+$Amt:=Round(([OtherChgs]Amount*([Agreement]NextBillDate-Current date)/$Month)/([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+
+OK:=1
+If (WS_ProrataCharge=True)
+READ WRITE([Trxs])
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+RELATE ONE([OtherChgs]AnalysisCode)
+If ([Analysis]InvItem=True) & ([Analysis]InvQtyonHand<1)
+//AlertMessage ("You cannot add an other regular charge for "+" "+[OtherChgs]Description+" "+Get localized string("as there are only")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("units on hand.  Please re-enter!"))
+Else 
+CREATE RECORD([Trxs])
+[Trxs]Qty:=1
+If ([Analysis]InvItem=True)
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-1
+End if 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[OtherChgs]AnalysisCode
+//$Desc:=[Analysis]Description
+//$i:=Position(" ";$Desc)-1
+//If ($i<2)
+//$i:=Length($Desc)
+//End if 
+[Trxs]Description:=Get localized string("Prorata")+" "+[OtherChgs]Description//+Substring($Desc;1;$i)+" "+[Analysis]Description
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]Narration:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String(Current date)+" = "+String([Agreement]NextBillDate-Current date)+" "+Get localized string("Days")+Char(13)
+If ($Month=7)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days in current week")+" = 7 "+Get localized string("Days")+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days in current month")+" = "+String($Month)+" "+Get localized string("Days")+Char(13)
+End if 
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Regular charge for")+" "+[OtherChgs]Description+" = "+String($Rate;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"M x X / Y = "+String([Trxs]TotAmt;<>sFormat)+Char(13)
+
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Analysis])
+SAVE RECORD([Trxs])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+$TrxDate:=[Trxs]TrxDate
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End if 
+READ ONLY([Trxs])
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Customer])
+ReCalcUnpaid 
+SAVE RECORD([Agreement])
+//vRecalc:=True
+Else 
+//AlertMessage (Get localized string("You will need to manually adjust the")+" "+[Analysis]Description+".")
+End if 
+End if 
+End if 
+
+//WS_OLD=WS_Edit:=True
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Other Charge successfully added to Agreement in database Storman."
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1011
+WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+End if 
+
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Unit])
+READ ONLY([Trxs])
+READ ONLY([Customer])
+
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Customer])
+
+$String:="End WS_AddOtherChg"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

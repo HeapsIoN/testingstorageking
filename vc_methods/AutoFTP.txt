@@ -1,0 +1,160 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1)//True=Scheduled automatic, False=Manual from menu  `AutoBackup
+C_LONGINT($Err;$i)
+C_TEXT(vPath;vHostPath)
+C_LONGINT(vSession;$TCPID)
+SET MENU BAR(3)
+$TCPID:=0
+ALL RECORDS([Facility])
+If (Test path name(<>sBackupPath)=Is a folder)
+ARRAY TEXT(aText;0)
+ON ERR CALL("ErrorNone")
+DOCUMENT LIST(<>sBackupPath;aText)
+ON ERR CALL("ErrorLog")
+If (Size of array(aText)=0)
+INSERT IN ARRAY(aText;1;1)
+aText{1}:="No Files"
+End if 
+$i:=Find in array(aText;"7za.exe")
+If ($i>0)
+DELETE FROM ARRAY(aText;$i;1)
+End if 
+$i:=Find in array(aText;"Zip.exe")
+If ($i>0)
+DELETE FROM ARRAY(aText;$i;1)
+End if 
+If (Size of array(aText)=0)
+INSERT IN ARRAY(aText;1;1)
+aText{1}:="No Files"
+End if 
+SORT ARRAY(aText;<)
+vLeg1:="storman.com"
+vBoolean:=True
+Case of 
+: ($1=True)
+vBoolean:=False
+vLeg2:=[Facility]UserCode
+vLeg3:=""
+WEB SERVICE SET PARAMETER("WS_UserCode";vLeg2)
+$Error:=IT_SetTimeOut (1)
+$Error:=TCP_Open (GetDNS ("SUV1");443;$TCPID;0)
+If ($Error=0)
+$Error:=TCP_Close ($TCPID)
+WEB SERVICE CALL("https://"+GetDNS ("SUV1")+":443/4DSOAP/";"Storman#WS_GetFTPBackup";"WS_GetFTPBackup";"http://www.storpay.com/webservices";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT(vBoolean;"WS_UseBackup")
+WEB SERVICE GET RESULT(vLeg1;"WS_ServerAddr")
+WEB SERVICE GET RESULT(vLeg2;"WS_UserLogin")
+WEB SERVICE GET RESULT(vLeg3;"WS_Password")
+WEB SERVICE GET RESULT(vHostPath;"WS_HostPath";*)// Memory clean-up on the final return value.
+End if 
+End if 
+$Error:=IT_SetTimeOut (30)
+: ([Facility]FTPConnection>"")
+vLeg1:=GetTextNo ([Facility]FTPConnection;1)
+vLeg2:=GetTextNo ([Facility]FTPConnection;2)
+vLeg3:=GetTextNo ([Facility]FTPConnection;3)
+vHostPath:=GetTextNo ([Facility]FTPConnection;4)
+If (vLeg2="storman")
+vLeg2:=""
+vLeg3:=""//So password is not displayed
+End if 
+//vHostPath:=""
+Else 
+vHostPath:="/incoming/"
+vLeg1:="ftp."+vLeg1
+vLeg2:="anonymous"
+vLeg3:=[Facility]EmailAddress
+vHostPath:=""
+vLeg2:=[Facility]UserCode
+vLeg3:=[Facility]EmailAddress
+End case 
+vLeg4:=[Facility]FacilityCode+[Facility]UserCode+String(Year of(Current date)-2000;"00")+String(Month of(Current date);"00")+String(Day of(Current date);"00")
+If (<>iPlatform<3)
+vLeg4:=vLeg4+".sit"
+Else 
+vLeg4:=vLeg4+".zip"
+End if 
+If ($1=False)
+Open window((Screen width/2)-224;(Screen height/2)-160;(Screen width/2)+224;(Screen height/2)+160;5;Get localized string("Backup to Internet Server"))
+DIALOG([Facility];"FTPDialog")
+CLOSE WINDOW
+End if 
+If (OK=1) | ($1)
+If (Shift down)
+vPath:=<>sTutPath
+Open window((Screen width/2)-357;(Screen height/2)-256;(Screen width/2)+357;(Screen height/2)+256;5;"FTP Session")
+GOTO XY(2;2)
+MESSAGE(Get localized string("Connecting to")+" "+vLeg1+"..."+"    ")
+ARRAY TEXT(atFolders;0)
+ARRAY TEXT(atFiles;0)
+FOLDER LIST(vPath;atFolders)
+DOCUMENT LIST(vPath;atFiles)
+$Err:=FTP_Login (vLeg1;vLeg2;vLeg3;vSession;vLegend)
+If ($Err=0)
+ARRAY TEXT(aCustName;0)
+ARRAY LONGINT(aLongint;0)
+ARRAY LONGINT(aDataIn;0)
+ARRAY DATE(aDates;0)
+ARRAY LONGINT(aTimes;0)
+$Err:=FTP_GetDirList (vSession;vHostPath;aCustName;aLongint;aDataIn;aDates;aTimes)
+ERASE WINDOW
+DIALOG([Facility];"FTPSession")
+$Err:=FTP_Logout (vSession)
+Else 
+AlertMessage (Get localized string("Error")+" #"+String($i)+" - "+Get localized string("Unable to connect to")+" "+vLeg1+"!!")
+End if 
+CLOSE WINDOW
+Else 
+Case of 
+: (vHostPath="")
+vHostPath:="/Storman/"+[Facility]UserCode+"/"
+: (vHostPath[[Length(vHostPath)]]#"/")
+vHostPath:=vHostPath+"/"
+Else 
+//Do Nothing
+End case 
+If (aText<1) | (aText>Size of array(aText))
+aText:=1
+End if 
+If ($1)
+For ($i;Size of array(aText);1;-1)
+If (aText{$i}#"BK@") | (aText{$i}#"@.zip")
+DELETE FROM ARRAY(aText;$i)
+End if 
+End for 
+SORT ARRAY(aText;<)
+aText:=1
+End if 
+If (aText<=Size of array(aText)) & (vBoolean)
+$Err:=FTP_Login (vLeg1;vLeg2;vLeg3;vSession;vLegend)
+If ($Err=0) & (vSession>0)
+$Err:=FTP_Progress (-1;-1;"Progress window";"*";"Cancel")
+$Err:=FTP_Send (vSession;<>sBackupPath+aText{aText};vHostPath+vLeg4;1)
+Case of 
+: ($Err=0)
+: ($Err=-43)
+AlertServer (Get localized string("The")+" "+Get localized string("File1")+" : "+<>sBackupPath+aText{aText}+" "+Get localized string("could not be found. Unable to send!"))
+Else 
+AlertServer (Get localized string("An error occurred")+" "+Get localized string("No1")+" : "+String($Err))
+End case 
+$Err:=FTP_Logout (vSession)
+Else 
+AlertServer (Get localized string("Unable to connect to")+" "+vLeg1+" "+Get localized string("for backup")+"!!")
+End if 
+End if 
+End if 
+If ($1=False)
+vHostPath:=vLeg1+Char(13)+vLeg2+Char(13)+vLeg3+Char(13)+vHostPath+Char(13)
+If (vHostPath#[Facility]FTPConnection)
+UpdateSystem (170;->vHostPath;Get localized string("Unable to save FTP Connection details as System record is locked!"))
+End if 
+End if 
+End if 
+Else 
+AlertServer (Get localized string("The Backup folder does not exist. Quit")+" "+<>sOEMName+" "+Get localized string("and relaunch!"))
+End if 
+If ($1=False)
+CloseWindow 
+End if 
+SetFacility 

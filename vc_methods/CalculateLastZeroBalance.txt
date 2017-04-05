@@ -1,0 +1,90 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 02/12/10, 16:45:02
+// ----------------------------------------------------
+// Method: CalculateLastZeroBalance
+// Description
+// Calculates date of last time a customer/agreement/reservation balance went above 0
+//
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT($1)
+
+Case of 
+: ($1=0)
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode)
+: ($1=1)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+: ($1=2)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+End case 
+
+CREATE SET([Trxs];"Cust")
+
+//Charges
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+$totCharges:=Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Refunds
+USE SET("Cust")
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+$totCharges:=[Customer]BalFwd+Sum([Trxs]TotAmt)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+//Receipts
+USE SET("Cust")
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt>=0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+CREATE SET([Trxs];"Result")
+DIFFERENCE("Cust";"Result";"Cust")
+
+$totReceipts:=Round(Sum([Trxs]TotAmt);2)
+
+//Credits
+USE SET("Cust")
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt<0)
+
+$totReceipts:=$totReceipts-Round(Sum([Trxs]TotAmt);2)
+
+$k:=0
+$totCharges:=Round($totCharges-$totReceipts;2)
+
+Case of 
+: ($1=0)
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode)
+: ($1=1)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+: ($1=2)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+End case 
+
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+$0:=[Trxs]TrxDate
+
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+While ($totReceipts>=0)
+$k:=$k+1
+If ([Trxs]Charge=True) & ([Trxs]TotAmt>=0)
+$totReceipts:=$totReceipts-[Trxs]TotAmt
+End if 
+If ([Trxs]Charge=False) & ([Trxs]TotAmt<0)
+$totReceipts:=$totReceipts+[Trxs]TotAmt
+End if 
+If ($totReceipts<0)
+$0:=[Trxs]TrxDate
+End if 
+If ($k>Records in selection([Trxs]))
+$totReceipts:=-1
+End if 
+NEXT RECORD([Trxs])
+End while 

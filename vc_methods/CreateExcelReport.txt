@@ -1,0 +1,249 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($1;$2)//no of columns on report, no. of records in selection (columns x rows)
+C_TEXT($3)//method to execute eg relate one / many
+C_TEXT($4)//Report Name
+C_TEXT($5)// vReportLegend
+C_TEXT($6)//Footer/ report notes
+C_LONGINT($platform)
+C_TEXT(<>pathSpacer)
+C_TEXT(executeMethod)
+executeMethod:=$3
+If (Count parameters>5)
+$Footer:=$6
+End if 
+PLATFORM PROPERTIES($platform)
+If ($platform=3)
+<>pathSpacer:="\\"
+Else 
+<>pathSpacer:=":"
+End if 
+appPath:=Get 4D folder(Database folder)+"Resources"+<>pathSpacer
+$Folder:=Test path name(appPath)
+If ($Folder<0)
+CREATE FOLDER(appPath)
+End if 
+$Folder:=Test path name(appPath+"xl"+<>pathSpacer)
+If ($Folder<0)
+CREATE FOLDER(appPath+"xl"+<>pathSpacer)
+End if 
+$Folder:=Test path name(appPath+"docProps"+<>pathSpacer)
+If ($Folder<0)
+CREATE FOLDER(appPath+"docProps"+<>pathSpacer)
+End if 
+$Folder:=Test path name(appPath+"_rels"+<>pathSpacer)
+If ($Folder<0)
+CREATE FOLDER(appPath+"_rels"+<>pathSpacer)
+End if 
+$Folder:=Test path name(appPath+"xl"+<>pathSpacer+"_rels"+<>pathSpacer)
+If ($Folder<0)
+CREATE FOLDER(appPath+"xl"+<>pathSpacer+"_rels"+<>pathSpacer)
+End if 
+$Folder:=Test path name(appPath+"xl"+<>pathSpacer+"worksheets"+<>pathSpacer)
+If ($Folder<0)
+CREATE FOLDER(appPath+"xl"+<>pathSpacer+"worksheets"+<>pathSpacer)
+End if 
+If (<>iPlatform=3)
+$Folder:=Test path name(appPath+"7za.exe")
+If ($Folder<0)
+If (<>tClient) & (Application type=4D Remote mode)//4Dclient
+//COPY DOCUMENT(◊sStormanPath+"Win4DX"+◊pathSpacer+"7za.exe"+◊pathSpacer; )
+Else 
+//COPY DOCUMENT(◊sStormanPath+"Database"+◊pathSpacer+"Win4DX"+◊pathSpacer+"7za.exe"+◊pathSpacer;)
+End if 
+End if 
+End if 
+
+//create Content_Types.xml
+Content_Types.xml_Ref:=DOM Create XML Ref("Types")
+DOM SET XML ATTRIBUTE(Content_Types.xml_Ref;"xmlns";"http://schemas.openxmlformats.org/package/2006/content-types")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Override/";"PartName";"/xl/theme/theme1.xml";"ContentType";"application/vnd.openxmlformats-officedocument.theme+xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Override/";"PartName";"/xl/styles.xml";"ContentType";"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Default/";"Extension";"rels";"ContentType";"application/vnd.openxmlformats-package.relationships+xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Default/";"Extension";"xml";"ContentType";"application/xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Override/";"PartName";"/xl/workbook.xml";"ContentType";"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Override/";"PartName";"/docProps/app.xml";"ContentType";"application/vnd.openxmlformats-officedocument.extended-properties+xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Override/";"PartName";"/xl/worksheets/sheet1.xml";"ContentType";"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Override/";"PartName";"/xl/sharedStrings.xml";"ContentType";"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml")
+xElement:=DOM Create XML element(Content_Types.xml_Ref;"Types/Override/";"PartName";"/docProps/core.xml";"ContentType";"application/vnd.openxmlformats-package.core-properties+xml")
+DOM EXPORT TO FILE(Content_Types.xml_Ref;appPath+"[Content_Types].xml")
+DOM CLOSE XML(Content_Types.xml_Ref)
+
+//create .rels file
+.rels_Ref:=DOM Create XML Ref("Relationships")
+DOM SET XML ATTRIBUTE(.rels_Ref;"xmlns";"http://schemas.openxmlformats.org/package/2006/relationships")
+xElement:=DOM Create XML element(.rels_Ref;"/Relationships/Relationship";"Id";"rId3";"Target";"docProps/app.xml";"Type";"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
+xElement:=DOM Create XML element(.rels_Ref;"/Relationships/Relationship";"Id";"rId2";"Target";"docProps/core.xml";"Type";"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
+xElement:=DOM Create XML element(.rels_Ref;"/Relationships/Relationship";"Id";"rId1";"Target";"xl/workbook.xml";"Type";"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument")
+DOM EXPORT TO FILE(.rels_Ref;appPath+"_rels"+<>pathSpacer+".rels")
+DOM CLOSE XML(.rels_Ref)
+
+//create core.xml
+$Core:=appPath+"docProps"+<>pathSpacer+"core.xml"
+$Doc:=Create document($Core)
+$Month:=String(Month of(Current date))
+$Day:=String(Day of(Current date))
+If (Length($Day)<2)
+$Day:="0"+$Day
+End if 
+If (Length($Month)<2)
+$Month:="0"+$Month
+End if 
+
+SEND PACKET($Doc;"<?xml version="+Char(34)+"1.0"+Char(34)+" encoding="+Char(34)+"UTF-8"+Char(34)+" standalone="+Char(34)+"no"+Char(34)+"?>"+Char(10))
+SEND PACKET($Doc;"<cp:coreProperties xmlns:cp="+Char(34)+"http://schemas.openxmlformats.org/package/2006/metadata/core-properties"+Char(34))
+SEND PACKET($Doc;" xmlns:dc="+Char(34)+"http://purl.org/dc/elements/1.1/"+Char(34)+" xmlns:dcterms="+Char(34)+"http://purl.org/dc/terms/"+Char(34))
+SEND PACKET($Doc;" xmlns:dcmitype="+Char(34)+"http://purl.org/dc/dcmitype/"+Char(34)+" xmlns:xsi="+Char(34)+"http://www.w3.org/2001/XMLSchema-instance"+Char(34)+">")
+SEND PACKET($Doc;"<dc:creator>"+<>sCurrentUser+"</dc:creator><cp:lastModifiedBy>"+<>sCurrentUser+"</cp:lastModifiedBy><dcterms:created xsi:type="+Char(34)+"dcterms:W3CDTF"+Char(34)+">")
+SEND PACKET($Doc;String(Year of(Current date))+"-"+String($Month)+"-"+String($Day)+"T"+String(Current time)+"Z</dcterms:created>")
+SEND PACKET($Doc;"<dcterms:modified xsi:type="+Char(34)+"dcterms:W3CDTF"+Char(34)+">"+String(Year of(Current date))+"-"+String($Month)+"-"+String($Day)+"T"+String(Current time)+"Z")
+SEND PACKET($Doc;"</dcterms:modified></cp:coreProperties>")
+CLOSE DOCUMENT($Doc)
+
+//create app.xml
+$App:=appPath+"docProps"+<>pathSpacer+"app.xml"
+$Doc:=Create document($App)
+SEND PACKET($Doc;"<?xml version="+Char(34)+"1.0"+Char(34)+" encoding="+Char(34)+"UTF-8"+Char(34)+" standalone="+Char(34)+"no"+Char(34)+"?>"+Char(10))
+SEND PACKET($Doc;"<Properties xmlns="+Char(34)+"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"+Char(34))
+SEND PACKET($Doc;" xmlns:vt="+Char(34)+"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"+Char(34)+">")
+SEND PACKET($Doc;"<Application>Microsoft Excel</Application><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop><HeadingPairs><vt:vector size="+Char(34)+"2"+Char(34)+" baseType="+Char(34)+"variant"+Char(34)+"><")
+SEND PACKET($Doc;"vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>1</vt:i4></vt:variant></vt:vector></HeadingPairs><TitlesOfParts><vt:vector size="+Char(34)+"1"+Char(34)+" baseType="+Char(34)+"lpstr"+Char(34))
+SEND PACKET($Doc;"><vt:lpstr>Sheet1</vt:lpstr></vt:vector></TitlesOfParts><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>12.0000</AppVersion></Properties>")
+CLOSE DOCUMENT($Doc)
+
+//create workbook.xml
+$Workbook:=appPath+"xl"+<>pathSpacer+"workbook.xml"
+$Doc:=Create document($Workbook)
+SEND PACKET($Doc;"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>")
+SEND PACKET($Doc;"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">")
+SEND PACKET($Doc;"<fileVersion appName=\"xl\" lastEdited=\"4\" lowestEdited=\"4\" rupBuild=\"4506\"/><workbookPr defaultThemeVersion=\"124226\"/>")
+SEND PACKET($Doc;"<bookViews><workbookView xWindow=\"360\" yWindow=\"60\" windowWidth=\"20055\" windowHeight=\"8925\"/>")
+SEND PACKET($Doc;"</bookViews><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets><calcPr calcId=\"125725\"/></workbook>")
+CLOSE DOCUMENT($Doc)
+
+//create styles.xml
+$styles:=appPath+"xl"+<>pathSpacer+"styles.xml"
+$Doc:=Create document($styles)
+SEND PACKET($Doc;"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>"+Char(10))
+SEND PACKET($Doc;"<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><fonts count=\"1\"><font><sz val=\"11\"/>")
+SEND PACKET($Doc;"<color theme=\"1\"/><name val=\"Calibri\"/><family val=\"2\"/><scheme val=\"minor\"/></font></fonts>")
+SEND PACKET($Doc;"<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills>")
+SEND PACKET($Doc;"<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>")
+SEND PACKET($Doc;"<cellXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/></cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>")
+SEND PACKET($Doc;"<dxfs count=\"0\"/><tableStyles count=\"0\" defaultTableStyle=\"TableStyleMedium9\" defaultPivotStyle=\"PivotStyleLight16\"/></styleSheet>")
+CLOSE DOCUMENT($Doc)
+
+//styles.xml_Ref:=DOM Create XML Ref("styleSheet")
+//DOM SET XML ATTRIBUTE(styles.xml_Ref;"xmlns";"http://schemas.openxmlformats.org/spreadsheetml/2006/main")
+//xElement:=DOM Create XML element(styles.xml_Ref;"/styleSheet/fonts/";"count";"1")
+//xElement:=DOM Create XML element(styles.xml_Ref;"/styleSheet/fonts/font/sz/";"val";"11")
+//xElement:=DOM Create XML element(styles.xml_Ref;"/styleSheet/fonts/font/color/";"theme";"1")
+//xElement:=DOM Create XML element(styles.xml_Ref;"/styleSheet/fonts/font/name/";"val";"Calibri")
+//xElement:=DOM Create XML element(styles.xml_Ref;"/styleSheet/fonts/font/family/";"val";"2")
+//xElement:=DOM Create XML element(styles.xml_Ref;"/styleSheet/fonts/font/scheme/";"val";"minor")
+//DOM EXPORT TO FILE(styles.xml_Ref;appPath+"xl"+<>pathSpacer+"styles.xml")
+//DOM CLOSE XML(styles.xml_Ref)
+
+//create workbook.xml.rels
+$xml.rels:=appPath+"xl"+<>pathSpacer+"_rels"+<>pathSpacer+"workbook.xml.rels"
+$Doc:=Create document($xml.rels)
+SEND PACKET($Doc;"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>"+Char(10))
+SEND PACKET($Doc;"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>")
+SEND PACKET($Doc;"<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"theme/theme1.xml\"/>")
+SEND PACKET($Doc;"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>")
+SEND PACKET($Doc;"<Relationship Id=\"rId4\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/></Relationships>")
+CLOSE DOCUMENT($Doc)
+
+Create_worksheets ($1;$2;$Footer)
+Create_sharedstrings ($4;$5;$Footer)
+//********************************************************************************************
+If (<>pathSpacer="\\")
+$cmd:=appPath+"7za.exe a excel.zip xl\\*"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:=appPath+"7za.exe a excel.zip _rels\\*"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:=appPath+"7za.exe a excel.zip docProps\\*"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:=appPath+"7za.exe a excel.zip [Content_Types].xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="cmd.exe /c copy /y excel.zip excel.xlsx"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="cmd.exe /c start \"\" excel.xlsx"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+Else 
+$DQ:=Char(Double quote)
+$path:=appPath
+$path:=Replace string(Substring($path;Position(":";$path)+1);":";"/")
+$path:="/"+Replace string($path;Char(Space);"\\"+Char(Space))
+
+$cmd:="zip -R excel.zip xl/sharedStrings.xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip xl/styles.xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip xl/worksheets/sheet1.xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip \\[Content_Types\\].xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip xl/workbook.xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip docProps/app.xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip docProps/core.xml"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip _rels/.rels"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="zip -R excel.zip xl/_rels/workbook.xml.rels"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="cp -f excel.zip excel.xlsx"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+
+$cmd:="open excel.xlsx"
+SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";appPath)
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+LAUNCH EXTERNAL PROCESS($cmd)
+End if 

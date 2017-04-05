@@ -1,0 +1,84 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+ALL RECORDS([Facility])
+DEFAULT TABLE([Facility])
+ARRAY TEXT(asNames;5)
+asNames{1}:=Get localized string("Today")
+asNames{2}:=Get localized string("Week Ended")
+asNames{3}:=Get localized string("Month Ended")
+asNames{4}:=Get localized string("Year to date")
+asNames{5}:=Get localized string("Other Date Range")
+ARRAY TEXT(asSortBy;8)
+asSortBy{1}:=Get localized string("No")
+asSortBy{2}:=Get localized string("Amount")
+asSortBy{3}:="1-30"
+asSortBy{4}:="31-60"
+asSortBy{5}:="61-90"
+asSortBy{6}:=Get localized string("Over")+" 90"
+asSortBy{7}:=Get localized string("Advance")
+asSortBy{8}:=Get localized string("Deposit")
+ARRAY TEXT(asSortBy2;8)
+asSortBy2{1}:=Get localized string("No")
+asSortBy2{2}:=Get localized string("Amount")
+asSortBy2{3}:="1-30"
+asSortBy2{4}:="31-60"
+asSortBy2{5}:="61-90"
+asSortBy2{6}:=Get localized string("Over")+" 90"
+asSortBy2{7}:=Get localized string("Advance")
+asSortBy2{8}:=Get localized string("Deposit")
+ARRAY TEXT(asFormats;8)
+asFormats{1}:="##,###,##0"
+asFormats{2}:="##,###,##0"
+asFormats{3}:="##,###,##0"
+asFormats{4}:="##,###,##0"
+asFormats{5}:="##,###,##0"
+asFormats{6}:="##,###,##0"
+asFormats{7}:="##,###,##0"
+asFormats{8}:="##,###,##0"
+vTitle:=Get localized string("Receivables Ranking")+"..."
+asNames:=2
+asSortBy:=2
+asSortBy2:=1
+viRanking:=1
+Open window((Screen width/2)-195;(Screen height/2)-174;(Screen width/2)+195;(Screen height/2)+174;0;"Print Report")
+DIALOG([Facility];"RankingDialog")
+CLOSE WINDOW
+If (OK=1)
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+If (bAdd=0)
+QUERY([Facility];[Facility]FacilityCode#<>sHOFacility)
+End if 
+For ($i;1;Records in selection([Facility]))
+QUERY([Activity];[Activity]ActivityDate=vRptDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+[Facility]Column1:=Round([Activity]Arrears1No+[Activity]Arrears2No+[Activity]Arrears3No+[Activity]Arrears4No;0)
+[Facility]Column2:=Round([Activity]Arrears1Value+[Activity]Arrears2Value+[Activity]Arrears3Value+[Activity]Arrears4Value;2)
+[Facility]Column3:=[Activity]Arrears1Value
+[Facility]Column4:=[Activity]Arrears2Value
+[Facility]Column5:=[Activity]Arrears3Value
+[Facility]Column6:=[Activity]Arrears4Value
+[Facility]Column7:=[Activity]AdvBillRntValue
+[Facility]Column8:=[Activity]DepositsHeld
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+$Sort1:=Field(1;asSortby+191)
+$Sort2:=Field(1;asSortBy2+191)
+ORDER BY([Facility];$Sort1->;<;$Sort2->;<)
+For ($i;1;Records in selection([Facility]))
+[Facility]RankOrder:=$i
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+READ ONLY([Facility])
+FORM SET OUTPUT([Facility];"RankingReport")
+vTitle:=Get localized string("Ranking of Facilities by Receivables")
+vLegend:=Get localized string("As at")+" "+String(vRptDate;6)
+ORDER BY([Facility];[Facility]RankOrder;>)
+BREAK LEVEL(0)
+ACCUMULATE([Facility]Column1;[Facility]Column2;[Facility]Column3;[Facility]Column4;[Facility]Column5;[Facility]Column6;[Facility]Column7;[Facility]Column8)
+PrintSelection ("P";->[Facility];False)
+FORM SET OUTPUT([Facility];"Output")
+End if 
+SetFacility (True)

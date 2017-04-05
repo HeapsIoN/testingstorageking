@@ -1,0 +1,79 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 25/3/11 Method to process the CheckSums for Tables with Unique records
+C_TEXT($1;$Site;$Result;$SiteCustToSend;$TableName)//Error reports Host, Site
+C_TIME($Doc)
+C_TEXT($cr)
+C_DATE($Date)
+C_LONGINT($2;$3;$4;$i;$j)//$2 Table $3 Primary Key, $4 MD5 Checksum Field
+C_POINTER($TablePtr;$PKFieldPtr;$MD5FieldPtr)
+
+$TablePtr:=Table($2)
+$PKFieldPtr:=Field($2;$3)
+$MD5FieldPtr:=Field($2;$4)
+$TableName:=Table name($2)
+
+$cr:=Char(13)
+If (<>iPlatform=3)
+$cr:=$cr+Char(10)
+End if 
+$i:=1
+$File:=<>sLogsPath+"CheckSum"+$TableName+[EventLog]FacilityCode+String(Day of(Current date);"00")+Substring(String(Current time);1;2)+".txt"
+While (Test path name($File)=Is a document)
+DELETE DOCUMENT($File)
+If (Test path name($File)=Is a document)
+$File:="1"+$File
+End if 
+End while 
+$Site:=$1//Site
+$Result:="CheckSum"+$TableName+" Result for Facility:"+[EventLog]FacilityCode+$cr
+$Result:=$Result+"UniqueKey"+Char(9)+"PrimaryKey"+Char(9)+"CheckSum"+$cr
+$SiteCustToSend:=[EventLog]FacilityCode+","
+$SiteNoToFix:=0
+$Facility:=[EventLog]FacilityCode
+$Tickcount:=Tickcount+1800//Allow 30 secs but don't get stuck in endless loop
+Repeat 
+$j:=Position(Char(13);$Site;0;*)
+$SiteData:=Substring($Site;1;$j-1)//Contains full line
+$Site:=Substring($Site;$j+1)
+$j:=Position(Char(9);$SiteData;0;*)
+$UniqueKey:=Substring($SiteData;1;$j-1)//Contains UniqueKey
+$SiteData:=Substring($SiteData;$j+1)
+$j:=Position(Char(9);$SiteData;0;*)
+$SiteCode:=Substring($SiteData;1;$j-1)//Contains PrimaryKey
+$SiteData:=Substring($SiteData;$j+1)//Ends up with MD5
+QUERY($TablePtr->;$PKFieldPtr->=$SiteCode)
+Case of 
+: (Records in selection($TablePtr->)=0)
+$Result:=$Result+$UniqueKey+Char(9)+$SiteCode+Char(9)+"Missing at HOF"+$cr
+$SiteCustToSend:=$SiteCustToSend+String($SiteCode)+","
+$SiteNoToFix:=$SiteNoToFix+1
+: (Records in selection($TablePtr->)>1)
+$Result:=$Result+$UniqueKey+Char(9)+String($SiteCode)+Char(9)+"Duplicate at HOF"+$cr
+: ($MD5FieldPtr->#$SiteData)
+$Result:=$Result+$UniqueKey+Char(9)+String($SiteCode)+Char(9)+$MD5FieldPtr->+Char(9)+$SiteData+$cr
+$SiteCustToSend:=$SiteCustToSend+String($SiteCode)+","
+$SiteNoToFix:=$SiteNoToFix+1
+End case 
+Until ($Site="") | (Tickcount>$Tickcount)
+
+If ($SiteNoToFix>0)
+SyncRecordLog ($Facility+" CheckSumErrors for "+Table name($2)+":"+String($SiteNoToFix))
+//If ($SiteNoToFix<=10)
+//INSERT IN ARRAY(<>asActivityFix;0;1)  //Need new variable name
+//<>asActivityFix{1}:=$SiteCustToSend
+//$Result:=$Result+$SiteCustToSend+" - These agreements automatically resynced from site to HOF so no further action required!"+$cr
+//Else 
+//$Result:=$Result+$SiteCustToSend+" - Too many agreements, so these need to be resynced from Site to HOF.  Please take appropriate action!"+$cr
+//SendEmail ("urgent@storman.com";Get localized string("URGENT - CheckSumActivity File Requires Action at")+" "+[EventLog]FacilityCode;$Result)
+//If ([Facility]FacilityCode="KE@")
+//SendEmail ("smalerts@kss.com.au";"URGENT - CheckSumActivity File Requires Action at"+" "+[EventLog]FacilityCode;$Result)
+//End if 
+//End if 
+$Doc:=Create document($File)
+SEND PACKET($Doc;$Result)
+CLOSE DOCUMENT($Doc)
+If (<>iPlatform<3)
+SET DOCUMENT CREATOR(Document;"ttxt")
+SET DOCUMENT TYPE(Document;"TEXT")
+End if 
+End if 

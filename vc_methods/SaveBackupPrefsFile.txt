@@ -1,0 +1,80 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SaveBackupPrefsFile
+C_LONGINT($Offset)
+C_BOOLEAN($0)
+C_TEXT($Error;$FacilityCode)
+
+$Error:=""
+$FacilityCode:=""
+$Offset:=0
+$0:=False//Default to Failure
+
+READ WRITE([Authenticate])
+QUERY([Authenticate];[Authenticate]RAgreeNo="Backup")
+DELETE SELECTION([Authenticate])
+CREATE RECORD([Authenticate])
+[Authenticate]RAgreeNo:="Backup"
+SAVE RECORD([Authenticate])
+
+
+//Reconstruct the XML document and write to disk.
+ARRAY TEXT(vtaBackupParameter;58)
+ARRAY TEXT(vtaBackupParameterValue;58)
+//ARRAY TEXT(vtaBackupParameter;60)
+//ARRAY TEXT(vtaBackupParameterValue;60)
+$Root:="Preferences4D"
+$Namespace:="http://www.4d.com/namespace/reserved/2004/backup"
+$vElemRef:=DOM Create XML Ref($Root;$Namespace)
+$SMEvery:=1
+If (OK=1)
+For ($Counter;1;Size of array(vtaBackupParameter))
+If (OK=1)
+DOM SET XML ELEMENT VALUE(DOM Create XML element($vElemRef;vtaBackupParameter{$Counter});vtaBackupParameterValue{$Counter})
+Else 
+$Error:="Error: Error Setting XML Element Value"
+End if 
+End for 
+
+If (OK=1)
+DOM EXPORT TO VAR($vElemRef;[Authenticate]Prefs)
+If (OK=0)
+$Error:="Error: Error Exporting To Blob"
+End if 
+End if 
+
+If ($Error#"")
+vtBackupPrefsErrorMessage:="Backup Parameters not saved! - "+$Error
+Else 
+SAVE RECORD([Authenticate])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+$viProcess:=Execute on server("S_SaveBackupPrefsFile";128000;"S_SaveBackupPrefsFile";"Backup")
+
+
+//Wait until the server process has read the XML file into the BLOB
+$Timeout:=Tickcount+(5*60)//5 Seconds 
+Repeat 
+LOAD RECORD([Authenticate])
+$Error:=Convert to text([Authenticate]Prefs;"UTF-8")
+IDLE
+Until ((Records in selection([Authenticate])>0) & (($Error="Error:@") | ($Error="No Error"))) | (Tickcount>$Timeout)
+
+If (BLOB size([Authenticate]Prefs)>0)
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+$Error:=Convert to text([Authenticate]Prefs;"UTF-8")
+SET BLOB SIZE([Authenticate]Prefs;0)
+SAVE RECORD([Authenticate])
+DELETE RECORD([Authenticate])
+Else 
+$Error:="Error: Unable to retrieve Backup Preferences file! - Timeout"
+End if 
+End if 
+End if 
+
+If ($Error="No Error")
+$0:=True
+vtBackupPrefsErrorMessage:="No Error"
+Else 
+vtBackupPrefsErrorMessage:=Substring($Error;8)
+End if 

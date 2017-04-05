@@ -1,0 +1,126 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 22/04/10, 09:45:47
+// ----------------------------------------------------
+// Method: WS_RemoveUnit
+// Description
+// This will remove a unit for a particular unit type to an agreement
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_RAgreeNo;Is string var;SOAP input;"WS_RAgreeNo")
+SOAP DECLARATION(WS_ProrataCharge;Is Boolean;SOAP input;"WS_ProrataCharge")
+SOAP DECLARATION(WS_MoveOutDate;Is date;SOAP input;"WS_MoveOutDate")
+SOAP DECLARATION(WS_UnitNo;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+//WS_OLD=SOAP DECLARATION(WS_Edit;Is Boolean;SOAP Output;"WS_Edit")
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_RemoveUnit"+Char(13)
+$String:=$String+"WS_RAgreeNo: "+WS_RAgreeNo+Char(13)
+$String:=$String+"WS_ProrataCharge: "+String(WS_ProrataCharge)+Char(13)
+$String:=$String+"WS_MoveOutDate: "+String(WS_MoveOutDate)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_UnitNo: "+WS_UnitNo+Char(13)
+WSRecordLog ($String)
+TRACE
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([Customer])
+
+LOAD RECORD([Agreement])
+LOAD RECORD([Unit])
+LOAD RECORD([Trxs])
+LOAD RECORD([Customer])
+
+WS_CustomerID:="Invalid"
+bAdd:=0
+bAll:=0
+asShowHistory:=0
+viMatch:=-1
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_RAgreeNo;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_RAgreeNo;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+If (Records in selection([Agreement])=1)
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+
+If (Records in selection([Unit])>=1)
+
+QUERY SELECTION([Unit];[Unit]RUnitNo=WS_UnitNo)
+
+If (Records in selection([Unit])=1)
+vDate:=WS_MoveOutDate
+RemoveUnit (True;WS_ProrataCharge;True;True;True)
+
+//WS_OLD=WS_Edit:=True
+WS_CustomerID:=[Agreement]CustomerCode
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Unit successfully removed from Agreement."
+Else 
+//WS_OLD=WS_Edit:=True
+WS_ORSuccess:=True
+WS_ORErrorCode:=1040
+WS_ORErrorDescription:="Requested Unit is not unqiue in database Storman."
+End if 
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1007
+WS_ORErrorDescription:="Unit record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Unit])
+READ ONLY([Trxs])
+READ ONLY([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Customer])
+
+$String:="End WS_RemoveUnit"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

@@ -1,0 +1,445 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0;$1;$User;$2;$PassW;$4;$CCNo;$5;$CCExpiry;$6;$OrderID;$7;$CustomerCode;$8;$CustomerName)
+C_TEXT($9;$Address;$10;$City;$11;$Zip;$12;$CCV;$14;$CustoProf)
+C_BOOLEAN($13;$Show;$UseCardOnFile;$15)
+C_REAL($3;$Amount)
+C_LONGINT($pos)
+C_TEXT($root)
+C_TEXT($subelem)
+C_TEXT($namespace;$MainReference;$MainReferenceResponse)
+$User:=$1
+$PassW:=$2
+$Amount:=$3
+$Amount:=$Amount*100
+$CCNo:=$4
+$CCExpiry:=$5
+$OrderID:=$6
+$CustomerCode:=$7
+$CustomerName:=$8
+$Address:=$9
+$City:=$10
+$Zip:=$11
+$CCV:=$12
+$Show:=$13//
+$CustoProf:=$14
+$UseCardOnFile:=$15
+
+
+$Message:=""
+
+$namespace:="https://www.thepaymentgateway.net/"
+
+$MainReference:=""
+$MainReferenceResponse:=""
+
+If (bAddRefund=1) | ($UseCardOnFile)//Refund)
+$MainReference:="CrossReferenceTransaction"
+Else 
+$MainReference:="CardDetailsTransaction"
+End if 
+
+$root:=DOM Create XML Ref($MainReference;$namespace)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/MerchantAuthentication")
+DOM SET XML ATTRIBUTE($subelem;"MerchantID";$User;"Password";$PassW)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails")
+DOM SET XML ATTRIBUTE($subelem;"Amount";String($Amount);"CurrencyCode";"826")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/MessageDetails")
+
+If (bAddRefund=1)
+DOM SET XML ATTRIBUTE($subelem;"CrossReference";$OrderID;"NewTransaction";"FALSE";"TransactionType";"REFUND")
+Else 
+
+If ($UseCardOnFile)
+DOM SET XML ATTRIBUTE($subelem;"CrossReference";$CustoProf;"NewTransaction";"TRUE";"TransactionType";"SALE")
+Else 
+DOM SET XML ATTRIBUTE($subelem;"TransactionType";"SALE")
+End if 
+End if 
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/OrderID")
+DOM SET XML ELEMENT VALUE($subelem;$OrderID)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/OrderDescription")
+
+If (bAddRefund=1)
+DOM SET XML ELEMENT VALUE($subelem;"Refund for "+$OrderID)
+Else 
+DOM SET XML ELEMENT VALUE($subelem;"")
+End if 
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/EchoCardType")
+DOM SET XML ELEMENT VALUE($subelem;"TRUE")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/EchoAVSCheckResult")
+DOM SET XML ELEMENT VALUE($subelem;"TRUE")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/EchoAmountReceived")
+DOM SET XML ELEMENT VALUE($subelem;"TRUE")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/DuplicateDelay")
+DOM SET XML ELEMENT VALUE($subelem;"20")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/CustomVariables/CustomVariable")
+DOM SET XML ATTRIBUTE($subelem;"Name";"CustomerCode";"Value";$CustomerCode)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/ThreeDSecureOverridePolicy")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+
+If (bAddRefund#1)// Sale transaction
+
+If ($UseCardOnFile=False)
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CardDetails/CardName")
+DOM SET XML ELEMENT VALUE($subelem;$CustomerName)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CardDetails/CardNumber")
+DOM SET XML ELEMENT VALUE($subelem;$CCNo)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CardDetails/ExpiryDate")
+DOM SET XML ATTRIBUTE($subelem;"Month";Substring($CCExpiry;1;2);"Year";Substring($CCExpiry;3;2))
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CardDetails/CV2")
+DOM SET XML ELEMENT VALUE($subelem;$CCV)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CardDetails/IssueNumber")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/Address1")
+DOM SET XML ELEMENT VALUE($subelem;$Address)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/Address2")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/Address3")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/Address4")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/City")
+DOM SET XML ELEMENT VALUE($subelem;$City)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/State")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/PostCode")
+DOM SET XML ELEMENT VALUE($subelem;$Zip)
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/BillingAddress/CountryCode")
+If ([Facility]Country="GB")
+DOM SET XML ELEMENT VALUE($subelem;"826")
+End if 
+End if 
+
+//Next 3 should be blank otherwise it will return an error
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/AVSOverridePolicy")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/CV2OverridePolicy")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/EmailAddress")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/PhoneNumber")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+Else 
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/TransactionDetails/TransactionControl/EchoAmountReceived")
+DOM SET XML ELEMENT VALUE($subelem;"TRUE")
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/PassOutData")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+End if 
+
+$subelem:=DOM Create XML element($root;"/"+$MainReference+"/PaymentMessage/CustomerDetails/CustomerIPAddress")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]ExternalIP)
+
+DOM EXPORT TO VAR($root;$Message)
+If (bAddRefund#1)
+MaskCCLog ($Message;"CardSave")
+Else 
+SyncRecordLog ($Message)
+End if 
+//SET TEXT TO PASTEBOARD($Message)
+//If (<>iPlatform=3)
+//$cr:=Char(13)+Char(10)
+//vCCText:=""
+//$Success:=False
+//$StatusCode:=""
+//$CrossReference:=""
+//$XML:=""
+//
+//$File:=<>sExportPath+"PhPCC.php"
+//$Doc:=Create document(<>sExportPath+"PhPCC.php")
+//$cr:=Char(13)
+//SEND PACKET($Doc;"<?php"+$cr)
+//  //Header
+//SEND PACKET($Doc;"$headers=array("+$cr)
+//SEND PACKET($Doc;"'SOAPAction:https://www.thepaymentgateway.net/CardDetailsTransaction',"+$cr)
+//SEND PACKET($Doc;"'Content-Type: text/xml;charset=utf-8',"+$cr)
+//SEND PACKET($Doc;"'Connection: close');"+$cr)
+//  //Message XML
+//SEND PACKET($Doc;"$xml = '<?xml version="+String(Char(34))+"1.0"+String(Char(34))+" encoding="+String(Char(34))+"utf-8"+String(Char(34))+"?>"+$cr)
+//SEND PACKET($Doc;"<soap:Envelope xmlns:xsi="+String(Char(34))+"http://www.w3.org/2001/XMLSchema-instance"+String(Char(34))+""+$cr)
+//SEND PACKET($Doc;"xmlns:xsd="+String(Char(34))+"http://www.w3.org/2001/XMLSchema"+String(Char(34))+""+$cr)
+//SEND PACKET($Doc;"xmlns:soap="+String(Char(34))+"http://schemas.xmlsoap.org/soap/envelope/"+String(Char(34))+">"+$cr)
+//SEND PACKET($Doc;"<soap:Body>"+$cr)
+//$Message:=Substring($Message;58)
+//SEND PACKET($Doc;$Message)
+//SEND PACKET($Doc;"</soap:Body>"+$cr)
+//SEND PACKET($Doc;"</soap:Envelope>';"+$cr)
+//
+//SEND PACKET($Doc;"$Domain = "+String(Char(34))+".cardsaveonlinepayments.com:4430/"+String(Char(34))+";"+$cr)
+//SEND PACKET($Doc;"$soapSuccess = false;"+$cr)
+//SEND PACKET($Doc;"$gwId = 1;"+$cr)
+//SEND PACKET($Doc;"$transattempt = 1;"+$cr)
+//
+//SEND PACKET($Doc;"while(!$soapSuccess && $gwId <= 3 && $transattempt <= 3) {"+$cr)
+//SEND PACKET($Doc;"$url = 'https://gw'.$gwId.$Domain;"+$cr)
+//SEND PACKET($Doc;"$curl=curl_init();"+$cr)
+//  //set the options
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_HEADER, false);"+$cr)
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_HTTPHEADER,$headers);"+$cr)
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_POST, true);"+$cr)
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_URL, $url);"+$cr)
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_POSTFIELDS, $xml);"+$cr)
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);"+$cr)
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_ENCODING, 'UTF-8');"+$cr)
+//SEND PACKET($Doc;"curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);"+$cr)
+//  //Execute cURL request
+//  //$ret = returned XML
+//SEND PACKET($Doc;"$ret=curl_exec($curl);"+$cr)
+//  //$err = returned error number
+//SEND PACKET($Doc;"$err=curl_errno($curl);"+$cr)
+//  //retHead = returned XML header
+//SEND PACKET($Doc;"$retHead=curl_getinfo($curl);"+$cr)
+//SEND PACKET($Doc;"curl_close($curl);"+$cr)
+//SEND PACKET($Doc;"$curl=null;"+$cr)
+//
+//SEND PACKET($Doc;"if($err == 0){"+$cr)
+//SEND PACKET($Doc;"$soapArray=null;"+$cr)
+//SEND PACKET($Doc;"   if (preg_match('#<'."+String(Char(34))+"StatusCode"+String(Char(34))+".'>('."+String(Char(34))+"[0-9]+"+String(Char(34))+".')</'."+String(Char(34))+"StatusCode"+String(Char(34))+".'>#iU', $ret, $soapArray)) {"+$cr)
+//SEND PACKET($Doc;"      if (is_numeric($soapArray[1])){"+$cr)
+//SEND PACKET($Doc;"      $soapSuccess=True;"+$cr)
+//  //SEND PACKET($Doc;"      echo $ret;"+$cr)
+//SEND PACKET($Doc;"      }"+$cr)  // is_numeric
+//SEND PACKET($Doc;"   }"+$cr)  // preg_match
+//SEND PACKET($Doc;"}"+$cr)  //$err
+//  //SEND PACKET($Doc;"echo "+String(Char(34))+"Problem with PHP"+String(Char(34))+";}"+$cr)
+//SEND PACKET($Doc;"   If ($transattempt<=2){"+$cr)
+//SEND PACKET($Doc;"   $transattempt++;"+$cr)
+//SEND PACKET($Doc;"   }else{"+$cr)
+//SEND PACKET($Doc;"   $transattempt = 1;"+$cr)
+//SEND PACKET($Doc;"   $gwId++;"+$cr)
+//SEND PACKET($Doc;"   }"+$cr)  //ENDIF
+//SEND PACKET($Doc;"}"+$cr)  //END WHILE
+//
+//SEND PACKET($Doc;"if ($soapSuccess) {"+$cr)
+//SEND PACKET($Doc;"   echo $ret;"+$cr)
+//SEND PACKET($Doc;"}else{"+$cr)
+//SEND PACKET($Doc;"   echo "+String(Char(34))+"Calls failed with error: "+String(Char(34))+".$err;"+$cr)
+//SEND PACKET($Doc;"}"+$cr)
+//SEND PACKET($Doc;"?>"+$cr)
+//CLOSE DOCUMENT($Doc)
+//
+//$Success:=PHP Execute($File;"";$XML)
+//
+//  //SET TEXT TO PASTEBOARD($XML)
+//If ($Success)
+//
+//$FailPos:=Position("Calls failed with error";$XML)
+//
+//If ($FailPos>0)
+//$0:="ERR"+Substring($XML;$FailPos+1)
+//vCCText:=$XML
+//Else 
+//$Retroot:=DOM Parse XML variable($XML)
+//
+//$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/CardDetailsTransactionResult/StatusCode")
+//If ($resultRef#"0000000000000000")
+//DOM GET XML ELEMENT VALUE($resultRef;$StatusCode)
+//End if 
+//
+//$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/CardDetailsTransactionResult/Message")
+//If ($resultRef#"0000000000000000")
+//DOM GET XML ELEMENT VALUE($resultRef;$value)
+//If ($StatusCode="0")  //Success
+//
+//Else 
+//$0:="ERR"+$StatusCode
+//vCCText:=$value
+//
+//If ($Show)
+//AlertMessage ("Card Processing Error Code: "+$StatusCode+". Error Description: "+$value+". For customer "+$CustomerName)
+//End if 
+//
+//End if 
+//End if 
+//
+//If ($StatusCode="0")
+//$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/TransactionOutputData")
+//If ($resultRef#"0000000000000000")
+//DOM GET XML ATTRIBUTE BY NAME($resultRef;"CrossReference";$CrossReference)
+//[Trxs]CCTransID:=$CrossReference
+//End if 
+//
+//$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/TransactionOutputData/AuthCode")
+//If ($resultRef#"0000000000000000")
+//DOM GET XML ELEMENT VALUE($resultRef;$value)
+//[Trxs]CCAuthNo:=$value
+//$0:=$value
+//End if 
+//End if 
+//End if 
+//SyncRecordLog ($XML)
+//Else 
+//If ($Show)
+//AlertMessage ("Credit Card hasn't been processed successfully for customer: "+[Customer]CustomerCode+" Please contact support for cheking PHP file")
+//End if 
+//SyncRecordLog ("The PHP code wasn't executed correctly for customer: "+[Customer]CustomerCode+" Result: "+$XML)
+//$0:="ERRPHP"
+//End if 
+//DOM CLOSE XML($root)
+//
+//Else   // Mac 
+
+$cr:=Char(13)+Char(10)
+C_TEXT($xmltext)
+C_TEXT($response)
+C_LONGINT($Attempt;$Request)
+vCCText:=""
+$Success:=False
+$StatusCode:=""
+$CrossReference:=""
+$XML:=""
+
+$xmltext:=$xmltext+"<?xml version="+String(Char(34))+"1.0"+String(Char(34))+" encoding="+String(Char(34))+"utf-8"+String(Char(34))+"?>"+$cr
+$xmltext:=$xmltext+"<soap:Envelope xmlns:xsi="+String(Char(34))+"http://www.w3.org/2001/XMLSchema-instance"+String(Char(34))+""+$cr
+$xmltext:=$xmltext+"xmlns:xsd="+String(Char(34))+"http://www.w3.org/2001/XMLSchema"+String(Char(34))+""+$cr
+$xmltext:=$xmltext+"xmlns:soap="+String(Char(34))+"http://schemas.xmlsoap.org/soap/envelope/"+String(Char(34))+">"+$cr
+$xmltext:=$xmltext+"<soap:Body>"+$cr
+$Message:=Substring($Message;57)
+$xmltext:=$xmltext+$Message
+$xmltext:=$xmltext+"</soap:Body>"+$cr
+$xmltext:=$xmltext+"</soap:Envelope>"+$cr
+
+//SET TEXT TO PASTEBOARD($xmltext)
+ARRAY TEXT($HeaderNames;0)
+ARRAY TEXT($HeaderValues;0)
+APPEND TO ARRAY($HeaderNames;"SOAPAction")
+APPEND TO ARRAY($HeaderNames;"Content-Type")
+APPEND TO ARRAY($HeaderNames;"Connection")
+
+If (bAddRefund=1) | ($UseCardonFile)
+APPEND TO ARRAY($HeaderValues;"https://www.thepaymentgateway.net/CrossReferenceTransaction")
+Else 
+APPEND TO ARRAY($HeaderValues;"https://www.thepaymentgateway.net/CardDetailsTransaction")
+End if 
+
+
+APPEND TO ARRAY($HeaderValues;"text/xml;charset=utf-8")
+APPEND TO ARRAY($HeaderValues;"close")
+
+
+//Implement 2 different gateaway + 3 attempts in a case failed
+$Request:=0
+$Attempt:=1
+$gw:=1
+
+While ($Request=0)
+$Request:=HTTP Request("POST";"https://gw"+String($gw)+".cardsaveonlinepayments.com:4430";$xmltext;$XML;$HeaderNames;$HeaderValues)
+
+If ($Attempt=3) & ($gw=1)
+$Attempt:=0
+$gw:=2
+End if 
+If ($Attempt=3) & ($gw=2)
+$Request:=1
+End if 
+$Attempt:=$Attempt+1
+End while 
+
+If ($Request>=200) & ($Request<300)
+$Retroot:=DOM Parse XML variable($XML)
+
+If (bAddRefund=1) | ($UseCardOnFile)
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CrossReferenceTransactionResponse/CrossReferenceTransactionResult/StatusCode")
+Else 
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/CardDetailsTransactionResult/StatusCode")
+End if 
+
+If ($resultRef#"0000000000000000")
+DOM GET XML ELEMENT VALUE($resultRef;$StatusCode)
+End if 
+
+If (bAddRefund=1) | ($UseCardOnFile)
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CrossReferenceTransactionResponse/CrossReferenceTransactionResult/Message")
+Else 
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/CardDetailsTransactionResult/Message")
+End if 
+
+If ($resultRef#"0000000000000000")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($StatusCode="0")//Success
+
+If (bAddRefund=1) | ($UseCardOnFile)
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CrossReferenceTransactionResponse/TransactionOutputData")
+Else 
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/TransactionOutputData")
+End if 
+If ($resultRef#"0000000000000000")
+DOM GET XML ATTRIBUTE BY NAME($resultRef;"CrossReference";$CrossReference)
+[Trxs]CCTransID:=$CrossReference
+End if 
+
+If (bAddRefund=1) | ($UseCardOnFile)
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CrossReferenceTransactionResponse/TransactionOutputData/AuthCode")
+Else 
+$resultRef:=DOM Find XML element($Retroot;"/Envelope/Body/CardDetailsTransactionResponse/TransactionOutputData/AuthCode")
+End if 
+If ($resultRef#"0000000000000000")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Trxs]CCAuthNo:=$value
+$0:=$value
+End if 
+
+If (bAddRefund=1)
+[Trxs]CCAuthNo:=$CrossReference
+$0:=$CrossReference
+End if 
+
+Else 
+$0:="ERR"+$StatusCode
+vCCText:=$value
+If ($Show)
+AlertMessage ("Card Processing Error Code: "+$StatusCode+". Error Description: "+$value+". For customer "+$CustomerName)
+End if 
+End if 
+End if 
+
+SyncRecordLog ($XML)
+
+Else 
+
+If ($Request=1)
+If ($Show)
+AlertMessage ("Unable to Contact CardSave Server.")
+End if 
+SyncRecordLog ("Unable to Contact CardSave Server.")
+$0:="ERRSOAP"
+Else 
+If ($Show)
+AlertMessage ("Soap call failed with HTTP Error: "+String($Request))
+End if 
+SyncRecordLog ("Soap call failed with HTTP Error: "+String($Request))
+$0:="ERR"+String($Request)
+End if 
+
+End if 
+//End if 

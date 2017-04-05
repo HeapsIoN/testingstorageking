@@ -1,0 +1,207 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 15/03/10, 15:39:05
+// ----------------------------------------------------
+// Method: KSSReversal
+// Description
+// To allow for the reversal of multi-period billing plans and then the rebilling using a monthly period plan
+//
+// Parameters
+// ----------------------------------------------------
+
+C_DATE($Lastbilldate;$Nextbilldate;$LastbilldateOriginal)
+C_LONGINT($MonthsDiff;$MthsBilled)
+
+//Undo existing charges
+$Lastbilldate:=[Agreement]LastBillDate
+$LastbilldateOriginal:=[Agreement]LastBillDate
+If ($Lastbilldate<[Facility]CantModPrior)
+$Lastbilldate:=[Facility]CantModPrior
+End if 
+$MthsBilled:=[Agreement]MthsAdv+[BillPlan]FreePeriods
+BillNextCharges (8;1)
+
+//Alter transactions to conform with KSS expectations
+
+READ WRITE([Trxs])
+LOAD RECORD([Trxs])
+
+RELATE ONE([Agreement]BillingPlanCode)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=$Lastbilldate;*)
+QUERY([Trxs]; & ;[Trxs]Description="Reverse@")
+
+APPLY TO SELECTION([Trxs];[Trxs]TrxDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]DateFrom:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]DateTo:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]Narration:=[Trxs]Description+" resetting "+String($MthsBilled)+" month Invoice back to monthly")
+APPLY TO SELECTION([Trxs];[Trxs]PrintNarration:=False)
+
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+
+//Change billing plan to monthly
+
+If (Day of(Current date)>[Agreement]DaytoBill)
+$Nextbilldate:=GetDate ([Agreement]DaytoBill;Month of(Current date)+1;Year of(Current date))
+Else 
+$Nextbilldate:=GetDate ([Agreement]DaytoBill;Month of(Current date);Year of(Current date))
+End if 
+
+$MonthsDiff:=GetMonthDiff ($Nextbilldate;$LastbilldateOriginal)
+
+[Agreement]NewBillingPlan:="MO"
+[Agreement]PeriodicBillingPosition:=0
+
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+$PlanPeriod:=[BillPlan]PlanPeriod
+viSwapMthsAdv:=[Agreement]MthsAdv+[BillPlan]FreePeriods
+QUERY([BillPlan];[BillPlan]Code=Substring([Agreement]RAgreeNo;1;5)+[Agreement]NewBillingPlan)
+If (Records in selection([BillPlan])#1)
+QUERY([BillPlan];[BillPlan]Code=Substring([Agreement]RAgreeNo;1;5)+"MO")
+End if 
+If ([BillPlan]PlanPeriod#$PlanPeriod)//Added in 2.5.5 so that regular rent is adjusted if change from weekly to monthly
+$Total:=0
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([BillPlan]PlanPeriod="Week")
+If ([UnitType]WeeklyRate=0)
+[UnitType]WeeklyRate:=Round([UnitType]MonthlyRate*[Facility]RentWeeklyMthly;1)
+End if 
+$Total:=$Total+CalculateBaseRate (2;0)
+Else 
+$Total:=$Total+CalculateBaseRate (2;0)
+End if 
+NEXT RECORD([Unit])
+End for 
+Else 
+$Total:=[Agreement]RegularRent
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([OtherChgs])>0)
+If ([BillPlan]PlanPeriod#$PlanPeriod)
+If ([BillPlan]PlanPeriod="Month")
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount/[Facility]InsWeeklyMthly;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount/[Facility]InsWeeklyMthly;2))
+End if 
+If ([BillPlan]PlanPeriod="Week")
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*[Facility]InsWeeklyMthly;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount*[Facility]InsWeeklyMthly;2))
+End if 
+End if 
+If ([BillPlan]PeriodstoPay>=1)
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*([BillPlan]PeriodstoPay+[BillPlan]FreePeriods)/viSwapMthsAdv;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount*([BillPlan]PeriodstoPay+[BillPlan]FreePeriods)/viSwapMthsAdv;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*$MonthsDiff;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount*$MonthsDiff;2))
+End if 
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+vOthTotal:=Sum([OtherChgs]Amount)
+vNewOthTotal:=Sum([OtherChgs]NewAmount)
+//Following changes in 3.3.3 to fix problem of RegRent instead of RentAmt  
+//[Agreement]NewRentAmt:=RoundAmt ($Total)  `WAS RoundAmt ($Total*[BillPlan]MthstoPay*(100-[BillPlan]DiscPercentage)/100)
+//[Agreement]NewDiscAmt:=0  `WAS ($Total*[BillPlan]MthstoPay)-[Lease]NewRentAmt
+[Agreement]NewRegularRent:=RoundAmt ($Total)
+//[Agreement]NewRentAmt:=RoundAmt ([Agreement]NewRegularRent*[BillPlan]MthstoPay*(100-[BillPlan]DiscPercentage)/100;1)
+//vNewRentAmt:=Round(RoundAmt (([Agreement]NewRegularRent*[BillPlan]MthstoPay*(100-[BillPlan]DiscPercentage)/100);1)+vNewOthTotal;2)
+//[Agreement]NewDiscAmt:=Round(([Agreement]NewRegularRent*[BillPlan]MthstoPay)-[Agreement]NewRentAmt;2)
+[Agreement]LastBillPlan:=[Agreement]BillingPlanCode
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]NewBillingPlan:=[BillPlan]SwaptoCode
+[Agreement]MthsAdv:=$MonthsDiff
+RELATE ONE([Agreement]BillingPlanCode)
+[Agreement]RentAmt:=RoundAmt (([Agreement]RegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((([Agreement]RegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vOthTotal;2)
+[Agreement]NewRentAmt:=RoundAmt (([Agreement]NewRegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vNewRentAmt:=Round(RoundAmt ((([Agreement]NewRegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vNewOthTotal;2)
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+[Agreement]DiscountAmt:=Round(([Agreement]RegularRent*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(([Agreement]NewRegularRent*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+
+//Do billing catch up
+
+BillNextCharges (7)
+
+//Alter transactions to conform with KSS expectations
+
+READ WRITE([Trxs])
+LOAD RECORD([Trxs])
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled=Current date)
+
+APPLY TO SELECTION([Trxs];[Trxs]TrxDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]DateFrom:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]DateTo:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]Narration:="Manually added "+[Trxs]Description+" resetting "+String($MthsBilled)+" month Invoice back to monthly")
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+APPLY TO SELECTION([Trxs];[Trxs]PrintNarration:=False)
+
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+
+//Change billing plan to monthly
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([OtherChgs])>0)
+If ([BillPlan]PeriodstoPay>=1)
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount/$MonthsDiff;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount/$MonthsDiff;2))
+End if 
+End if 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+vOthTotal:=Sum([OtherChgs]Amount)
+vNewOthTotal:=Sum([OtherChgs]NewAmount)
+
+[Agreement]MthsAdv:=1
+RELATE ONE([Agreement]BillingPlanCode)
+[Agreement]RentAmt:=RoundAmt (([Agreement]RegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((([Agreement]RegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vOthTotal;2)
+[Agreement]NewRentAmt:=RoundAmt (([Agreement]NewRegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vNewRentAmt:=Round(RoundAmt ((([Agreement]NewRegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vNewOthTotal;2)
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+[Agreement]DiscountAmt:=Round(([Agreement]RegularRent*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(([Agreement]NewRegularRent*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+
+ReCalc 

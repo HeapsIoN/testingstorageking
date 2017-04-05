@@ -1,0 +1,112 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 28/05/15, 07:57:08
+// ----------------------------------------------------
+// Method: WS_AUPostUpload
+// Description
+// WS Checks the barcodes exist in system -> Finds the customer and upload AU Manifest file
+//
+// Parameters
+// ----------------------------------------------------
+
+
+SOAP DECLARATION(WS_BoxIDs;Text array;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+$String:="Start WS_AUPostUpload"+Char(13)
+$sizeofarray:=Size of array(WS_BoxIDs)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_BoxIDs("+String($vlElem)+"):"+WS_BoxIDs{$vlElem}+Char(13)
+End for 
+
+C_TEXT($CheckAgree)
+C_BOOLEAN($First)
+ARRAY TEXT($Units;0)
+$CheckAgree:=""
+$First:=True
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+TRACE
+WSRECORDLOG ($String)
+
+If (Size of array(WS_BoxIDs)>0)
+
+For ($i;1;Size of array(WS_BoxIDs))
+QUERY([BarCode];[BarCode]Code=WS_BoxIDs{$i})
+If ([BarCode]Active=True)
+APPEND TO ARRAY($Units;[BarCode]UnitNo)
+// Check all boxes are for the same agreement
+If ($First=True)
+$CheckAgree:=[BarCode]AgreeNo
+$First:=False
+End if 
+If ($CheckAgree#[BarCode]AgreeNo)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1004
+WS_ORErrorDescription:="All boxes must be for the same agreement"
+End if 
+QUERY([Unit];[Unit]RUnitNo=[BarCode]UnitNo)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+If ((Locked([Unit])=True) | (Locked([UnitType])=True)) & (WS_ORSuccess=True)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1007
+WS_ORErrorDescription:="Either the Unit or UnitType file is locked by another process"
+End if 
+End if 
+End for 
+
+QUERY([Facility];[Facility]FacilityCode=Substring($CheckAgree;1;5))
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+Else 
+WS_ORErrorCode:=99
+WS_ORErrorDescription:="Incorrect password"
+WS_ORSuccess:=False
+End if 
+
+If (WS_ORSuccess)
+//Call AU Post
+QUERY([Agreement];[Agreement]RAgreeNo=$CheckAgree)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+QUERY WITH ARRAY([BarCode]Code;WS_BoxIDs)
+SyncRecordLog ("CallAUPost Number of barcodes: "+String(Size of array(WS_BoxIDs));"AUPostLog")
+CallAUPost (True;"";True)
+
+//Call Web site URL if needed. Wait for Luke to advise
+CallKinitekURL (False;False;True)
+
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1006
+WS_ORErrorDescription:="There are no Boxes ID passed to the method"
+End if 
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([BarCode])
+UNLOAD RECORD([Facility])
+READ ONLY([Customer])
+READ ONLY([Agreement])
+
+$String:="End WS_AUPostUpload"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+
+WSRECORDLOG ($String)
+
+ReadOnlyAll 
+UnloadAll 

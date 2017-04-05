@@ -1,0 +1,38 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1;$NoMsg)//if true don't display message
+C_BOOLEAN($2;$LogMon)//If true called by logmonitor process
+$NoMsg:=False
+$LogMon:=False
+$Vacate:=False
+If (Count parameters>0)
+$NoMsg:=$1
+If (Count parameters>1)
+$LogMon:=$2
+If (Count parameters>2)
+$Vacate:=$3
+End if 
+End if 
+End if 
+//SAVE RECORD([PhotosCards])
+//SAVE RECORD([Customer])
+If ($Vacate)
+<>sGatePIN:=[Unit]RUnitNo
+Else 
+<>sGatePIN:=[Customer]CustomerCode
+End if 
+
+If ($LogMon=True)
+LogMonUpdateGate 
+Else 
+If ($NoMsg=False)
+RESUME PROCESS(<>iLogMonitor)//LogMonitor
+$Ticks:=Tickcount
+Repeat 
+IDLE
+RESUME PROCESS(<>iLogMonitor)
+Until (<>sGatePIN="") | (Tickcount>($Ticks+900))//Fifteen seconds
+If (<>sGatePIN#"")
+AlertMessage (Get localized string("ERROR - The Unit Numbers for Customer:")+[Customer]CustomerCode+" "+Get localized string("could not be located. Unable to download to the access control system!")+" "+Get localized string("The most likely cause is that the background process LogMonitor has stopped")+".  "+Get localized string("Check the green message on the Main panel is cycling otherwise quit")+" "+<>sOEMName+" "+Get localized string("and then relaunch it, or contact Technical Support."))
+End if 
+End if 
+End if 

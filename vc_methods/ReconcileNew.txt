@@ -1,0 +1,290 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//17/11/5-NLT added line 25 to query chart accts by facility
+//17/11/5-NLT commented out line 207 which is the call to set the balance back to MV HOF which shouldn't be needed if the user pressed cancel
+//22/11/05 - NLT added $ to aAnlysCode in For($i;1;size of array($aAnlyCode)), line 89
+//Add Other Bank Trx are managed in 2 ways:
+//1) The [Transaction] sets "OtherTrx" and "OtherTrxS" are created in the calling method and both contain all existing unreconciiled bank trxs on first opening
+//Trxs are removed from OtherTrx if they are deleted.  If the user cancels out of the bank rec but chooses to save mods to bank trxs, arrays are created containing 
+//data for records still in the "OtherTrx" set.  After the 'Cancel Transaction' line is executed, all records in the full "OtherTrxS" are deleted and records still
+//in the "OtherTrx" set are added to the trx table.
+//2) For Other Trxs added during the current bank rec, arrays (aOTBankd etc) are created, modified and deleted as necessary and added to the Trx table after 
+//the 'Cancel Transaction' line is executed.
+
+C_REAL(vBal;vTot1;vTot2;vBankBal;$Amt;vBankClose;vOpenBal)
+C_DATE(vDate;vBSDate)
+C_BOOLEAN(vCancel;$Contact;vMod;vProcess)
+C_LONGINT($j;$r;$l;$o)
+ARRAY DATE(aOTBankd;0)
+ARRAY TEXT(aOTDesc;0)
+ARRAY REAL(aOTAmt;0)
+ARRAY TEXT(aOTAnlys;0)
+READ WRITE([Facility])
+If (PermissionsControl (108))
+LogAction (True;"Bank Rec started")
+DEFAULT TABLE([ChartAccts])
+SetFacility 
+vBankBal:=0
+vDate:=!00-00-00!
+vCancel:=False
+vBal:=0
+vTot1:=0
+vTot2:=0
+vTotal:=vBankBal
+vDifference:=0
+$Amt:=0
+$Contact:=False
+vMod:=False
+vBSDate:=Current date
+vChartNo:=0
+vProcess:=False
+READ WRITE([ChartAccts])
+QUERY([ChartAccts];[ChartAccts]AcctType="b1")
+If (<>sProduct="M@")
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+If (Records in selection([ChartAccts])>0)
+If (Records in selection([ChartAccts])>1)
+ORDER BY([ChartAccts];[ChartAccts]AcctType;>;[ChartAccts]AcctNo;>)
+End if 
+FIRST RECORD([ChartAccts])
+vChartNo:=Record number([ChartAccts])
+If (<>sProduct="M@") | ([Facility]CentralAddress="")
+If ([ChartAccts]Notes="LOCKED") & (<>sProduct="M@")
+AlertMessage (Get localized string("The site is currently performing a bank reconciliation."))
+Else 
+vBankBal:=[ChartAccts]OpeningBal
+vBBDate:=[ChartAccts]BankBalDate
+$Contact:=True
+End if 
+Else 
+vBankBal:=[ChartAccts]OpeningBal
+vBBDate:=[ChartAccts]BankBalDate
+$Contact:=True
+
+//$Contact:=WSC_GetBankRecBal ([Facility]FacilityCode;vBankBal;vBBDate;1)  `This call retrieves vBankBal & vBBDate from MV
+End if 
+QUERY([Trxs];[Trxs]AnalysisCode=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled>vBBDate)
+//QUERY([Trxs]; & ;[Trxs]Reconciled=False)
+If (Records in selection([Trxs])>0)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+End if 
+If ($Contact=True)
+Open window((Screen width/2)-176;(Screen height/2)-139;(Screen width/2)+176;(Screen height/2)+139;5;Get localized string("Bank Reconciliation"))
+DIALOG([Trxs];"ReconcileDialog")
+CLOSE WINDOW
+If (OK=1) & (vProcess=True)
+If (<>bEnglishSpelling=False)
+vChq:=Get localized string("Check")
+Else 
+vChq:=Get localized string("Cheque")
+End if 
+If (<>sProduct="M@")//trying to make the search speed faster at HOF end
+QUERY([Trxs];[Trxs]DateBanked>!00-00-00!;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled=!00-00-00!;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=[Facility]FacilityCode+"@")
+//QUERY SELECTION([Transaction];[Transaction]TotAmt#0)
+Else 
+QUERY([Trxs];[Trxs]DateBanked>!00-00-00!;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=vBSDate;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled=!00-00-00!;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Facility]FacilityCode+"@")
+//QUERY([Transaction]; & ;[Transaction]TotAmt#0)`instead, delete 0 trxs
+End if 
+CREATE SET([Trxs];"DateReconciled")
+If (Records in selection([Trxs])>0)
+READ WRITE([Trxs])
+QUERY SELECTION([Trxs];[Trxs]TotAmt=0)//added 1/9/06 NLT 
+If (Records in selection([Trxs])>0)
+DELETE SELECTION([Trxs])
+End if 
+USE SET("DateReconciled")
+CREATE SET([Trxs];"ToSum")
+ARRAY TEXT($aaAnlysCode;0)
+DISTINCT VALUES([Trxs]DateBanked;aBankDte)// to allow to sum totals for different dates banked
+DISTINCT VALUES([Trxs]AnalysisCode;$aaAnlysCode)
+CREATE EMPTY SET([Trxs];"ToDisplay")
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+ORDER BY([Analysis];[Analysis]GLCode;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Code;$aAnlysCode;[Analysis]GLCode;$aGLCode)
+
+For ($r;Size of array($aAnlysCode);1;-1)
+If (Find in array($aaAnlysCode;$aAnlysCode{$r})<1)
+DELETE FROM ARRAY($aAnlysCode;$r;1)
+DELETE FROM ARRAY($aGLCode;$r;1)
+End if 
+End for 
+$Amt:=0
+
+$WinRef:=Open window(20;50;450;150;0)
+
+For ($r;1;Size of array(aBankDte))
+GOTO XY(2;2)
+MESSAGE("Processing "+String($r)+" of "+String(Size of array(aBankDte)))
+
+USE SET("ToSum")
+QUERY SELECTION([Trxs];[Trxs]DateBanked=aBankDte{$r})
+ORDER BY([Trxs];[Trxs]AnalysisCode;>)
+CREATE SET([Trxs];"DateBanked")
+If (Size of array($aAnlysCode)>0)
+$LastCode:=$aGLCode{1}
+For ($j;1;Size of array($aAnlysCode))
+USE SET("DateBanked")
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=$aAnlysCode{$j})//this should ensure checks and cash summed together
+RELATE ONE([Trxs])//relate the Analysis table
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If ([Supplier]UserName="SUM")
+For ($l;1;Records in selection([Trxs]))
+$Amt:=$Amt+[Trxs]TotAmt
+[Trxs]TaxAmt:=0//in case anything has been saved to the tax field previously
+SAVE RECORD([Trxs])
+$TrxNo:=Record number([Trxs])//added 24/1/06 NLT
+NEXT RECORD([Trxs])
+End for 
+$l:=0
+Else 
+For ($k;1;Records in selection([Trxs]))
+[Trxs]TaxAmt:=[Trxs]TotAmt//so can search on tax field to show lines to display
+ADD TO SET([Trxs];"ToDisplay")
+SAVE RECORD([Trxs])
+$TrxNo:=Record number([Trxs])
+NEXT RECORD([Trxs])
+End for 
+$k:=0
+End if 
+$GLCode:=""
+If ($j+1<=Size of array($aGLCode))
+$GLCode:=$aGLCode{$j+1}
+End if 
+If ($GLCode#$LastCode)
+If ($Amt#0)
+//PREVIOUS RECORD([Transaction])`didn't work if you had 2 lots of trxs with diff anlys code but same GLCode
+GOTO RECORD([Trxs];$TrxNo)
+[Trxs]TaxAmt:=$Amt
+ADD TO SET([Trxs];"ToDisplay")
+SAVE RECORD([Trxs])
+End if 
+$LastCode:=$GLCode
+$Amt:=0
+End if 
+CREATE SET([Trxs];"Temp")
+DIFFERENCE("ToSum";"Temp";"ToSum")
+End for 
+End if 
+End for 
+CLOSE WINDOW($WinRef)
+
+QUERY([Trxs];[Trxs]Match=-1000;*)//this will pick up any bank fees added
+QUERY([Trxs]; & ;[Trxs]DateReconciled=!00-00-00!;*)//Need this if user has previously ticked the trx as 'unreconciled'
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Facility]FacilityCode+"@")
+If (Records in selection([Trxs])>0)
+CREATE SET([Trxs];"OtherTrx")//also use this to keep track of mods/deletions to existing bank trxs
+CREATE SET([Trxs];"OtherTrxS")//this is the saved set
+UNION("OtherTrx";"ToDisplay";"ToDisplay")
+End if 
+USE SET("ToDisplay")
+ORDER BY([Trxs];[Trxs]DateBanked;>;[Trxs]AnalysisCode;>;[Trxs]TaxAmt;>)//refunds will have the same analysis code
+vTot:=vBankBal
+FIRST RECORD([Trxs])
+For ($o;1;Records in selection([Trxs]))//doing this here because 'use set' did not display trxs in order
+If ([Trxs]Reconciled=True)
+If ([Trxs]TaxAmt<0)//if a refund or returned cheq
+vTot2:=vTot2+[Trxs]TaxAmt
+Else 
+vTot1:=vTot1+[Trxs]TaxAmt
+End if 
+End if 
+vTot:=vTot+[Trxs]TaxAmt
+[Trxs]Balance:=vTot
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+vRFDate:=vBSDate//"reconcile from" date
+vOpenBal:=vBankBal
+//vTot2:=vTot2*(-1)
+vTotal:=Round((vBankBal+vTot1+vTot2);2)//in case there are trxs marked as reconciled but without a reconciliation date
+vDifference:=Round((vTotal-vBankClose);2)
+FORM SET INPUT([ChartAccts];"ReconcileNew")
+START TRANSACTION
+USE SET("DateReconciled")
+FIRST RECORD([Trxs])
+If ([Trxs]DateReconciled=!00-00-00!)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=vBSDate)
+If (Records in set("LockedSet")>0)
+AlertMessage (Get localized string("Another user is accessing the same data as you. Please try again soon..."))
+LogAction (True;"Bank Rec aborted")
+CANCEL TRANSACTION
+ABORT
+End if 
+End if 
+MODIFY RECORD([ChartAccts])
+FORM SET INPUT([ChartAccts];"Output")
+CLEAR SET("ToDisplay")
+CLEAR SET("Temp")
+CLEAR SET("ToSum")
+CLEAR SET("DateReconciled")
+CLEAR SET("Analysis")
+CLEAR SET("ToReconcile")
+CLEAR SET("OtherTrxs")
+CLEAR SET("OtherTrx")
+If (vCancel=True)
+vBBDate:=!00-00-00!
+Else 
+vBBDate:=vBSDate
+End if 
+If (vBBDate#!00-00-00!)//if the user did not press cancel
+If (<>sProduct="M@") | ([Facility]CentralAddress="")
+GOTO RECORD([ChartAccts];vChartNo)
+[ChartAccts]BankBalDate:=vBBDate
+[ChartAccts]OpeningBal:=vBankBal
+[ChartAccts]Notes:=""//unlock the record
+SAVE RECORD([ChartAccts])
+Else 
+GOTO RECORD([ChartAccts];vChartNo)
+[ChartAccts]BankBalDate:=vBBDate
+[ChartAccts]OpeningBal:=vBankBal
+[ChartAccts]Notes:=""//unlock the record
+SAVE RECORD([ChartAccts])
+// still attempt to update the balance at the other end
+If (WSC_GetBankRecBal ([Facility]FacilityCode;vBankBal;vBBDate;2)=True)//This call sets vBankBal & vBBDate back to MV & unlocks the record
+//  `ALERT("The chart of accounts has been updated successfully!")
+//  `ALERT(String(vBankBal)+":"+String(vBBDate)+":"+String(viAction))
+//Else 
+//ALERT("Failure:"+String(vBankBal)+":"+String(vBBDate)+":"+String(viAction))
+End if 
+//GOTO RECORD([ChartAccts];vChartNo)
+//[ChartAccts]BankBalDate:=vBBDate
+//[ChartAccts]OpeningBal:=vBankBal
+//[ChartAccts]Notes:=""  `unlock the record
+//SAVE RECORD([ChartAccts])
+//added the above to save the record to the local chartaccts, but leave the below, as still attempt to update the balance at the other end
+
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("There are no transactions to reconcile."))
+End if 
+Else 
+GOTO RECORD([ChartAccts];vChartNo)
+[ChartAccts]Notes:=""
+SAVE RECORD([ChartAccts])
+//vBBDate:=!00/00/00!  `to indicate that the user clicked cancel
+//$Contact:=(WSC_GetBankRecBal ([Facility]FacilityCode;vBankBal;vBBDate;2))  `This call sets vBankBal & vBBDate back to MV & unlocks the record
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("You need to set up a Chart of Accounts with Account Type 'B' that contains the Facility code. For more info, click the Learn More link provided below");Get localized string("OK");"http://my.storman.com/support/knowledgebase/accounting/chartofaccounts.php?src=lm")
+End if 
+LogAction (True;"Bank Rec completed")
+READ ONLY([ChartAccts])
+READ ONLY([Trxs])
+READ ONLY([Facility])
+UNLOAD RECORD([Facility])
+UNLOAD RECORD([ChartAccts])
+UNLOAD RECORD([Trxs])
+End if 

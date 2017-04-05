@@ -1,0 +1,91 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+If (Form event=On Printing Detail)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vSDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+[Customer]BalFwd:=0
+For ($i;1;Records in selection([Trxs]))
+[Customer]BalFwd:=Round([Customer]BalFwd+[Trxs]TotAmt;2)
+NEXT RECORD([Trxs])
+End for 
+vTax:=0
+For ($i;1;8)
+$p:=Get pointer("vTot"+String($i))
+$p->:=0
+End for 
+FIRST RECORD([Trxs])
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AnalysisCode)
+$j:=[Analysis]SortOrder
+If ($j<1) | ($j>7)
+$j:=8
+End if 
+$p:=Get pointer("vTot"+String($j))
+$p->:=Round($p->+[Trxs]TotAmt-[Trxs]TaxAmt;2)
+vTax:=Round(vTax+[Trxs]TaxAmt;2)
+NEXT RECORD([Trxs])
+End for 
+vTotTax:=Round(vTotTax+vTax;2)
+vAgreemNo:=[Agreement]AgreeNo
+If ([Customer]CustomerCode="@MISCL")
+[Customer]CustomerName:="Cash Sales"
+Else 
+If ([Facility]UnitNoRpts)
+OBJECT SET TITLE(*;"Text123";Get localized string("Unit No"))
+[Agreement]AgreeNo:=Substring([Customer]UnitSort;1;5)
+End if 
+End if 
+End if 
+If (Form event=On Printing Break)
+vTotal:=Subtotal([Customer]BalFwd)
+vTot1:=Subtotal(vTot1)
+vTot2:=Subtotal(vTot2)
+vTot3:=Subtotal(vTot3)
+vTot4:=Subtotal(vTot4)
+vTot5:=Subtotal(vTot5)
+vTot6:=Subtotal(vTot6)
+vTot7:=Subtotal(vTot7)
+vTot8:=Subtotal(vTot8)
+If (Level=0)
+For ($i;1;8)
+QUERY([Analysis];[Analysis]SortOrder=$i)
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+$p:=Get pointer("vHdr"+String($i))
+$p->:=[Analysis]GLCode
+End for 
+End if 
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+If ([Facility]UnitNoRpts)
+OBJECT SET TITLE(*;"Text123";Get localized string("Unit No"))
+End if 
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+SetFormats 

@@ -1,0 +1,219 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($s;$t)
+If (Form event=On Clicked)
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility)
+$s:=Find in array(asChargesORC;[OtherChgs]AnalysisCode)
+$t:=Find in array(asChargesORC;asChargesORC{asChargeDescORC})
+
+If (asChargesORC{asChargeDescORC}="@IN") & (<>sFacility+"#"#Substring([Agreement]RAgreeNo;1;6)) & (Records in selection([InsuranceRates])>0)
+AlertMessage (Get localized string("You cannot create Insurance Charges because you have Insurance Rates setup!"))
+//RemoveORC
+DELETE RECORD([OtherChgs])
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+Else 
+Case of 
+: ($s<=0)
+AlertMessage (Get localized string("You cannot edit this Charge!"))
+asChargeDescORC:=Find in array(asChargesORC;[OtherChgs]AnalysisCode)
+: ($t<=0)
+AlertMessage (Get localized string("You cannot create this Charge!"))
+asChargeDescORC:=Find in array(asChargesORC;[OtherChgs]AnalysisCode)
+: ([Facility]InsuranceAgentType#3) | (([Facility]InsuranceAgentType=3) & (Records in selection([InsuranceRates])>0))
+$Code:=<>sFacility+"IN"
+If ([OtherChgs]AnalysisCode=$Code) & (PermissionsControl (215;False)=False)
+AlertMessage (Get localized string("You cannot change Insurance Charges!"))
+asChargeDescORC:=Find in array(asChargesORC;[OtherChgs]AnalysisCode)
+Else 
+If (asChargeDescORC<1)
+asChargeDesc:=1
+End if 
+//If (PermissionsControl (215)=False)  //(asChargesORC{asChargeDescORC}=$Code)    --- Commented by Hamid -3/3/2015 -8577
+//AlertMessage (Get localized string("You cannot create Insurance Charges because you have Insurance Rates setup!"))
+//Else 
+[OtherChgs]AnalysisCode:=asChargesORC{asChargeDescORC}
+RELATE ONE([OtherChgs]AnalysisCode)
+[OtherChgs]Description:=[Analysis]Description
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]PlanPeriod="Day")//SDD 03/10/13 Easier for operator to enter monthly amount and calculate what Daily rate should be - KSS
+$OtherChgAmount:=Num(RequestMessage (Get localized string("Please enter the monthly amount");String([Analysis]DfltSellAmt);Get localized string("OK");Get localized string("Cancel")))
+$OtherChgAmount:=Round($OtherChgAmount*12/365.25;4)
+: ([BillPlan]PlanPeriod="Week")
+$OtherChgAmount:=Num(RequestMessage (Get localized string("Please enter the weekly amount");String([Analysis]DfltSellAmt);Get localized string("OK");Get localized string("Cancel")))
+Else 
+$OtherChgAmount:=Num(RequestMessage (Get localized string("Please enter the monthly amount");String([Analysis]DfltSellAmt);Get localized string("OK");Get localized string("Cancel")))
+End case 
+[OtherChgs]Amount:=Round($OtherChgAmount*([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+[OtherChgs]NewAmount:=Round($OtherChgAmount*([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+
+$Allow:=False
+If (bAdd=1) | ([Agreement]MoveIn=[Agreement]NextBillDate) | ([Agreement]MoveIn>Current date) | (Old([Agreement]NextBillDate)=!00-00-00!)//Added second condition in 3.1
+$Allow:=True
+End if 
+
+If ($Allow=False)
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String([Agreement]LastBillDate;6)+", "+Get localized string("Next Bill Date")+" "+Get localized string("is")+" "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+Else 
+$xDays:=[Agreement]NextBillDate-Current date
+If ($xDays>0)
+$Rate:=$OtherChgAmount
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+"Start Date for this"+" "+[Analysis]Description+" "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+[Analysis]Description+" "+Get localized string("to")+" "+Get localized string("Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Prorata "+[Analysis]Description
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:="X = No of Days to NextBillDate"+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String(Current date)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]Narration:=[Trxs]Narration+"W = "+Get localized string("Weekly Rate")+" "+Get localized string("for")+" "+[Analysis]Description+" = "+String($OtherChgAmount;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = "+String($Mths;"##0")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N x W x X / Y = "+String($Amt;<>sFormat)+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Monthly Rate")+" "+Get localized string("for")+" "+[Analysis]Description+" = "+String($OtherChgAmount;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = "+String($Mths;"##0")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N x M x X / Y = "+String($Amt;<>sFormat)+Char(13)
+End if 
+
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("You will need to manually adjust the")+" "+[Analysis]Description+".")
+End if 
+End if 
+End if 
+End if 
+
+bChange:=True
+bNewChange:=True
+//End if 
+End if 
+Else 
+If (asChargeDescORC<1)
+asChargeDescORC:=1
+End if 
+[OtherChgs]AnalysisCode:=asChargesORC{asChargeDescORC}
+RELATE ONE([OtherChgs]AnalysisCode)
+[OtherChgs]Description:=[Analysis]Description
+If ([BillPlan]PlanPeriod="Week")
+$OtherChgAmount:=Num(RequestMessage (Get localized string("Please enter the weekly amount");String([Analysis]DfltSellAmt);Get localized string("OK");Get localized string("Cancel")))
+Else 
+$OtherChgAmount:=Num(RequestMessage (Get localized string("Please enter the monthly amount");String([Analysis]DfltSellAmt);Get localized string("OK");Get localized string("Cancel")))
+End if 
+[OtherChgs]Amount:=$OtherChgAmount*[BillPlan]PeriodstoPay
+[OtherChgs]NewAmount:=$OtherChgAmount*[BillPlan]PeriodstoPay
+
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ([Agreement]NextBillDate#[Agreement]MoveIn) & (Old([Agreement]NextBillDate)#!00-00-00!)
+If ($yDays<2)
+If ([Agreement]NextBillDate#[Agreement]MoveIn)
+AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String([Agreement]LastBillDate;6)+", "+Get localized string("Next Bill Date")+" "+Get localized string("is")+" "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+End if 
+Else 
+$xDays:=[Agreement]NextBillDate-Current date
+If ($xDays>0)
+$Rate:=$OtherChgAmount
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Start Date for this")+" "+[Analysis]Description+" "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+[Analysis]Description+" "+Get localized string("to")+" "+Get localized string("Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Trxs])
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+If ([Analysis]InvItem=True) & ([Analysis]InvQtyonHand<1)
+AlertMessage ("You cannot add an other regular charge for "+" "+[OtherChgs]Description+" "+Get localized string("as there are only")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("units on hand.  Please re-enter!"))
+Else 
+CREATE RECORD([Trxs])
+[Trxs]Qty:=1
+If ([Analysis]InvItem=True)
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-1
+End if 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+//$Desc:=[Analysis]Description
+//$i:=Position(" ";$Desc)-1
+//If ($i<2)
+//$i:=Length($Desc)
+//End if 
+[Trxs]Description:="Prorata "+[Analysis]Description//+Substring($Desc;1;$i)+" "+[Analysis]Description
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:="X = No of Days to NextBillDate"+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String(Current date)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]Narration:=[Trxs]Narration+"W = "+Get localized string("Weekly Rate")+" "+Get localized string("for")+" "+[Analysis]Description+" = "+String($OtherChgAmount;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = "+String($Mths;"##0")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N x W x X / Y = "+String($Amt;<>sFormat)+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Monthly Rate")+" "+Get localized string("for")+" "+[Analysis]Description+" = "+String($OtherChgAmount;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = "+String($Mths;"##0")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N x M x X / Y = "+String($Amt;<>sFormat)+Char(13)
+End if 
+SAVE RECORD([Trxs])
+SAVE RECORD([Analysis])
+End if 
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("You will need to manually adjust the")+" "+[Analysis]Description+".")
+End if 
+End if 
+End if 
+End if 
+bChange:=True
+bNewChange:=True
+End case 
+End if 
+
+
+End if 
+
+
+If (Form event=On Losing Focus)
+If ([OtherChgs]AnalysisCode="@IN")
+AlertMessage (Get localized string("You cannot create Insurance Charges because you have Insurance Rates setup!"))
+//RemoveORC
+DELETE RECORD([OtherChgs])
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+End if 
+End if 

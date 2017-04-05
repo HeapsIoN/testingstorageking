@@ -1,0 +1,144 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+SOAP DECLARATION(WS_IsAgreement;Is Boolean;SOAP input;"WS_IsAgreement")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+SOAP DECLARATION(WS_CustomerNotes;Is text;SOAP output;"WS_CustomerNotes")
+SOAP DECLARATION(WS_AlertNotesMsg;Is Boolean;SOAP output;"WS_AlertNotesMsg")
+SOAP DECLARATION(WS_adNoteDate;Date array;SOAP output;"WS_asNoteDate")
+SOAP DECLARATION(WS_aiNoteTime;LongInt array;SOAP output;"WS_aiNoteTime")
+SOAP DECLARATION(WS_asUserLogin;Text array;SOAP output;"WS_asUserLogin")
+SOAP DECLARATION(WS_asNote;Text array;SOAP output;"WS_asNote")
+SOAP DECLARATION(WS_asNotesList;Text array;SOAP output;"WS_asNotesList")
+SOAP DECLARATION(WS_asNotesSortList;Text array;SOAP output;"WS_asNotesSortList")
+
+$String:="Start WS_GetNotesAndAlertsInfo"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+If (WS_IsAgreement=True)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtAgreementNumber)
+End if 
+Case of 
+: (Records in selection([Agreement])=0) & (Records in selection([Reservation])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement found"
+: (Records in selection([Agreement])=1) | (Records in selection([Reservation])=1)
+If (WS_IsAgreement=True)
+RELATE ONE([Agreement]CustomerCode)
+Else 
+RELATE ONE([Reservation]CustomerCode)
+End if 
+
+
+If ([Customer]Password=WS_vtPassword)
+
+If (WS_IsAgreement=True)
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Agreement]CustomerCode)
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+Else 
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Reservation]CustomerCode)
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+End if 
+
+For ($j;1;Records in selection([NotesHistory]))
+APPEND TO ARRAY(WS_adNoteDate;[NotesHistory]NoteDate)
+APPEND TO ARRAY(WS_aiNoteTime;[NotesHistory]NoteTime)
+APPEND TO ARRAY(WS_asUserLogin;[NotesHistory]UserLogin)
+APPEND TO ARRAY(WS_asNote;[NotesHistory]Note)
+NEXT RECORD([NotesHistory])
+End for 
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="NC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=[Facility]FacilityCode)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;WS_asNotesList)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="NC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=[Facility]FacilityCode)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;WS_asNotesSortList)
+INSERT IN ARRAY(asNotesList;1)
+WS_asNotesList{1}:="All"
+INSERT IN ARRAY(asNotesSortList;1)
+WS_asNotesSortList{1}:="All"
+
+WS_CustomerNotes:=[Customer]Notes
+If (Is_Agreement=True)
+WS_AlertNotesMsg:=[Agreement]AlertNotesMsg
+Else 
+WS_AlertNotesMsg:=[Reservation]AlertNote
+End if 
+
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=4//There is a duplicate of agreement. 
+WS_ORErrorDescription:="There are duplicate agreements."
+
+End case 
+End if 
+
+$String:="End WS_GetNotesAndAlertsInfo"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+String(WS_vtAgreementNumber)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_CustomerNotes: "+WS_CustomerNotes+Char(13)
+$String:=$String+"WS_AlertNotesMsg: "+String(WS_AlertNotesMsg)+Char(13)
+
+$sizeofarray:=Size of array(WS_adNoteDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adNoteDate("+String($vlElem)+"):"+String(WS_adNoteDate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiNoteTime)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiNoteTime("+String($vlElem)+"):"+String(WS_aiNoteTime{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asUserLogin)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUserLogin("+String($vlElem)+"):"+WS_asUserLogin{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asNote)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUserLogin("+String($vlElem)+"):"+WS_asNote{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asNotesList)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asNotesList("+String($vlElem)+"):"+WS_asNotesList{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asNotesSortList)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asNotesSortList("+String($vlElem)+"):"+WS_asNotesSortList{$vlElem}+Char(13)
+End for 
+
+ReadOnlyAll 
+UnloadAll 
+WSRECORDLOG ($String)

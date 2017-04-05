@@ -1,0 +1,158 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($k;$RecNo;$TotAgree)
+C_BOOLEAN($Print)
+$k:=1
+If (Form event=On Clicked)
+If (Records in selection([Notices])#0)
+Case of 
+: (vrbCustomers=1)
+$RecNo:=Records in selection([Customer])
+: (vrbContacts=1)
+$RecNo:=Records in selection([Contacts])
+End case 
+ConfirmTwo (Get localized string("Print")+" "+String($RecNo)+" "+Get localized string("Letters1")+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ACCEPT
+READ WRITE([Letters])
+$Print:=True
+Case of 
+: (vrbCustomers=1)
+FIRST RECORD([Customer])
+<>ProgressInd:=1
+
+Open window(20;50;400;150;0)
+//$Letter:=WR New offscreen area  //fb8959 by eugene 22/04/2015
+
+$TotAgree:=Records in selection([Customer])
+For ($i;1;Records in selection([Customer]))
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+GOTO XY(2;2)
+MESSAGE("Generating Letters: "+String($i))//Johnno
+CREATE RECORD([Letters])
+Case of 
+: (asCusFilter=4)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+: (asCusFilter=5)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=False)
+Else 
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+End case 
+
+If (Records in selection([Agreement])>1)
+Case of 
+: (asCusFilter=1) | (asCusFilter=2)
+QUERY SELECTION([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+: (asCusFilter=3)
+QUERY SELECTION([Agreement]; & ;[Agreement]ActiveAgreemt=False)
+End case 
+FIRST RECORD([Agreement])
+End if 
+
+If (asCusFilter=4) | (asCusFilter=5)
+FIRST RECORD([Reservation])
+[Letters]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Letters]LetterDesc:=[Notices]Description
+[Letters]DateSent:=Current date
+$p:=->[Notices]Letter
+[Letters]SentViaEmail:=False
+BLOB PROPERTIES($p->;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB($p->)
+End if 
+[Letters]LetterBLOB:=FreezeLetter ($p;True)
+COMPRESS BLOB([Letters]LetterBLOB)
+If ([Letters]AgreeNo#"")// Added to avoid error if agrement doesn't exist for customer.
+SAVE RECORD([Letters])
+INSERT IN ARRAY(arContacts;$k)
+INSERT IN ARRAY(arContacts{$k};1;4)
+arContacts{$k}{1}:=[Customer]CustomerCode
+arContacts{$k}{2}:=[Customer]CustomerName
+arContacts{$k}{3}:=[Customer]MobilePhone
+arContacts{$k}{4}:="Yes"
+$k:=$k+1
+Else 
+INSERT IN ARRAY(arContacts;$k)
+INSERT IN ARRAY(arContacts{$k};1;4)
+arContacts{$k}{1}:=[Customer]CustomerCode
+arContacts{$k}{2}:=[Customer]CustomerName
+arContacts{$k}{3}:=[Customer]MobilePhone
+arContacts{$k}{4}:="No"
+$k:=$k+1
+End if 
+NEXT RECORD([Customer])
+End for 
+<>ProgressInd:=100
+SET AUTOMATIC RELATIONS(True;True)
+//WR BLOB TO AREA ($Letter;[Notices]Letter)
+//WR PRINT MERGE ($Letter;5;1)
+//WR DELETE OFFSCREEN AREA ($Letter)
+WR BLOB TO AREA (veLetter;[Notices]Letter)//fb8959 by eugene 22/04/2015
+WR PRINT MERGE (veLetter;5;1)
+WR DELETE OFFSCREEN AREA (veLetter)
+
+SET AUTOMATIC RELATIONS(False;False)
+: (vrbContacts=1)
+FIRST RECORD([Contacts])
+<>ProgressInd:=1
+Open window(20;50;400;150;0)
+$Letter:=WR New offscreen area 
+$TotAgree:=Records in selection([Contacts])
+For ($i;1;Records in selection([Contacts]))
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+GOTO XY(2;2)
+MESSAGE("Generating Letters: "+String($i))//Johnno
+CREATE RECORD([Letters])
+[Letters]ContactNo:=[Contacts]ContactNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]DateSent:=Current date
+$p:=->[Notices]Letter
+[Letters]SentViaEmail:=False
+BLOB PROPERTIES($p->;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB($p->)
+End if 
+[Letters]LetterBLOB:=FreezeLetter ($p;True)
+COMPRESS BLOB([Letters]LetterBLOB)
+If ([Letters]ContactNo#"")
+SAVE RECORD([Letters])
+INSERT IN ARRAY(arContacts;$k)
+INSERT IN ARRAY(arContacts{$k};1;4)
+arContacts{$k}{1}:=[Contacts]ContactNo
+arContacts{$k}{2}:=[Contacts]ContactName
+arContacts{$k}{3}:=[Contacts]MobilePhone
+arContacts{$k}{4}:="Yes"
+$k:=$k+1
+End if 
+NEXT RECORD([Contacts])
+End for 
+<>ProgressInd:=100
+SET AUTOMATIC RELATIONS(True;True)
+WR BLOB TO AREA ($Letter;[Notices]Letter)
+WR PRINT MERGE ($Letter;12;1)
+WR DELETE OFFSCREEN AREA ($Letter)
+SET AUTOMATIC RELATIONS(False;False)
+End case 
+End if 
+End if 
+
+If (vrbCustomers=1)
+vTitle:=Get localized string("List of Customers")
+vCTitle:=Get localized string("Customer Code")
+Else 
+vTitle:=Get localized string("List of Contacts")
+vCTitle:=Get localized string("Contact No")
+ALL RECORDS([Customer])
+REDUCE SELECTION([Customer];Size of array(arContacts))
+End if 
+If ($Print)
+vTtl:="Mobile Phone"
+rowNumber:=1
+FORM SET OUTPUT([Customer];"MailMergeReport")
+PrintSelection ("P")
+End if 
+End if 

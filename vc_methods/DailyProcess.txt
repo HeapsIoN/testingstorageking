@@ -1,0 +1,242 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$Compressed)
+C_TEXT($LastProcess)
+C_REAL(vOthTotal;vNewOthTotal)
+C_BOOLEAN($Save)//10313
+$Save:=True//10313
+CREATE EMPTY SET([Letters];"ToPrint")
+FIRST RECORD([Agreement])
+$LastProcess:="AARecurring Rent"
+CREATE SET([Agreement];"ToClear")
+For ($i;1;Records in selection([Agreement]))
+If ([Agreement]NoticeBilled#$LastProcess) | ([Agreement]NoticePlanNo#[Notices]NoticePlanNo)//2nd condition added 3/10/08
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description=[Agreement]NoticeBilled;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo)
+$LastProcess:=[Agreement]NoticeBilled
+End if 
+RELATE ONE([Agreement]CustomerCode)
+RELATE ONE([Agreement]BillingPlanCode)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+
+If (<>tUtilities) & ([Agreement]NoticeBillRent)
+<>tUtilities:=False// to disable read from LogMonLookCode
+//To read PULS before creating transaction 
+$AgreeNo:=[Agreement]RAgreeNo
+If (Application type=4D Remote mode)
+$Q:=Execute on server("UtilitiesAction";400000;"UtilitiesAction";9;$AgreeNo)
+Else 
+UtilitiesAction (9)
+End if 
+
+$Tickcount:=Tickcount// 1 sec before read
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+60))
+
+If (Application type=4D Remote mode)
+$Q:=Execute on server("ReadPULS";400000;"ReadPULS")
+Else 
+ReadPULS 
+End if 
+<>tUtilities:=True
+End if 
+
+If ([Agreement]NoticeBillRent=True)//Charge Rent
+bFromMoveIn:=False
+bAdd:=0
+Case of 
+: ([BillPlan]CasualBilling)
+DoBillCasual 
+: (Records in selection([UnitAgree])>0)
+DoBillUA 
+Else 
+DoBillNext 
+End case 
+Else //Charge Late Fees if applicable
+If ([Agreement]NoticeSent=True) | ([Notices]OnlyBillifLtrSent=False)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Agreement]NoticeDate)
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]TotAmt:=RoundAmt ([Agreement]NoticeAmtToBill)
+QUERY([Analysis];[Analysis]Code=<>sFacility+[Notices]AnalysisCode)
+If (Records in selection([Analysis])=1)
+$Save:=True//10313
+[Trxs]AnalysisCode:=[Analysis]Code
+Case of 
+: (Length([Analysis]Description)<=6)
+[Trxs]Description:=[Analysis]Description+" for Agreement "+[Agreement]AgreeNo
+: (Length([Analysis]Description)<=10)
+[Trxs]Description:=[Analysis]Description+" for Agrmt "+[Agreement]AgreeNo
+Else 
+[Trxs]Description:=[Analysis]Description
+End case 
+Else 
+$Save:=False//10313
+[Trxs]AnalysisCode:=<>sFacility+"LF"
+[Trxs]Description:="Late Fee for Agrmt "+[Agreement]AgreeNo
+End if 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+If ([Trxs]AnalysisCode=(<>sFacility+"LF"))
+[Agreement]TotLateUnpaid:=Round([Agreement]TotLateUnpaid+[Trxs]TotAmt;2)
+Else 
+[Agreement]TotOthrUnpaid:=Round([Agreement]TotOthrUnpaid+[Trxs]TotAmt;2)
+End if 
+If ([Notices]SetOverDue)
+Case of 
+: ([Customer]Overdue=2) | ([Customer]Overdue=3)
+[Customer]Overdue:=3
+: ([Customer]Overdue=4) | ([Customer]Overdue=5)
+[Customer]Overdue:=5
+Else 
+[Customer]Overdue:=1
+End case 
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+FIRST RECORD([Unit])//Added 3.0.2
+While (End selection([Unit])=False)
+[Unit]LockStatus:=[Customer]Overdue
+[Unit]Status:=<>asUnitStatus{7}//Locked
+If ([Facility]HideGateLockList=False)
+[Unit]StatusChange:=True
+End if 
+If (<>tGateSys)
+[Unit]UpdateGate:=<>tGateSys//Added in v3.1 - only prob is that only agreement units get locked not all for cust
+End if 
+[Unit]UpdatePULS:=<>tUtilities
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End while 
+End if 
+If ([Notices]SetOverlock)
+Case of 
+: ([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)
+[Customer]Overdue:=3
+Else 
+[Customer]Overdue:=2
+End case 
+FIRST RECORD([Unit])//Added 3.0.2
+While (End selection([Unit])=False)
+[Unit]LockStatus:=[Customer]Overdue
+[Unit]StatusChange:=True
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End while 
+End if 
+If ([Notices]SetReplaceLock)
+Case of 
+: ([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)
+[Customer]Overdue:=5
+Else 
+[Customer]Overdue:=4
+End case 
+FIRST RECORD([Unit])//Added 3.0.2
+While (End selection([Unit])=False)
+[Unit]LockStatus:=[Customer]Overdue
+[Unit]StatusChange:=True
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End while 
+End if 
+If (([Trxs]TotAmt>0) & ($Save=True))//10313
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+End if 
+End if 
+
+End if 
+SAVE RECORD([Customer])
+If ($LastProcess#"AA@")
+//If (◊tGateSys=True) & ([Customer]Overdue=True)
+//  UpdateGateUnits 
+//End if   Removed in v3.1 because [Unit] is locked an gives Alert msg from LogMon
+If ([Agreement]NoticeSent=True)
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+[Letters]LetterDesc:=[Agreement]NoticeBilled
+[Letters]DateSent:=[Facility]LastDaily//Check this - should this be ?  [Agreement]NoticeDate
+[Letters]SMSMessage:=""
+If ([Notices]SMSMessage>"")
+[Letters]SMSMessage:=[Notices]SMSMessage
+End if 
+RELATE ONE([Agreement]BillingPlanCode)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]SendNoticesEmail) & ([Customer]EmailAddress>"") & (Position(Char(64);[Customer]EmailAddress;0;*)>0) & ([Notices]EmailBlank=False) & ([Notices]LetterOnly=False)
+$p:=->[Notices]Email
+[Letters]SentViaEmail:=True
+[Letters]Custom1:=[Notices]EmailSubject
+Else //The above condition added in v2.5.5
+[Letters]LetterBlank:=[Notices]LetterBlank
+$p:=->[Notices]Letter
+End if 
+//If ([Agreement]NoticeBillRent=True) & ([Agreement]NoticeBilled#"AA@")
+Case of 
+: ([Notices]AttachInvoice=2)
+[Letters]SentwithInv:=[Agreement]SendInvoices
+: ([Notices]AttachInvoice=1)
+[Letters]SentwithInv:=True
+Else 
+[Letters]SentwithInv:=False
+End case 
+Case of 
+: ([Notices]AttachStatement=2)
+[Letters]SentWithStatement:=[Agreement]SendStatements
+: ([Notices]AttachStatement=1)
+[Letters]SentWithStatement:=True
+Else 
+[Letters]SentWithStatement:=False
+End case 
+[Letters]InvoiceFee:=[Notices]InvoiceFee
+[Letters]InvoiceFeeAnalysis:=[Notices]InvoiceFeeAnalysis
+//End if 
+If ([Letters]LetterBlank=False)
+BLOB PROPERTIES($p->;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB($p->)
+End if 
+QUERY([Pictures];[Pictures]Facility=[Facility]FacilityCode)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Letters]SentViaEmail)
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Letters]LetterBLOB)
+[Letters]Custom1:=ProcessStormanHTMLTags ([Letters]Custom1)
+Else 
+[Letters]LetterBLOB:=FreezeLetter ($p)
+End if 
+COMPRESS BLOB([Letters]LetterBLOB)
+End if 
+SAVE RECORD([Letters])
+ADD TO SET([Letters];"ToPrint")
+End if 
+If ([Notices]DaysAfter>0) & ([Notices]LateCycleIgnore=False) & ([Agreement]NoticeSent) & (([Notices]RefDateField=44) | ([Notices]RefDateField=48))//Only do for Late letters - Added 4.1.0
+[Agreement]LastNotice:=[Notices]DaysAfter
+End if 
+End if 
+SAVE RECORD([Agreement])
+
+NEXT RECORD([Agreement])
+End for 
+If ([Facility]AutoUpdateCantMod)
+If ([Facility]CantModPrior<([Facility]LastDaily-[Facility]CantModDaysBehind))
+[Facility]CantModPrior:=[Facility]LastDaily-[Facility]CantModDaysBehind
+End if 
+End if 
+SAVE RECORD([Facility])
+FLUSH BUFFERS//This should make all changes intact before printing letters
+USE SET("ToPrint")
+CLEAR SET("ToPrint")
+DailyPrint ([Facility]LastDaily;True)
+USE SET("ToClear")
+CLEAR SET("ToClear")

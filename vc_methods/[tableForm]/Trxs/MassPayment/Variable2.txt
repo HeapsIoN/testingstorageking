@@ -1,0 +1,59 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+vTotal:=0
+GOTO OBJECT(bAccept)
+For ($i;1;Size of array(vmpPayment))
+vTotal:=vTotal+vmpPayment{$i}
+End for 
+
+If (vTotal=vPlus)
+If ([Analysis]SetBankedDate=True) & (BPAYINTEX=0)//10883
+vmpDateBanked:=vmpTrxDate
+End if 
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+LOAD RECORD([Agreement])
+LOAD RECORD([Customer])
+[Customer]Balance:=[Customer]Balance-vPlus
+If (vmpTrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=vmpTrxDate
+End if 
+For ($i;1;Size of array(vmpPayment))
+If (vmpPayment{$i}>0)
+QUERY([Agreement];[Agreement]RAgreeNo=Substring([Customer]CustomerCode;1;5)+vmpAgreeNo{$i})
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-vmpPayment{$i}
+[Agreement]TotOthrUnpaid:=999999
+SAVE RECORD([Agreement])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=vmpTrxDate
+[Trxs]DateFrom:=vmpTrxDate
+[Trxs]DateTo:=vmpTrxDate
+[Trxs]TotAmt:=vmpPayment{$i}
+[Trxs]AnalysisCode:=vmpAnalysisCode
+[Trxs]DateBanked:=vmpDateBanked
+[Trxs]UserLogin:=vmpUserLogin
+[Trxs]Description:=vmpDescription
+[Trxs]Drawer:=vmpDrawer
+[Trxs]BankBranch:=vmpBankBranch
+[Trxs]Confirmed:=True
+[Trxs]TrxTime:=Current time
+If (BPAYINTEX#0)//10781 & 10883
+[Trxs]OriginalReceipt:=BPAYBankReceiptID
+[Trxs]CCAuthNo:=BPAYPaymentID
+[Trxs]DateBanked:=Date(BPAYDateBank)
+End if 
+SAVE RECORD([Trxs])
+End if 
+End for 
+SAVE RECORD([Customer])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UnloadAll 
+CANCEL
+Else 
+AlertMessage (Get localized string("The payments total for the agreements must match the total receipt amount"))
+End if 

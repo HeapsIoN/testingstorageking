@@ -1,0 +1,59 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//$0 returns True if update successful
+C_LONGINT($1)//$1 = Field number to update
+C_POINTER($2)//$2=Pointer to value to update
+C_TEXT($3)//$3=Alert Message
+C_BOOLEAN($4;$DontWait)//$4 True means Don't wait for locking
+C_BOOLEAN($5;$System)
+$DontWait:=False
+$System:=False
+If (Count parameters>=4)
+$DontWait:=$4
+If (Count parameters>=5)
+$System:=$5
+End if 
+End if 
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+If (Application type=4D Server)
+OK:=0
+While (Locked([Facility])) & (OK<5)
+DELAY PROCESS(Current process;60)
+LOAD RECORD([Facility])
+OK:=OK+1
+End while 
+OK:=1
+If (Locked([Facility]))
+SyncRecordLog (Get localized string("Facility record")+" "+[Facility]FacilityCode+" "+Get localized string("could not be updated for field")+" "+Field name(1;$1))
+OK:=0
+End if 
+Else 
+OK:=1
+While (Locked([Facility])=True) & (OK=1)
+If ($DontWait=False)
+ConfirmTwo (Get localized string("The system details are locked by another process. Keep waiting?");Get localized string("Yes");Get localized string("No"))
+LOCKED BY([Facility];$Proc;$User;$Machine;$ProcName)
+If (OK=1)
+DELAY PROCESS(Current process;600)
+LOAD RECORD([Facility])
+End if 
+Else 
+OK:=0
+End if 
+End while 
+End if 
+If (OK=1)
+If (($1#101) & ($1#128)) | (PermissionsControl (196;False)) | ($System=True)
+$p:=Field(1;$1)
+$p->:=$2->
+End if 
+SAVE RECORD([Facility])
+$0:=True
+Else 
+If ($3>"")
+AlertMessage ($3)
+End if 
+$0:=False
+End if 
+READ ONLY([Facility])
+LOAD RECORD([Facility])

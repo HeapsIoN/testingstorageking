@@ -1,0 +1,150 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL(vMth1;vMth2;vMth3)
+C_REAL(vAmt1;vAmt2;vAmt3;vAmt4;vAmt5;vAmt6;vAmt7;vAmt8;vAmt9;vAmt10;vAmt11;vAmt12;vAmt13;vAmt14;vAmt15)
+C_LONGINT($Count)
+
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+vTitle:=Get localized string("Insurance Summary and Remittance Report")
+vtFacAdd:=[Facility]City+", "+[Facility]State+" "+[Facility]PostZIPCode
+OBJECT SET FORMAT([Facility]TaxNumber;<>tTaxFormat)
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+$Count:=1
+If (Is in set("ToPrint"))
+[Agreement]InsureValue:=0
+[Trxs]Balance:=0//Only 1 amount of payment per agreement
+$Count:=0
+Else 
+ADD TO SET([Agreement];"ToPrint")
+End if 
+Case of //If ([Agreement]InsureNewP) Prior 3.2.2
+: ([Agreement]InsureCommence>=vStDate) & ([Agreement]InsureCommence<=vMthDate)
+vLastNo:="Yes"
+: ([Agreement]InsureCommence=!00-00-00!) & ([Agreement]MoveIn>=vStDate) & ([Agreement]MoveIn<=vMthDate)
+vLastNo:="Yes"
+Else 
+vLastNo:="No"
+End case 
+If ([Trxs]TrxDate<vStDate)
+[Trxs]TotAmt:=0
+End if 
+If (Month of([Trxs]DateFrom)#Month of(vMthDate))
+Else 
+vMth1:=GetMonthDiff ([Trxs]DateTo;[Trxs]DateFrom)
+vAmt7:=[Trxs]TotAmt/vMth1
+vAmt10:=[Facility]InsuranceAdminFee*vMth1
+If ([Trxs]Description="Prorata@")
+$DayDifference:=[Trxs]DateTo-[Trxs]DateFrom
+vMth1:=0
+Case of 
+: ([Facility]State="GA") | ([Facility]State="NC") | ([Facility]State="NM")
+Case of 
+: ([Agreement]InsureValue=2500)
+If (vMthDate<!2012-02-01!)
+vAmt7:=8
+Else 
+vAmt7:=9
+End if 
+: ([Agreement]InsureValue=5000)
+vAmt7:=12
+: ([Agreement]InsureValue=7500)
+vAmt7:=16
+: ([Agreement]InsureValue=10000)
+vAmt7:=20
+: ([Agreement]InsureValue=15000)
+vAmt7:=30
+: ([Agreement]InsureValue=20000)
+vAmt7:=40
+: ([Agreement]InsureValue=25000)
+vAmt7:=50
+Else 
+//do nothing
+End case 
+Else 
+Case of 
+: ([Agreement]InsureValue=2000)
+vAmt7:=8
+: ([Agreement]InsureValue=2500)
+vAmt7:=9
+: ([Agreement]InsureValue=3000)
+vAmt7:=12
+: ([Agreement]InsureValue=5000)
+vAmt7:=20
+: ([Agreement]InsureValue=7500)
+vAmt7:=29
+: ([Agreement]InsureValue=10000)
+vAmt7:=38
+: ([Agreement]InsureValue=15000)
+vAmt7:=57
+: ([Agreement]InsureValue=20000)
+vAmt7:=75
+Else 
+//do nothing
+End case 
+End case 
+vAmt10:=0.05*$DayDifference
+End if 
+vAmt13:=[Trxs]TotAmt-vAmt10
+If (vLastNo="Yes")
+vAmt1:=vAmt1+$Count
+vAmt2:=vAmt2+[Agreement]InsureValue
+vAmt5:=vAmt5+[Trxs]TotAmt
+vAmt6:=vAmt6+[Trxs]Balance
+vMth2:=vMth2+vMth1
+vAmt8:=vAmt8+vAmt7
+vAmt11:=vAmt11+vAmt10
+vAmt14:=vAmt14+vAmt13
+End if 
+vAmt15:=vAmt15+vAmt13
+vAmt12:=vAmt12+vAmt10
+vAmt9:=vAmt9+vAmt7
+vMth3:=vMth3+vMth1
+vAmt3:=vAmt3+$Count
+End if 
+
+If ([Agreement]ActiveAgreemt=False)
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Trxs]AgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut>=vStDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vMthDate)
+If (Records in selection([UnitHistory])>0)
+[Agreement]UnitsOccup:=Substring([UnitHistory]UnitNo;6)
+End if 
+End if 
+
+End if 
+If (Form event=On Printing Break)
+vAmt4:=Subtotal([Agreement]InsureValue)
+vTotal:=Subtotal([Trxs]TotAmt)
+vTotBal:=Subtotal([Trxs]Balance)
+End if 
+If (Form event=On Printing Footer)
+vDate:=Current date
+vVers:=Substring(<>sVersion;6)
+vTme:=String(Current time)
+vPage:=Printing page
+End if 
+SetFormats 

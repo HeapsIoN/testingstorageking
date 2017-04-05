@@ -1,0 +1,78 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$Pos)
+C_TEXT($Message;$Error)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+$Error:=""
+FIRST RECORD([Message])
+For ($i;1;Records in selection([Message]))
+$Message:=[Message]MsgBody
+ARRAY TEXT($aDetails;4)
+For ($j;1;4)
+$Pos:=Position(":";$Message)
+$Message:=Substring($Message;$Pos+1)
+$Pos:=Position(Char(13);$Message;0;*)
+If ($Pos>0)
+If (Length(Substring($Message;1;$Pos-1))>12)
+AlertMessage (Substring($Message;1;$Pos-1))
+End if 
+$aDetails{$j}:=Substring($Message;1;$Pos-1)
+End if 
+$Message:=Substring($Message;$Pos+1)
+End for 
+QUERY([Agreement];[Agreement]RAgreeNo=$aDetails{2})
+If (Records in selection([Agreement])=1)
+If ([Agreement]CustomerCode="@"+$aDetails{1})
+$Date:=Date($aDetails{3})
+If ($Date>(Current date-10)) & ($Date<(Current date+2))
+QUERY([Analysis];[Analysis]Code=<>sFacility+"WP")
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]Charge:=False
+If (Records in selection([Analysis])=1)
+[Trxs]Description:=[Analysis]Description
+[Trxs]AnalysisCode:=[Analysis]Code
+Else 
+[Trxs]Description:="Web Payment"
+[Trxs]AnalysisCode:=<>sFacility+"WP"
+End if 
+[Trxs]TotAmt:=Round(Num($aDetails{4});2)
+[Trxs]Confirmed:=True
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Trxs]TrxDate
+SAVE RECORD([Trxs])
+bFromMoveIn:=False
+vNewReceipt:=False
+UpdateReceipt ("Web";True)
+//Should also write LogQueue item so that LogMonitor picks up matching
+Else 
+$Error:=$Error+Get localized string("Invalid date for agreement")+" : "+$aDetails{2}+", "+Get localized string("Code")+" : "+$aDetails{1}+", "+Get localized string("Date")+" : "+$aDetails{3}+Char(13)
+End if 
+Else 
+$Error:=$Error+Get localized string("Customer code mismatch for agreement")+" : "+$aDetails{2}+", "+Get localized string("Code")+" : "+$aDetails{1}+Char(13)
+End if 
+Else 
+$Error:=$Error+Get localized string("No Agreement Record for")+" : "+$aDetails{2}+Char(13)
+End if 
+[Message]SentRead:=True
+SAVE RECORD([Message])
+NEXT RECORD([Message])
+End for 
+UpdateAgreeBals 
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Trxs])
+If ($Error>"")
+AlertMessage ($Error)
+Else 
+AlertMessage (Get localized string("There were")+" "+String(Records in selection([Message]))+" "+Get localized string("processed successfully!"))
+End if 

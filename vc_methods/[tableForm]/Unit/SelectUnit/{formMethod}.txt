@@ -1,0 +1,77 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+LoadGradients 
+OBJECT SET VISIBLE(bDel;tBoolean)
+If (bOkNext=True)
+OBJECT SET VISIBLE(bOkandNext;True)
+OBJECT SET TITLE(bSelect2;"Close")
+End if 
+
+
+//RELATE MANY([UnitType]UnitTypeCode)
+//QUERY([Unit];[Unit]UnitTypeCode=[UnitType]RUnitType;*)
+//QUERY([Unit]; & ;[Unit]Vacant=True;*)
+//QUERY([Unit]; & ;[Unit]Status#"Unavail";*)
+//QUERY([Unit]; & ;[Unit]Status#"Repair";*)
+//QUERY([Unit]; & ;[Unit]Status#"Company")
+
+
+End if 
+
+If (Form event=On Display Detail)
+RELATE ONE([Unit]UnitTypeCode)
+vLeg1:=""
+If ([Unit]Vacant=False) & ([Unit]UnitNo>"")
+vLeg1:=String([Unit]MoveOut;1)
+End if 
+[Unit]ReservedTo:=Substring([Unit]ReservedTo;3)
+End if 
+
+If (Form event=On Double Clicked)
+FILTER EVENT
+If ([Contacts]ContactNo>"") & ([Reservation]RReserveNo="") & ([Agreement]RAgreeNo="")
+CREATE RECORD([Quote])
+[Quote]ContactNo:=[Contacts]ContactNo
+Case of 
+: ([UnitType]OrgAnalysis>"") & ([Contacts]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis>"")
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+"RF")
+End case 
+[Quote]AnalysisCode:=[Analysis]Code
+Case of 
+: (<>sProduct="@B")
+[Quote]Size:=Get localized string("Berth Type")+": "+[UnitType]Description
+OBJECT SET TITLE(bDel;Get localized string("Show Rented Berths"))
+OBJECT SET TITLE(*;"Header1";Get localized string("Select Berth Number"))
+OBJECT SET TITLE(*;"Text16";Get localized string("Select the Berths from the list below."))
+: (<>sProduct="@R")
+[Quote]Size:=Get localized string("Appliance Type")+": "+[UnitType]Description
+OBJECT SET TITLE(bDel;Get localized string("Show Rented Appliances"))
+OBJECT SET TITLE(*;"Header1";Get localized string("Select Appliace Number"))
+OBJECT SET TITLE(*;"Text16";Get localized string("Select the Appliances from the list below."))
+: (<>sFacility="ST@")
+[Quote]Size:=Get localized string("Support Plan Type")+": "+[UnitType]Description
+OBJECT SET TITLE(bDel;Get localized string("Show Rented Units"))
+OBJECT SET TITLE(*;"Header1";Get localized string("Select Unit Number"))
+OBJECT SET TITLE(*;"Text16";Get localized string("Select the Units from the list below."))
+: (<>sProduct="@C")
+[Quote]Size:=Get localized string("Space Type")+": "+[UnitType]Description
+OBJECT SET TITLE(bDel;Get localized string("Show Rented Spaces"))
+OBJECT SET TITLE(*;"Header1";Get localized string("Select Space Number"))
+OBJECT SET TITLE(*;"Text16";Get localized string("Select the Spaces from the list below."))
+Else 
+[Quote]Size:=Get localized string("Unit Type")+": "+[UnitType]Description
+OBJECT SET TITLE(bDel;Get localized string("Show Rented Units"))
+OBJECT SET TITLE(*;"Header1";Get localized string("Select Unit Number"))
+OBJECT SET TITLE(*;"Text16";Get localized string("Select the Units from the list below."))
+End case 
+[Quote]UnitTypeCode:=[UnitType]RUnitType
+[Quote]Price:=CalculateBaseRate (0;2)
+SAVE RECORD([Quote])
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+End if 
+ACCEPT
+End if 

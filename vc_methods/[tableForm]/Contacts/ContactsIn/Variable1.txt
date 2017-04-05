@@ -1,0 +1,121 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BLOB($Blank)
+SET BLOB SIZE($Blank;0)
+$OK:=True
+If (vNoteHistBody>"")
+$Note:=ConfirmThree (Get localized string("You have typed a note without adding it to the list! Would you like to add this note now?");Get localized string("Add Note");Get localized string("Lose Note");Get localized string("Cancel"))
+Case of 
+: ($Note=1)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=Substring([Contacts]ContactNo;1;5)
+[NotesHistory]ContactNo:=[Contacts]ContactNo
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+If (asNotesList>0)
+If (asNotesList{asNotesList}#"<None>")
+[NotesHistory]Category:=asNotesList{asNotesList}
+End if 
+End if 
+If (Length(vNoteHistBody)>20000)
+AlertMessage (Get localized string("Your note is longer than 20000 characters and will be truncated."))
+[NotesHistory]Note:=Substring(vNoteHistBody;1;20000)
+Else 
+[NotesHistory]Note:=vNoteHistBody
+End if 
+[NotesHistory]UserLogin:=<>sCurrentUser
+QUERY([MarketingTypes];[MarketingTypes]Facility=Substring([NotesHistory]CustomerCode;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[NotesHistory]Category)
+If ([MarketingTypes]Security=True)
+[Contacts]ThreatLevel:=[Contacts]ThreatLevel+1
+[Contacts]ThreatLevelDate:=[NotesHistory]NoteDate
+[NotesHistory]Security:=True
+If ([Contacts]ThreatLevel>=[Facility]ThreatLevelAlert)
+AlertMessage (Get localized string("This contact has exceeded the company threat level."))
+End if 
+End if 
+SAVE RECORD([NotesHistory])
+vNoteHistBody:=""
+
+: ($Note=3)
+ABORT
+Else 
+
+//do nothing
+End case 
+End if 
+If ([Contacts]Comments#vtAlertNote) & ([Facility]LogAlertNote=True)
+CREATE RECORD([NotesHistory])
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Category:="Alerts"
+[NotesHistory]ContactNo:=[Contacts]ContactNo
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]Note:="Alert Note Edited: "+[Contacts]Comments
+SAVE RECORD([NotesHistory])
+End if 
+$Text:=WR Get text (veLetter;0;100)
+If (Length($Text)<5)
+[Contacts]Letter:=$Blank
+Else 
+[Contacts]Letter:=WR Area to blob (veLetter;1)
+COMPRESS BLOB([Contacts]Letter)
+End if 
+$Text:=WR Get text (veEmail;0;100)
+If (Length($Text)<5)
+[Contacts]Email:=$Blank
+Else 
+[Contacts]Email:=WR Area to blob (veEmail;1)
+COMPRESS BLOB([Contacts]Email)
+End if 
+[Contacts]Size:=BLOB size([Contacts]Letter)+BLOB size([Contacts]Email)
+
+If (([Contacts]ContactName="") & ([Facility]FacilityCode="KE@"))
+AlertMessage ("You must enter a name for the Sales Enquiry")
+$OK:=False
+End if 
+
+If ([Contacts]CustType="") & (([Facility]FacilityCode="KE@") | ([Facility]FacilityCode="SK@"))
+AlertMessage ("You must enter a customer type for the Sales Enquiry")
+$OK:=False
+End if 
+
+If ([Contacts]Category="") & ([Facility]FacilityCode="SK@")
+AlertMessage ("You must enter a contact category for the Sales Enquiry")
+$OK:=False
+End if 
+
+If ([Contacts]MarketSrce="") & ([Facility]FacilityCode="SK@")
+AlertMessage ("You must enter a marketing type for the Sales Enquiry")
+$OK:=False
+End if 
+
+If ($OK)
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode>"")
+$SizeQuoted:=""
+For ($t;1;Records in selection([Quote]))
+If ($t=1)
+$Pos:=Position("Unit Type";[Quote]Size)
+If ($Pos#0)
+$SizeQuoted:=Substring([Quote]Size;12)
+Else 
+$SizeQuoted:=[Quote]Size
+End if 
+Else 
+$Pos:=Position("Unit Type";[Quote]Size)
+If ($Pos#0)
+$SizeQuoted:=$SizeQuoted+","+Substring([Quote]Size;12)
+Else 
+$SizeQuoted:=$SizeQuoted+","+[Quote]Size
+End if 
+End if 
+NEXT RECORD([Quote])
+End for 
+[Contacts]SizeQuoted:=Substring($SizeQuoted;1;25)
+SAVE RECORD([Facility])
+
+VALIDATE TRANSACTION
+ACCEPT
+
+End if 
+

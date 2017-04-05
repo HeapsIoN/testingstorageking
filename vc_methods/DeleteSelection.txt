@@ -1,0 +1,73 @@
+//%attributes = {"folder":"CustomSearch","lang":"en"} comment added and reserved by 4D.
+If (PermissionsControl (94))
+Case of 
+: (Current user#"Designer") & ((<>iTable=1) | (<>iTable=16))
+AlertMessage (Get localized string("You cannot delete records in this table."))
+: ((Current user#"Designer") & (<>sCurrentUser#"Adminsupport")) & (<>iTable=26)
+AlertMessage (Get localized string("You cannot delete records in this table."))
+Else 
+If ((<>sCurrentUser#"Adminsupport") & (Current user#"Designer")) & (<>iTable=6)
+CREATE SET([Trxs];"DELETE")
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"DELETE")
+NEXT RECORD([Trxs])
+End for 
+QUERY SELECTION([Trxs];[Trxs]CustomerCode="@MISCL";*)
+QUERY SELECTION([Trxs]; | ;[Trxs]AgreeNo="@MISCL")
+If (Records in selection([Trxs])>0)
+AlertMessage (Get localized string("You cannot delete Other Cash Sale transactions!"))
+ABORT
+Else 
+USE SET("DELETE")
+End if 
+End if 
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection)+" "+Get localized string("from file")+" "+Table name(Current default table)+"?")
+If (OK=1)
+ConfirmTwo (Get localized string("WARNING - Delete")+" - "+String(Records in selection)+" "+Get localized string("records - Are you absolutely certain?"))
+If (OK=1)
+If (<>iTable=6)
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]AnalysisCode="@LF")
+READ WRITE([Customer])
+LOAD RECORD([Customer])
+RELATE ONE([Trxs]CustomerCode)
+If ([Customer]WaivedLateFees>0) & ([Facility]WaivedMonthReset>0)
+$DateCheck:=0
+While ($DateCheck=0)
+$WaivedDate:=Date(Substring([Customer]LateFeeDates;1;(Position(";";[Customer]LateFeeDates))-1))
+If ($WaivedDate<(Add to date(Current date;0;(-1*[Facility]WaivedMonthReset);0)))
+[Customer]LateFeeDates:=Substring([Customer]LateFeeDates;(Position(";";[Customer]LateFeeDates))+1)
+Else 
+$DateCheck:=1
+End if 
+End while 
+End if 
+If (PermissionsControl (159;False)=False)
+If ([Customer]WaivedLateFees>=[Facility]MaximumWaived) & ([Facility]UnlimitedWaived=False)
+AlertMessage (Get localized string("You cannot delete late fees for Customer")+" "+[Customer]CustomerCode+". "+Get localized string("The maximum number of fees that can be waived has been reached"))
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+ABORT
+End if 
+[Customer]WaivedLateFees:=[Customer]WaivedLateFees+1
+[Customer]LateFeeDates:=[Customer]LateFeeDates+String(Current date)+";"
+End if 
+SAVE RECORD([Customer])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+NEXT RECORD([Trxs])
+End for 
+End if 
+If (<>iTable#16)
+LogAction (True;"DELETE records from table :"+Table name(vpFile)+":"+String(Records in selection);True)
+End if 
+READ WRITE(vpFile->)
+FIRST RECORD(vpFile->)
+DELETE SELECTION
+READ ONLY(vpFile->)
+End if 
+End if 
+End case 
+End if 

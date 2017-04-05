@@ -1,0 +1,45 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+
+[Facility]InvStatement:=atInvStatement-1
+
+If ([Facility]InvStatement>0) & ([Facility]InvStatement#Old([Facility]InvStatement)) & (Old([Facility]InvStatement)=0)
+ConfirmTwo (Get localized string("This will irrevocably change your facility to the new Invoice/Statement system. Are you sure you wish to do this?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Trxs])
+LOAD RECORD([Trxs])
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]InvNo=0)
+If (Records in selection([Trxs])>0)
+<>ProgressInd:=1
+Progress ("Setting invoice values")
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=[Trxs]SeqNo)
+<>ProgressInd:=30
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=[Trxs]TrxDate)
+<>ProgressInd:=60
+QUERY SELECTION([Trxs];[Trxs]InvNo<0)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=([Trxs]InvNo*-1)+1000000)
+<>ProgressInd:=90
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ORDER BY([Trxs];[Trxs]InvNo;<)
+[Facility]NextInvNo:=[Trxs]InvNo+1
+<>ProgressInd:=100
+Else 
+[Facility]NextInvNo:=1
+End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+If (<>sCurrentUser#"AdminSupport")
+OBJECT SET VISIBLE([Facility]InvStatement;False)
+End if 
+Else 
+[Facility]InvStatement:=0
+End if 
+End if 
+End if 
+AlertMessage ("Invoice values have been set.")

@@ -1,0 +1,58 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (PermissionsControl (108))
+DEFAULT TABLE([ChartAccts])
+SetFacility 
+$Start:=GetDate (1;Month of(Current date-29);Year of(Current date-29))//current month
+QUERY([CashBook];[CashBook]Paid=True;*)
+QUERY([CashBook]; & ;[CashBook]Processed=False)//Added 4.1.1
+If (False)
+QUERY([CashBook]; & ;[CashBook]Presented=False)
+CREATE SET([CashBook];"Unpresented")
+QUERY([CashBook];[CashBook]Paid=True;*)
+QUERY([CashBook]; & ;[CashBook]CashDate>=$Start)
+CREATE SET([CashBook];"Current")
+UNION("Unpresented";"Current";"Current")
+USE SET("Current")
+CLEAR SET("Current")
+CLEAR SET("Unpresented")
+End if 
+QUERY SELECTION([CashBook];[CashBook]TotAmt#0)
+If (Records in selection([CashBook])>0)
+ARRAY TEXT(aTemp;0)
+DISTINCT VALUES([CashBook]BankAcct;aTemp)
+//If (Size of array(BankCodes)>1) & (Size of array(aTemp)>1)
+//  Open window(Screen width-300;40;Screen width-10;300)
+//  DIALOG([ChartAccts];"SelectBank")
+//  CLOSE WINDOW
+//  Else 
+If (Size of array(aTemp)>0)
+OK:=1
+Else 
+AlertMessage (Get localized string("You must set up a Chart of Accounts with Account Type 'B' before attempting to reconcile. For more info please click the Learn More button"))
+OK:=0
+End if 
+//End if 
+If (OK=1)
+READ WRITE([ChartAccts])
+READ WRITE([CashBook])
+If (Size of array(aTemp)>100)
+//    ALL RECORDS([ChartAccts])
+//    GOTO SELECTED RECORD([ChartAccts];BankNum{BankCodes})
+//    QUERY SELECTION([CashBook];[CashBook]BankAcct=[ChartAccts]AcctNo)
+Else 
+QUERY([ChartAccts];[ChartAccts]AcctNo=aTemp{1})
+End if 
+ORDER BY([CashBook];[CashBook]CashDate;>;[CashBook]CheckNo;>)
+FORM SET INPUT([ChartAccts];"Reconcile")
+MODIFY RECORD
+FORM SET INPUT([ChartAccts];"Output")
+READ ONLY([ChartAccts])
+READ ONLY([CashBook])
+UNLOAD RECORD([ChartAccts])
+UNLOAD RECORD([CashBook])
+End if 
+ARRAY TEXT(aTemp;0)
+Else 
+AlertMessage (Get localized string("There are no cash book transactions to reconcile!"))
+End if 
+End if 

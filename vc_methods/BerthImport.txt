@@ -1,0 +1,879 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//30/07/13 DAM Added to export from Marina Datafile
+
+READ WRITE([Unit])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+READ WRITE([UnitType])
+READ WRITE([Boat])
+READ WRITE([Owner])
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+C_LONGINT($SortOrder)
+C_BOOLEAN($Save;$Owner)
+C_TEXT($BerthNumber;$BillPlan)
+$Save:=False
+$Owner:=False
+$SortOrder:=1
+$Rate:=""
+//1) Berth File
+Open window(20;50;350;150;0;Get localized string("Progress"))
+If (Test path name(<>sPreferencesPath+"Berth.csv")=Is a document)
+$Doc:=Open document(<>sPreferencesPath+"Berth.csv")
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Unit])
+
+For ($i;1;25)//Number of fields
+$j:=Position(",";$Buffer)
+
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+//: ($i=1)  // Berth ID
+//While (Length($Field)<9)
+//$Field:="0"+$Field
+//End while 
+//[Unit]AgreeNo:=<>sFacility+$Field
+
+: ($i=2)// Berth Name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]UnitNo:=$Field
+[Unit]RUnitNo:=<>sFacility+$Field
+
+: ($i=4)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="@Active@")
+[Unit]Status:="Rented"
+Else 
+[Unit]Status:="Unavail"
+End if 
+
+: ($i=6)// Berth Type - check if the record already exist
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+QUERY([UnitType];[UnitType]UnitTypeCode=$Field)
+If (Records in selection([UnitType])=0)
+CREATE RECORD([UnitType])
+[UnitType]UnitTypeCode:=$Field
+[UnitType]RUnitType:=<>sFacility+$Field
+[UnitType]SortOrder:=$SortOrder
+$SortOrder:=$SortOrder+1
+[UnitType]UnitTypeLength:=Num(RequestMessage ("Please enter length for berth type "+$Field))
+[UnitType]UnitTypeWidth:=Num(RequestMessage ("Please enter width for berth type "+$Field))
+End if 
+[UnitType]NoTotal:=[UnitType]NoTotal+1
+SAVE RECORD([UnitType])
+[Unit]UnitTypeCode:=<>sFacility+$Field
+[Unit]UnitSize:=String([UnitType]UnitTypeLength)+"x"+String([UnitType]UnitTypeWidth)
+
+: ($i=15)// Berth length
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]UnitLength:=Num($Field)
+
+: ($i=25)// start date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]StartDate:=Date($Field)
+
+End case 
+
+End if 
+End for 
+
+If ([Unit]RUnitNo#"")
+SAVE RECORD([Unit])
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Units")+" : "+[Unit]RUnitNo+"    ")
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+End if 
+
+////2. Customer file
+If (Test path name(<>sPreferencesPath+"Customer.csv")=Is a document)
+$Doc:=Open document(<>sPreferencesPath+"Customer.csv")
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Customer])
+
+For ($i;1;58)//Number of fields
+$j:=Position(",";$Buffer)
+
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)// Customer Code
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+While (Length($Field)<5)
+$Field:="0"+$Field
+End while 
+[Customer]CustomerCode:=<>sFacility+$Field
+
+: ($i=3)// Customer First
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]FirstName:=$Field
+
+: ($i=5)// Customer Full Name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]CustomerName:=$Field
+
+: ($i=6)//Customer Street Address
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]StreetAddress:=$Field
+[Customer]MailAddress:=$Field
+: ($i=7)// Customer Suburb
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]StreetSuburb:=$Field
+[Customer]MailSuburb:=$Field
+: ($i=8)// Customer City
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]StreetCity:=$Field
+[Customer]MailCity:=$Field
+: ($i=11)// Bus Phone No
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]PhoneBus:=$Field
+
+: ($i=13)// Home Phone No
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]PhonePrivate:=$Field
+
+: ($i=14)// Mobile Phone no
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MobilePhone:=$Field
+
+: ($i=19)// Create a note
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field#"")
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:=$Field
+SAVE RECORD([NotesHistory])
+End if 
+
+: ($i=22)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]EmailAddress:=$Field
+
+: ($i=58)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Field:=Replace string($Field;"$";"")
+[Customer]Balance:=Num($Field)
+
+End case 
+
+End if 
+End for 
+//SET TEXT TO PASTEBOARD([Customer]CustomerCode)
+If ([Customer]CustomerCode#"")
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Customers")+" : "+[Customer]CustomerName+"    ")
+SAVE RECORD([Customer])
+End if 
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+End if 
+
+//
+//4. Ownership agreements
+If (Test path name(<>sPreferencesPath+"CQQ_Owner.csv")=Is a document)
+$Doc:=Open document(<>sPreferencesPath+"CQQ_Owner.csv")
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+
+QUERY([BillPlan];[BillPlan]Description="@Quarterly@")
+
+If (Records in selection([BillPlan])=1)
+$BillPlan:=[BillPlan]Code
+Else 
+$BillPlan:=<>sFacility+"MO"
+End if 
+$NextAgree:=[Facility]NextAgreeNo
+
+While (Length($Buffer)>0)
+CREATE RECORD([Agreement])
+
+[Agreement]AgreeNo:=String($NextAgree;"000000000")
+While (Length([Agreement]AgreeNo)<9)
+[Agreement]AgreeNo:="0"+[Agreement]AgreeNo
+End while 
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+[Agreement]ActiveAgreemt:=True
+[Agreement]BillingPlanCode:=$BillPlan
+
+$NextAgree:=$NextAgree+1
+
+For ($i;1;127)//Number of fields
+$j:=Position(",";$Buffer)
+
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+
+: ($i=6)// Lease Type Description
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Owner:=True
+//If ($Field="Berth Holder")
+//$Owner:=True
+//Else 
+//$Owner:=False
+//End if 
+
+: ($i=7)// Status = "Contract Complete" - only save agreement record
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="Contract Completed") | ($Field="Open Contract")
+$Save:=True
+Else 
+$Save:=False
+End if 
+
+: ($i=9)// Move in date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]MoveIn:=Date($Field)
+
+: ($i=10)// Move out date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]MoveOut:=Date($Field)
+
+: ($i=36)// Berth number
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$BerthNumber:=$Field
+
+: ($i=48)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"")
+CREATE RECORD([NotesHistory])
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:=$Field
+End if 
+
+: ($i=85)// Find Customer Customer ID
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+While (Length($Field)<5)
+$Field:="0"+$Field
+End while 
+
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+$Field)
+[Agreement]CustomerCode:=[Customer]CustomerCode
+
+: ($i=117)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]BankAccountName:=$Field
+
+: ($i=126)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]BankAcct:=$Field
+
+: ($i=109)// Balance Owing
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]BalanceOwing:=Num($Field)
+
+[Agreement]TotRentUnpaid:=[Agreement]BalanceOwing
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]TrxTime:=Current time
+[Trxs]Description:="Rent Balance imported (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]TotRentUnpaid
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]TrxDate:=!2014-01-31!//30/09/13
+[Trxs]TrxTime:=Current time
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=!2014-05-31!
+
+End case 
+
+End if 
+End for 
+
+If ([Agreement]AgreeNo#"") & ($Save) & ($Owner) & ([Agreement]CustomerCode#"")
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreements Owner")+" : "+[Agreement]AgreeNo+"    ")
+
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+
+SAVE RECORD([Agreement])
+
+QUERY([Unit];[Unit]UnitNo=$BerthNumber)
+[Unit]AgreeNo:=[Agreement]RAgreeNo
+[Unit]MoveIn:=[Agreement]MoveIn
+[Unit]MoveOut:=[Agreement]MoveOut
+SAVE RECORD([Unit])
+
+[Agreement]NextBillDate:=!2014-05-31!
+[Agreement]LastBillDate:=!2014-01-31!
+[Agreement]UnitsOccup:=[Unit]UnitNo
+SAVE RECORD([Agreement])
+
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]RentedValue:=[Unit]UnitValue
+SAVE RECORD([UnitHistory])
+
+//CREATE RECORD([UnitAgree])  // Create records for owner
+//[UnitAgree]AgreeNo:=[Agreement]RAgreeNo
+//[UnitAgree]UnitNo:=[Unit]RUnitNo
+//SAVE RECORD([UnitAgree])
+
+[Customer]Balance:=[Agreement]BalanceOwing
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+SAVE RECORD([Customer])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+SAVE RECORD([NotesHistory])//Save note only when saving the agreement
+
+End if 
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+[Facility]NextAgreeNo:=$NextAgree
+SAVE RECORD([Facility])
+End if 
+
+$NextAgree:=[Facility]NextAgreeNo
+
+
+// Rental agreements
+If (Test path name(<>sPreferencesPath+"CQQ_RentalOcc.csv")=Is a document)
+$Doc:=Open document(<>sPreferencesPath+"CQQ_RentalOcc.csv")
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done 3 times to ignore headers
+$Save:=False
+$Save1:=False
+
+While (Length($Buffer)>0)
+CREATE RECORD([Agreement])
+[Agreement]ActiveAgreemt:=True
+
+For ($i;1;130)//Number of fields
+$j:=Position(",";$Buffer)
+
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]AgreeNo:=String($Field;"000000000")
+
+While (Length([Agreement]AgreeNo)<7)
+[Agreement]AgreeNo:="0"+[Agreement]AgreeNo
+End while 
+
+[Agreement]AgreeNo:="RA"+[Agreement]AgreeNo// "RA is to separate"
+
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+
+: ($i=2)// Move In Date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]MoveIn:=Date($Field)
+
+: ($i=26)// Customer code
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+While (Length($Field)<5)
+$Field:="0"+$Field
+End while 
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+$Field)
+[Agreement]CustomerCode:=[Customer]CustomerCode
+
+: ($i=27)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+//If ($Field="Tenants")
+//$Save:=True
+//Else 
+//$Save:=False
+//End if 
+
+: ($i=81)//Agreement Balance
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]BalanceOwing:=Num($Field)
+[Agreement]TotRentUnpaid:=[Agreement]BalanceOwing
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]TrxTime:=Current time
+[Trxs]Description:="Rent Balance imported (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]TotRentUnpaid
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+
+: ($i=115)// Billing Plan
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+Case of 
+: ($Field="@Tenant@")
+[Agreement]BillingPlanCode:=<>sFacility+"12M"
+: ($Field="@Monthly@")
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+: ($Field="@Quarterly@")
+[Agreement]BillingPlanCode:=<>sFacility+"4M"
+Else 
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+End case 
+
+: ($i=119)// Move Out Date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]MoveOut:=Date($Field)
+
+: ($i=121)//Berth number 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$BerthNumber:=$Field
+
+: ($i=122)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="Rented")
+$Save1:=True
+Else 
+$Save1:=False
+End if 
+
+: ($i=123)//Sublet Rate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Rate:=$Field
+[Agreement]RegularRent:=Num($Rate)
+
+: ($i=130)//Next Bill Date
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]NextBillDate:=Date($Field)
+If ([Agreement]NextBillDate=!00-00-00!)
+[Agreement]NextBillDate:=Current date
+End if 
+Case of 
+: ([Agreement]BillingPlanCode=(<>sFacility+"MO"))
+[Trxs]TrxDate:=Add to date([Agreement]NextBillDate;0;-1;0)
+: ([Agreement]BillingPlanCode=(<>sFacility+"4M"))
+[Trxs]TrxDate:=Add to date([Agreement]NextBillDate;0;-4;0)
+: ([Agreement]BillingPlanCode=(<>sFacility+"12M"))
+[Trxs]TrxDate:=Add to date([Agreement]NextBillDate;0;-12;0)
+End case 
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+
+End case 
+
+End if 
+End for 
+
+If ([Agreement]AgreeNo#"") & ([Agreement]CustomerCode#"") & ($BerthNumber#"") & ($Save1)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreements Owner")+" : "+[Agreement]AgreeNo+"    ")
+
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+
+SAVE RECORD([Agreement])
+QUERY([Unit];[Unit]UnitNo=$BerthNumber)
+
+[Agreement]UnitsOccup:=[Unit]UnitNo
+SAVE RECORD([Agreement])
+
+CREATE RECORD([UnitAgree])// Create records for owner
+[UnitAgree]AgreeNo:=[Agreement]RAgreeNo
+[UnitAgree]UnitNo:=[Unit]RUnitNo
+[UnitAgree]OwnAgreeNo:=[Unit]AgreeNo
+[UnitAgree]RentedValue:=Num($Rate)
+SAVE RECORD([UnitAgree])
+
+[Customer]Balance:=[Agreement]BalanceOwing
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+SAVE RECORD([Customer])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+//SAVE RECORD([NotesHistory])  //Save note only when saving the agreement
+End if 
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+[Facility]NextAgreeNo:=$NextAgree
+SAVE RECORD([Facility])
+End if 
+
+//Boat
+If (Test path name(<>sPreferencesPath+"Vessel.csv")=Is a document)
+$Doc:=Open document(<>sPreferencesPath+"Vessel.csv")
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Boat])
+[Boat]FacilityCode:=<>sFacility
+
+For ($i;1;25)//Number of fields
+$j:=Position(",";$Buffer)
+
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=2)// Boat Name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Name:=$Field
+
+: ($i=3)// Boat Type
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+Case of 
+: (Num($Field)=1)
+[Boat]Type:="Motor Yacht"
+: (Num($Field)=2)
+[Boat]Type:="Sailing Yacht"
+: (Num($Field)=3)
+[Boat]Type:="Dinghies"
+: (Num($Field)=4)
+[Boat]Type:="Catamarans"
+: (Num($Field)=5)
+[Boat]Type:="<Unknown>"
+: (Num($Field)=6)
+[Boat]Type:="Trimarans"
+: (Num($Field)=7)
+[Boat]Type:="Launch"
+: (Num($Field)=8)
+[Boat]Type:="N/A"
+: (Num($Field)=9)
+[Boat]Type:="davidson 31"
+: (Num($Field)=10)
+[Boat]Type:="Motorhome"
+End case 
+
+: ($i=5)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Length:=Num($Field)
+
+: ($i=6)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Beam:=Num($Field)
+
+: ($i=7)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]Draft:=Num($Field)
+
+
+: ($i=12)// Insure company
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]InsCompany:=$Field
+
+: ($i=13)//insure policy
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]InsureCertNo:=$Field
+
+
+: ($i=14)// Insure expiry
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="")
+[Boat]InsureExpiry:=!00-00-00!
+Else 
+[Boat]InsureExpiry:=Date($Field)
+End if 
+
+: ($i=16)
+$Note:=""
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Note:=$Field
+
+: ($i=17)//Electrical certificate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Boat]ElectricalCertficate:=$Field
+
+: ($i=19)//Electrical expiry
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($Field="")
+[Boat]ElectricalExpiry:=!00-00-00!
+Else 
+[Boat]ElectricalExpiry:=Date($Field)
+End if 
+
+If ([Boat]ElectricalExpiry>Current date)
+[Boat]Compliance:=True
+End if 
+
+
+: ($i=24)//Customer Code
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+While (Length($Field)<5)
+$Field:="0"+$Field
+End while 
+QUERY([Agreement];[Agreement]CustomerCode=<>sFacility+$Field)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([Unit])#0)
+[Boat]RUnitNo:=[Unit]RUnitNo
+End if 
+
+End case 
+
+End if 
+End for 
+
+If ([Boat]RUnitNo#"")
+GOTO XY(2;2)
+MESSAGE(("Processing Boat")+" : "+[Boat]Name+"    ")
+SAVE RECORD([Boat])
+End if 
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+End if 
+
+//Privite Rentals
+Open window(20;50;350;150;0;Get localized string("Progress"))
+If (Test path name(<>sPreferencesPath+"Privite.csv")=Is a document)
+$Doc:=Open document(<>sPreferencesPath+"Privite.csv")
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+CREATE RECORD([Customer])
+CREATE RECORD([Agreement])
+[Agreement]ActiveAgreemt:=True
+For ($i;1;25)//Number of fields
+$j:=Position(",";$Buffer)
+
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)// Berth ID
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$BerthNumber:=$Field
+
+[Agreement]AgreeNo:=String($Field;"000000000")
+
+While (Length([Agreement]AgreeNo)<7)
+[Agreement]AgreeNo:="0"+[Agreement]AgreeNo
+End while 
+
+[Agreement]AgreeNo:="PR"+[Agreement]AgreeNo// "PR is to separate"
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+
+
+: ($i=3)// Move In
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]MoveIn:=Date($Field)
+
+: ($i=4)//Move Out
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Agreement]MoveOut:=Date($Field)
+[Agreement]NextBillDate:=[Agreement]MoveOut
+[Agreement]RegularRent:=0
+[Agreement]LastBillAmt:=0
+[Agreement]LastBillDate:=[Agreement]MoveIn
+
+
+: ($i=5)// First Name 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]FirstName:=$Field
+
+: ($i=6)// Familiy Name 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]CustomerName:=$Field+", "+[Customer]FirstName
+
+: ($i=7)// Address 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]StreetAddress:=$Field
+[Customer]MailAddress:=$Field
+
+: ($i=8)// Customer Suburb
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]StreetSuburb:=$Field
+[Customer]MailSuburb:=$Field
+
+: ($i=9)// City
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MailCity:=$Field
+[Customer]StreetCity:=$Field
+
+: ($i=11)// Bus phone number 
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]PhoneBus:=$Field
+
+: ($i=12)// Home phone number
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]PhonePrivate:=$Field
+
+: ($i=13)// Mobile
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]MobilePhone:=$Field
+
+: ($i=14)// Email
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]EmailAddress:=$Field
+
+: ($i=15)// Mobile
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Customer]Balance:=Num($Field)
+[Agreement]BalanceOwing:=[Customer]Balance
+[Agreement]TotRentUnpaid:=[Agreement]BalanceOwing
+If ([Agreement]BalanceOwing#0)
+CREATE RECORD([Trxs])
+[Trxs]TrxDate:=Current date
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]TrxTime:=Current time
+[Trxs]Description:="Rent Balance imported (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]TotRentUnpaid
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]TrxDate:=!2014-01-31!//30/09/13
+[Trxs]TrxTime:=Current time
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=!2014-05-31!
+
+SAVE RECORD([Trxs])
+End if 
+
+
+: ($i=16)// Vessle length
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+
+: ($i=17)// Vessel Insurer
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+
+: ($i=18)// WOF number
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+: ($i=19)// WOF expiry
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+
+End case 
+
+End if 
+End for 
+
+If ([Agreement]AgreeNo#"") & ([Agreement]CustomerCode#"") & ($BerthNumber#"")
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreements Privite Rentals")+" : "+[Agreement]AgreeNo+"    ")
+
+
+SAVE RECORD([Agreement])
+QUERY([Unit];[Unit]UnitNo=$BerthNumber)
+
+[Agreement]UnitsOccup:=[Unit]UnitNo
+SAVE RECORD([Agreement])
+
+CREATE RECORD([UnitAgree])// Create records for owner
+[UnitAgree]AgreeNo:=[Agreement]RAgreeNo
+[UnitAgree]UnitNo:=[Unit]RUnitNo
+[UnitAgree]OwnAgreeNo:=[Unit]AgreeNo
+[UnitAgree]RentedValue:=0
+SAVE RECORD([UnitAgree])
+
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+SAVE RECORD([Customer])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+End if 
+CLOSE WINDOW

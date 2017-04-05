@@ -1,0 +1,69 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+C_TEXT(WS_FacilityCode)
+C_REAL(WS_BankBalAmt)
+C_DATE(WS_BankBalDate)
+C_LONGINT(WS_Action)
+
+SOAP DECLARATION(WS_FacilityCodeIn;Is string var;SOAP input)
+SOAP DECLARATION(WS_BankBalAmtIn;Is real;SOAP input)
+SOAP DECLARATION(WS_BankBalDateIn;Is date;SOAP input)
+SOAP DECLARATION(WS_ActionIn;Is integer;SOAP input)
+
+$String:="Start WS_GetBankRecBal"+Char(13)
+$String:=$String+"WS_FacilityCodeIn: "+WS_FacilityCodeIn+Char(13)
+$String:=$String+"WS_BankBalAmtIn: "+String(WS_BankBalAmtIn)+Char(13)
+$String:=$String+"WS_BankBalDateIn: "+String(WS_BankBalDateIn)+Char(13)
+$String:=$String+"WS_ActionIn: "+String(WS_ActionIn)+Char(13)
+
+WSRecordLog ($String)
+
+READ WRITE([ChartAccts])
+QUERY([ChartAccts];[ChartAccts]ReportName=WS_FacilityCodeIn;*)
+QUERY([ChartAccts]; & ;[ChartAccts]AcctType="b@")
+If (Records in selection([ChartAccts])>1)
+ORDER BY([ChartAccts];[ChartAccts]AcctType;>)
+End if 
+If (Records in selection([ChartAccts])>0)
+FIRST RECORD([ChartAccts])
+If (WS_ActionIn=1)//Locate and send balance
+WS_BankBalAmt:=[ChartAccts]OpeningBal
+WS_BankBalDate:=[ChartAccts]BankBalDate
+If (Locked([ChartAccts])=True)
+WS_Action:=6
+End if 
+[ChartAccts]Notes:="LOCKED"
+SAVE RECORD([ChartAccts])
+LOAD RECORD([ChartAccts])
+End if 
+If (WS_ActionIn=2)//Set balance and unlock
+If (WS_BankBalDateIn#!00-00-00!) & (String(WS_BankBalDateIn)#"00/00/00")//If the user did not cancel the bank rec, update ChartAcct records
+[ChartAccts]OpeningBal:=WS_BankBalAmtIn
+[ChartAccts]BankBalDate:=WS_BankBalDateIn
+WS_BankBalAmt:=[ChartAccts]OpeningBal//send back to site alert message confirming opening bal and date
+WS_BankBalDate:=[ChartAccts]BankBalDate
+End if 
+[ChartAccts]Notes:=""//need to unlock the record regardless of whether anything was changed
+SAVE RECORD([ChartAccts])
+End if 
+Else 
+WS_BankBalAmt:=0
+WS_BankBalDate:=!00-00-00!
+WS_Action:=5//Facility bank acct rec not found
+End if 
+READ ONLY([ChartAccts])
+LOAD RECORD([ChartAccts])
+//Outgoing information
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP output)
+SOAP DECLARATION(WS_BankBalAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_BankBalDate;Is date;SOAP output)
+SOAP DECLARATION(WS_Action;Is integer;SOAP output)
+
+$String:="End WS_GetBankRecBal"+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+Char(13)
+$String:=$String+"WS_BankBalAmt: "+String(WS_BankBalAmt)+Char(13)
+$String:=$String+"WS_BankBalDate: "+String(WS_BankBalDate)+Char(13)
+$String:=$String+"WS_Action: "+String(WS_Action)+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

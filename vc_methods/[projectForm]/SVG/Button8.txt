@@ -1,0 +1,119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+
+SvgAreaDomRef:=SVG AREA Get DOM 
+$NoElem:=SVG_Count_elements (SvgAreaDomRef)
+ARRAY TEXT($aRef;$NoElem)
+ARRAY TEXT($aTypes;$NoElem)
+ARRAY TEXT($namesArray;0)
+ARRAY TEXT($valuesArray;0)
+C_POINTER($pRef;$pTypes;$namesArrayPointer;$valuesArrayPointer)
+$namesArrayPointer:=->$namesArray
+$valuesArrayPointer:=->$valuesArray
+$pRef:=->$aRef
+$pTypes:=->$aTypes
+$namesArrayPointer:=->$namesArray
+$valuesArrayPointer:=->$valuesArray
+
+SVG_ELEMENTS_TO_ARRAYS (SvgAreaDomRef;$pRef;$pTypes)
+For ($i;1;Size of array($aTypes))
+If ($aTypes{$i}="image")
+
+//Parameter 7 - Path to the image
+SVG_GET_ATTRIBUTES ($aRef{$i};$namesArrayPointer;$valuesArrayPointer)
+$Pos:=Position("data:;base64,";$valuesArray{7})
+If ($Pos>0)
+
+Else 
+
+$Txt_path:=Convert path POSIX to system(Delete string($valuesArray{7};1;8))
+////new footers
+//If (Is picture file($valuesArray{7}))
+//$Txt_path:=$valuesArray{7}
+//Else 
+//$Txt_path:=Convert path POSIX to system(Delete string($valuesArray{7};1;8))
+//end if
+READ PICTURE FILE($Txt_path;$Pic_buffer)
+//Encode in base64
+//{
+PICTURE TO BLOB($Pic_Buffer;$Blb_Buffer;".png")
+If (OK=1)
+BASE64 ENCODE($Blb_Buffer)
+If (OK=1)
+$Txt_Buffer:=Convert to text($Blb_Buffer;"UTF-8")
+End if 
+End if 
+$Txt_Buffer:="data:;base64,"+$Txt_Buffer
+SVG_SET_ATTRIBUTES ($aRef{$i};"xlink:href";$Txt_Buffer)
+End if 
+End if 
+End for 
+
+READ WRITE([Facility])
+C_TEXT(SvgAreaDomRef;$vXML)
+
+SvgAreaDomRef:=SVG AREA Get DOM 
+SVG SET ATTRIBUTE(SvgAreaDomRef;"grid";"visibility";"hidden")
+If (GuideLineDis=False)
+
+$x:="638"//538
+$xline:="538"
+If (<>tWinLetterFormat#"A4")
+$x:=String(Num($x)+10)
+End if 
+
+Case of 
+: (vSVG=1)
+$y:="196"
+$yline:="96"
+: (vSVG=2)
+If ([Facility]CustomInvFooter) & ([Facility]StandardInvFooter)
+$y:="280"
+$yline:="180"
+End if 
+If ([Facility]CustomInvFooter) & ([Facility]StandardInvFooter=False)
+$y:="390"
+$yline:="299"
+End if 
+
+: (vSVG=3)
+$x:="298"// Increased by 100
+$xline:="198"
+$y:="495"// Increased by 100
+$yline:="495"
+
+: (vSVG=4)
+$x:="75"
+$xline:="75"
+$y:="30"
+$yline:="30"
+End case 
+
+$line:=SVG_New_line (SvgAreaDomRef;0;Num($yline)+1;Num($xline)+1;Num($yline)+1;"White";1)
+$line2:=SVG_New_line (SvgAreaDomRef;Num($xline)+1;0;Num($xline)+1;Num($yline)+1;"White";1)
+SVG_SET_ATTRIBUTES ($line;"type";"line")
+SVG_SET_ATTRIBUTES ($line2;"type";"line")
+End if 
+DOM SET XML ATTRIBUTE(DOM Find XML element by ID(SvgAreaDomRef;"grid");"visibility";"hidden")
+DOM SET XML ATTRIBUTE(SvgAreaDomRef;"transform";"scale(1,1)")
+DOM EXPORT TO VAR(SvgAreaDomRef;$vXML)
+
+Case of 
+: (vSVG=1)
+VARIABLE TO BLOB($vXML;[Facility]InvHeader_)
+COMPRESS BLOB([Facility]InvHeader_)
+: (vSVG=2)
+VARIABLE TO BLOB($vXML;[Facility]InvFooter_)
+COMPRESS BLOB([Facility]InvFooter_)
+: (vSVG=3)
+VARIABLE TO BLOB($vXML;[Facility]Receipt_)
+COMPRESS BLOB([Facility]Receipt_)
+: (vSVG=4)
+VARIABLE TO BLOB($vXML;[Facility]ReportLogo_)
+COMPRESS BLOB([Facility]ReportLogo_)
+End case 
+
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+ACCEPT
+End if 

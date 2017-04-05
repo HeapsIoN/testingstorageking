@@ -1,0 +1,401 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 9/6/10 Modified because the Kennards KeyStatsCategories of Discount and Bad Debts could not work properly
+//SDD 18/09/12 Fixed up calculation of Cash Receipts as it was all wrong
+//aTotalsCA - Description of array 1-6 are net of tax
+//{1} Rent
+//{2} Deposits
+//{3} Late Fees
+//{4} Insurance
+//{5} Merchandise
+//{6} Other
+//{7} Tax Amt
+//{8} Transaction Discount Amt (for all customers - not to be confused with Kennards category called Discount)
+//{9} Late Fees Waived
+//{10} Something to do with Kennards Merchandise - not sure what
+//{11} Kennards only Bad Debts category
+//{12} Kennards only Discount category
+//For receipts to calculate on the cash basis rather than accruals it is the same up to number 7
+//{8} Cash Receipts
+//{9} Credit Receipts
+//{10} Refunds
+//{11} Transaction Discount Amt
+
+C_LONGINT($0;$1;$j;$x;$Occup)//Occupancy Level
+C_BOOLEAN($2;$Adjust)//$Correct
+C_DATE($StartDate;$EndDate)
+$StartDate:=GetDate (1;Month of([Activity]ActivityDate);Year of([Activity]ActivityDate))
+$EndDate:=GetDate (1;Month of(Add to date([Activity]ActivityDate;0;1;0));Year of(Add to date([Activity]ActivityDate;0;1;0)))-1
+$Occup:=$1
+$Adjust:=False
+$Formula:=""
+//Check Inquiries
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallDate=[Activity]ActivityDate)
+If (Records in selection([Contacts])#[Activity]InquiriesTaken)
+$Formula:=$Formula+String([Activity]ActivityDate)+": Inquiries wrong - Activity:"+String([Activity]InquiriesTaken)+", Calced:"+String(Records in selection([Contacts]))+Char(13)
+[Activity]InquiriesTaken:=Records in selection([Contacts])
+$Adjust:=True
+End if 
+QUERY([Letters];[Letters]ContactNo>"";*)
+QUERY([Letters]; & ;[Letters]ContactNo=[Facility]FacilityCode+"@";*)
+QUERY([Letters]; & ;[Letters]DateSent=[Activity]ActivityDate)
+$NoLetters:=Records in selection([Letters])
+QUERY SELECTION([Letters];[Letters]SentViaEmail=True)
+$NoEmails:=Records in selection([Letters])
+$NoLetters:=$NoLetters-$NoEmails
+If ($NoEmails#[Activity]MktgEmailSent)
+$Formula:=$Formula+String([Activity]ActivityDate)+": MktgEmailSent wrong - Activity:"+String([Activity]MktgEmailSent)+", Calced:"+String($NoEmails)+Char(13)
+[Activity]MktgEmailSent:=$NoEmails
+$Adjust:=True
+End if 
+If ($NoLetters#[Activity]MktgLetterSent)
+$Formula:=$Formula+String([Activity]ActivityDate)+": MktgLetterSent wrong - Activity:"+String([Activity]MktgLetterSent)+", Calced:"+String($NoLetters)+Char(13)
+[Activity]MktgLetterSent:=$NoLetters
+$Adjust:=True
+End if 
+//Check Reservations
+QUERY([Reservation];[Reservation]RReserveNo=[Facility]FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=[Activity]ActivityDate)
+If (Records in selection([Reservation])#[Activity]ResvtnsTaken)
+$Formula:=$Formula+String([Activity]ActivityDate)+": Reservations wrong - Activity:"+String([Activity]ResvtnsTaken)+", Calced:"+String(Records in selection([Reservation]))+Char(13)
+[Activity]ResvtnsTaken:=Records in selection([Reservation])
+$Adjust:=True
+End if 
+
+//Check InsureNew
+If ([Facility]FacilityCode="KE@")//10550
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]InsureCommence=[Activity]ActivityDate;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn>=$StartDate;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=$EndDate)
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]InsureCommence=[Activity]ActivityDate)
+End if 
+
+If (Records in selection([Agreement])#[Activity]InsureNew)
+$Formula:=$Formula+String([Activity]ActivityDate)+": InsureNew wrong - Activity:"+String([Activity]InsureNew)+", Calced:"+String(Records in selection([Agreement]))+Char(13)
+[Activity]InsureNew:=Records in selection([Agreement])
+$Adjust:=True
+End if 
+//Check MoveIns are correct
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Facility]FacilityCode+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn=[Activity]ActivityDate)
+If (Records in selection([UnitHistory])#[Activity]MoveIns)
+$Formula:=$Formula+String([Activity]ActivityDate)+": MoveIns wrong - Activity:"+String([Activity]MoveIns)+", Calced:"+String(Records in selection([UnitHistory]))+Char(13)
+[Activity]MoveIns:=Records in selection([UnitHistory])
+$Adjust:=True
+End if 
+//Check MoveOuts are correct
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Facility]FacilityCode+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut=[Activity]ActivityDate)
+If (Records in selection([UnitHistory])#[Activity]MoveOuts)
+$Formula:=$Formula+String([Activity]ActivityDate)+": MoveOuts wrong - Activity:"+String([Activity]MoveOuts)+", Calced:"+String(Records in selection([UnitHistory]))+Char(13)
+[Activity]MoveOuts:=Records in selection([UnitHistory])
+$Adjust:=True
+End if 
+If ($Occup#0)//Check Occupancy
+If ($Occup#[Activity]OccupUnitNo)
+$Formula:=$Formula+String([Activity]ActivityDate)+": Occupancy wrong - Activity:"+String([Activity]OccupUnitNo)+", Calced:"+String($Occup)+Char(13)
+$Adjust:=True
+End if 
+If ($2)
+[Activity]OccupUnitNo:=$Occup
+[Activity]VacantUnitNo:=[Activity]TotUnitNo-[Activity]OccupUnitNo-[Activity]OtherUnitNo
+$Occup:=$Occup-[Activity]MoveIns+[Activity]MoveOuts
+Else 
+$Occup:=[Activity]OccupUnitNo-Old([Activity]MoveIns)+Old([Activity]MoveOuts)
+End if 
+End if 
+//Check Charges are correct
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Activity]ActivityDate;*)
+QUERY([Trxs]; & ;[Trxs]Match>-50)
+ARRAY REAL(aTotalsCA;12)
+
+For ($j;1;12)
+aTotalsCA{$j}:=0
+End for 
+For ($j;1;Records in selection([Trxs]))
+$x:=Find in array(<>asCharges;[Trxs]AnalysisCode)
+If ($x<1) | ($x>Size of array(<>asCharges))
+$x:=Size of array(<>asChgCategory)
+Else 
+$x:=Find in array(<>asChgCategory;<>asChargeCat{$x})
+End if 
+If ($x>=1) & ($x<=5)//SDD 26/4/10 Added first condition to avoid syntax error on following line
+aTotalsCA{$x}:=Round(aTotalsCA{$x}+[Trxs]TotAmt-[Trxs]TaxAmt;2)
+Else 
+If ([Facility]FacilityCode="KE@")
+Case of 
+: ($x=6)
+aTotalsCA{11}:=Round(aTotalsCA{11}+[Trxs]TotAmt-[Trxs]TaxAmt;2)//bad debts 
+: ($x=7)
+aTotalsCA{8}:=Round(aTotalsCA{8}+[Trxs]TotAmt-[Trxs]TaxAmt;2)//discounts
+: ($x=8)
+aTotalsCA{6}:=Round(aTotalsCA{6}+[Trxs]TotAmt-[Trxs]TaxAmt;2)//other
+End case 
+Else 
+
+//24/10/14 DAM Added for Bad Debt calculation. original code commented
+//aTotalsCA{6}:=Round(aTotalsCA{6}+[Trxs]TotAmt-[Trxs]TaxAmt;2)  //other
+Case of 
+: ($x=6)
+aTotalsCA{6}:=Round(aTotalsCA{6}+[Trxs]TotAmt-[Trxs]TaxAmt;2)//other
+: ($x=7) & ([Facility]UseBadDebts)
+aTotalsCA{11}:=Round(aTotalsCA{11}+[Trxs]TotAmt-[Trxs]TaxAmt;2)//bad debt 
+End case 
+End if 
+End if 
+
+aTotalsCA{7}:=Round(aTotalsCA{7}+[Trxs]TaxAmt;2)
+If ([Trxs]DiscAmt#0) & ([Facility]FacilityCode#"KE@")
+aTotalsCA{8}:=Round(aTotalsCA{8}+[Trxs]DiscAmt;2)
+End if 
+If ([Trxs]AnalysisCode="@LF") & ([Trxs]TotAmt<0)
+aTotalsCA{9}:=aTotalsCA{9}+[Trxs]TotAmt
+End if 
+If (<>sFacility="KE@") & ([Trxs]TotAmt<0) & ([Trxs]AnalysisCode#(<>sFacility+"MD")) & ([Trxs]AgreeNo#<>sFacility) & ([Trxs]Charge=True) & ($x=5)
+aTotalsCA{10}:=aTotalsCA{10}+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+For ($j;1;7)
+$p:=Field(10;($j*2)+32)//[Activity]RentChg=34 etc
+If (aTotalsCA{$j}#$p->)
+$Formula:=$Formula+String([Activity]ActivityDate)+": "+Field name($p)+" wrong - Activity:"+String($p->;<>sFormat)+", Calced:"+String(aTotalsCA{$j};<>sFormat)+Char(13)
+$p->:=aTotalsCA{$j}
+$Adjust:=True
+End if 
+End for 
+If ([Facility]FacilityCode="KE@")//added this condition 17/9/10
+aTotalsCA{8}:=aTotalsCA{8}*-1
+End if 
+If (aTotalsCA{8}#[Activity]DiscChg)
+$Formula:=$Formula+String([Activity]ActivityDate)+": DiscChg wrong - Activity:"+String([Activity]DiscChg;<>sFormat)+", Calced:"+String(aTotalsCA{8};<>sFormat)+Char(13)
+[Activity]DiscChg:=aTotalsCA{8}
+$Adjust:=True
+End if 
+aTotalsCA{9}:=aTotalsCA{9}*-1
+If (aTotalsCA{9}#[Activity]LateFeeWaived)
+$Formula:=$Formula+String([Activity]ActivityDate)+": LateFeeWaived wrong - Activity:"+String([Activity]LateFeeWaived;<>sFormat)+", Calced:"+String(aTotalsCA{9};<>sFormat)+Char(13)
+[Activity]LateFeeWaived:=aTotalsCA{9}
+$Adjust:=True
+End if 
+If (aTotalsCA{10}#[Activity]MerchReturnChg)
+$Formula:=$Formula+String([Activity]ActivityDate)+": MerchReturnChg wrong - Activity:"+String([Activity]MerchReturnChg;<>sFormat)+", Calced:"+String(aTotalsCA{10};<>sFormat)+Char(13)
+[Activity]MerchReturnChg:=aTotalsCA{10}
+$Adjust:=True
+End if 
+If (aTotalsCA{11}#[Activity]BadDebtChg)
+$Formula:=$Formula+String([Activity]ActivityDate)+": BadDebtChg wrong - Activity:"+String([Activity]BadDebtChg;<>sFormat)+", Calced:"+String(aTotalsCA{11};<>sFormat)+Char(13)
+[Activity]BadDebtChg:=aTotalsCA{11}
+$Adjust:=True
+End if 
+//If (aTotalsCA{12}#[Activity]DiscountChg)
+//$Formula:=$Formula+String([Activity]ActivityDate)+": DiscountChg wrong - Activity:"+String([Activity]DiscountChg;<>sFormat)+", Calced:"+String(aTotalsCA{12};<>sFormat)+Char(13)
+//[Activity]DiscountChg:=aTotalsCA{12}
+//$Adjust:=True
+//End if 
+
+//Check conversion total is correct
+QUERY([Contacts];[Contacts]Outcome="Rented";*)
+QUERY([Contacts]; | ;[Contacts]Outcome="Reserved";*)
+QUERY([Contacts]; & ;[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate=[Activity]ActivityDate)
+
+[Activity]Conversions:=Records in selection([Contacts])
+
+//Check Receipts are correct
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Activity]ActivityDate;*)
+QUERY([Trxs]; & ;[Trxs]Match>-50)//Exclude Other Bank Charges
+CREATE SET([Trxs];"Report")
+ARRAY REAL(aTotalsCA;12)
+For ($j;1;12)
+aTotalsCA{$j}:=0
+End for 
+ARRAY INTEGER($aType;4)
+$aType{1}:=8
+$aType{2}:=-3
+$aType{3}:=-3
+$aType{4}:=-2
+For ($j;1;Records in selection([Trxs]))
+ARRAY TEXT($aAnalysisCode;0)
+ARRAY REAL($aTaxAmt;0)
+ARRAY REAL($aTotAmt;0)
+ARRAY LONGINT($aSeqNo;0)
+TextToArrays (->[Trxs]MiscDetls;->$aType;->$aAnalysisCode;->$aTaxAmt;->$aTotAmt;->$aSeqNo)
+For ($k;1;Size of array($aAnalysisCode))
+$x:=Find in array(<>asCharges;$aAnalysisCode{$k})
+If ($x<1) | ($x>Size of array(<>asCharges))
+$x:=Size of array(<>asChgCategory)
+Else 
+$x:=Find in array(<>asChgCategory;<>asChargeCat{$x})
+End if 
+If ($x>0) & ($x<=5)//SDD 25/07/10 added first condition to avoid runtime error message
+aTotalsCA{$x}:=Round(aTotalsCA{$x}+$aTotAmt{$k}-$aTaxAmt{$k};2)
+Else 
+aTotalsCA{6}:=Round(aTotalsCA{6}+$aTotAmt{$k}-$aTaxAmt{$k};2)//all Kennards other categories incl in Other
+End if 
+aTotalsCA{7}:=Round(aTotalsCA{7}+$aTaxAmt{$k};2)
+aTotalsCA{11}:=Round(aTotalsCA{11}+0;2)//Was [Transaction]MiscDetls'DiscAmt which we don't have now
+End for 
+If (False)//SDD 18/09/12 All the code below to End If does not work!
+Repeat 
+vAgreeNo:=[Trxs]AgreeNo
+$TrxDate:=[Trxs]TrxDate
+vRecNo:=Record number([Trxs])
+$ReceiptAmt:=[Trxs]TotAmt
+REMOVE FROM SET([Trxs];"Report")
+vNew:=True
+RELATE ONE([Trxs]AnalysisCode)
+Case of 
+: ([Trxs]TotAmt<0)
+aTotalsCA{10}:=Round(aTotalsCA{10}+[Trxs]TotAmt;2)//[Activity]Refunds
+: ([Analysis]InclBankRpt=False)
+aTotalsCA{9}:=Round(aTotalsCA{9}+[Trxs]TotAmt;2)//[Activity]CreditRec
+Else 
+aTotalsCA{8}:=Round(aTotalsCA{8}+[Trxs]TotAmt;2)//[Activity]CashRec
+End case 
+If ([Trxs]Match>0)
+QUERY([Trxs];[Trxs]Match=[Trxs]Match;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=vAgreeNo)
+If (vAgreeNo="@MISCL")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate)
+End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+Else 
+vMthDate:=[Activity]ActivityDate
+MatchIncomeReceived (True)// if receipt transaction match=0, figure out how it matches
+End if 
+If (vNew=True)
+For ($k;1;Records in selection([Trxs]))
+Case of 
+: ([Trxs]Charge=True)
+$x:=Find in array(<>asCharges;[Trxs]AnalysisCode)
+If ($x<1) | ($x>Size of array(<>asCharges))
+$x:=Size of array(<>asChgCategory)
+Else 
+$x:=Find in array(<>asChgCategory;<>asChargeCat{$x})
+End if 
+Case of 
+: ($ReceiptAmt>[Trxs]TotAmt)
+$ReceiptAmt:=$ReceiptAmt-[Trxs]TotAmt
+$Tax:=[Trxs]TaxAmt
+$TotAmt:=[Trxs]TotAmt
+: ($ReceiptAmt<[Trxs]TotAmt) & ($ReceiptAmt>0)
+$TotAmt:=$ReceiptAmt
+$Tax:=CalcTaxAmt ($ReceiptAmt;[Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;2)
+$ReceiptAmt:=0
+$k:=Records in selection([Trxs])
+: ($ReceiptAmt=[Trxs]TotAmt)//receiptamt=[Trx]Totamt
+$Tax:=[Trxs]TaxAmt
+$TotAmt:=[Trxs]TotAmt
+$ReceiptAmt:=0
+$k:=Records in selection([Trxs])
+Else 
+$Tax:=0
+$TotAmt:=0
+End case 
+If ($x>0) & ($x<=5)//SDD 25/07/10 added first condition to avoid runtime error message
+aTotalsCA{$x}:=Round(aTotalsCA{$x}+$TotAmt-$Tax;2)
+Else 
+aTotalsCA{6}:=Round(aTotalsCA{6}+$TotAmt-$Tax;2)//all Kennards other categories incl in Other
+End if 
+aTotalsCA{7}:=Round(aTotalsCA{7}+$Tax;2)
+aTotalsCA{11}:=Round(aTotalsCA{11}+[Trxs]DiscAmt;2)
+//$x:=Find in array(aAnlys;[Transaction]AnalysisCode)
+//If ($x>0)
+//aTaxs{$x}:=aTaxs{$x}+[Transaction]TaxAmt
+//aTotal{$x}:=aTotal{$x}+[Transaction]TotAmt
+//aUsed{$x}:=True
+//Else 
+//AlertMessage (Get localized string("WARNING - The analysis report will be incorrect, because the analysis code for charges")+" :"+[Transaction]AnalysisCode+" "+Get localized string("is not on file!"))
+//End if 
+: ([Trxs]Match=0)
+$x:=Find in array(<>asCharges;<>sFacility+"RF")
+If ($x>0)
+If ($x>0) & ($x<=5)//SDD 25/07/10 added first condition to avoid runtime error message
+aTotalsCA{$x}:=Round(aTotalsCA{$x}+[Trxs]TotAmt-[Trxs]TaxAmt;2)
+Else 
+aTotalsCA{6}:=Round(aTotalsCA{6}+[Trxs]TotAmt-[Trxs]TaxAmt;2)//all Kennards other categories incl in Other
+End if 
+aTotalsCA{7}:=aTotalsCA{7}+CalcTaxAmt ([Trxs]TotAmt;<>sFacility+"RF";[Trxs]TrxDate;[Trxs]TrxDate;2)
+//aTotalsCA{11}:=Round(aTotalsCA{11}+[Transaction]DiscAmt;2)
+
+//aTaxs{$x}:=aTaxs{$x}+CalcTaxAmt ([Transaction]TotAmt;<>sFacility+"RF";[Transaction]TrxDate;[Transaction]TrxDate;2)
+//aTotal{$x}:=aTotal{$x}+[Transaction]TotAmt
+//aUsed{$x}:=True
+Else 
+//AlertMessage (Get localized string("WARNING - The analysis report will be incorrect, because the analysis code for charges")+" :"+[Transaction]AnalysisCode+" "+Get localized string("is not on file!"))
+End if 
+Else 
+//if more than one
+//If (Is in set("Report")=True)
+//REMOVE FROM SET([Transaction];"Report")  //if already in set then it needs to be matched off against these charges
+//Else 
+//need to do anything here?
+//End if 
+End case 
+
+NEXT RECORD([Trxs])
+End for 
+End if 
+USE SET("Report")
+//End for 
+Until (Records in selection([Trxs])=0)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+RELATE ONE([Trxs]AnalysisCode)
+Case of 
+: ([Trxs]TotAmt<0)
+aTotalsCA{10}:=Round(aTotalsCA{10}+[Trxs]TotAmt;2)//[Activity]Refunds
+: ([Analysis]InclBankRpt=False)
+aTotalsCA{9}:=Round(aTotalsCA{9}+[Trxs]TotAmt;2)//[Activity]CreditRec
+Else 
+aTotalsCA{8}:=Round(aTotalsCA{8}+[Trxs]TotAmt;2)//[Activity]CashRec
+End case 
+NEXT RECORD([Trxs])
+End for 
+For ($j;1;7)
+$p:=Field(10;($j*2)+33)//[Activity]RentRec=35 etc
+If (aTotalsCA{$j}#$p->)
+$Formula:=$Formula+String([Activity]ActivityDate)+": "+Field name($p)+" wrong - Activity:"+String($p->;<>sFormat)+", Calced:"+String(aTotalsCA{$j};<>sFormat)+Char(13)
+$p->:=aTotalsCA{$j}
+$Adjust:=True
+End if 
+End for 
+For ($j;8;11)
+$p:=Field(10;$j+58)//[Activity]CashRec=66 etc
+If ($j=11)
+$p:=Field(10;70)
+End if 
+If (aTotalsCA{$j}#$p->)
+$Formula:=$Formula+String([Activity]ActivityDate)+": "+Field name($p)+" wrong - Activity:"+String($p->;<>sFormat)+", Calced:"+String(aTotalsCA{$j};<>sFormat)+Char(13)
+$p->:=aTotalsCA{$j}
+$Adjust:=True
+End if 
+End for 
+If ($2)
+If ($Adjust)
+$Formula:=$Formula+"CORRECTED "+String(Current date)+" "+String(Current time;1)+Char(13)
+[Activity]CalcErrors:=$Formula
+[Activity]Updated:=True
+End if 
+SAVE RECORD([Activity])
+End if 
+If ($Formula>"")
+vtFormula:=vtFormula+$Formula
+End if 
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Deposit")
+RELATE MANY SELECTION([Trxs]AnalysisCode)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=[Activity]ActivityDate)
+[Activity]DepositsHeld:=Sum([Trxs]TotAmt)
+$0:=$Occup

@@ -1,0 +1,229 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 21/09/11, 11:15:05
+// ----------------------------------------------------
+// Method: CheckDDStatus
+// Description
+// This method is to check the status of unconfirmed Direct Debits
+//
+// Parameters
+// $1 - Calling method
+// ----------------------------------------------------
+C_TEXT($1)
+
+If (GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") | (GetTextNo ([Facility]DDAccountDetails;4;",")="Advam")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)//If Advam DD or EziDebit DD, check for DD unconfirmed transactions
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]Confirmed=False)
+//QUERY([Transaction]; & ;[Transaction]TrxDate<([Facility]LastDaily-4))
+If (Records in selection([Trxs])>0)
+//ConfirmTwo (Get localized string("There are unconfirmed Direct Debits. Check their status now?");Get localized string("Yes");Get localized string("No"))
+OK:=1
+If (OK=1)
+CREATE SET([Trxs];"$DDAutopay")
+CREATE EMPTY SET([Trxs];"$ToReverse")
+If ($1="Banking")
+READ WRITE([Trxs])
+End if 
+
+FIRST RECORD([Trxs])
+If (GetTextNo ([Facility]DDAccountDetails;4;",")="Advam")
+
+ORDER BY([Trxs];[Trxs]CCAuthNo;>)
+DISTINCT VALUES([Trxs]CCAuthNo;asBatchList)
+$Account:=GetTextNo ([Facility]DDAccountDetails;1;",")
+$Username:=GetTextNo ([Facility]DDAccountDetails;2;",")
+$Password:=GetTextNo ([Facility]DDAccountDetails;3;",")
+
+For ($i;1;Size of array(asBatchList))
+$DDResult:=WSC_AdvamDDTransactionQuery ($Account;$Username;$Password;asBatchList{$i})
+ARRAY TEXT(atDDError;0)
+If (Position("!";$DDResult)>0)
+$DDExtra:=GetTextNo ($DDResult;2;"!")
+$DDResult:=GetTextNo ($DDResult;1;"!")
+While (Position(Char(Line feed);$DDExtra)>0)
+$DDPos:=Position(Char(Line feed);$DDExtra)
+$DDAccountString:=Substring($DDExtra;1;$DDPos-1)
+$DDAccountString:=GetTextNo ($DDAccountString;6;",")
+APPEND TO ARRAY(atDDError;$DDAccountString)
+$DDExtra:=Substring($DDExtra;$DDPos+1)
+End while 
+End if 
+USE SET("$DDAutopay")
+QUERY SELECTION([Trxs];[Trxs]CCAuthNo=asBatchList{$i})
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+Case of 
+: ($DDResult="Processing")
+[Trxs]Narration:=Get localized string("Processing")
+: ($DDResult="Processing Complete")
+[Trxs]Narration:=""
+For ($k;1;Size of array(atDDError))
+If (atDDError{$k}=[Trxs]AgreeNo)
+[Trxs]Narration:=Get localized string("Failed")
+End if 
+End for 
+If ([Trxs]Narration="")
+[Trxs]Narration:=Get localized string("Successful")
+[Trxs]Confirmed:=True
+End if 
+: ($DDResult="ERR") | ($DDResult="Import Failed")
+[Trxs]Narration:=Get localized string("Failed")
+: ($DDResult="Cancelled")
+[Trxs]Narration:=Get localized string("Cancelled")
+Else 
+[Trxs]Narration:=Get localized string("Error")
+End case 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+End for 
+
+Else 
+$DigiKey:=GetTextNo ([Facility]DDAccountDetails;1;",")+"-"+GetTextNo ([Facility]DDAccountDetails;2;",")+"-"+GetTextNo ([Facility]DDAccountDetails;3;",")+"-"+GetTextNo ([Facility]DDAccountDetails;4;",")+"-"+GetTextNo ([Facility]DDAccountDetails;5;",")
+For ($i;1;Records in selection([Trxs]))
+[Trxs]Narration:=""
+//$Success:=WSC_EziGetPaymentStatus ($DigiKey;[Transaction]CCTransID)
+$Success:=WSC_EziGetPaymentDetail ($DigiKey;[Trxs]CCTransID)
+If ([Trxs]Narration="")
+Case of 
+: ($Success="S")
+//Successful
+[Trxs]Confirmed:=True
+//[Transaction]DateBanked:=Current date
+[Trxs]CCAuthNo:="S"
+[Trxs]Narration:=Get localized string("Successful")
+: ($Success="W")
+//Queued
+[Trxs]CCAuthNo:="W"
+[Trxs]Narration:=Get localized string("Queued")
+: ($Success="P")
+//Pending
+[Trxs]CCAuthNo:="P"
+[Trxs]Narration:=Get localized string("Pending")
+: ($Success="D")
+//Dishonour
+[Trxs]CCAuthNo:="D"
+[Trxs]Narration:=Get localized string("Dishonoured")
+ADD TO SET([Trxs];"$ToReverse")
+: ($Success="F")
+
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Trxs]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:="Check Direct Debit for Amount: "+String([Trxs]TotAmt;"###,###.00")+", Result="+$Success+", Message="+gError
+SAVE RECORD([NotesHistory])
+
+//Fatal Dishonour/Failed
+[Trxs]CCAuthNo:="F"
+[Trxs]Narration:=Get localized string("Failed")
+ADD TO SET([Trxs];"$ToReverse")
+Else 
+//Error
+[Trxs]Narration:=Get localized string("Error")
+End case 
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+End if 
+USE SET("$DDAutopay")
+CLEAR SET("$DDAutopay")
+If ($1="Daily")
+DEFAULT TABLE([Trxs])
+End if 
+BREAK LEVEL(0)
+FORM SET OUTPUT([Trxs];"TransPrintUncon")
+vTitle:=Get localized string("Unconfirmed Receipts")
+vLegend:=Get localized string("Unconfirmed Direct Debits prior to")+" "+String([Facility]LastDaily;6)
+PrintSelection ("P")
+USE SET("$ToReverse")
+If (Records in selection([Trxs])>0)
+//ConfirmTwo ("Create reversal transactions for "+String(Records in selection([Transaction]))+" dishonoured/failed Direct Debits?";"Yes";"No")
+OK:=1
+If (OK=1)
+While (Records in selection([Trxs])>0)
+FIRST RECORD([Trxs])
+REMOVE FROM SET([Trxs];"$ToReverse")
+$RevAnalysis:=[Trxs]AnalysisCode
+$RevAmount:=[Trxs]TotAmt
+$RevDesc:=[Trxs]Description
+$RevAgree:=[Trxs]AgreeNo
+$RevCust:=[Trxs]CustomerCode
+[Trxs]Confirmed:=True
+SAVE RECORD([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=$RevAgree
+[Trxs]CustomerCode:=$RevCust
+[Trxs]AnalysisCode:=$RevAnalysis
+[Trxs]Charge:=False
+[Trxs]Confirmed:=True
+[Trxs]DateBanked:=!00-00-00!
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+[Trxs]Description:=Substring("Reversal "+$RevDesc;1;80)
+[Trxs]TotAmt:=$RevAmount*-1
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+SAVE RECORD([Trxs])
+RELATE ONE([Trxs]AgreeNo)
+If (Records in selection([Agreement])>0)
+If ($1="Banking")
+READ WRITE([Agreement])
+READ WRITE([Customer])
+End if 
+vNewReceipt:=False
+UpdateReceipt ("Web")
+
+SAVE RECORD([Agreement])
+Else 
+If ($1="Banking")
+READ WRITE([Reservation])
+READ WRITE([Customer])
+End if 
+vNewReceipt:=False
+UpdateReceipt ("Web")
+
+SAVE RECORD([Reservation])
+End if 
+
+READ WRITE([Trxs])
+QUERY([Customer];[Customer]CustomerCode=[Trxs]CustomerCode)
+If (Records in selection([Customer])#0)
+$custStatus:=WSC_EziGetCustomerDetails ($DigiKey;"";[Customer]customerProfileID)
+If (Substring($custStatus;1;1)="H") | (Substring($custStatus;1;1)="C")//If ($custStatus[[1]]="H") | ($custStatus[[1]]="C")
+$read:=Read only state([Customer])
+READ WRITE([Customer])
+[Customer]DDPaymentProfileID:=""
+SAVE RECORD([Customer])
+If ($read)
+READ ONLY([Customer])
+End if 
+End if 
+End if 
+
+USE SET("$ToReverse")
+End while 
+End if 
+End if 
+If ($1="Banking")
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+End if 
+End if 
+End if 
+

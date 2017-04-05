@@ -1,0 +1,55 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+ConfirmTwo (Get localized string("Are you sure?"))
+If (OK=1)
+$OK:=True
+QUERY([Analysis];[Analysis]Code=Old([Trxs]AnalysisCode))
+If ([Analysis]InvItem) & ([Analysis]InvQtyonHand+Old([Trxs]Qty)<0) & (vtReverse=True)
+AlertMessage (Get localized string("You cannot delete item")+" "+[Analysis]Description+" "+Get localized string("as there will be")+" "+String([Analysis]InvQtyonHand+Old([Trxs]Qty))+" "+Get localized string("units on hand.  Please re-enter!"))
+$OK:=False
+End if 
+If ($OK)
+bAbortArray:=1
+SET AUTOMATIC RELATIONS(False;False)
+If ([Trxs]PrimaryKey#0)
+If (bFromMoveIn=False)
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+If ([Agreement]RAgreeNo>"")
+READ WRITE([Agreement])
+LOAD RECORD([Agreement])
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-Old([Trxs]TotAmt);2)
+SAVE RECORD([Agreement])
+READ ONLY([Agreement])
+LOAD RECORD([Agreement])
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+READ WRITE([Reservation])
+LOAD RECORD([Reservation])
+[Reservation]Balance:=Round([Reservation]Balance-Old([Trxs]TotAmt);2)
+SAVE RECORD([Reservation])
+READ ONLY([Reservation])
+LOAD RECORD([Reservation])
+End if 
+End if 
+[Customer]Balance:=Round([Customer]Balance-Old([Trxs]TotAmt);2)
+If ([Trxs]AnalysisCode="@LF") & (PermissionsControl (159;False)=False) & ([Trxs]TotAmt>0)
+[Customer]WaivedLateFees:=[Customer]WaivedLateFees+1
+[Customer]LateFeeDates:=[Customer]LateFeeDates+String(Current date)+";"
+End if 
+SAVE RECORD([Customer])
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+If ([Analysis]InvItem=True)
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand+[Trxs]Qty
+SAVE RECORD([Analysis])
+READ ONLY([Analysis])
+LOAD RECORD([Analysis])
+End if 
+DELETE RECORD([Trxs])
+End if 
+CANCEL
+End if 
+End if 

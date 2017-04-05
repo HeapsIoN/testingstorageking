@@ -1,0 +1,189 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($Flag)
+C_LONGINT($i)
+C_REAL($Total)
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]CasualBilling)
+$RentIncrDate:=[Agreement]LastBillDate
+Else 
+$RentIncrDate:=[Agreement]NextBillDate
+End if 
+If (([Agreement]NewRentFrom#!00-00-00!) & ([Agreement]NewRentFrom<=$RentIncrDate))
+$Total:=0
+$Flag:=False
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+//$Total:=$Total+[UnitType]MonthlyRate
+If ([Unit]IncreaseFrom<=$RentIncrDate) & ([Unit]IncreaseFrom#!00-00-00!)
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Unit]LastRentAmt:=[Unit]DailyNewRent
+If ([Unit]DailyNewRent>CalculateBaseRate (2;0))
+$Flag:=True
+If (<>sFacility#"KE@")
+AlertMessage (Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("Unit")+": "+[Unit]UnitNo+" "+Get localized string("NewRentAmt")+":"+String([Unit]DailyNewRent;<>sFormat)+" "+Get localized string("is greater than full rate of")+" "+String(CalculateBaseRate (2;0);<>sFormat))
+End if 
+End if 
+If ([Unit]DailyNewRent<[Unit]DailyRentedValue)
+$Flag:=True
+AlertMessage (Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("NewRentAmt")+":"+String([Unit]DailyNewRent;<>sFormat)+" "+Get localized string("is less than existing rent of")+" "+String([Unit]DailyRentedValue;<>sFormat))
+End if 
+If ($Flag) & (<>sFacility#"KE@")
+[Unit]DailyNewRent:=Num(RequestMessage (Get localized string("Confirm NewRentAmt for Cust")+":"+[Agreement]CustomerCode+"?";String([Unit]DailyNewRent;<>sFormat)))
+If (OK=0)
+[Unit]DailyNewRent:=Old([Unit]DailyNewRent)
+End if 
+End if 
+[Unit]DailyRentedValue:=[Unit]DailyNewRent
+[Unit]WeeklyRentedValue:=Round([Unit]DailyRentedValue*7;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]DailyRentedValue*7;2)
+[Unit]RentedValue:=Round([Unit]WeeklyRentedValue/0.2308;2)
+[Unit]NewRentAmt:=Round([Unit]WeeklyRentedValue/0.2308;2)
+: ([BillPlan]PlanPeriod="Week")
+[Unit]LastRentAmt:=[Unit]WeeklyRentedValue
+If ([Unit]WeeklyNewRentAmt>CalculateBaseRate (2;0))
+$Flag:=True
+If (<>sFacility#"KE@")
+AlertMessage (Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("Unit")+": "+[Unit]UnitNo+" "+Get localized string("NewRentAmt")+":"+String([Unit]WeeklyNewRentAmt;<>sFormat)+" "+Get localized string("is greater than full rate of")+" "+String(CalculateBaseRate (2;0);<>sFormat))
+End if 
+End if 
+If ([Unit]WeeklyNewRentAmt<[Unit]WeeklyRentedValue)
+$Flag:=True
+AlertMessage (Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("NewRentAmt")+":"+String([Unit]WeeklyNewRentAmt;<>sFormat)+" "+Get localized string("is less than existing rent of")+" "+String([Unit]WeeklyRentedValue;<>sFormat))
+End if 
+If ($Flag) & (<>sFacility#"KE@")
+[Unit]WeeklyNewRentAmt:=Num(RequestMessage (Get localized string("Confirm NewRentAmt for Cust")+":"+[Agreement]CustomerCode+"?";String([Unit]WeeklyNewRentAmt;<>sFormat)))
+If (OK=0)
+[Unit]WeeklyNewRentAmt:=Old([Unit]WeeklyNewRentAmt)
+End if 
+End if 
+[Unit]WeeklyRentedValue:=[Unit]WeeklyNewRentAmt
+[Unit]DailyRentedValue:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]DailyNewRent:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]RentedValue:=Round([Unit]WeeklyRentedValue/0.2308;2)
+[Unit]NewRentAmt:=Round([Unit]WeeklyRentedValue/0.2308;2)
+Else 
+[Unit]LastRentAmt:=[Unit]RentedValue
+If ([Unit]NewRentAmt>CalculateBaseRate (2;0))
+$Flag:=True
+If (<>sFacility#"KE@")
+AlertMessage (Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("Unit")+": "+[Unit]UnitNo+" "+Get localized string("NewRentAmt")+":"+String([Unit]NewRentAmt;<>sFormat)+" "+Get localized string("is greater than full rate of")+" "+String(CalculateBaseRate (2;0);<>sFormat))
+End if 
+End if 
+If ([Unit]NewRentAmt<[Unit]RentedValue)
+$Flag:=True
+AlertMessage (Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("NewRentAmt")+":"+String([Unit]NewRentAmt;<>sFormat)+" "+Get localized string("is less than existing rent of")+" "+String([Unit]RentedValue;<>sFormat))
+End if 
+If ($Flag) & (<>sFacility#"KE@")
+[Unit]NewRentAmt:=Num(RequestMessage (Get localized string("Confirm NewRentAmt for Cust")+":"+[Agreement]CustomerCode+"?";String([Unit]NewRentAmt;<>sFormat)))
+If (OK=0)
+[Unit]NewRentAmt:=Old([Unit]NewRentAmt)
+End if 
+End if 
+[Unit]RentedValue:=[Unit]NewRentAmt
+[Unit]WeeklyRentedValue:=Round([Unit]RentedValue*0.2308;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]RentedValue*0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]DailyNewRent:=Round([Unit]WeeklyRentedValue/7;2)
+End case 
+[Unit]IncreaseFrom:=!00-00-00!
+[Unit]LastInc:=$RentIncrDate
+SAVE RECORD([Unit])
+End if 
+NEXT RECORD([Unit])
+End for 
+If ([Agreement]NewRentFrom#!00-00-00!) & ([Agreement]NewRentFrom<=$RentIncrDate)
+FIRST RECORD([Unit])
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Agreement]RegularRent:=Sum([Unit]DailyRentedValue)
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=Sum([Unit]WeeklyRentedValue)
+Else 
+[Agreement]RegularRent:=Sum([Unit]RentedValue)
+End case 
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date($RentIncrDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (($RentIncrDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+End if 
+$Flag:=True
+//QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+//If (Records in selection([OtherChgs])>0)
+//If ([BillPlan]PlanPeriod="Month") & (Old([BillPlan]PlanPeriod)="Week")
+//APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount/[Facility]InsWeeklyMthly;2))
+//End if 
+//If ([BillPlan]PlanPeriod="Week") & (Old([BillPlan]PlanPeriod)="Month")
+//APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*[Facility]InsWeeklyMthly;2))
+//End if 
+//If (Old([Agreement]MthsAdv)>=1)
+//APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*[Agreement]MthsAdv/Old([Agreement]MthsAdv);2))
+//End if 
+//End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Facility]AutoPayIncrease) & ([Agreement]AutoPay)
+[Agreement]AutoPayAmt:=[Agreement]RentAmt+Sum([OtherChgs]Amount)
+End if 
+End if 
+
+If ($Flag)
+[Agreement]LastRentIncrDate:=$RentIncrDate
+$IncreaseDate:=!00-00-00!
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Unit]))
+If ([Unit]IncreaseFrom#!00-00-00!) & (([Unit]IncreaseFrom<$IncreaseDate) | ($IncreaseDate=!00-00-00!))
+$IncreaseDate:=[Unit]IncreaseFrom
+End if 
+NEXT RECORD([Unit])
+End for 
+If ($IncreaseDate=!00-00-00!)
+[Agreement]NewRentAmt:=[Agreement]RentAmt
+[Agreement]NewRegularRent:=[Agreement]RegularRent
+[Agreement]NewRentFrom:=!00-00-00!
+[Agreement]NewDiscAmt:=[Agreement]DiscountAmt
+Else 
+[Agreement]NewRentFrom:=$IncreaseDate
+End if 
+End if 
+End if 

@@ -1,0 +1,93 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+ALL RECORDS([Facility])
+DEFAULT TABLE([Facility])
+ARRAY TEXT(asNames;5)
+asNames{1}:=Get localized string("Today")
+asNames{2}:=Get localized string("Week Ended")
+asNames{3}:=Get localized string("Month Ended")
+asNames{4}:=Get localized string("Year to date")
+asNames{5}:=Get localized string("Other Date Range")
+ARRAY TEXT(asSortBy;8)
+asSortBy{1}:=Get localized string("Total")+" "+<>vtUnitsCap+"s"
+asSortBy{2}:=Get localized string("Vacant")
+asSortBy{3}:=Get localized string("Occupied")
+asSortBy{4}:=Get localized string("Full Value")
+asSortBy{5}:=Get localized string("Actual value")
+asSortBy{6}:=Get localized string("Econ Occ")
+asSortBy{7}:=Get localized string("Discounts")
+asSortBy{8}:=Get localized string("Yield")
+ARRAY TEXT(asSortBy2;8)
+asSortBy2{1}:=Get localized string("Total")+" "+<>vtUnitsCap+"s"
+asSortBy2{2}:=Get localized string("Vacant")
+asSortBy2{3}:=Get localized string("Occupied")
+asSortBy2{4}:=Get localized string("Full Value")
+asSortBy2{5}:=Get localized string("Actual value")
+asSortBy2{6}:=Get localized string("Econ Occ")
+asSortBy2{7}:=Get localized string("Discounts")
+asSortBy2{8}:=Get localized string("Yield")
+ARRAY TEXT(asFormats;8)
+asFormats{1}:="###,##0"
+asFormats{2}:="###,##0"
+asFormats{3}:="###,##0"
+asFormats{4}:="##,###,##0"
+asFormats{5}:="##,###,##0"
+asFormats{6}:="####0.00%"
+asFormats{7}:="####0.00%"
+asFormats{8}:="####0.00"
+vTitle:=Get localized string("Occupancy Ranking")+"..."
+asNames:=2
+asSortBy:=6
+asSortBy2:=8
+viRanking:=4
+Open window((Screen width/2)-195;(Screen height/2)-174;(Screen width/2)+195;(Screen height/2)+174;0;"Print Report")
+DIALOG([Facility];"RankingDialog")
+CLOSE WINDOW
+If (OK=1)
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+If (bAdd=0)
+QUERY([Facility];[Facility]FacilityCode#<>sHOFacility)
+End if 
+For ($i;1;Records in selection([Facility]))
+QUERY([Activity];[Activity]ActivityDate=vRptDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+[Facility]Column1:=[Activity]TotUnitNo
+[Facility]Column2:=[Activity]VacantUnitNo
+[Facility]Column3:=[Activity]OccupUnitNo
+[Facility]Column4:=[Activity]TotValue
+[Facility]Column5:=[Activity]OccupValActual
+If ([Activity]TotValue>0)
+[Facility]Column6:=Round([Activity]OccupValActual/[Activity]TotValue*100;2)
+[Facility]Column7:=Round(([Activity]OccupValue-[Activity]OccupValActual)/[Activity]TotValue*100;2)
+Else 
+[Facility]Column6:=0
+[Facility]Column7:=0
+End if 
+If ([Activity]TotUnitArea>0)
+[Facility]Column8:=Round([Activity]OccupValActual/[Activity]TotUnitArea*12;2)
+Else 
+[Facility]Column8:=0
+End if 
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+$Sort1:=Field(1;asSortby+191)
+$Sort2:=Field(1;asSortBy2+191)
+ORDER BY([Facility];$Sort1->;<;$Sort2->;<)
+For ($i;1;Records in selection([Facility]))
+[Facility]RankOrder:=$i
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+READ ONLY([Facility])
+FORM SET OUTPUT([Facility];"RankingReport")
+vTitle:=Get localized string("Ranking of Facilities by Occupancy")
+vLegend:=Get localized string("As at")+" "+String(vRptDate;6)
+ORDER BY([Facility];[Facility]RankOrder;>)
+BREAK LEVEL(0)
+ACCUMULATE([Facility]Column1;[Facility]Column2;[Facility]Column3;[Facility]Column4;[Facility]Column5;[Facility]Column6;[Facility]Column7;[Facility]Column8)
+PrintSelection ("P";->[Facility];False)
+FORM SET OUTPUT([Facility];"Output")
+End if 
+SetFacility (True)

@@ -1,0 +1,119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1)
+If ($1=True)
+$OK:=True
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+If ([Analysis]MinAmt#0)
+If ([Trxs]TotAmt<[Analysis]MinAmt)
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of less than")+" "+String([Analysis]MinAmt)+". "+Get localized string("Please re-enter & try again")+"...")
+$OK:=False
+End if 
+End if 
+If ([Analysis]MaxAmt#0)
+If ([Trxs]TotAmt>[Analysis]MaxAmt)
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of more than")+" "+String([Analysis]MaxAmt)+". "+Get localized string("Please re-enter & try again")+"...")
+$OK:=False
+End if 
+End if 
+If ([Trxs]TrxDate>vBSDate)
+AlertMessage (Get localized string("You cannot enter a Transaction Date greater than the date of the last bank statemnt. Please re-enter & try again")+"...")
+$OK:=False
+End if 
+
+If ($OK)
+If (aWithdrwl=1)
+If ([Trxs]TotAmt>0)
+[Trxs]TotAmt:=[Trxs]TotAmt*(-1)
+End if 
+Else 
+If ([Trxs]TotAmt<0)
+[Trxs]TotAmt:=[Trxs]TotAmt*(-1)
+End if 
+End if 
+[Trxs]TaxAmt:=[Trxs]TotAmt
+If ([Trxs]TrxTime=?00:00:00?)
+[Trxs]TrxTime:=Current time
+End if 
+If (Size of array(aOTBankd)>0) & (vMod=True)
+$f:=Find in array(aOTDesc;[Trxs]Description)
+If ($f>0)
+aOTBankd{$f}:=[Trxs]DateBanked
+aOTDesc{$f}:=[Trxs]Description
+aOTAmt{$f}:=[Trxs]TaxAmt
+aOTAnlys{$f}:=[Trxs]AnalysisCode
+End if 
+End if 
+If (vMod=False)//if not modifying an existing trx but adding a new one
+$s:=Size of array(aOTBankd)+1
+INSERT IN ARRAY(aOTBankd;$s)
+aOTBankd{$s}:=[Trxs]DateBanked
+INSERT IN ARRAY(aOTAmt;$s)
+aOTAmt{$s}:=[Trxs]TaxAmt
+INSERT IN ARRAY(aOTDesc;$s)
+aOTDesc{$s}:=[Trxs]Description
+INSERT IN ARRAY(aOTAnlys;$s)
+aOTAnlys{$s}:=[Trxs]AnalysisCode
+End if 
+SAVE RECORD([Trxs])
+LOAD RECORD([Trxs])
+ADD TO SET([Trxs];"ToDisplay")
+End if 
+Else 
+If ([Trxs]DateReconciled#vBSDate)
+AlertMessage (Get localized string("This transaction has been reconciled and cannot be deleted."))
+Else 
+$s:=Find in array(aOTDesc;[Trxs]Description)
+If ($s>0)
+//$t:=Find in array(aOTAmt;[Transaction]TaxAmt)
+$t:=Find in array(aOTBankd;[Trxs]DateBanked)
+If ($s#$t)// & ($t=$u)
+If ($s>$t)
+Repeat 
+$t:=Find in array(aOTBankd;[Trxs]DateBanked)
+Until ($s=$t)
+Else 
+Repeat 
+$s:=Find in array(aOTBankd;[Trxs]DateBanked)
+Until ($s=$t)
+End if 
+End if 
+If ([Trxs]DateBanked=aOTBankd{$s})
+DELETE FROM ARRAY(aOTDesc;$s)
+DELETE FROM ARRAY(aOTAmt;$s)
+DELETE FROM ARRAY(aOTBankd;$s)
+DELETE FROM ARRAY(aOTAnlys;$s)
+End if 
+End if 
+If (Is in set("OtherTrx")) & (vMod=True)
+REMOVE FROM SET([Trxs];"OtherTrx")
+End if 
+DELETE RECORD([Trxs])
+vMod:=True
+End if 
+End if 
+OBJECT SET ENTERABLE(*;"OTrx@";False)//because when sorting it loads the first record and was modifiable in the input form
+OBJECT SET ENTERABLE(*;"WAmt";False)
+USE SET("ToDisplay")
+vTot:=vOpenBal
+vTot2:=0
+vTot1:=0
+FIRST RECORD([Trxs])
+For ($o;1;Records in selection([Trxs]))
+If ([Trxs]Reconciled=True)
+If ([Trxs]TaxAmt<0)//if a refund or returned cheq
+vTot2:=Round((vTot2+([Trxs]TaxAmt*(-1)));2)
+Else 
+vTot1:=Round((vTot1+[Trxs]TaxAmt);2)
+End if 
+End if 
+vTot:=vTot+[Trxs]TaxAmt
+[Trxs]Balance:=vTot
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+vTotal:=Round((vOpenBal+vTot1-vTot2);2)
+vDifference:=Round((vTotal-vBankClose);2)
+ORDER BY([Trxs];[Trxs]DateReconciled;>;[Trxs]DateBanked;>;[Trxs]AnalysisCode;>;[Trxs]TaxAmt;>)
+ACCEPT

@@ -1,0 +1,80 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+LogAction (False;"Overdues Report started.")// records the report being started in the eventlog
+// ----------------------------------------------------
+// User name (OS): unknown 
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: Overdues
+// Description
+// 
+// This method runs the overdues report
+//
+// Parameters
+// ----------------------------------------------------
+
+C_LONGINT($i)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+
+If (PermissionsControl (71))
+SET AUTOMATIC RELATIONS(True;False)
+SetFacility 
+//QUERY([Agreement];[Agreement]AgreeNo="23095";*)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing>[Facility]MinBalArrears)
+QUERY SELECTION BY FORMULA([Agreement];([Agreement]BalanceOwing>([Facility]MinBalArrears+[Agreement]LastBillAmt)) | ([Agreement]LastBillDate<=Current date))
+CREATE SET([Agreement];"Overdues")
+If (Records in selection([Agreement])>0)
+For ($i;1;Records in selection([Agreement]))
+$Sum:=0
+If ([Agreement]LastBillDate>Current date)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date;*)
+If ([Facility]LateFeeReset)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Rent";*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+If (Records in selection([Trxs])>0)
+
+If ([Facility]LateFeeReset)
+$BalanceCalc:=[Agreement]TotRentUnpaid
+Else 
+$BalanceCalc:=[Agreement]BalanceOwing
+End if 
+
+If (($BalanceCalc-Sum([Trxs]TotAmt))<[Facility]MinBalArrears)
+REMOVE FROM SET([Agreement];"Overdues")
+End if 
+End if 
+End if 
+NEXT RECORD([Agreement])
+End for 
+End if 
+$i:=1
+If (Records in set("Overdues")>0)
+USE SET("Overdues")
+End if 
+If (<>tBatch=False)
+BEEP
+$i:=ConfirmThree (Get localized string("Print Overdues Report?");Get localized string("All Overdue");Get localized string("OwingGreaterDeposit");Get localized string("Cancel"))
+End if 
+If ($i<3)
+If ($i=2)
+QUERY SELECTION BY FORMULA([Agreement];[Agreement]BalanceOwing>[Agreement]DepositAmt)
+End if 
+RELATE ONE SELECTION([Agreement];[Customer])
+RELATE MANY SELECTION([Agreement]CustomerCode)
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY SELECTION([Agreement]; | ;[Agreement]BalanceOwing#0)
+ORDER BY([Agreement];[Agreement]CustomerCode;>;[Agreement]AgreeNo;>)
+BREAK LEVEL(1)
+ACCUMULATE([Agreement]RentAmt)
+FORM SET OUTPUT([Agreement];"OverdueList")
+PrintSelection ("L";->[Agreement])
+SET AUTOMATIC RELATIONS(False;False)
+FORM SET OUTPUT([Agreement];"Output")
+End if 
+End if 
+
+LogAction (True;"Overdues Report ended.")

@@ -1,0 +1,62 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//C_TEXT($Agreemt)
+//CREATE SET([Agreement];"EventLog")
+//$Agreemt:=[Agreement]RAgreeNo
+//If (OK=1)
+//If (Length($Agreemt)>5)
+//QUERY([Agreement];[Agreement]RAgreeNo=$Agreemt;*)
+//QUERY([Agreement]; | ;[Agreement]Customer=$Agreemt)
+//Else 
+//QUERY([Agreement];[Agreement]RAgreeNo="@"+$Agreemt;*)
+//QUERY([Agreement]; | ;[Agreement]Customer="@"+$Agreemt)
+//End if 
+//If (Records in selection([Agreement])>0)
+$Facility:=Substring([Agreement]RAgreeNo;1;5)
+
+QUERY([EventLog];[EventLog]KeyValue=[Agreement]RAgreeNo+"@";*)
+QUERY([EventLog]; | ;[EventLog]KeyValue=[Agreement]CustomerCode+"@";*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Agreement]RAgreeNo+"@";*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Agreement]CustomerCode+"@";*)
+If (Substring([Agreement]RAgreeNo;6;4)="0000")
+$EventLogSearch:=Substring([Agreement]RAgreeNo;1;5)+Substring([Agreement]RAgreeNo;10)
+QUERY([EventLog]; | ;[EventLog]KeyValue=$EventLogSearch+"@";*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=$EventLogSearch+"@";*)
+End if 
+//NEXT RECORD([Agreement])
+//While (End selection([Agreement])=False)
+//QUERY([EventLog]; | ;[EventLog]KeyValue=[Agreement]RAgreeNo+"@";*)
+//QUERY([EventLog]; | ;[EventLog]KeyValue=[Agreement]Customer+"@";*)
+//NEXT RECORD([Agreement])
+//End while 
+QUERY([EventLog]; & ;[EventLog]FacilityCode=$Facility)
+CREATE SET([EventLog];"ToSend")
+//RELATE MANY SELECTION([Unit]AgreeNo)
+
+If (Records in selection([Unit])>0)
+QUERY([EventLog];[EventLog]KeyValue=[Unit]RUnitNo;*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Unit]RUnitNo;*)
+NEXT RECORD([Unit])
+While (End selection([Unit])=False)
+QUERY([EventLog]; | ;[EventLog]KeyValue=[Unit]RUnitNo;*)
+QUERY([EventLog]; | ;[EventLog]AgreeNo=[Unit]RUnitNo;*)
+NEXT RECORD([Unit])
+End while 
+QUERY([EventLog]; & ;[EventLog]FacilityCode=$Facility)
+End if 
+CREATE SET([EventLog];"MoreToSend")
+UNION("ToSend";"MoreToSend";"ToSend")
+USE SET("ToSend")
+CLEAR SET("ToSend")
+CLEAR SET("MoreToSend")
+QUERY SELECTION([EventLog];[EventLog]EventTable#0)
+If (asSortBy=2)
+ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+Else 
+ORDER BY([EventLog];[EventLog]EventDate;<;[EventLog]EventTime;<)
+End if 
+//Else 
+//ALERT("We were unable to locate an agreement with that agreement number or customer code"+".")
+//End if 
+//USE SET("EventLog")
+//CLEAR SET("EventLog")
+//End if 

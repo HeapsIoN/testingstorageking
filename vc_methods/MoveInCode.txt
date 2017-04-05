@@ -1,0 +1,3650 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$PageNo;vDaysLate;viOverdue;$Owing;$perm)
+C_BOOLEAN($1;$FromCreditSale;vbUpdateGate;bChange;bNewChange;bCustomerSend)
+C_TEXT($Key;$token)
+C_REAL(vOthTotal;vNewOthTotal;vBalBrFwd;vrPlan)
+C_TEXT(vOriginalReceipt;lblEmailAddress)
+C_TEXT(vtOtherAgreementsReservations)
+C_TEXT(vtPeriodicBilling)
+C_LONGINT($NumAgreements;$NumReservations)
+C_TEXT(vBank;vBankBranch;vBankAcct;vBankSuffix)
+C_TEXT(vAuthcode;vKSSInactiveRefund;$DDMerchant;$CCMerchant)
+C_LONGINT(vTransfer)//1 - Add Units, 2- Remove units, 3- Transfer units
+//If (Not(After))
+//If ((<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY))
+//Set the text of the email address
+lblEmailAddress:=Get localized string("Email Address")+":"
+//SDD 7/1/11 Bug in 4Dv12.1 as it is not updating [Customer]Balance so have changed it to a variable - we can put back when 4D fixes
+//SDD Bug seems to be in standalone only - works fine in Client
+//If (Application type#4D Remote Mode)
+If ([Customer]Balance>0)
+OBJECT SET COLOR(*;"Number777@";-3)//Set Red
+Else 
+OBJECT SET RGB COLORS(*;"Number777@";0x0006616D;0x00FFFFFF)
+End if 
+vrCustBalance:=[Customer]Balance
+REDRAW(vrCustBalance)
+//End if 
+
+If (Form event#On Validate)
+$FromCreditSale:=False
+If (Count parameters>0)
+$FromCreditSale:=$1
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+vRecalc:=False
+
+If (Form event=On Load)
+
+//////////////for sitelink//////////////
+OBJECT SET ENABLED(bHistData;False)
+QUERY([TrxsHistorical];[TrxsHistorical]CustomerCode=[Agreement]CustomerCode)
+If (Records in selection([TrxsHistorical])>0)
+OBJECT SET ENABLED(bHistData;True)
+End if 
+QUERY([TrxsHistorical];[TrxsHistorical]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([TrxsHistorical])>0)
+OBJECT SET ENABLED(bHistData;True)
+End if 
+
+SetFacility 
+//OBJECT SET FONT([Customer]Password;"%Password")  //FB10247
+vMisc:=False
+tRejectBankAcct:=False
+vUnits:=""
+vtOtherAgreementsReservations:=""
+vTickCountStart:=0
+CREATE EMPTY SET([Agreement];"NumOtherAgreements")
+CREATE EMPTY SET([Reservation];"NumOtherReservations")
+If ([Reservation]RReserveNo>"")//If currently viewing a Reservation
+CREATE SET([Reservation];"CurrentReservation")
+SET QUERY DESTINATION(Into set;"NumOtherReservations")
+QUERY([Reservation];[Reservation]CustomerCode=[Reservation]CustomerCode)
+SET QUERY DESTINATION(Into set;"NumOtherAgreements")
+QUERY([Agreement];[Agreement]CustomerCode=[Reservation]CustomerCode)
+DIFFERENCE("NumOtherReservations";"CurrentReservation";"NumOtherReservations")
+CLEAR SET("CurrentReservation")
+Else //If currently viewing an Agreement
+CREATE SET([Agreement];"CurrentAgreement")
+SET QUERY DESTINATION(Into set;"NumOtherReservations")
+QUERY([Reservation];[Reservation]CustomerCode=[Agreement]CustomerCode)
+SET QUERY DESTINATION(Into set;"NumOtherAgreements")
+QUERY([Agreement];[Agreement]CustomerCode=[Agreement]CustomerCode)
+DIFFERENCE("NumOtherAgreements";"CurrentAgreement";"NumOtherAgreements")
+CLEAR SET("CurrentAgreement")
+End if 
+SET QUERY DESTINATION(Into current selection)
+
+$NumAgreements:=Records in set("NumOtherAgreements")
+$NumReservations:=Records in set("NumOtherReservations")
+OBJECT SET VISIBLE(*;"MoveOut@";[Agreement]ActiveAgreemt)
+OBJECT SET ENABLED(*;"RemoveUnit@";[Agreement]ActiveAgreemt)
+If ($FromCreditSale=False)
+OBJECT SET ENABLED(*;"Variable12";[Agreement]ActiveAgreemt)
+End if 
+
+If ($NumAgreements>0) | ($NumReservations>0)
+OBJECT SET VISIBLE(*;"OtherAgreeReserve@";True)
+If ([Agreement]RAgreeNo>"")//It's an Agreement
+Case of 
+: ($NumAgreements=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" +"+Get localized string("Other Agreement")
+: ($NumAgreements>1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" "+Get localized string("Other Agreements")
+End case 
+If ($NumReservations>0)
+If ($NumAgreements>0)//If there were other Agreements
+If ($NumReservations=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumReservations)+" "+Get localized string("Reservation")
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumReservations)+" "+Get localized string("Reservations")
+End if 
+Else 
+If ($NumReservations=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Reservation")
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Reservations")
+End if 
+End if 
+End if 
+Else //It's a Reservation
+Case of 
+: ($NumReservations=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Other Reservation")
+: ($NumReservations>1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Other Reservations")
+End case 
+If ($NumAgreements>0)
+If ($NumReservations>0)
+If ($NumAgreements=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumAgreements)+" "+Get localized string("Agreement")
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumAgreements)+" "+Get localized string("Agreements")
+End if 
+Else 
+If ($NumAgreements=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" Agreement"
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" Agreements"
+End if 
+End if 
+End if 
+End if 
+Else 
+OBJECT SET VISIBLE(*;"OtherAgreeReserve@";False)
+End if 
+
+//29/07/13 DAM Added to use old add/delete system
+If ([Facility]TransferWizard)
+OBJECT SET VISIBLE(bSelect;False)
+OBJECT SET VISIBLE(bDel;False)
+OBJECT SET VISIBLE(bSelectUnit;True)
+OBJECT SET VISIBLE(bRemoveUnit;True)
+Else 
+OBJECT SET VISIBLE(bSelectUnit;False)
+OBJECT SET VISIBLE(bRemoveUnit;False)
+OBJECT SET VISIBLE(bSelect;True)
+OBJECT SET VISIBLE(bDel;True)
+End if 
+
+If ([Facility]TransWebURL#"")
+OBJECT SET VISIBLE(*;"bTransWebURL";True)
+End if 
+If ([Facility]InvStatement#0)
+OBJECT SET VISIBLE(*;"bReemailInvoice";True)
+OBJECT SET VISIBLE(*;"bReprintInvoice";True)
+Else 
+OBJECT SET VISIBLE(*;"bReemailInvoice";False)
+OBJECT SET VISIBLE(*;"bReprintInvoice";False)
+End if 
+If (PermissionsControl (200;False)=False)
+OBJECT SET ENTERABLE([Unit]InsureValue;False)
+OBJECT SET ENTERABLE([Unit]InsureCertNo;False)
+End if 
+If (PermissionsControl (201;False)=False)
+OBJECT SET ENTERABLE([Agreement]InsureValue;False)
+OBJECT SET ENTERABLE([Agreement]InsureCertNo;False)
+OBJECT SET ENTERABLE(vOthInsurance;False)
+End if 
+If (PermissionsControl (199;False)=False)
+OBJECT SET ENTERABLE([Unit]Deposit;False)
+OBJECT SET ENTERABLE([Agreement]DepositAmt;False)
+OBJECT SET ENTERABLE(vOthDeposit;False)
+End if 
+If (PermissionsControl (209;False)=False)
+OBJECT SET ENTERABLE([Agreement]MthsAdv;False)
+End if 
+If ((PermissionsControl (220;False)=False) & ([Agreement]ActiveAgreemt=False) & (<>sFacility="KE@") & (Substring([Agreement]AgreeNo;1;1)#"#"))//10282
+OBJECT SET ENTERABLE([Customer]CustomerName;False)
+//OBJECT SET ENTERABLE(bEditCust;False)
+OBJECT SET VISIBLE(bEditCust;False)
+End if 
+CLEAR SET("NumOtherAgreements")
+CLEAR SET("NumOtherReservations")
+LoadGradients 
+LoadBackground 
+SetFormats 
+vStateCounty:=<>tStateCountry
+vPostCode:=<>tPostCode
+If ([Facility]Country="US")
+OBJECT SET VISIBLE(*;"GetMailLabel";True)
+End if 
+vCountyState:=<>tCountyState
+bChange:=False
+bNewChange:=False
+bDateChange:=False
+
+If (Length([Agreement]RAgreeNo)>5)
+SetFacility (False;Substring([Agreement]RAgreeNo;1;5))//Existing Agreement
+Else 
+SetFacility (False;<>sFacility)//New Agreement
+End if 
+vbUpdateGate:=False
+RELATE ONE([Agreement]CustomerCode)//Moved from above?? (before) SDD 27/8/93
+
+//12/11/14 DAM Moved to check the customer record when it is selected
+If ([Customer]Delinquent=True)
+vDelinquent:=Get localized string("Delinquent")
+Else 
+vDelinquent:=""
+End if 
+
+vCCNoToDecrypt:=""
+
+//If ([Customer]CCNo#"")
+//vCCNoToDecrypt:=Tokenizer ([Customer]CCNo;False)
+//End if 
+
+
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+
+$CustCharge:=Sum([Trxs]TotAmt)
+
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+[Customer]Balance:=Round($CustCharge-Sum([Trxs]TotAmt);2)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+
+$AgreeCharge:=Sum([Trxs]TotAmt)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+[Agreement]BalanceOwing:=Round($AgreeCharge-Sum([Trxs]TotAmt);2)
+// 19/06/13 DAM added vRecalc:=True as the above line is breaking customer's balance if there are more than one agreement
+vRecalc:=True
+vrCustBalance:=[Customer]Balance
+REDRAW(vrCustBalance)
+
+If (<>sProduct="M@")
+OBJECT SET VISIBLE(bCustomerSend;False)
+End if 
+Case of 
+: (<>sProduct="@B")
+varm1:=Get localized string("Arrival Date")+":"
+varm2:=Get localized string("Anticipated Departure")+":"
+varm3:=Get localized string("Use this screen to manage berths & other recurring charges on this customers agreement.")
+varm4:=Get localized string("Berths")+"..."
+varm5:=Get localized string("Use this screen to remove customer out of all berths on this agreement.")
+varm6:=Get localized string("Departures")
+varm7:=Get localized string("Departure Details")+"..."
+varm8:=Get localized string("Departure notice given")+":"
+varm9:=Get localized string("Expected Departure date")+":"
+varm10:=Get localized string("Reason for Departure")+":"
+varm11:=Get localized string("Note: The Departure Date is before the Last Bill Date for this agreement. For the refund calculation to be correct, please go back to the Transactions tab, click on the Undo Last Charges button and select the Undo Last Charges option - then return to "+"this screen to do the Departure Calculation.")
+varm12:=Get localized string("Departure calculation")+":"
+varm13:=Get localized string("Initiate Departure procedure")+"..."
+varm14:=Get localized string("Departure summary")+":"
+varm15:=Get localized string("Use these icons to add / delete berths")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Berth")
+varm18:=Get localized string("Total Berths")+":"
+vArm19:=Get localized string("Berths")+":"
+vArm20:=Get localized string("Expected Departure Time")
+OBJECT SET TITLE(bOut;Get localized string("Create Transactions & Depart"))
+: (<>sProduct="@R")
+varm1:=Get localized string("Rental Date")+":"
+varm2:=Get localized string("Anticipated Return")+":"
+varm3:=Get localized string("Use this screen to manage appliances & other recurring charges on this customers agreement.")
+varm4:=Get localized string("Appliances")+"..."
+varm5:=Get localized string("Use this screen to return all customers  appliances on this agreement.")
+varm6:=Get localized string("Returns")
+varm7:=Get localized string("Return Details")+"..."
+varm8:=Get localized string("Return notice given")+":"
+varm9:=Get localized string("Expected Return date")+":"
+varm10:=Get localized string("Reason for Return")+":"
+varm11:=Get localized string("Note: The Return Date is before the Last Bill Date for this agreement. For the refund calculation to be correct, please go back to the Transactions tab, click on the Undo Last Charges button and select the Undo Last Charges option - then return to thi"+"s screen to do the Return Calculation.")
+varm12:=Get localized string("Return calculation")+":"
+varm13:=Get localized string("Initiate Returns procedure")+"..."
+varm14:=Get localized string("Return summary")+":"
+varm15:=Get localized string("Use these icons to add / delete appliances")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Appliance")
+varm18:=Get localized string("Total Appliances")+":"
+vArm19:=Get localized string("Appliance")+":"
+OBJECT SET TITLE(bOut;Get localized string("Create Transactions & Return Appliance"))
+vArm20:=Get localized string("Expected Return Time")
+: (<>sFacility="ST@")
+OBJECT MOVE(vCount;60;0;0;0)
+varm1:=Get localized string("New Support Date")+":"
+varm2:=Get localized string("Ant Support Removal")+":"
+varm3:=Get localized string("Use this screen to manage support plans & other recurring charges on this customers agreement.")
+varm4:=Get localized string("Support Plans")+"..."
+varm5:=Get localized string("Use this screen to remove all support for this customer in all support plans on this agreement.")
+varm6:=Get localized string("Removal")
+varm7:=Get localized string("Support Removal Details")+"..."
+varm8:=Get localized string("Removal notice given")+":"
+varm9:=Get localized string("Expected Support Removal date")+":"
+varm10:=Get localized string("Reason for Removal")+":"
+varm11:=Get localized string("The Support Removal Date")
+varm12:=Get localized string("Support Removal calculation")+":"
+varm13:=Get localized string("Initiate Support Removal")+"..."
+varm14:=Get localized string("Support Removal summary")+":"
+varm15:=Get localized string("Use these icons to add / delete support plans")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Support Plan")
+varm18:=Get localized string("Total Support Plans")+":"
+vArm19:=Get localized string("Support Plans")+":"
+OBJECT SET TITLE(bOut;Get localized string("Create Transactions & Remove Support"))
+vArm20:=Get localized string("Expected Removal Time")
+: (<>sProduct="@C")
+varm1:=Get localized string("Move In Date")+":"
+varm2:=Get localized string("Anticipated Move Out")+":"
+varm3:=Get localized string("Use this screen to manage spaces & other recurring charges on this customers agreement.")
+varm4:=Get localized string("Spaces Occupied")+"..."
+varm5:=Get localized string("Use this screen to move this customer out of all spaces on this agreement.")
+varm6:=Get localized string("Move Out")
+varm7:=Get localized string("Move Out Details")+"..."
+varm8:=Get localized string("Move Out notice given")+":"
+varm9:=Get localized string("Expected Move Out date")+":"
+varm10:=Get localized string("Reason for Move Out")+":"
+varm11:=Get localized string("Note: The Move Out Date is before the Last Bill Date for this agreement. For the refund calculation to be correct, please go back to the Transactions tab, click on the Undo Last Charges button and select the Undo Last Charges option - then return to t"+"his screen to do the Move Out Calculation.")
+varm12:=Get localized string("Move Out calculation")+":"
+varm13:=Get localized string("Initiate Move Out procedure")+"..."
+varm14:=Get localized string("Move Out summary")+":"
+varm15:=Get localized string("Use these icons to add / delete spaces")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Space")
+varm18:=Get localized string("Total Spaces")+":"
+vArm19:=Get localized string("Spaces1")+":"
+vArm20:=Get localized string("Expected Move Out Time")
+Else 
+varm1:=Get localized string("Move In Date")+":"
+varm2:=Get localized string("Anticipated Move Out")+":"
+varm3:=Get localized string("Use this screen to manage units & other recurring charges on this customers agreement.")
+varm4:=Get localized string("Units Occupied")+"..."
+varm5:=Get localized string("Use this screen to move this customer out of all units on this agreement.")
+varm6:=Get localized string("Move Out")
+varm7:=Get localized string("Move Out Details")+"..."
+varm8:=Get localized string("Move Out notice given")+":"
+varm9:=Get localized string("Expected Move Out date")+":"
+varm10:=Get localized string("Reason for Move Out")+":"
+varm11:=Get localized string("Note: The Move Out Date is before the Last Bill Date for this agreement. For the refund calculation to be correct, please go back to the Transactions tab, click on the Undo Last Charges button and select the Undo Last Charges option - then return to t"+"his screen to do the Move Out Calculation.")
+varm12:=Get localized string("Move Out calculation")+":"
+varm13:=Get localized string("Initiate Move Out procedure")+"..."
+varm14:=Get localized string("Move Out summary")+":"
+varm15:=Get localized string("Use these icons to add / delete units")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Unit")
+varm18:=Get localized string("Total Units")+":"
+vArm19:=Get localized string("Units1")+":"
+vArm20:=Get localized string("Expected Move Out Time")+":"
+End case 
+
+//Check whether Bluemoon is installed - if it is, enable the Bluemoon export button
+$Err:=sys_GetRegText (GR_HKEY_LOCAL_MACHINE;"SOFTWARE\\Blue Moon\\TMSA";"Main Path";$regProg)
+If ($regProg#"")
+OBJECT SET VISIBLE(btnExpBlue;True)
+End if 
+
+//If ([Facility]Country=1)
+//SET VISIBLE(*;"Field6";False)
+//SET VISIBLE(*;"vBank@";True)
+//End if 
+//If ([Facility]Country#1)
+//SET VISIBLE(*;"Field6";True)
+//SET VISIBLE(*;"vBank@";False)
+//SET VISIBLE(*;"CustBank@";True)
+//Else 
+//SET VISIBLE(*;"Field6";False)
+//SET VISIBLE(*;"vBank@";True)
+//SET VISIBLE(*;"CustBank@";False)
+//End if 
+//If ([Facility]Country#0)
+//SET VISIBLE(*;"@BSB@";False)
+//SET VISIBLE(*;"@AUBA";False)
+//SET VISIBLE(*;"Text22";False)
+//Else 
+//SET VISIBLE(*;"@BSB@";True)
+//SET VISIBLE(*;"@AUBA@";True)
+//SET VISIBLE(*;"Field31";False)
+//SET VISIBLE(*;"Text22";False)
+//SET VISIBLE(*;"@CustBank@";False)
+//End if 
+
+vtAlertNote:=[Customer]Notes
+VisibilityCCInfo 
+VisibiltyBankInfo 
+
+$DDMerchant:=GetTextNo ([Facility]DDAccountDetails;6;",")
+If ($DDMerchant="EziDebit")
+If ([Customer]DDProfileID#"") & ([Customer]DDPaymentProfileID#"")
+vEziDDStatus:=Get localized string("Active")
+OBJECT SET ENABLED(bEdit1;True)
+OBJECT SET ENABLED(bDel1;True)
+OBJECT SET ENABLED(bNew1;False)
+Else 
+vEziDDStatus:=Get localized string("Inactive")
+OBJECT SET ENABLED(bNew1;True)
+OBJECT SET ENABLED(bEdit1;False)
+OBJECT SET ENABLED(bDel1;False)
+End if 
+If ([Customer]customerProfileID#"") & ([Customer]custPaymentProfID#"")
+
+vEziCCStatus:=Get localized string("Active")
+
+
+OBJECT SET ENABLED(*;"bEdit";True)
+OBJECT SET ENABLED(*;"bDelCC";True)
+OBJECT SET ENABLED(*;"bNew";False)
+Else 
+vEziCCStatus:=Get localized string("Inactive")
+OBJECT SET ENABLED(*;"bEdit";False)
+OBJECT SET ENABLED(*;"bDelCC";False)
+End if 
+End if 
+
+If ([Facility]Country#"AU") & ([Facility]Country#"NZ")
+OBJECT SET VISIBLE(*;"@AP";False)
+End if 
+If ([Facility]Country="TH")
+OBJECT SET VISIBLE(*;"@WHT";True)
+ARRAY TEXT(asWHT;4)
+asWHT{1}:="0%"
+asWHT{2}:="3%"
+asWHT{3}:="5%"
+asWHT{4}:="10%"
+If ([Customer]AccountType>0)
+asWHT:=Find in array(asWHT;String([Customer]AccountType)+"%")
+Else 
+asWHT:=1
+End if 
+Else 
+OBJECT SET VISIBLE(*;"@WHT";False)
+End if 
+vCustInfo2:=Get localized string("Use this screen to manage the secondary contact, marketing & military info for your primary contact.")
+If ([Facility]GateSysType=7) | ([Facility]GateSysType=8) | ([Facility]GateSysType=10) | ([Facility]GateSysType=11)
+OBJECT SET VISIBLE(*;"@Digigate";True)
+Else 
+OBJECT SET VISIBLE(*;"@Digigate";False)
+End if 
+If (Length([Facility]SMSAcctDetails)>5)
+OBJECT SET VISIBLE(*;"@SMS";False)
+Else 
+OBJECT SET ENABLED(bSend;False)
+End if 
+ARRAY LONGINT(aiNoticePlan;0)
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo#9)
+DISTINCT VALUES([Notices]NoticePlanNo;aiNoticePlan)
+aiNoticePlan:=Find in array(aiNoticePlan;[Agreement]NoticePlanNo)
+ARRAY TEXT(asShowHistory;4)
+asShowHistory{1}:=Get localized string("Unmatched + Most Recent Match")
+asShowHistory{2}:=Get localized string("Last Month")
+asShowHistory{3}:=Get localized string("Last 6 Months")
+asShowHistory{4}:=Get localized string("All Transactions")
+asShowHistory:=[Facility]ShowHistoryDefault
+If ([Facility]ShowHistoryDefault<1) | ([Facility]ShowHistoryDefault>4)
+asShowHistory:=1
+End if 
+If (<>tGateSys=False)
+OBJECT SET VISIBLE(vbUpdateGate;False)
+OBJECT SET VISIBLE(*;"@Upgate";False)
+End if 
+//If ([Facility]Country#0)
+//SET VISIBLE(*;"@BSB@";False)
+//SET VISIBLE(*;"@AUBA@";False)
+//End if 
+
+//20/02 DM Added for Digital Agreement 
+If ([Agreement]apDigiAgmtID="") | ([Agreement]apDigiAgmtID="20202020202020202020202020202020") | ([Agreement]apDigiAgmtID="00000000000000000000000000000000")
+OBJECT SET TITLE(*;"TextDigiAgreement";"")
+Else 
+OBJECT SET TITLE(*;"TextDigiAgreement";"*")
+End if 
+
+$Service:=Substring(GetTextNo ([Facility]MerchantDetails;1;",");1;20)
+bSwipe:=Num(GetTextNo ([Facility]MerchantDetails;7;","))
+If (bSwipe#1)
+OBJECT SET ENABLED(bLoadNew;False)
+End if 
+If (PermissionsControl (27;False)=False)
+OBJECT SET ENABLED(bEditCust;False)
+End if 
+If ([Agreement]AgreeNo="#@") & ($FromCreditSale=False)
+AlertMessage (Get localized string("This agreement is for an other credit sale.  Please choose Other Credit Sales from the Accounting menu to open this type of agreement."))
+CANCEL
+End if 
+
+If ([Agreement]AgreeNo#"#@") & ($FromCreditSale=True) & ([Agreement]AgreeNo#"")
+AlertMessage (Get localized string("This agreement is not an other credit sale.  Please choose Customers and Agreements from the Accounting menu to open this type of agreement."))
+CANCEL
+
+End if 
+
+vText:=[Agreement]AgreeNo+", "+[Agreement]CustomerCode+", "+[Customer]CustomerName+", "+[Agreement]UnitsOccup
+vName:=""
+vNoteHistBody:=""
+vLeg1:=""
+If (Length([Agreement]CustomerCode)>5)
+OBJECT SET ENTERABLE(vName;False)
+vName:=[Customer]CustomerName
+End if 
+
+vFirstName:=Get localized string("First Name")+":"
+
+//KSS SQL Stuff
+If (<>sFacility="KE@")
+OBJECT SET VISIBLE(*;"Picture11";False)
+OBJECT SET ENABLED(bTransferUnit;False)
+OBJECT SET VISIBLE(*;"@TypeNat";True)
+
+End if 
+
+If (<>tABNName="ABN Number")
+Case of 
+: (Length([Customer]ABNNo)=11)
+vPath:=Get localized string("ABN Number")+":"
+: (Length([Customer]ABNNo)=9)
+vPath:="ACN Number:"
+Else 
+vPath:="ABN/ACN Number:"
+End case 
+Else 
+vPath:=<>tABNName+":"
+End if 
+
+OBJECT SET FORMAT([Customer]ABNNo;<>tABNFormat)
+
+Case of 
+: ([Facility]Country="AU")
+OBJECT SET FILTER([Customer]BankAcct;"!0&"+Char(Double quote)+"0-9"+Char(Double quote))//+"###########")
+: ([Facility]Country="NZ")
+If ([Customer]BankAcct>"")
+vBank:=Substring([Customer]BankAcct;1;2)
+vBankBranch:=Substring([Customer]BankAcct;3;4)
+vBankAcct:=Substring([Customer]BankAcct;7;8)
+vBankSuffix:=Substring([Customer]BankAcct;15)
+Else 
+vBank:=""
+vBankBranch:=""
+vBankAcct:=""
+vBankSuffix:=""
+End if 
+: ([Facility]Country="GB")
+OBJECT SET FORMAT([Customer]BSB;"##-##-##")
+OBJECT SET FILTER([Customer]BankAcct;"!0&"+Char(Double quote)+"0-9"+Char(Double quote)+"##-##-## ########")
+Else 
+//Do Nothing
+End case 
+Case of 
+: ([Customer]PrimaryPhone=2)
+vPhone:=[Customer]PhoneBus
+: ([Customer]PrimaryPhone=3)
+vPhone:=[Customer]MobilePhone
+: ([Customer]PrimaryPhone=4)
+vPhone:=[Customer]MilCPhone
+Else 
+vPhone:=[Customer]PhonePrivate
+End case 
+vOriginalReceipt:=""
+vTransID:=""
+If ([Facility]PhoneFormat>"")
+OBJECT SET FORMAT([Customer]PhonePrivate;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]PhoneBus;[Facility]PhoneFormat)
+If ([Customer]PrimaryPhone#3) | (<>bFormatMobile=True)
+OBJECT SET FORMAT(vPhone;[Facility]PhoneFormat)
+Else 
+OBJECT SET FORMAT(vPhone;"")//SDD 18/4/10 This was @ symbol which displayed it in the field
+End if 
+OBJECT SET FORMAT([Customer]FaxNo;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]AlternatePhone;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]AltBusiness;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]AltFax;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]MilCPhone;[Facility]PhoneFormat)
+End if 
+If (<>bFormatMobile=True) & ([Facility]MobileFormat>"")
+OBJECT SET FORMAT([Customer]MobilePhone;[Facility]MobileFormat)
+OBJECT SET FORMAT([Customer]AltMobile;[Facility]MobileFormat)
+If ([Customer]PrimaryPhone=3)
+OBJECT SET FORMAT(vPhone;[Facility]MobileFormat)
+End if 
+End if 
+OBJECT SET VISIBLE([Agreement]TaxExempt;[Facility]AllowTaxExempt)//Added in 2.6.1
+OBJECT SET VISIBLE(*;"lblTaxExempt";[Facility]AllowTaxExempt)
+If ([Facility]ProductCode="SL")//Lite Version
+OBJECT SET VISIBLE(*;"@Lite";False)
+End if 
+If ([Facility]GateSysType=9) & ([Facility]VerifyGateDL=False)
+OBJECT SET VISIBLE(*;"Sentinel@";False)
+End if 
+
+If ([Facility]GateSysType=12)
+OBJECT SET VISIBLE(*;"Sentinel@";True)
+OBJECT SET VISIBLE(*;"@TimeZone";True)
+End if 
+If ([Facility]UseReceiptPrinter=False) & ([Facility]InvStatement=0)
+OBJECT SET ENABLED(bPrtRec;False)
+OBJECT SET ENABLED(bEmailReceipt;False)
+End if 
+//If ([Agreement]NewBillingPlan="")  `Added in 2.5.5  Removed in 4.0.2
+//SET VISIBLE([Agreement]NewBillingPlan;False)
+//Else 
+//SET VISIBLE([Agreement]NewBillingPlan;True)
+//End if 
+If (Locked([Customer])) | (Locked([Agreement]))
+If (Locked([Customer]))
+LOCKED BY([Customer];$i;$User;$Machine;$ProcName)
+AlertMessage (Get localized string("The")+" "+Get localized string("Customer Code")+":"+[Customer]CustomerCode+" "+Get localized string("is locked by process")+" "+$ProcName+" "+Get localized string("on computer")+" "+$User+" "+$Machine+".  "+Get localized string("Unable to view - please try again shortly."))
+End if 
+CANCEL//Don't allow viewing of locked record
+End if 
+If ([Agreement]AgreeNo="MISCL")
+AlertMessage (Get localized string("You cannot open the Cash Sale agreement record. Unable to view!"))
+CANCEL//Don't allow viewing of MISCL
+End if 
+If (PermissionsControl (29;False)=False)
+OBJECT SET ENTERABLE([Agreement]NextBillDate;False)
+End if 
+If (PermissionsControl (170;False)=False)
+OBJECT SET ENTERABLE([Agreement]DisableAutoIncr;False)
+End if 
+If (PermissionsControl (30;False)=False)
+OBJECT SET ENTERABLE([Agreement]LastBillDate;False)
+OBJECT SET ENTERABLE([Agreement]LastBillAmt;False)
+OBJECT SET ENTERABLE([Agreement]LastDiscAmt;False)
+OBJECT SET ENTERABLE([Agreement]LastBillPlan;False)
+End if 
+If (PermissionsControl (31;False)=False)
+OBJECT SET ENTERABLE([Agreement]DiscountAmt;False)
+OBJECT SET ENTERABLE([Agreement]RentAmt;False)
+OBJECT SET ENTERABLE([Agreement]RegularRent;False)
+OBJECT SET ENTERABLE([Agreement]NewRentAmt;False)
+OBJECT SET ENTERABLE([Agreement]NewDiscAmt;False)
+OBJECT SET ENTERABLE([Agreement]NewRentFrom;False)
+OBJECT SET ENTERABLE([Agreement]NewRegularRent;False)
+OBJECT SET ENTERABLE([Unit]RentedValue;False)
+OBJECT SET ENTERABLE([Unit]WeeklyRentedValue;False)
+OBJECT SET ENTERABLE([Unit]ExtraDisc;False)
+OBJECT SET ENTERABLE([Unit]NewRentAmt;False)
+OBJECT SET ENTERABLE([Unit]WeeklyNewRentAmt;False)
+OBJECT SET ENTERABLE([Unit]IncreaseFrom;False)
+If (Old([Agreement]MoveIn)#!00-00-00!)
+OBJECT SET ENTERABLE([Agreement]MoveIn;False)
+End if 
+End if 
+If (PermissionsControl (32;False)=False)
+OBJECT SET ENTERABLE([Agreement]LateCycleStDate;False)
+End if 
+If (PermissionsControl (33;False)=False)
+OBJECT SET ENTERABLE([Agreement]InsureExpire;False)
+OBJECT SET ENTERABLE([Agreement]InsureCommence;False)
+End if 
+If (PermissionsControl (34;False)=False)
+OBJECT SET ENTERABLE(vAmt1;False)
+OBJECT SET ENTERABLE(vAmt2;False)
+OBJECT SET ENTERABLE(vAmt3;False)
+OBJECT SET ENTERABLE(vAmt4;False)
+OBJECT SET ENTERABLE(vAmt5;False)
+End if 
+If (PermissionsControl (35;False)=False)
+OBJECT SET ENTERABLE([Agreement]LastRentIncrDate;False)
+End if 
+If ([Facility]PhotoCompression<0)
+[Facility]PhotoCompression:=[Facility]PhotoCompression*-1
+End if 
+Case of 
+: ([Facility]PhotoCompression<=1000) & ([Facility]PhotoCompression>804)
+OBJECT SET VISIBLE(*;"TextOff";True)
+: ([Facility]PhotoCompression<=804) & ([Facility]PhotoCompression>608)
+OBJECT SET VISIBLE(*;"Text25%";True)
+: ([Facility]PhotoCompression<=608) & ([Facility]PhotoCompression>412)
+OBJECT SET VISIBLE(*;"Text50%";True)
+: ([Facility]PhotoCompression<=412) & ([Facility]PhotoCompression>216)
+OBJECT SET VISIBLE(*;"Text75%";True)
+: ([Facility]PhotoCompression<=216) & ([Facility]PhotoCompression>=0)
+OBJECT SET VISIBLE(*;"Text100%";True)
+Else 
+//Do Nothing
+End case 
+If ([Facility]Country="US")
+Case of 
+: ([Facility]InsuranceAgentType=1)
+Case of 
+: ([Facility]State="GA") | ([Facility]State="NC") | ([Facility]State="NM")
+ARRAY TEXT(atInsuranceRates;8)
+atInsuranceRates{1}:=Get localized string("None")
+atInsuranceRates{2}:="2,500"
+atInsuranceRates{3}:="5,000"
+atInsuranceRates{4}:="7,500"
+atInsuranceRates{5}:="10,000"
+atInsuranceRates{6}:="15,000"
+atInsuranceRates{7}:="20,000"
+atInsuranceRates{8}:="25,000"
+Case of 
+: ([Agreement]InsureValue=0)
+atInsuranceRates:=1
+: ([Agreement]InsureValue=2500)
+atInsuranceRates:=2
+: ([Agreement]InsureValue=5000)
+atInsuranceRates:=3
+: ([Agreement]InsureValue=7500)
+atInsuranceRates:=4
+: ([Agreement]InsureValue=10000)
+atInsuranceRates:=5
+: ([Agreement]InsureValue=15000)
+atInsuranceRates:=6
+: ([Agreement]InsureValue=20000)
+atInsuranceRates:=7
+: ([Agreement]InsureValue=25000)
+atInsuranceRates:=8
+Else 
+atInsuranceRates:=1
+End case 
+Else 
+ARRAY TEXT(atInsuranceRates;8)
+atInsuranceRates{1}:=Get localized string("None")
+If (Current date<!2012-02-01!)
+atInsuranceRates{2}:="2,000"
+Else 
+atInsuranceRates{2}:="2,500"
+End if 
+atInsuranceRates{3}:="3,000"
+atInsuranceRates{4}:="5,000"
+atInsuranceRates{5}:="7,500"
+atInsuranceRates{6}:="10,000"
+atInsuranceRates{7}:="15,000"
+atInsuranceRates{8}:="20,000"
+Case of 
+: ([Agreement]InsureValue=0)
+atInsuranceRates:=1
+: ([Agreement]InsureValue=2000)
+If (Current date>=!2012-02-01!)
+INSERT IN ARRAY(atInsuranceRates;2)
+atInsuranceRates{2}:="2,000"
+End if 
+atInsuranceRates:=2
+: ([Agreement]InsureValue=2500)
+atInsuranceRates:=2
+: ([Agreement]InsureValue=3000)
+atInsuranceRates:=3
+: ([Agreement]InsureValue=5000)
+atInsuranceRates:=4
+: ([Agreement]InsureValue=7500)
+atInsuranceRates:=5
+: ([Agreement]InsureValue=10000)
+atInsuranceRates:=6
+: ([Agreement]InsureValue=15000)
+atInsuranceRates:=7
+: ([Agreement]InsureValue=20000)
+atInsuranceRates:=8
+Else 
+atInsuranceRates:=1
+End case 
+End case 
+: ([Facility]InsuranceAgentType=2)
+ARRAY TEXT(atInsuranceRates;1)
+atInsuranceRates{1}:=Get localized string("None")
+atInsuranceRates:=1
+OBJECT SET VISIBLE(*;"InsuranceRates";False)
+OBJECT SET VISIBLE(*;"PlanI@";False)
+OBJECT SET VISIBLE(*;"@Insurance";False)
+Else 
+ARRAY TEXT(atInsuranceRates;1)
+atInsuranceRates{1}:=Get localized string("None")
+atInsuranceRates:=1
+OBJECT SET VISIBLE(*;"InsuranceRates";False)
+OBJECT SET VISIBLE(*;"PlanI@";False)
+OBJECT SET VISIBLE(bPrintIns;False)
+OBJECT SET VISIBLE(*;"@minico";False)
+End case 
+Else 
+ARRAY TEXT(atInsuranceRates;1)
+atInsuranceRates{1}:=Get localized string("None")
+atInsuranceRates:=1
+OBJECT SET VISIBLE(*;"InsuranceRates";False)
+OBJECT SET VISIBLE(*;"PlanI@";False)
+OBJECT SET VISIBLE(bPrintIns;False)
+OBJECT SET VISIBLE(*;"@minico";False)
+End if 
+ARRAY TEXT(atLocked;7)
+atLocked{1}:=Get localized string("Access Allowed")
+If ([Facility]GateSysType=0)
+atLocked{2}:=Get localized string("Locked Status")
+atLocked{4}:=Get localized string("Over-Locked & Locked Status")
+atLocked{6}:=Get localized string("Customer lock replaced & Locked Status")
+Else 
+atLocked{2}:=Get localized string("Suspended at Gate")
+atLocked{4}:=Get localized string("Over-Locked & Suspended at Gate")
+atLocked{6}:=Get localized string("Customer lock replaced & Suspended at Gate")
+End if 
+atLocked{3}:=Get localized string("Over-Locked")
+atLocked{5}:=Get localized string("Customer lock replaced")
+atLocked{7}:=Get localized string("Remove non-Customer lock")
+atLocked:=[Customer]Overdue+1
+vBefp4:=True
+vDownload:=False
+vPrevRegRent:=0
+tBoolean:=False//This is set if a MoveOut occurs
+bHistory:=0
+bLastHist:=0
+vLastHist:=1
+bShow:=0
+//SetFacility   Set above
+QUERY([PhotosCards];[PhotosCards]Code=[Agreement]CustomerCode)
+ARRAY LONGINT(aiCheck;0)
+SELECTION TO ARRAY([PhotosCards]SeqNo;aiCheck)
+SORT ARRAY(aiCheck;>)
+QUERY SELECTION([PhotosCards];[PhotosCards]Size>0)
+If (<>tGateSys)
+OBJECT SET FILTER([Customer]GatePIN;"&9")
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+vOthTotal:=Sum([OtherChgs]Amount)
+vNewOthTotal:=Sum([OtherChgs]NewAmount)
+
+vOldUser:=0
+If ([Agreement]AgreeNo="")
+$j:=1
+$Continue:=False
+If ($FromCreditSale)
+If (Not(Semaphore("<>bNextCreditSaleNo";1800)))
+$Continue:=True
+End if 
+Else 
+If (Not(Semaphore("<>bNextAgreeNo";1800)))
+$Continue:=True
+End if 
+End if 
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+If ($FromCreditSale)
+GET PROCESS VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+Else 
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+End if 
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+If ($FromCreditSale)
+If (<>aiNextCreditSaleNo{$arraypos}>[Facility]NextCreditSaleNo)
+//ConfirmTwo (Get localized string("It appears the next credit sale number of")+" "+String([Facility]NextCreditSaleNo;"00000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//If (OK=1)
+[Agreement]AgreeNo:="#"+String(<>aiNextCreditSaleNo{$arraypos};"00000000")
+[Facility]NextCreditSaleNo:=<>aiNextCreditSaleNo{$arraypos}+1
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+//Else 
+//[Agreement]AgreeNo:="#"+String([Facility]NextCreditSaleNo;"00000000")
+//[Facility]NextCreditSaleNo:=[Facility]NextCreditSaleNo+1
+//<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+//End if 
+Else 
+[Agreement]AgreeNo:="#"+String([Facility]NextCreditSaleNo;"00000000")
+[Facility]NextCreditSaleNo:=[Facility]NextCreditSaleNo+1
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+End if 
+If (vBuyBack=True)
+[Agreement]ActiveAgreemt:=False
+[Agreement]BB:=True
+End if 
+vOldUser:=[Facility]NextCreditSaleNo
+Else 
+If (<>aiNextAgreeNo{$arraypos}>[Facility]NextAgreeNo)
+//ConfirmTwo (Get localized string("It appears the next agreement number of")+" "+String([Facility]NextAgreeNo;"000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//If (OK=1)
+[Agreement]AgreeNo:=String(<>aiNextAgreeNo{$arraypos};"000000000")
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$arraypos}+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+//Else 
+//[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+//[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+//<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+//End if 
+Else 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+vOldUser:=[Facility]NextAgreeNo
+End if 
+$Key:=<>sFacility+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+If (Application type=4D Remote mode)
+If ($FromCreditSale)
+VARIABLE TO VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+Else 
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+End if 
+End if 
+Else 
+If ($FromCreditSale)
+AlertMessage ("Could not get next credit sale number")
+Else 
+AlertMessage ("Could not get next agreement number")
+End if 
+Repeat 
+If ($FromCreditSale)
+[Agreement]AgreeNo:="#"+String([Facility]NextCreditSaleNo;"00000000")
+[Facility]NextCreditSaleNo:=[Facility]NextCreditSaleNo+1
+If (vBuyBack=True)
+[Agreement]ActiveAgreemt:=False
+[Agreement]BB:=True
+End if 
+vOldUser:=[Facility]NextCreditSaleNo
+Else 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+vOldUser:=[Facility]NextAgreeNo
+End if 
+$Key:=<>sFacility+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+End if 
+If ($Continue)
+If ($FromCreditSale)
+CLEAR SEMAPHORE("<>bNextCreditSaleNo")
+Else 
+CLEAR SEMAPHORE("<>bNextAgreeNo")
+End if 
+End if 
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+If (<>vSubletUnitNo>"")
+CREATE RECORD([UnitAgree])
+[UnitAgree]AgreeNo:=[Agreement]RAgreeNo
+[UnitAgree]UnitNo:=<>vSubletUnitNo
+[UnitAgree]Percentage:=<>vSubletPercentage
+[UnitAgree]OwnAgreeNo:=<>vSubletOwnAgreeNo
+[UnitAgree]MoveIn:=Current date
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+[UnitAgree]RentedValue:=[UnitType]MonthlyRate
+[UnitAgree]NewRentAmt:=[UnitType]MonthlyRate
+[UnitAgree]WeeklyRentedValue:=[UnitType]WeeklyRate
+[UnitAgree]WeeklyNewRentAmt:=[UnitType]WeeklyRate
+[UnitAgree]DailyRentedValue:=[UnitType]DailyRate
+[UnitAgree]DailyNewRentAmt:=[UnitType]DailyRate
+[UnitAgree]ExtraDisc:=0
+[UnitAgree]DepositAmt:=[UnitType]DepositAmt
+<>vSubletOwnAgreeNo:=""
+<>vSubletPercentage:=0
+<>vSubletUnitNo:=""
+SAVE RECORD([UnitAgree])
+Else 
+
+End if 
+[Agreement]BillUtilities:=<>tUtilities
+vOldAgreeN:=[Agreement]AgreeNo
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]RefDateField=11;*)
+QUERY([Notices]; & ;[Notices]DaysAfter<0)
+If (Records in selection([Notices])>0)
+[Agreement]NoticeDaysPrior:=Abs([Notices]DaysAfter)
+End if 
+End if 
+If ([Agreement]UserLogin="")
+[Agreement]UserLogin:=<>sCurrentUser
+End if 
+//If ([Agreement]MoveIn=[Agreement]NextBillDate)
+//bAdd:=1
+//End if 
+RELATE ONE([Agreement]BillingPlanCode)
+$Casual:=[BillPlan]CasualBilling
+OBJECT SET VISIBLE(btnCasual;$Casual)
+ARRAY TEXT(asBillingPlan;0)
+ARRAY TEXT(asBillingDesc;0)
+QUERY([BillPlan];[BillPlan]Code=Substring([Agreement]RAgreeNo;1;5)+"@";*)
+If ((bAdd=0) & (([Agreement]MoveIn#[Agreement]NextBillDate) | (([Facility]BillonFirst=True) & (GetDate (1;Month of([Agreement]MoveIn)+1;Year of([Agreement]MoveIn))#[Agreement]NextBillDate)))) & (PermissionsControl (184;False)=False)
+QUERY([BillPlan]; & ;[BillPlan]DiscOnlyMoveIn=False;*)
+End if 
+If ((bAdd=0) & (([Agreement]MoveIn#[Agreement]NextBillDate) | (([Facility]BillonFirst=True) & (GetDate (1;Month of([Agreement]MoveIn)+1;Year of([Agreement]MoveIn))#[Agreement]NextBillDate))))
+QUERY([BillPlan]; & ;[BillPlan]CasualBilling=$Casual;*)
+End if 
+QUERY([BillPlan]; & ;[BillPlan]Inactive=False)
+If ($FromCreditSale)
+QUERY SELECTION([BillPlan];[BillPlan]CasualBilling=False)
+End if 
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+SELECTION TO ARRAY([BillPlan]Code;asBillingPlan)
+SELECTION TO ARRAY([BillPlan]Description;asBillingDesc)
+
+If ((bAdd=0) & (([Agreement]MoveIn#[Agreement]NextBillDate) | (([Facility]BillonFirst=True) & (GetDate (1;Month of([Agreement]MoveIn)+1;Year of([Agreement]MoveIn))#[Agreement]NextBillDate))))
+viNewAgree:=0
+Else 
+viNewAgree:=1
+End if 
+
+//ARRAY TEXT(asMerchPlan;0)
+//ARRAY TEXT(asMerchPlanDesc;0)
+//QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring([Agreement]RAgreeNo;1;5)+"@")
+//ORDER BY([MerchPlan];[MerchPlan]Priority;>)
+//SELECTION TO ARRAY([MerchPlan]MerchPlanID;asMerchPlan)
+//SELECTION TO ARRAY([MerchPlan]Description;asMerchPlanDesc)
+//INSERT ELEMENT(asMerchPlan;1)
+//INSERT ELEMENT(asMerchPlanDesc;1)
+//asMerchPlanDesc{1}:="None"
+
+//SDD 23/09/13 Similar to LoadAnlsArrays
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]DontShowBank=True)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;<)
+ARRAY TEXT(asChargesORC;0)
+ARRAY TEXT(asChargeDescORC;0)
+If (Records in selection([Analysis])>0)
+SELECTION TO ARRAY([Analysis]Code;asChargesORC;[Analysis]Description;asChargeDescORC)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([OtherChgs]))
+APPEND TO ARRAY(asChargesORC;[OtherChgs]AnalysisCode)
+RELATE ONE([OtherChgs]AnalysisCode)
+APPEND TO ARRAY(asChargeDescORC;[Analysis]Description)
+NEXT RECORD([OtherChgs])
+End for 
+Else 
+asChargesORC:=asCharges
+asChargeDescORC:=asChargeDesc
+End if 
+
+If ([Facility]Country="US")
+ARRAY TEXT(asAccountType;3)
+asAccountType{1}:=Get localized string("Checking")
+asAccountType{2}:=Get localized string("Savings")
+asAccountType{3}:=Get localized string("Business Checking")
+asAccountType:=[Customer]AccountType
+End if 
+
+ARRAY TEXT(asAutoPayType;4)
+asAutoPayType{1}:=Get localized string("Bank Authority")
+asAutoPayType{2}:=Get localized string("Auto Credit Card")
+asAutoPayType{3}:=Get localized string("Auto Direct Debit")
+asAutoPayType{4}:=Get localized string("Direct Debit")
+
+
+
+If ([Agreement]AutoPay=False)
+OBJECT SET VISIBLE(*;"@APTT";False)
+End if 
+If ([Facility]MerchantDetails>"") & ([Facility]MerchantDetails#"None@") & (GetTextNo ([Facility]MerchantDetails;3;",")>"") & (GetTextNo ([Facility]MerchantDetails;4;",")>"")
+Else 
+
+//FB11185
+//$token:=""
+//$token:=Tokenizer ([Customer]CCNo;False)
+//$token:=Replace string($token;Substring($token;1;Length($token)-4);"x"*(Length($token)-4))
+//$token:=Insert string($token;"-";5)
+//$token:=Insert string($token;"-";10)
+//$token:=Insert string($token;"-";15)
+//OBJECT SET TITLE(*;"tokencc";$token)
+//$token:=""
+//FB11185
+
+asAutoPayType{2}:=Get localized string("Auto CC Unavailable")
+End if 
+If ([Facility]DDAccountDetails>"")//& (GetTextNo ([Facility]DDAccountDetails;1;",")>"") & (GetTextNo ([Facility]DDAccountDetails;2;",")>"") & (GetTextNo ([Facility]DDAccountDetails;3;",")>"")
+Else 
+asAutoPayType{3}:=Get localized string("Auto DD Unavailable")
+End if 
+If (GetTextNo ([Facility]DirectDebitOption;1;",")#"1")
+asAutoPayType{4}:="DD Export Unavailable"
+End if 
+asAutoPayType:=[Agreement]AutoPayType
+If (bAdd=1)
+If ($FromCreditSale=False)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+[Agreement]DepositAmt:=[Analysis]DfltSellAmt
+End if 
+[Agreement]ActiveAgreemt:=True
+OBJECT SET ENTERABLE([Customer]AllowAccessArrs;False)
+OBJECT SET ENTERABLE([Customer]Overdue;False)
+OBJECT SET ENTERABLE(atLocked;False)
+Else 
+OBJECT SET ENTERABLE([Agreement]CustomerCode;False)
+GOTO OBJECT([Customer]Notes)
+End if 
+aPageNo:=1
+vLastPage:=1
+LoadPictures 
+RELATE MANY([Agreement]RAgreeNo)
+//05/02/13 DAM Added relate one for Billing plan as previoulsy the there were no records in selection
+RELATE ONE([Agreement]BillingPlanCode)
+ORDER BY([Letters];[Letters]DateSent;<)
+//25/03/14 DAM Added for Boat
+If ([Agreement]BillingPlanCode="")
+[Agreement]BillingPlanCode:=asBillingPlan{1}
+RELATE ONE([Agreement]BillingPlanCode)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+aiNoticePlan:=Find in array(aiNoticePlan;[Agreement]NoticePlanNo)
+End if 
+viMthsAdv:=[Agreement]MthsAdv+[BillPlan]FreePeriods
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+$viBillingPlan:=Find in array(asBillingPlan;[Agreement]BillingPlanCode)
+If ($viBillingPlan<0)
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+If ([BillPlan]SortOrder<=Size of array(asBillingPlan))
+INSERT IN ARRAY(asBillingPlan;[BillPlan]SortOrder)
+INSERT IN ARRAY(asBillingDesc;[BillPlan]SortOrder)
+asBillingPlan{[BillPlan]SortOrder}:=[BillPlan]Code
+asBillingDesc{[BillPlan]SortOrder}:=[BillPlan]Description
+Else 
+INSERT IN ARRAY(asBillingPlan;Size of array(asBillingPlan)+1)
+INSERT IN ARRAY(asBillingDesc;Size of array(asBillingPlan)+1)
+asBillingPlan{Size of array(asBillingPlan)}:=[BillPlan]Code
+asBillingDesc{Size of array(asBillingPlan)}:=[BillPlan]Description
+End if 
+End if 
+asBillingPlan:=Find in array(asBillingPlan;[Agreement]BillingPlanCode)
+asBillingDesc:=asBillingPlan
+RELATE ONE([Agreement]BillingPlanCode)
+
+If ([BillPlan]PlanPeriod="Week")
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied weekly")
+Else 
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied monthly")
+End if 
+
+OBJECT SET VISIBLE(vtPeriodicBilling;[BillPlan]PeriodicBilling)
+
+FIRST RECORD([Unit])
+vTotal:=0
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([Unit])
+End for 
+For ($i;1;Records in selection([Unit]))
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]DailyRentedValue
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]WeeklyRentedValue
+Else 
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]RentedValue
+End case 
+NEXT RECORD([Unit])
+End for 
+vCount:=Records in selection([Unit])
+//SET VISIBLE(vCount;(vCount>2))
+If ([Agreement]ActiveAgreemt=True)
+
+OBJECT SET ENABLED(*;"btnSublet";True)
+
+OBJECT SET VISIBLE(*;"Subform9";False)
+[Agreement]AgreedDisc:=Round(vTotal-[Agreement]RegularRent;2)
+vActive:=Get localized string("Active")
+
+RELATE ONE([Agreement]BillingPlanCode)
+
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+End if 
+
+OBJECT SET VISIBLE(*;"Subform8";False)
+Else 
+vActive:=Get localized string("Non-Active")
+OBJECT SET ENABLED(*;"btnSublet";False)
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]MoveOut;>;[UnitHistory]MoveIn;>)
+OBJECT SET VISIBLE(*;"Subform1";False)
+OBJECT SET VISIBLE(*;"Subform9";False)
+OBJECT SET VISIBLE(*;"@Old";False)
+OBJECT SET VISIBLE(*;"RectangleBG";False)
+If (PermissionsControl (160;False)=False)
+OBJECT SET ENABLED(bEditCust;False)
+OBJECT SET ENTERABLE([Customer]CustomerName;False)
+OBJECT SET ENTERABLE([Customer]FirstName;False)
+OBJECT SET ENTERABLE([Customer]ABNNo;False)
+OBJECT SET ENTERABLE([Customer]MailAddress;False)
+OBJECT SET ENTERABLE([Customer]MailCity;False)
+OBJECT SET ENTERABLE([Customer]MailState;False)
+OBJECT SET ENTERABLE([Customer]MailPostZIPCode;False)
+OBJECT SET ENTERABLE(asMailCountries;False)
+OBJECT SET ENTERABLE([Customer]StreetAddress;False)
+OBJECT SET ENTERABLE([Customer]StreetCity;False)
+OBJECT SET ENTERABLE([Customer]StreetState;False)
+OBJECT SET ENTERABLE([Customer]StreetZIPCode;False)
+OBJECT SET ENTERABLE(asCountries;False)
+OBJECT SET ENTERABLE([Customer]PhonePrivate;False)
+OBJECT SET ENTERABLE([Customer]PhoneBus;False)
+OBJECT SET ENTERABLE([Customer]PhoneBusExt;False)
+OBJECT SET ENTERABLE([Customer]MobilePhone;False)
+OBJECT SET ENTERABLE([Customer]FaxNo;False)
+OBJECT SET ENTERABLE([Customer]Employer;False)
+OBJECT SET ENTERABLE([Customer]EmailAddress;False)
+OBJECT SET ENTERABLE([Customer]Custom1;False)
+OBJECT SET ENTERABLE([Customer]Custom2;False)
+OBJECT SET ENTERABLE([Customer]Custom3;False)
+OBJECT SET ENTERABLE([Customer]Custom4;False)
+OBJECT SET ENTERABLE([Customer]LicenceNo;False)
+OBJECT SET ENTERABLE([Customer]LicenseState;False)
+OBJECT SET ENTERABLE([Customer]Vehicle;False)
+OBJECT SET ENTERABLE([Customer]CarRego;False)
+OBJECT SET ENTERABLE([Customer]UserName;False)
+OBJECT SET ENTERABLE([Customer]AlternateName;False)
+OBJECT SET ENTERABLE([Customer]AlternateAddress;False)
+OBJECT SET ENTERABLE([Customer]AlternateCity;False)
+OBJECT SET ENTERABLE([Customer]AlternateState;False)
+OBJECT SET ENTERABLE([Customer]AlternateZIPCode;False)
+OBJECT SET ENTERABLE(asAltCountries;False)
+OBJECT SET ENTERABLE([Customer]AlternatePhone;False)
+OBJECT SET ENTERABLE([Customer]AltBusiness;False)
+OBJECT SET ENTERABLE([Customer]AltBusExt;False)
+OBJECT SET ENTERABLE([Customer]AltMobile;False)
+OBJECT SET ENTERABLE([Customer]AltFax;False)
+OBJECT SET ENTERABLE([Customer]AltEmail;False)
+OBJECT SET ENTERABLE([Customer]SecCustom1;False)
+OBJECT SET ENTERABLE([Customer]SecCustom2;False)
+OBJECT SET ENTERABLE([Customer]SecCustom3;False)
+OBJECT SET ENTERABLE([Customer]SecCustom4;False)
+
+OBJECT SET ENTERABLE([Customer]TerName;False)
+OBJECT SET ENTERABLE([Customer]TerAddress;False)
+OBJECT SET ENTERABLE([Customer]TerCity;False)
+OBJECT SET ENTERABLE([Customer]TerState;False)
+OBJECT SET ENTERABLE([Customer]TerPostCode;False)
+OBJECT SET ENTERABLE(asTerCountries;False)
+OBJECT SET ENTERABLE([Customer]TerPhone;False)
+OBJECT SET ENTERABLE([Customer]TerBusPhone;False)
+OBJECT SET ENTERABLE([Customer]TerBusExt;False)
+OBJECT SET ENTERABLE([Customer]TerMobile;False)
+OBJECT SET ENTERABLE([Customer]TerFax;False)
+OBJECT SET ENTERABLE([Customer]TerEmail;False)
+OBJECT SET ENTERABLE([Customer]TerCustom1;False)
+OBJECT SET ENTERABLE([Customer]TerCustom2;False)
+OBJECT SET ENTERABLE([Customer]TerCustom3;False)
+OBJECT SET ENTERABLE([Customer]TerCustom4;False)
+
+OBJECT SET ENTERABLE([Customer]QuadName;False)
+OBJECT SET ENTERABLE([Customer]QuadAddress;False)
+OBJECT SET ENTERABLE([Customer]QuadCity;False)
+OBJECT SET ENTERABLE([Customer]QuadState;False)
+OBJECT SET ENTERABLE([Customer]QuadPostcode;False)
+OBJECT SET ENTERABLE(asQuadCountries;False)
+OBJECT SET ENTERABLE([Customer]QuadPhone;False)
+OBJECT SET ENTERABLE([Customer]QuadBusPhone;False)
+OBJECT SET ENTERABLE([Customer]QuadBusExt;False)
+OBJECT SET ENTERABLE([Customer]QuadMobile;False)
+OBJECT SET ENTERABLE([Customer]QuadFax;False)
+OBJECT SET ENTERABLE([Customer]QuadEmail;False)
+OBJECT SET ENTERABLE([Customer]QuadCustom1;False)
+OBJECT SET ENTERABLE([Customer]QuadCustom2;False)
+OBJECT SET ENTERABLE([Customer]QuadCustom3;False)
+OBJECT SET ENTERABLE([Customer]QuadCustom4;False)
+
+OBJECT SET ENTERABLE(asList1;False)
+OBJECT SET ENTERABLE(asList2;False)
+OBJECT SET ENTERABLE(asList3;False)
+OBJECT SET ENTERABLE(asList4;False)
+OBJECT SET ENTERABLE([Customer]AltContact;False)
+OBJECT SET ENTERABLE([Customer]Military;False)
+OBJECT SET ENTERABLE([Customer]MilitaryBase;False)
+OBJECT SET ENTERABLE([Customer]MilCName;False)
+OBJECT SET ENTERABLE([Customer]MilCPhone;False)
+End if 
+End if 
+
+If ([Agreement]MoveIn=!00-00-00!)
+[Agreement]MoveIn:=Current date
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+[Agreement]PaidToDate:=[Agreement]MoveIn
+[Agreement]LastBillDate:=[Agreement]MoveIn
+End if 
+If ([Agreement]NextBillDate<[Agreement]MoveIn)
+[Agreement]NextBillDate:=[Agreement]MoveIn
+If ([Facility]BillonFirst)
+[Agreement]DaytoBill:=1
+[Agreement]NextBillDate:=GetDate (1;Month of([Agreement]MoveIn+30);Year of([Agreement]MoveIn+30))
+End if 
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+End if 
+
+If (bButton1#1)//& (OK#1) -- By Hamid 
+If ([Agreement]AlertNotesMsg) & (Length([Customer]Notes)>1)
+BEEP
+//Open window(100;100;500;415;0;"Alert Message")
+Open window((Screen width/2)-200;(Screen height/2)-158;(Screen width/2)+200;(Screen height/2)+158;4;Get localized string("Alert Message"))
+DIALOG([Customer];"AlertMessage")
+CLOSE WINDOW
+End if 
+End if 
+
+
+
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]BillNextRent=True)
+If (Records in selection([Notices])>0)
+vNoticeBefore:=Abs([Notices]DaysAfter)
+vSendtoAll:=[Notices]SendToAll
+vUseAgreementSend:=[Notices]UseAgrDaysPrior
+Else 
+vNoticeBefore:=0
+vSendtoAll:=False
+vUseAgreementSend:=False
+End if 
+asList1:=Find in array(asList1;[Customer]MarketSrce)
+If (asList1<0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MS";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]MarketSrce)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList1;[MarketingTypes]Description)
+asList1:=Find in array(asList1;[Customer]MarketSrce)
+Else 
+asList1:=0
+End if 
+End if 
+asList2:=Find in array(asList2;[Customer]CustType)
+If (asList2<0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]CustType)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList2;[MarketingTypes]Description)
+asList2:=Find in array(asList2;[Customer]CustType)
+Else 
+asList2:=0
+End if 
+End if 
+asList3:=Find in array(asList3;[Customer]BusType)
+If (asList3<0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="BT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]BusType)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList3;[MarketingTypes]Description)
+asList3:=Find in array(asList3;[Customer]BusType)
+Else 
+asList3:=0
+End if 
+End if 
+asList4:=Find in array(asList4;[Customer]ReasonRenting)
+If (asList4<0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MW";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]ReasonRenting)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList4;[MarketingTypes]Description)
+asList4:=Find in array(asList4;[Customer]ReasonRenting)
+Else 
+asList4:=0
+End if 
+End if 
+asList5:=Find in array(asList5;[Customer]ReasonMoveout)
+If (asList5<0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="RM";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]ReasonMoveout)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList5;[MarketingTypes]Description)
+asList5:=Find in array(asList5;[Customer]ReasonMoveout)
+Else 
+asList5:=0
+End if 
+End if 
+
+asListIDType:=Find in array(asListIDType;[Customer]IDType)
+If (asListIDType<0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="FI";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]IDType)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asListIDType;[MarketingTypes]Description)
+asListIDType:=Find in array(asListIDType;[Customer]IDType)
+Else 
+asListIDType:=0
+End if 
+End if 
+
+//Set Marketing dropdowns to "<None>" if there is no value entered
+If ([Customer]MarketSrce="")
+asList1:=1
+End if 
+If ([Customer]CustType="")
+asList2:=1
+End if 
+If ([Customer]BusType="")
+asList3:=1
+End if 
+If ([Customer]ReasonRenting="")
+asList4:=1
+End if 
+If ([Customer]ReasonMoveout="")
+asList5:=1
+End if 
+asNotesList:=1
+If ([Customer]IDType="")
+asListIDType:=1
+End if 
+
+QUERY([GateLog];[GateLog]CustCode=[Customer]CustomerCode;*)
+QUERY([GateLog]; & ;[GateLog]GateDate>=(Current date-31);*)
+QUERY([GateLog]; & ;[GateLog]GateKeyed#"GateOutput")
+ORDER BY([GateLog];[GateLog]GateDate;<;[GateLog]GateTime;<)
+If (Size of array(asList1)=0)
+OBJECT SET VISIBLE(asList1;False)
+OBJECT SET VISIBLE(*;"Text106";False)
+End if 
+If (Size of array(asList2)=0)
+OBJECT SET VISIBLE(asList2;False)
+OBJECT SET VISIBLE(*;"asList2Box";False)
+OBJECT SET VISIBLE(*;"Text107";False)
+OBJECT SET VISIBLE(*;"vCustom6";False)
+End if 
+If (Size of array(asList3)=0)
+OBJECT SET VISIBLE(asList3;False)
+OBJECT SET VISIBLE(*;"Text108";False)
+End if 
+If (Size of array(asList4)=0)
+OBJECT SET VISIBLE(asList4;False)
+OBJECT SET VISIBLE(*;"Text109";False)
+End if 
+
+If (Size of array(asNotesList)=0) | (Size of array(asNotesList)=1)
+OBJECT SET VISIBLE(asNotesList;False)
+OBJECT SET VISIBLE(*;"Text164";False)
+OBJECT SET VISIBLE(*;"textAsNotesSort";False)
+OBJECT SET VISIBLE(*;"Picture18";False)
+End if 
+START TRANSACTION
+$Found:=False
+If (vExisting>"")
+$Found:=True
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+vExisting)
+If (Records in selection([Unit])=0)
+AlertMessage (Get localized string("No such Unit number"))
+$Found:=False
+Else 
+If ([Unit]Vacant=False)
+If (<>sProduct#"@B")//By Hamid - 3/3/15 - 8525
+AlertMessage (Get localized string("Unit already occupied by Agreement")+" "+[Unit]AgreeNo)
+
+End if 
+$Found:=False
+End if 
+End if 
+SelectUnitA ($Found)
+End if 
+[Agreement]TriggerUpdate:=True
+[Customer]TriggerUpdate:=True
+RELATE ONE([Agreement]BillingPlanCode)
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([UnitAgree])=0)
+FIRST RECORD([Unit])
+For ($i;1;Records in selection([Unit]))
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]DailyRentedValue;2)
+: ([BillPlan]PlanPeriod="Week")
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]WeeklyRentedValue;2)
+: ([BillPlan]PlanPeriod="Day")
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]DailyRentedValue;2)
+Else 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]RentedValue;2)
+End case 
+If ([Unit]IncreaseFrom=!00-00-00!)
+[Unit]NewRentAmt:=[Unit]RentedValue
+[Unit]WeeklyNewRentAmt:=[Unit]WeeklyRentedValue
+[Unit]DailyNewRent:=[Unit]DailyRentedValue
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+FIRST RECORD([Unit])
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Agreement]RegularRent:=Sum([Unit]DailyRentedValue)
+[Agreement]NewRegularRent:=Sum([Unit]DailyNewRent)
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=Sum([Unit]WeeklyRentedValue)
+[Agreement]NewRegularRent:=Sum([Unit]WeeklyNewRentAmt)
+: ([BillPlan]PlanPeriod="Day")
+[Agreement]RegularRent:=Sum([Unit]DailyRentedValue)
+[Agreement]NewRegularRent:=Sum([Unit]DailyNewRent)
+Else 
+[Agreement]RegularRent:=Sum([Unit]RentedValue)
+[Agreement]NewRegularRent:=Sum([Unit]NewRentAmt)
+End case 
+[Agreement]AgreedDisc:=Sum([Unit]ExtraDisc)
+vOthDeposit:=[Agreement]DepositAmt-Sum([Unit]Deposit)
+vOthInsurance:=[Agreement]InsureValue-Sum([Unit]InsureValue)
+Else 
+FIRST RECORD([UnitAgree])
+For ($i;1;Records in selection([UnitAgree]))
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+Case of 
+: ([BillPlan]CasualBilling=True)
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]DailyRentedValue;2)
+: ([BillPlan]PlanPeriod="Week")
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]WeeklyRentedValue;2)
+Else 
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]RentedValue;2)
+End case 
+If ([UnitAgree]IncreaseFrom=!00-00-00!)
+[UnitAgree]NewRentAmt:=[UnitAgree]RentedValue
+[UnitAgree]WeeklyNewRentAmt:=[UnitAgree]WeeklyRentedValue
+[UnitAgree]DailyNewRentAmt:=[UnitAgree]DailyRentedValue
+End if 
+SAVE RECORD([UnitAgree])
+NEXT RECORD([UnitAgree])
+End for 
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+FIRST RECORD([UnitAgree])
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Agreement]RegularRent:=Sum([UnitAgree]DailyRentedValue)
+[Agreement]NewRegularRent:=Sum([UnitAgree]DailyNewRentAmt)
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=Sum([UnitAgree]WeeklyRentedValue)
+[Agreement]NewRegularRent:=Sum([UnitAgree]WeeklyNewRentAmt)
+Else 
+[Agreement]RegularRent:=Sum([UnitAgree]RentedValue)
+[Agreement]NewRegularRent:=Sum([UnitAgree]NewRentAmt)
+End case 
+[Agreement]AgreedDisc:=Sum([UnitAgree]ExtraDisc)
+vOthDeposit:=[Agreement]DepositAmt-Sum([UnitAgree]DepositAmt)
+vOthInsurance:=[Agreement]InsureValue-Sum([UnitAgree]InsureValue)
+End if 
+vOldOthInsurance:=vOthInsurance
+//[Agreement]NewRentAmt:=RoundAmt ([Agreement]NewRegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100;1)
+//SDD Following lines removed as there are no records in this selection because it is using the subtable code
+//For ($i;1;Records in selection([Agreement_OtherChgs]))
+//If ([Agreement_OtherChgs]IncreaseFrom=!00/00/00!)
+//[Agreement_OtherChgs]NewAmount:=[Agreement_OtherChgs]Amount
+//End if 
+//End for 
+//vOthTotal:=Sum([Agreement_OtherChgs]Amount)
+//vNewOthTotal:=Sum([Agreement_OtherChgs]NewAmount)
+
+If ([Agreement]NewRentAmt=0)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+Else 
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+End if 
+
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+vRentAmt:=Round(RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vNewOthTotal;2)
+Else 
+vRentAmt:=Round(RoundAmt ((($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vNewOthTotal;2)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+vRentAmt:=Round(([BillPlan]FixedBill*[Agreement]MthsAdv)+vOthTotal;2)
+vNewRentAmt:=Round(([BillPlan]FixedBill*[Agreement]MthsAdv)+vNewOthTotal;2)
+Else 
+vRentAmt:=Round(([BillPlan]FixedBill)+vOthTotal;2)
+vNewRentAmt:=Round(([BillPlan]FixedBill)+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+If ([Customer]WaivedLateFees>0) & ([Facility]WaivedMonthReset>0)
+$DateCheck:=0
+While ($DateCheck=0)
+$WaivedDate:=Date(Substring([Customer]LateFeeDates;1;(Position(";";[Customer]LateFeeDates))-1))
+If ($WaivedDate<(Add to date(Current date;0;(-1*[Facility]WaivedMonthReset);0))) & ($WaivedDate#!00-00-00!)
+[Customer]LateFeeDates:=Substring([Customer]LateFeeDates;(Position(";";[Customer]LateFeeDates))+1)
+[Customer]WaivedLateFees:=[Customer]WaivedLateFees-1
+Else 
+$DateCheck:=1
+End if 
+End while 
+End if 
+If ([Agreement]BalanceOwing>[Facility]MinBalArrears) & ([Agreement]TotRentUnpaid>[Facility]MinBalArrears)
+If ([Agreement]LateCycleStDate#!00-00-00!)
+vDaysLate:=Current date-[Agreement]LateCycleStDate
+
+If (vDaysLate<0)
+vDaysLate:=0
+End if 
+
+End if 
+Else 
+vDaysLate:=0
+End if 
+REDUCE SELECTION([EventLog];0)
+vCustom1:=[Facility]Custom1
+vCustom2:=[Facility]Custom2
+vCustom3:=[Facility]Custom3
+vCustom4:=[Facility]Custom4
+vCustom5:=[Facility]MarketingTypeTitle
+vCustom6:=[Facility]CustomerTypeTitle
+vCustom7:=[Facility]BusinessTypeTitle
+If (vCustom1="")
+OBJECT SET VISIBLE(*;"@Custom1";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom1";True)
+End if 
+If (vCustom2="")
+OBJECT SET VISIBLE(*;"@Custom2";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom2";True)
+End if 
+If (vCustom3="")
+OBJECT SET VISIBLE(*;"@Custom3";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom3";True)
+End if 
+If (vCustom4="")
+OBJECT SET VISIBLE(*;"@Custom4";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom4";True)
+End if 
+If ([Facility]AccessFee=False)
+OBJECT SET VISIBLE(*;"Text82";False)
+OBJECT SET VISIBLE(*;"Field13";False)
+End if 
+vbEventSort:=0
+//If ([Customer]Balance>0)
+//QUERY([Transaction];[Transaction]Customer=[Customer]CustomerCode;*)
+//QUERY([Transaction]; & ;[Transaction]Charge=True;*)
+//QUERY([Transaction]; & ;[Transaction]TotAmt>0;*)
+//QUERY([Transaction]; & ;[Transaction]Match=0)
+//If (Records in selection([Transaction])>0)
+//ORDER BY([Transaction];[Transaction]TrxDate;>)
+//FIRST RECORD([Transaction])
+//viOverdue:=Current date-[Transaction]TrxDate
+//Else 
+//viOverdue:=0
+//End if 
+//Else 
+//viOverdue:=0
+//End if
+vPayments:=0
+If (<>sProduct="@R")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+vPayments:=Sum([Trxs]TotAmt)
+End if 
+viOverdue:=Current date-[Agreement]PaidToDate
+If (viOverdue<0) | (([Agreement]ActiveAgreemt=False) & ([Agreement]BalanceOwing<=0))
+viOverdue:=0
+End if 
+$Owing:=0
+SET QUERY DESTINATION(Into variable;$Owing)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing#0)
+$ROWing:=0
+SET QUERY DESTINATION(Into current selection)
+SET QUERY DESTINATION(Into variable;$ROwing)
+QUERY([Reservation];[Reservation]ActiveReserve=True;*)
+QUERY([Reservation]; | ;[Reservation]Balance#0;*)
+QUERY([Reservation]; & ;[Reservation]CustomerCode=[Customer]CustomerCode)
+SET QUERY DESTINATION(Into current selection)
+
+If ([Customer]NoActiveAgreemts>$ROwing)//-- 8762 -- By Hamid - 15/4/2015
+$Owing:=$Owing+[Customer]NoActiveAgreemts
+Else 
+$Owing:=$Owing+[Customer]NoActiveAgreemts+$ROwing
+End if 
+//[Agreement]DaysOverdue:=
+
+viOwing:=Get localized string("Total for")+" "+String($Owing)+" "+Get localized string("agreement(s)/reservation(s)")
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+vAgreePeriods:=$CasualAmount*[Agreement]MthsAdv
+vNewPeriods:=$NewCasualAmount*[Agreement]MthsAdv
+vAgreeDiscount:=-1*[Agreement]DiscountAmt
+vNewDiscAmount:=-1*[Agreement]NewDiscAmt
+vRentAmt:=[Agreement]RentAmt+vOthTotal
+vNewRentAmt:=[Agreement]NewRentAmt+vNewOthTotal
+If (([Facility]UnitPerAgreement=True) | ([BillPlan]CasualBilling)) & (Records in selection([Unit])>0)
+OBJECT SET VISIBLE(bSelect;False)
+OBJECT SET VISIBLE(bSelectUnit;False)
+OBJECT SET VISIBLE(*;"Picture33";False)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use this icon to delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use  this icon to delete appliances")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use  this icon to delete spaces")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use  this icon to delete support plans")
+Else 
+varm15:=Get localized string("Use  this icon to delete units")
+End case 
+End if 
+If ([Customer]Balance>0)
+OBJECT SET COLOR(*;"Number777";-3)//Set Red
+Else 
+OBJECT SET RGB COLORS(*;"Number777";0x0006616D;0x00FFFFFF)
+End if 
+If (vName="")
+GOTO OBJECT(vName)
+End if 
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+Case of 
+: (([Facility]DisableCSTabs=True) & ([Agreement]ActiveAgreemt=False) & ($FromCreditSale=True)) | ([Agreement]BB=True)
+ARRAY TEXT(aPageNo;6)
+aPageNo{1}:=Get localized string("Customer Info")+" 1"
+aPageNo{2}:=Get localized string("Customer Info")+" 2"
+aPageNo{3}:=Get localized string("Transactions")
+aPageNo{4}:=Get localized string("Notes & Alerts")
+aPageNo{5}:=Get localized string("Event Log")
+aPageNo{6}:=Get localized string("Bank Account")
+aPageNo:=1
+FORM GOTO PAGE(2)
+: ($FromCreditSale=True)
+ARRAY TEXT(aPageNo;7)
+aPageNo{1}:=Get localized string("General Info")
+aPageNo{2}:=Get localized string("Customer Info")+" 1"
+aPageNo{3}:=Get localized string("Customer Info")+" "
+aPageNo{4}:=Get localized string("Autopay/Notices")
+aPageNo{5}:=Get localized string("Transactions")
+aPageNo{6}:=Get localized string("Notes & Alerts")
+aPageNo{7}:=Get localized string("Event Log")
+aPageNo:=1
+End case 
+If (<>sFacility="KE@") & ([Agreement]BB=True)
+OBJECT SET VISIBLE(vKSSBuyback;True)
+OBJECT SET VISIBLE(*;"Field1";False)
+vKssBuyback:=1
+Else 
+OBJECT SET VISIBLE(vKSSBuyback;False)
+End if 
+If (<>sFacility="KE@")
+OBJECT SET VISIBLE(*;"@TypeNat";True)
+//16/10/14 DAM Commented it for National Account
+//If ([Customer]CustType="National Account")
+//  OBJECT SET VISIBLE(vName;False)
+//  OBJECT SET VISIBLE(bEditCust;False)
+//  OBJECT SET VISIBLE(asAccountList;True)
+//End if 
+Else 
+OBJECT SET VISIBLE(*;"@TypeNat";False)
+End if 
+If ([Customer]ThreatLevel>0)
+vThreatLevel:="Threat Level: "+String([Customer]ThreatLevel)
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+OBJECT SET RGB COLORS(vThreatLevel;0x00FF0000;0x00FF0000)
+Else 
+OBJECT SET RGB COLORS(vThreatLevel;0x00FFA500;0x00FFA500)
+End if 
+Else 
+vThreatLevel:=""
+End if 
+
+//Show / Hide the Unit Counter on Inactive / Active Agreement status
+If ([Agreement]ActiveAgreemt=False)
+OBJECT SET VISIBLE(*;"MoveOut@";False)
+OBJECT SET VISIBLE(*;"AgreeUnitCounter";False)
+Else 
+OBJECT SET VISIBLE(*;"MoveOut@";True)
+OBJECT SET VISIBLE(*;"AgreeUnitCounter";True)
+End if 
+
+If ([Facility]InvStatement#0)
+OBJECT SET VISIBLE(bReemailInvoice;True)
+OBJECT SET VISIBLE(bReprintInvoice;True)
+Else 
+OBJECT SET VISIBLE(bReemailInvoice;False)
+OBJECT SET VISIBLE(bReprintInvoice;False)
+End if 
+
+//If (<>sFacility#"KE@")
+//OBJECT SET VISIBLE(*;"@Voucher";False)
+//End if 
+
+If (vEditMode=False)
+If (Num(Substring([Facility]FieldSettings;1;1))=3)
+OBJECT SET VISIBLE(asList2;False)
+OBJECT SET VISIBLE(*;"TextCustom6";False)
+OBJECT SET VISIBLE(*;"TextCustom61";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;2;1))=3)
+OBJECT SET VISIBLE(vVoucher;False)
+OBJECT SET VISIBLE(*;"Text8Voucher";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;3;1))=3)
+OBJECT SET VISIBLE([Agreement]MoveIn;False)
+OBJECT SET VISIBLE(*;"Text5";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;4;1))=3)
+OBJECT SET VISIBLE([Agreement]AnticipateMoveOut;False)
+OBJECT SET VISIBLE(*;"Text86";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;5;1))=3)
+OBJECT SET VISIBLE(aiNoticePlan;False)
+OBJECT SET VISIBLE(*;"Text84";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;6;1))=3)
+OBJECT SET VISIBLE([Agreement]DaytoBill;False)
+OBJECT SET VISIBLE(*;"lblDayToBill";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;7;1))=3)
+OBJECT SET VISIBLE([Agreement]LateFeeAmt;False)
+OBJECT SET VISIBLE(*;"Text78";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;8;1))=3)
+OBJECT SET VISIBLE([Customer]Password;False)
+OBJECT SET VISIBLE(*;"Text85";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;9;1))=3)
+OBJECT SET VISIBLE(asBillingDesc;False)
+OBJECT SET VISIBLE(*;"Text104";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;10;1))=3)
+OBJECT SET VISIBLE([Agreement]MthsAdv;False)
+OBJECT SET VISIBLE(*;"Text79";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;11;1))=3)
+OBJECT SET VISIBLE([Customer]Organization;False)
+OBJECT SET VISIBLE(*;"Text34";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;12;1))=3)
+OBJECT SET VISIBLE([Customer]Title;False)
+OBJECT SET VISIBLE(*;"Text126";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;13;1))=3)
+OBJECT SET VISIBLE([Customer]DateofBirth;False)
+OBJECT SET VISIBLE(*;"Text177";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;14;1))=3)
+OBJECT SET VISIBLE([Customer]CustomerName;False)
+OBJECT SET VISIBLE(*;"Text24";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;15;1))=3)
+OBJECT SET VISIBLE([Customer]UserName;False)
+OBJECT SET VISIBLE(*;"Text25";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;16;1))=3)
+OBJECT SET VISIBLE([Customer]FirstName;False)
+OBJECT SET VISIBLE(*;"TextFirstName";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;17;1))=3)
+OBJECT SET VISIBLE([Customer]ABNNo;False)
+OBJECT SET VISIBLE(*;"Text46";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;18;1))=3)
+OBJECT SET VISIBLE([Customer]Notes;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;19;1))=3)
+OBJECT SET VISIBLE([Agreement]AlertNotesMsg;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;20;1))=3)
+OBJECT SET VISIBLE(asList5;False)
+OBJECT SET VISIBLE(*;"Text360";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;21;1))=3)
+OBJECT SET VISIBLE([Agreement]PurchaseOrder;False)
+OBJECT SET VISIBLE(*;"Text737";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;22;1))=3)
+OBJECT SET VISIBLE([Customer]ArrearsComment;False)
+OBJECT SET VISIBLE(*;"Text9";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;23;1))=3)
+OBJECT SET VISIBLE([Customer]GatePIN;False)
+OBJECT SET VISIBLE(*;"Text119";False)
+OBJECT SET VISIBLE(bButtonR;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;24;1))=3)
+OBJECT SET VISIBLE([Customer]GateTimeZone;False)
+OBJECT SET VISIBLE(*;"Text121";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;25;1))=3)
+OBJECT SET VISIBLE([Customer]KeypadZone;False)
+OBJECT SET VISIBLE(*;"Text177Digigate";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;26;1))=3)
+OBJECT SET VISIBLE(atLocked;False)
+OBJECT SET VISIBLE(*;"Text98";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;27;1))=3)
+OBJECT SET VISIBLE([Customer]CustomAccessFee;False)
+OBJECT SET VISIBLE(*;"Text82";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;28;1))=3)
+OBJECT SET VISIBLE([Customer]AllowAccessArrs;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;29;1))=3)
+OBJECT SET VISIBLE([Customer]AccessList;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;30;1))=3)
+OBJECT SET VISIBLE([Customer]MailSuburb;False)
+OBJECT SET VISIBLE(*;"Text578";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;31;1))=3)
+OBJECT SET VISIBLE([Customer]MailCity;False)
+OBJECT SET VISIBLE(*;"Text56";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;32;1))=3)
+OBJECT SET VISIBLE([Customer]MailState;False)
+OBJECT SET VISIBLE(*;"Text90";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;33;1))=3)
+OBJECT SET VISIBLE([Customer]MailPostZIPCode;False)
+OBJECT SET VISIBLE(*;"Text43";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;34;1))=3)
+OBJECT SET VISIBLE(asMailCountries;False)
+OBJECT SET VISIBLE(*;"Text161";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;35;1))=3)
+OBJECT SET VISIBLE([Customer]StreetAddress;False)
+OBJECT SET VISIBLE(*;"Text80";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;36;1))=3)
+OBJECT SET VISIBLE([Customer]StreetSuburb;False)
+OBJECT SET VISIBLE(*;"Text116";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;37;1))=3)
+OBJECT SET VISIBLE([Customer]StreetCity;False)
+OBJECT SET VISIBLE(*;"Text111";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;38;1))=3)
+OBJECT SET VISIBLE([Customer]StreetState;False)
+OBJECT SET VISIBLE(*;"Text105";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;39;1))=3)
+OBJECT SET VISIBLE([Customer]StreetZIPCode;False)
+OBJECT SET VISIBLE(*;"Text110";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;40;1))=3)
+OBJECT SET VISIBLE(asCountries;False)
+OBJECT SET VISIBLE(*;"Text162";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;41;1))=3)
+OBJECT SET VISIBLE([Customer]PhonePrivate;False)
+OBJECT SET VISIBLE(*;"Text93";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;42;1))=3)
+OBJECT SET VISIBLE([Customer]PhoneBus;False)
+OBJECT SET VISIBLE(*;"Text37";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;43;1))=3)
+OBJECT SET VISIBLE([Customer]PhoneBusExt;False)
+OBJECT SET VISIBLE(*;"Text102";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;44;1))=3)
+OBJECT SET VISIBLE([Customer]MobilePhone;False)
+OBJECT SET VISIBLE(*;"Text28";False)
+OBJECT SET VISIBLE(*;"Variable32";False)
+OBJECT SET VISIBLE(*;"Picture5";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;45;1))=3)
+OBJECT SET VISIBLE([Customer]FaxNo;False)
+OBJECT SET VISIBLE(*;"Text99";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;46;1))=3)
+OBJECT SET VISIBLE([Customer]EmailAddress;False)
+OBJECT SET VISIBLE(*;"Text44";False)
+OBJECT SET VISIBLE(*;"Variable25";False)
+OBJECT SET VISIBLE(*;"Picture3";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;47;1))=3)
+OBJECT SET VISIBLE([Customer]Employer;False)
+OBJECT SET VISIBLE(*;"Text47";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;48;1))=3)
+OBJECT SET VISIBLE([Customer]Custom1;False)
+OBJECT SET VISIBLE(*;"Text158Custom1";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;49;1))=3)
+OBJECT SET VISIBLE([Customer]Custom2;False)
+OBJECT SET VISIBLE(*;"Text98Custom2";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;50;1))=3)
+OBJECT SET VISIBLE([Customer]Custom3;False)
+OBJECT SET VISIBLE(*;"Text98Custom3";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;51;1))=3)
+OBJECT SET VISIBLE([Customer]Custom4;False)
+OBJECT SET VISIBLE(*;"Text98Custom4";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;52;1))=3)
+OBJECT SET VISIBLE([Customer]LicenceNo;False)
+OBJECT SET VISIBLE(*;"Text101";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;53;1))=3)
+OBJECT SET VISIBLE([Customer]LicenseState;False)
+OBJECT SET VISIBLE(*;"Text54";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;54;1))=3)
+OBJECT SET VISIBLE([Customer]Vehicle;False)
+OBJECT SET VISIBLE(*;"Text170";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;55;1))=3)
+OBJECT SET VISIBLE([Customer]CarRego;False)
+OBJECT SET VISIBLE(*;"Text100";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;55;1))=3) & (Num(Substring([Facility]FieldSettings;54;1))=3) & (Num(Substring([Facility]FieldSettings;53;1))=3) & (Num(Substring([Facility]FieldSettings;52;1))=3)
+OBJECT SET VISIBLE(*;"Text171";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;56;1))=3)
+OBJECT SET VISIBLE([Customer]MailAddress;False)
+OBJECT SET VISIBLE(*;"Text31";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;57;1))=3)
+OBJECT SET VISIBLE(asList1;False)
+OBJECT SET VISIBLE(*;"TextCustom5";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;58;1))=3)
+OBJECT SET VISIBLE(asList3;False)
+OBJECT SET VISIBLE(*;"TextCustom7";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;59;1))=3)
+OBJECT SET VISIBLE(asList4;False)
+OBJECT SET VISIBLE(*;"Text109";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;60;1))=3)
+OBJECT SET VISIBLE([Customer]Military;False)
+OBJECT SET VISIBLE(*;"Text114Military";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;61;1))=3)
+OBJECT SET VISIBLE([Customer]MilitaryBase;False)
+OBJECT SET VISIBLE(*;"Text112Military";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;62;1))=3)
+OBJECT SET VISIBLE([Customer]MilCName;False)
+OBJECT SET VISIBLE(*;"Text139Military";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;63;1))=3)
+OBJECT SET VISIBLE([Customer]MilCPhone;False)
+OBJECT SET VISIBLE(*;"Text165Military";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;64;1))=3)
+OBJECT SET VISIBLE([Customer]AltContact;False)
+OBJECT SET VISIBLE(*;"Text168";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;65;1))=3)
+OBJECT SET VISIBLE([Customer]AltTitle;False)
+OBJECT SET VISIBLE(*;"Text212";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;66;1))=3)
+OBJECT SET VISIBLE([Customer]AlternateName;False)
+OBJECT SET VISIBLE(*;"Text187";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;67;1))=3)
+OBJECT SET VISIBLE([Customer]AlternateAddress;False)
+OBJECT SET VISIBLE(*;"Text213";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;68;1))=3)
+OBJECT SET VISIBLE([Customer]AltSuburb;False)
+OBJECT SET VISIBLE(*;"Text123";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;69;1))=3)
+OBJECT SET VISIBLE([Customer]AlternateCity;False)
+OBJECT SET VISIBLE(*;"Text216";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;70;1))=3)
+OBJECT SET VISIBLE([Customer]AlternateState;False)
+OBJECT SET VISIBLE(*;"Text215";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;71;1))=3)
+OBJECT SET VISIBLE([Customer]AlternateZIPCode;False)
+OBJECT SET VISIBLE(*;"Text217";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;72;1))=3)
+OBJECT SET VISIBLE(asAltCountries;False)
+OBJECT SET VISIBLE(*;"Text214";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;73;1))=3)
+OBJECT SET VISIBLE([Customer]AlternatePhone;False)
+OBJECT SET VISIBLE(*;"Text202";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;74;1))=3)
+OBJECT SET VISIBLE([Customer]AltBusiness;False)
+OBJECT SET VISIBLE(*;"Text205";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;75;1))=3)
+OBJECT SET VISIBLE([Customer]AltBusExt;False)
+OBJECT SET VISIBLE(*;"Text102";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;76;1))=3)
+OBJECT SET VISIBLE([Customer]AltMobile;False)
+OBJECT SET VISIBLE(*;"Text203";False)
+OBJECT SET VISIBLE(*;"Variable49";False)
+OBJECT SET VISIBLE(*;"Picture8";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;77;1))=3)
+OBJECT SET VISIBLE([Customer]AltFax;False)
+OBJECT SET VISIBLE(*;"Text204";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;78;1))=3)
+OBJECT SET VISIBLE([Customer]AltEmail;False)
+OBJECT SET VISIBLE(*;"Text206";False)
+OBJECT SET VISIBLE(*;"Variable44";False)
+OBJECT SET VISIBLE(*;"Picture7";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;79;1))=3)
+OBJECT SET VISIBLE([Customer]SecCustom1;False)
+OBJECT SET VISIBLE(*;"Text2Custom1";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;80;1))=3)
+OBJECT SET VISIBLE([Customer]SecCustom2;False)
+OBJECT SET VISIBLE(*;"Text2Custom2";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;81;1))=3)
+OBJECT SET VISIBLE([Customer]SecCustom3;False)
+OBJECT SET VISIBLE(*;"Text2Custom3";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;82;1))=3)
+OBJECT SET VISIBLE([Customer]SecCustom4;False)
+OBJECT SET VISIBLE(*;"Text2Custom4";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;83;1))=3)
+OBJECT SET VISIBLE([Customer]MarketingOptOut;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;84;1))=3)
+OBJECT SET VISIBLE([Agreement]LateCycleStDate;False)
+OBJECT SET VISIBLE(*;"Text19";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;85;1))=3)
+OBJECT SET VISIBLE([Agreement]LastRentIncrDate;False)
+OBJECT SET VISIBLE(*;"Text40";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;86;1))=3)
+OBJECT SET VISIBLE([Agreement]DisableAutoIncr;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;87;1))=3)
+OBJECT SET VISIBLE([Agreement]LienDate;False)
+OBJECT SET VISIBLE(*;"Text16";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;88;1))=3)
+OBJECT SET VISIBLE([Agreement]LastNotice;False)
+OBJECT SET VISIBLE(*;"Text2324";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;89;1))=3)
+OBJECT SET VISIBLE([Agreement]NewBillingPlan;False)
+OBJECT SET VISIBLE(*;"Text139";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;90;1))=3)
+OBJECT SET VISIBLE([Agreement]SendNotices;False)
+OBJECT SET VISIBLE(*;"Picture14";False)
+OBJECT SET VISIBLE(*;"Text107";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;91;1))=3)
+OBJECT SET VISIBLE([Agreement]NoticeDaysPrior;False)
+OBJECT SET VISIBLE(*;"Text6";False)
+OBJECT SET VISIBLE(*;"Text94";False)
+OBJECT SET VISIBLE(*;"Picture20";False)
+OBJECT SET VISIBLE(*;"Text194";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;92;1))=3)
+OBJECT SET VISIBLE([Agreement]SendNoticesEmail;False)
+OBJECT SET VISIBLE(*;"Picture12";False)
+OBJECT SET VISIBLE(*;"Text124";False)
+End if 
+If (Num(Substring([Facility]FieldSettings;93;1))=3)
+OBJECT SET VISIBLE([Agreement]SendNoticeSMS;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;94;1))=3)
+OBJECT SET VISIBLE([Agreement]SendInvoices;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;95;1))=3)
+OBJECT SET VISIBLE([Agreement]SendStatements;False)
+End if 
+If (Num(Substring([Facility]FieldSettings;97;1))=3)
+OBJECT SET VISIBLE(*;"Text13";False)
+OBJECT SET VISIBLE(vDaysLate;False)
+End if 
+End if 
+
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False)
+If (Records in selection([MerchPlan])>0) & (<>sFacility#"ST@")
+OBJECT SET VISIBLE(bAddCharge;False)
+End if 
+
+If (<>sFacility="KE@") & ([Customer]CustType="National Accounts") & ([Agreement]AgreeNo#"@#@")//KSS Disabling everything
+
+If (PermissionsControl (218;False)=False)
+
+OBJECT SET ENABLED(*;"@";False)
+OBJECT SET ENTERABLE(*;"@";False)
+//KSS Enable what we have been told
+OBJECT SET ENABLED(aPageNo;True)
+OBJECT SET ENABLED(bAbort;True)
+OBJECT SET ENABLED(bOK;True)
+OBJECT SET ENABLED(bSelect;False)
+OBJECT SET ENABLED(bDel;False)
+
+//Vehicle Info
+//OBJECT SET ENTERABLE(*;"Field46";True)
+//OBJECT SET ENTERABLE(*;"Field3";True)
+//OBJECT SET ENTERABLE(*;"Field28";True)
+//OBJECT SET ENTERABLE(*;"Field45";True)
+//Secondary Contact Details
+
+OBJECT SET ENTERABLE(*;"Field2";True)
+OBJECT SET ENABLED(*;"Field2";True)
+OBJECT SET ENTERABLE(*;"Field155";True)
+OBJECT SET ENABLED(*;"Field155";True)
+
+OBJECT SET ENTERABLE(*;"Field56";True)
+OBJECT SET ENABLED(*;"Field56";True)
+OBJECT SET ENTERABLE(*;"Field21";True)
+OBJECT SET ENABLED(*;"Field21";True)
+OBJECT SET ENTERABLE(*;"Field83";True)
+OBJECT SET ENABLED(*;"Field83";True)
+OBJECT SET ENTERABLE(*;"Field84";True)
+OBJECT SET ENABLED(*;"Field84";True)
+OBJECT SET ENTERABLE(*;"Field95";True)
+OBJECT SET ENABLED(*;"Field95";True)
+OBJECT SET ENTERABLE(*;"Field9";True)
+OBJECT SET ENABLED(*;"Field9";True)
+OBJECT SET ENTERABLE(*;"Field60";True)
+OBJECT SET ENABLED(*;"Field60";True)
+OBJECT SET ENTERABLE(*;"Field22";True)
+OBJECT SET ENABLED(*;"Field22";True)
+OBJECT SET ENABLED(asAltCountries;True)
+OBJECT SET ENTERABLE(*;"Field101";True)
+OBJECT SET ENABLED(*;"Field101";True)
+OBJECT SET ENTERABLE(*;"Field65";True)
+OBJECT SET ENABLED(*;"Field65";True)
+OBJECT SET ENTERABLE(*;"Field80";True)
+OBJECT SET ENABLED(*;"Field80";True)
+OBJECT SET ENTERABLE(*;"Field81";True)
+OBJECT SET ENABLED(*;"Field81";True)
+OBJECT SET ENABLED(bSSend;True)
+OBJECT SET ENTERABLE(*;"Field82";True)
+OBJECT SET ENABLED(*;"Field82";True)
+OBJECT SET ENTERABLE(*;"Field73";True)
+OBJECT SET ENABLED(*;"Field73";True)
+
+
+OBJECT SET ENTERABLE(*;"Variable44";True)
+OBJECT SET ENABLED(*;"Variable44";True)
+
+//OBJECT SET ENABLED(bESend;True)
+OBJECT SET ENTERABLE(*;"Field19Custom1";True)
+OBJECT SET ENABLED(*;"Field19Custom1";True)
+OBJECT SET ENTERABLE(*;"Field20Custom2";True)
+OBJECT SET ENABLED(*;"Field20Custom2";True)
+OBJECT SET ENTERABLE(*;"Field20Custom3";True)
+OBJECT SET ENABLED(*;"Field20Custom3";True)
+OBJECT SET ENTERABLE(*;"Field20Custom4";True)
+OBJECT SET ENABLED(*;"Field20Custom4";True)
+
+//Marketing except Cust Type
+//OBJECT SET ENABLED(asList1;False)
+//OBJECT SET ENABLED(asList3;False)
+//OBJECT SET ENABLED(asList4;False)
+//Photo
+//OBJECT SET ENABLED(bPhoto;True)
+//Gate
+OBJECT SET ENTERABLE(*;"Field54";True)
+OBJECT SET ENABLED(*;"Field54";True)
+OBJECT SET ENTERABLE(*;"Field8013";True)
+OBJECT SET ENABLED(*;"Field8013";True)
+OBJECT SET ENTERABLE(*;"Field19Digigate";True)
+OBJECT SET ENABLED(*;"Field19Digigate";True)
+OBJECT SET ENTERABLE(*;"Field54";True)
+OBJECT SET ENABLED(*;"Field54";True)
+OBJECT SET ENABLED(bButtonR;True)
+OBJECT SET ENTERABLE(bButtonR;True)
+OBJECT SET ENABLED(vbUpdateGate;True)
+OBJECT SET ENTERABLE(vbUpdateGate;True)
+OBJECT SET ENTERABLE(*;"Field16";True)
+OBJECT SET ENABLED(*;"Field16";True)
+OBJECT SET ENABLED(atLocked;True)
+OBJECT SET ENTERABLE(atLocked;True)
+OBJECT SET ENABLED(bButton3;True)
+OBJECT SET ENTERABLE(bButton3;True)
+OBJECT SET ENABLED(bButton4;True)
+OBJECT SET ENTERABLE(bButton4;True)
+OBJECT SET ENTERABLE(*;"Subform9Lite";True)
+OBJECT SET ENABLED(*;"Subform9Lite";True)
+OBJECT SET ENTERABLE(*;"Variable1";True)
+OBJECT SET ENABLED(*;"Variable1";True)
+//Access & Insurance
+//OBJECT SET ENABLED(bPrintIns;True)
+//OBJECT SET ENTERABLE(*;"Subform4";True)
+//OBJECT SET ENTERABLE(*;"Field61Insurance1";True)
+//OBJECT SET ENTERABLE(*;"Field59Insurance";True)
+//OBJECT SET ENTERABLE(*;"Field60Insurance";True)
+//OBJECT SET ENABLED(atInsuranceRates;True)
+OBJECT SET ENTERABLE(*;"Field8013TimeZone";True)
+OBJECT SET ENABLED(*;"Field8013TimeZone";True)
+OBJECT SET ENTERABLE(*;"SentinelRectangle26Lite";True)
+OBJECT SET ENABLED(*;"SentinelRectangle26Lite";True)
+OBJECT SET ENTERABLE(*;"SentinelSubform9Lite";True)
+OBJECT SET ENABLED(*;"SentinelSubform9Lite";True)
+
+OBJECT SET ENTERABLE(*;"Field50";True)
+OBJECT SET ENABLED(*;"Field50";True)
+OBJECT SET ENABLED(bShow;True)
+OBJECT SET ENTERABLE(*;"Variable59";True)
+OBJECT SET ENABLED(*;"Variable59";True)
+//OBJECT SET ENABLED(bPrintEnv;True)
+
+//Transactions
+OBJECT SET ENABLED(bAddRec;True)
+OBJECT SET ENABLED(bAddRefund;True)
+OBJECT SET ENABLED(addChargeArray;True)
+
+OBJECT SET ENTERABLE(*;"OtherAgreeReserveText";True)
+OBJECT SET ENABLED(*;"OtherAgreeReserveText";True)
+OBJECT SET ENTERABLE(*;"OtherAgreeReserveCheckbx";True)
+OBJECT SET ENABLED(*;"OtherAgreeReserveCheckbx";True)
+
+OBJECT SET ENABLED(bGate1;True)
+OBJECT SET ENABLED(bMatch;True)
+OBJECT SET ENABLED(asShowHistory;True)
+//Move Out
+OBJECT SET ENTERABLE(*;"Field67";True)
+OBJECT SET ENTERABLE(*;"Field70";True)
+OBJECT SET ENTERABLE(*;"Field71";True)
+OBJECT SET ENABLED(bToday;False)
+OBJECT SET ENABLED(asList5;False)
+OBJECT SET ENABLED(bOut;False)
+
+//Notes & Alerts
+OBJECT SET ENABLED(vNoteHistBody;True)
+OBJECT SET ENABLED(asNotesList;True)
+OBJECT SET ENTERABLE(vNoteHistBody;True)
+OBJECT SET ENTERABLE(*;"Field58";True)
+OBJECT SET ENTERABLE(*;"Field57";True)
+OBJECT SET ENABLED(bAddIncl;True)
+OBJECT SET ENABLED(*;"Field58";True)
+OBJECT SET ENABLED(*;"Field57";True)
+OBJECT SET ENABLED(bSet;True)
+OBJECT SET ENABLED(bPrintAll;True)
+OBJECT SET ENABLED(asNotesSortList;True)
+
+End if 
+End if 
+
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]NoEditMthsAdv)
+OBJECT SET ENTERABLE([Agreement]MthsAdv;False)
+End if 
+
+If (PermissionsControl (216;False)=False)
+OBJECT SET ENTERABLE([Customer]WebID;False)
+Else 
+OBJECT SET ENTERABLE([Customer]WebID;True)
+End if 
+
+If (PermissionsControl (219;False)=False)
+OBJECT SET ENTERABLE([Customer]Delinquent;False)
+Else 
+OBJECT SET ENTERABLE([Customer]Delinquent;True)
+End if 
+
+
+If (<>sProduct#"@B")
+OBJECT SET VISIBLE(btnSublet;False)
+Else 
+OBJECT SET VISIBLE(btnSublet;True)
+End if 
+
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+
+
+If (Records in selection([UnitAgree])>0) & ([Agreement]ActiveAgreemt)
+OBJECT SET VISIBLE(*;"Subform9";True)
+OBJECT SET VISIBLE(*;"Subform1";False)
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+End if 
+
+If (aPageNo=1)//- Added By Hamid - 25/5/2015 - 9152
+If ([Agreement]BalanceOwing>0)
+OBJECT SET VISIBLE(*;"@rout";False)
+Else 
+OBJECT SET VISIBLE(*;"@rout";True)
+End if 
+End if 
+
+End if //End Before //End for On Load
+
+If ((Form event=On Clicked) | (Form event=On Data Change)) & (bAbort#1)
+
+If ([Customer]ThreatLevel>0)
+vThreatLevel:="Threat Level: "+String([Customer]ThreatLevel)
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+OBJECT SET RGB COLORS(vThreatLevel;0x00FF0000;0x00FF0000)
+Else 
+OBJECT SET RGB COLORS(vThreatLevel;0x00FFA500;0x00FFA500)
+End if 
+Else 
+vThreatLevel:=""
+End if 
+
+If (aPageNo#1) & (aPageNo#5) & (aPageNo{aPageNo}#Get localized string("Boat Info"))
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([UnitAgree])>0)
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+Else 
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+End if 
+End if 
+If ([Customer]Balance>0)
+OBJECT SET COLOR(*;"Number777";-3)//Set Red
+Else 
+OBJECT SET RGB COLORS(*;"Number777";0x0006616D;0x00FFFFFF)
+End if 
+If ([Agreement]SendNotices=True) & ([Agreement]AutoPay=False) & (vUseAgreementSend=True)
+vDateInvoice:=[Agreement]NextBillDate-[Agreement]NoticeDaysPrior
+Else 
+If ([Agreement]AutoPay=False) & ((vSendtoAll=True) | ([Agreement]SendNotices=True))
+vDateInvoice:=[Agreement]NextBillDate-vNoticeBefore
+Else 
+vDateInvoice:=[Agreement]NextBillDate
+End if 
+End if 
+vTotal:=vTotal
+If (Records in selection([UnitAgree])>0)
+vCount:=Records in selection([UnitAgree])
+Else 
+vCount:=Records in selection([Unit])
+End if 
+
+//Show / Hide the Unit Counter on Inactive / Active Agreement status
+If ([Agreement]ActiveAgreemt=False)
+OBJECT SET VISIBLE(*;"MoveOut@";False)
+OBJECT SET VISIBLE(*;"AgreeUnitCounter";False)
+Else 
+OBJECT SET VISIBLE(*;"MoveOut@";True)
+OBJECT SET VISIBLE(*;"AgreeUnitCounter";True)
+End if 
+
+$PageNo:=aPageNo
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+vAgreePeriods:=$CasualAmount*[Agreement]MthsAdv
+vNewPeriods:=$NewCasualAmount*[Agreement]MthsAdv
+
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+vAgreeDiscount:=-1*[Agreement]DiscountAmt
+vNewDiscAmount:=-1*[Agreement]NewDiscAmt
+
+If ([Customer]PrimaryPhone#3) | (<>bFormatMobile=True)
+OBJECT SET FORMAT(vPhone;[Facility]PhoneFormat)
+Else 
+OBJECT SET FORMAT(vPhone;"")//SDD 18/4/10 This was @ symbol which displayed it in the field
+End if 
+
+If (bChange=True)
+RELATE ONE([Agreement]BillingPlanCode)
+vOthTotal:=Sum([OtherChgs]Amount)
+
+//QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+//QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+//If (Records in selection([UnitAgree])=1)
+//QUERY([Unit]; | ;[Unit]UnitNo=[UnitAgree]UnitNo)
+//Else 
+//QUERY([Unit])
+//End if 
+If (Records in selection([UnitAgree])=0)
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+End if 
+If (Records in selection([UnitAgree])=0)
+SAVE RECORD([Unit])
+If (Records in selection([Unit])=0) & ($FromCreditSale=False)
+RELATE MANY([Agreement]RAgreeNo)
+End if 
+FIRST RECORD([Unit])
+vTotal:=0
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([Unit])
+End for 
+
+FIRST RECORD([Unit])
+
+[Agreement]InsureValue:=Sum([Unit]InsureValue)
+Case of 
+: ([BillPlan]CasualBilling=True) | ([BillPlan]PlanPeriod="Day")
+[Agreement]RegularRent:=Sum([Unit]DailyRentedValue)
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=Sum([Unit]WeeklyRentedValue)
+Else 
+[Agreement]RegularRent:=Sum([Unit]RentedValue)
+End case 
+[Agreement]AgreedDisc:=Sum([Unit]ExtraDisc)
+[Agreement]DepositAmt:=Sum([Unit]Deposit)+vOthDeposit
+[Agreement]InsureValue:=Sum([Unit]InsureValue)+vOthInsurance
+Else 
+SAVE RECORD([UnitAgree])
+If (Records in selection([UnitAgree])=0)
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+End if 
+FIRST RECORD([UnitAgree])
+vTotal:=0
+For ($i;1;Records in selection([UnitAgree]))
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([UnitAgree])
+End for 
+
+FIRST RECORD([UnitAgree])
+
+[Agreement]InsureValue:=Sum([UnitAgree]InsureValue)
+Case of 
+: ([BillPlan]CasualBilling=True) | ([BillPlan]PlanPeriod="Day")
+[Agreement]RegularRent:=Sum([UnitAgree]DailyRentedValue)
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=Sum([UnitAgree]WeeklyRentedValue)
+Else 
+[Agreement]RegularRent:=Sum([UnitAgree]RentedValue)
+End case 
+[Agreement]AgreedDisc:=Sum([UnitAgree]ExtraDisc)
+[Agreement]DepositAmt:=Sum([UnitAgree]DepositAmt)+vOthDeposit
+[Agreement]InsureValue:=Sum([UnitAgree]InsureValue)+vOthInsurance
+End if 
+[Agreement]AgreedDisc:=Round(vTotal-[Agreement]RegularRent;2)
+If ([BillPlan]CasualBilling)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+: ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End case 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vOthTotal;2)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+vAgreeDiscount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+vAgreeDiscount:=0
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+End if 
+If ([Agreement]RegularRent#Old([Agreement]RegularRent))
+vPrevRegRent:=Old([Agreement]RegularRent)
+Else 
+vPrevRegRent:=0
+End if 
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+vAgreePeriods:=$CasualAmount*[Agreement]MthsAdv
+vAgreeDiscount:=-1*[Agreement]DiscountAmt
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+End if 
+bChange:=False
+End if 
+If (bDateChange=True)
+//QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+//QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+//If (Records in selection([UnitAgree])=1)
+//QUERY([Unit]; | ;[Unit]UnitNo=[UnitAgree]UnitNo)
+//Else 
+//QUERY([Unit])
+//End if 
+If (Records in selection([UnitAgree])=0)
+QUERY SELECTION([Unit];[Unit]IncreaseFrom#!00-00-00!)
+ORDER BY([Unit];[Unit]IncreaseFrom;>)
+FIRST RECORD([Unit])
+[Agreement]NewRentFrom:=[Unit]IncreaseFrom
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+Else 
+QUERY SELECTION([UnitAgree];[UnitAgree]IncreaseFrom#!00-00-00!)
+ORDER BY([UnitAgree];[UnitAgree]IncreaseFrom;>)
+FIRST RECORD([UnitAgree])
+[Agreement]NewRentFrom:=[UnitAgree]IncreaseFrom
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+End if 
+bDateChange:=False
+End if 
+Case of 
+: ([Customer]PrimaryPhone=2)
+vPhone:=[Customer]PhoneBus
+: ([Customer]PrimaryPhone=3)
+vPhone:=[Customer]MobilePhone
+: ([Customer]PrimaryPhone=4)
+vPhone:=[Customer]MilCPhone
+Else 
+vPhone:=[Customer]PhonePrivate
+End case 
+If ([Customer]EmailAddress>"") & (([Facility]UsePDFWriter) | (<>iPlatform=2))
+OBJECT SET ENABLED(bEmailRec;True)
+OBJECT SET ENABLED(bReemailInvoice;True)
+OBJECT SET ENABLED(bEmailState;True)
+//11/11/14 DAM Added to disable buttons
+If (<>sFacility="KE@") & ([Customer]CustType="National Accounts") & ([Agreement]AgreeNo#"@#") & (PermissionsControl (218;False)=False)
+
+OBJECT SET ENABLED(bEmailRec;False)
+OBJECT SET ENABLED(bReemailInvoice;False)
+OBJECT SET ENABLED(bEmailState;False)
+
+End if 
+Else 
+OBJECT SET ENABLED(bEmailRec;False)
+OBJECT SET ENABLED(bReemailInvoice;False)
+OBJECT SET ENABLED(bEmailState;False)
+End if 
+If (<>iPrinttoFile>0)
+OBJECT SET ENABLED(bEmailRec;False)
+OBJECT SET ENABLED(bReemailInvoice;False)
+OBJECT SET ENABLED(bEmailState;False)
+OBJECT SET ENABLED(bPrtRec;False)
+OBJECT SET ENABLED(bEmailReceipt;False)
+OBJECT SET ENABLED(bPrintRec;False)
+OBJECT SET ENABLED(bReprintInvoice;False)
+OBJECT SET ENABLED(bPrintState;False)
+Else 
+OBJECT SET VISIBLE(*;"@file";False)
+End if 
+If (bNewChange=True)
+RELATE ONE([Agreement]BillingPlanCode)
+If (Records in selection([UnitAgree])=0)
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+End if 
+If (Records in selection([UnitAgree])=0)
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Agreement]NewRegularRent:=Sum([Unit]DailyNewRent)
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]NewRegularRent:=Sum([Unit]WeeklyNewRentAmt)
+Else 
+[Agreement]NewRegularRent:=Sum([Unit]NewRentAmt)
+End case 
+Else 
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Agreement]NewRegularRent:=Sum([UnitAgree]DailyNewRentAmt)
+: ([BillPlan]PlanPeriod="Week")
+[Agreement]NewRegularRent:=Sum([UnitAgree]WeeklyNewRentAmt)
+Else 
+[Agreement]NewRegularRent:=Sum([UnitAgree]NewRentAmt)
+End case 
+End if 
+vNewOthTotal:=Sum([OtherChgs]NewAmount)
+
+
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+vNewRentAmt:=Round(RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vNewOthTotal;2)
+Else 
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vNewRentAmt:=Round(RoundAmt ((($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vNewOthTotal;2)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vNewDiscAmount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vNewDiscAmount:=0
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+Else 
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+vNewPeriods:=$NewCasualAmount*[Agreement]MthsAdv
+vNewDiscAmount:=-1*[Agreement]NewDiscAmt
+bNewChange:=False
+End if 
+If (<>sProduct="@R") & ($PageNo>2)
+$PageNo:=$PageNo+1
+End if 
+If (bFirst=7) & ($PageNo>3)
+$PageNo:=$PageNo-1
+End if 
+If (([Facility]DisableCSTabs=True) & ([Agreement]ActiveAgreemt=False) & ($FromCreditSale=True)) | ([Agreement]BB=True)
+$DisableCSTabs:=True
+Else 
+$DisableCSTabs:=False
+End if 
+If (aPageNo#vLastPage)
+If (Records in selection([Customer])#1) | ([Customer]CustomerName="")//added by eugene 16.04.2014 for delinquent
+AlertMessage (Get localized string("Please enter a customer name before continuing..."))
+aPageNo:=1
+Else 
+If (<>sProduct="@T") & (aPageNo=10)
+FORM GOTO PAGE(13)
+Else 
+If ($DisableCSTabs=True)
+Case of 
+: (aPageNo=1) | (aPageNo=2)
+FORM GOTO PAGE(aPageNo+1)
+Else 
+FORM GOTO PAGE(aPageNo+2)
+End case 
+Else 
+If (aPageNo=10) & (<>sFacility="KE@")
+FORM GOTO PAGE(11)
+Else 
+FORM GOTO PAGE(aPageNo)
+End if 
+End if 
+End if 
+If (aPageNo=1)
+If ([Agreement]BalanceOwing>0)
+OBJECT SET VISIBLE(*;"@rout";False)
+Else 
+OBJECT SET VISIBLE(*;"@rout";True)
+End if 
+End if 
+If (aPageNo=2) | (($DisableCSTabs=True) & (aPageNo=1))
+asCountries:=Find in array(asCountryCodes;[Customer]CountryCode)//asCountries
+asMailCountries:=Find in array(asCountryCodes;[Customer]MailCountryCode)//asMailCountries
+asAltCountries:=Find in array(asCountryCodes;[Customer]AltCountryCode)//asAltCountries
+HIGHLIGHT TEXT([Customer]CustomerName;Length([Customer]CustomerName)+1;Length([Customer]CustomerName)+1)
+End if 
+If (aPageNo=3) | (($DisableCSTabs=True) & (aPageNo=2))
+asCountries:=Find in array(asCountryCodes;[Customer]CountryCode)//asCountries
+asMailCountries:=Find in array(asCountryCodes;[Customer]MailCountryCode)//asMailCountries
+asAltCountries:=Find in array(asCountryCodes;[Customer]AltCountryCode)//asAltCountries
+End if 
+If (aPageNo=10) & (<>sProduct="@T")
+asTerCountries:=Find in array(asCountryCodes;[Customer]TerCountryCode)//asTerCountries
+asQuadCountries:=Find in array(asCountryCodes;[Customer]QuadCountryCode)//asQuadCountries
+End if 
+If (aPageNo=4) & ($DisableCSTabs=False)
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+QUERY([PhotosCards];[PhotosCards]Code=[Agreement]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size>0)
+FIRST RECORD([PhotosCards])
+If ([Agreement]BalanceOwing>[Facility]MinBalArrears) & ([Agreement]TotRentUnpaid>[Facility]MinBalArrears)
+If ([Agreement]LateCycleStDate#!00-00-00!)
+vDaysLate:=Current date-[Agreement]LateCycleStDate
+
+If (vDaysLate<0)
+vDaysLate:=0
+End if 
+
+End if 
+Else 
+vDaysLate:=0
+End if 
+End if 
+If ((aPageNo=5) & ($FromCreditSale=False))
+QUERY([PhotosCards];[PhotosCards]Code=[Agreement]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+FIRST RECORD([PhotosCards])
+
+atLocked:=[Customer]Overdue+1
+
+End if 
+If ((aPageNo=6) & ($FromCreditSale=False)) | (($FromCreditSale) & (aPageNo=5)) | (($DisableCSTabs=True) & (aPageNo=3))//Trx page can be 3 or 5
+vRecalc:=True
+End if 
+If ((aPageNo=8) & ($FromCreditSale=False)) | (($FromCreditSale) & (aPageNo=6)) | (($DisableCSTabs=True) & (aPageNo=4))
+If (asNotesSortList=1)
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Agreement]CustomerCode)
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+tClear:=False
+Else 
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Agreement]CustomerCode;*)
+QUERY([NotesHistory];[NotesHistory]Category=asNotesSortList{0})
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+End if 
+End if 
+
+If (aPageNo=10)
+QUERY([MarketingTypes];[MarketingTypes]CustType="ALL";*)
+QUERY([MarketingTypes]; | ;[MarketingTypes]CustType="@"+[Customer]CustType+"@";*)
+If (<>sProduct="M@")
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="KQ")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+
+$x:=Records in selection([MarketingTypes])
+
+If ($x>10)
+$x:=10
+End if 
+
+vQuestion1:=""
+vQuestion2:=""
+vQuestion3:=""
+vQuestion4:=""
+vQuestion5:=""
+vQuestion6:=""
+vQuestion7:=""
+vQuestion8:=""
+vQuestion9:=""
+vQuestion10:=""
+
+OBJECT SET VISIBLE([Agreement]KQ1;False)
+OBJECT SET VISIBLE([Agreement]KQ2;False)
+OBJECT SET VISIBLE([Agreement]KQ3;False)
+OBJECT SET VISIBLE([Agreement]KQ4;False)
+OBJECT SET VISIBLE([Agreement]KQ5;False)
+OBJECT SET VISIBLE([Agreement]KQ6;False)
+OBJECT SET VISIBLE([Agreement]KQ7;False)
+OBJECT SET VISIBLE([Agreement]KQ8;False)
+OBJECT SET VISIBLE([Agreement]KQ9;False)
+OBJECT SET VISIBLE([Agreement]KQ10;False)
+
+If ($x>0)
+FIRST RECORD([MarketingTypes])
+vQuestion1:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ1;True)
+If ($x>1)
+NEXT RECORD([MarketingTypes])
+vQuestion2:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ2;True)
+If ($x>2)
+NEXT RECORD([MarketingTypes])
+vQuestion3:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ3;True)
+If ($x>3)
+NEXT RECORD([MarketingTypes])
+vQuestion4:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ4;True)
+If ($x>4)
+NEXT RECORD([MarketingTypes])
+vQuestion5:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ5;True)
+If ($x>5)
+NEXT RECORD([MarketingTypes])
+vQuestion6:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ6;True)
+If ($x>6)
+NEXT RECORD([MarketingTypes])
+vQuestion7:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ7;True)
+If ($x>7)
+NEXT RECORD([MarketingTypes])
+vQuestion8:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ8;True)
+If ($x>8)
+NEXT RECORD([MarketingTypes])
+vQuestion9:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ9;True)
+If ($x>9)
+NEXT RECORD([MarketingTypes])
+vQuestion10:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Agreement]KQ10;True)
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="FF")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+
+$x:=Records in selection([MarketingTypes])
+
+If ($x>10)
+$x:=10
+End if 
+
+OBJECT SET VISIBLE([Agreement]KF1;False)
+OBJECT SET VISIBLE([Agreement]KF2;False)
+OBJECT SET VISIBLE([Agreement]KF3;False)
+OBJECT SET VISIBLE([Agreement]KF4;False)
+OBJECT SET VISIBLE([Agreement]KF5;False)
+OBJECT SET VISIBLE([Agreement]KF6;False)
+OBJECT SET VISIBLE([Agreement]KF7;False)
+OBJECT SET VISIBLE([Agreement]KF8;False)
+OBJECT SET VISIBLE([Agreement]KF9;False)
+OBJECT SET VISIBLE([Agreement]KF10;False)
+
+If ($x>0)
+FIRST RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF1";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF1;True)
+If ($x>1)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF2";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF2;True)
+If ($x>2)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF3";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF3;True)
+If ($x>3)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF4";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF4;True)
+If ($x>4)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF5";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF5;True)
+If ($x>5)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF6";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF6;True)
+If ($x>6)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF7";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF7;True)
+If ($x>7)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF8";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF8;True)
+If ($x>8)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF9";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF9;True)
+If ($x>9)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"AgreeKF10";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Agreement]KF10;True)
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+
+End if 
+
+//29/05/13 DAM Added to move the Boat Info tab to the second place
+//If (<>sProduct="@B")
+//If (aPageNo>2)
+//FORM GOTO PAGE(aPageNo-1)
+//End if 
+//End if 
+
+//For Marina
+If (aPageNo{aPageNo}=Get localized string("Boat Info"))
+FORM GOTO PAGE(12)
+End if 
+//End if 
+
+//Billing Sync
+//If the 'SU' tab is selected
+If (aPageNo{aPageNo}="SU")
+FORM GOTO PAGE(10)
+C_LONGINT(vliFacilityID;vliFacilityIDMod;$Offset)
+C_DATE(vdFacilityLicenseUpdateDate;vdFacilityLicenseUpdateDateMod;vdFacilityPaidToDate;vdFacilityPaidToDateMod)
+C_TIME(vtFacilityLicenseUpdateTime;vtFacilityLicenseUpdateTimeMod)
+C_TEXT(vtFacilityPassword;vtFacilityPasswordMod;vtFacilityEmail;vtFacilityEmailMod;vtFacilityPhone;vtFacilityPhoneMod;vtFacilitySupportPlan;vtFacilitySupportPlanMod;vtFacilityName;vtFacilityNameMod;vtFacilityOldSupportPlan)
+ARRAY TEXT(vtaFacilitySupportPlanPop;0)
+ARRAY TEXT(vtaFacilitySupportPlanMod;0)
+
+OBJECT SET ENABLED(*;"bSaveChanges";False)
+vliFacilityID:=0
+vdFacilityLicenseUpdateDate:=!00-00-00!
+vtFacilityLicenseUpdateTime:=?00:00:00?
+vdFacilityPaidToDate:=!00-00-00!
+vtFacilityPassword:=""
+vtFacilityEmail:=""
+vtFacilityPhone:=""
+vtFacilitySupportPlan:=""
+vtFacilityName:=""
+vtFacilityOldSupportPlan:=""
+$Offset:=0
+ARRAY LONGINT(vliaFacilityID;0)
+ARRAY DATE(vdaFacilityLicenseUpdateDate;0)
+ARRAY LONGINT(vtmFacilityLicenseUpdateTime;0)
+ARRAY DATE(vdaFacilityPaidToDate;0)
+ARRAY TEXT(vtaFacilityPassword;0)
+ARRAY TEXT(vtaFacilityEmail;0)
+ARRAY TEXT(vtaFacilityPhone;0)
+ARRAY TEXT(vtaFacilitySupportPlan;0)
+ARRAY TEXT(vtaFacilityName;0)
+ARRAY TEXT(vtaFacilityOldSupportPlan;0)
+ARRAY TEXT(vtaBillingAnnualFee;0)
+
+//Read the contents of the Blob containing all the current Facility information
+$lf:=Char(Line feed)
+$FacilityRecordCount:=GetSeparatedTextCount ([Agreement]SUFacilityInfo;$lf)
+For ($FacilityRecordCounter;1;$FacilityRecordCount)
+$FacilityRecord:=GetSeparatedText ([Agreement]SUFacilityInfo;$lf;$FacilityRecordCounter)
+If ($FacilityRecord#"")
+INSERT IN ARRAY(vliaFacilityID;1;1)
+INSERT IN ARRAY(vdaFacilityLicenseUpdateDate;1;1)
+INSERT IN ARRAY(vtmFacilityLicenseUpdateTime;1;1)
+INSERT IN ARRAY(vdaFacilityPaidToDate;1;1)
+INSERT IN ARRAY(vtaFacilityPassword;1;1)
+INSERT IN ARRAY(vtaFacilityEmail;1;1)
+INSERT IN ARRAY(vtaFacilityPhone;1;1)
+INSERT IN ARRAY(vtaFacilitySupportPlan;1;1)
+INSERT IN ARRAY(vtaFacilityName;1;1)
+INSERT IN ARRAY(vtaFacilityOldSupportPlan;1;1)
+INSERT IN ARRAY(vtaBillingAnnualFee;1;1)
+vliaFacilityID{1}:=Num(GetSeparatedText ($FacilityRecord;";";1))
+vdaFacilityLicenseUpdateDate{1}:=Date(GetSeparatedText ($FacilityRecord;";";2))
+vtmFacilityLicenseUpdateTime{1}:=Time(GetSeparatedText ($FacilityRecord;";";3))+0//Convert Time to LongInt
+vdaFacilityPaidToDate{1}:=Date(GetSeparatedText ($FacilityRecord;";";4))
+vtaFacilityPassword{1}:=GetSeparatedText ($FacilityRecord;";";5)
+vtaFacilityEmail{1}:=GetSeparatedText ($FacilityRecord;";";6)
+vtaFacilityPhone{1}:=GetSeparatedText ($FacilityRecord;";";7)
+vtaFacilitySupportPlan{1}:=GetSeparatedText ($FacilityRecord;";";8)
+vtaFacilityName{1}:=GetSeparatedText ($FacilityRecord;";";9)
+vtaFacilityOldSupportPlan{1}:=GetSeparatedText ($FacilityRecord;";";10)
+vtaBillingAnnualFee{1}:=GetSeparatedText ($FacilityRecord;";";11)
+Else 
+//If Facility Record is blank, then skip it
+End if 
+End for 
+LISTBOX SORT COLUMNS(SUFacilityListBox;1;>)
+OBJECT SET ENTERABLE(*;"vtFacilityPassword";False)//Disable Password field
+OBJECT SET ENABLED(*;"vtFacilityPasswordUse";False)//Disable the PasswordUse button
+OBJECT SET ENTERABLE(*;"vtFacilityName";False)//Disable Facility Name field
+OBJECT SET ENABLED(*;"vtFacilityNameUse";False)//Disable the FacilityName button
+OBJECT SET ENTERABLE(*;"vdFacilityPaidToDate";False)//Disable PaidUpTo Date field
+OBJECT SET ENABLED(*;"vdFacilityPaidToDateUse";False)//Disable the PaidToDate button
+OBJECT SET ENTERABLE(*;"vtFacilityPhone";False)//Disable Facility Phone field
+OBJECT SET ENABLED(*;"vtFacilityPhoneUse";False)//Disable the Facility Phone button
+OBJECT SET ENTERABLE(*;"vtFacilityEmail";False)//Disable Facility Email field
+
+OBJECT SET ENABLED(*;"vtFacilityEmailUse";False)//Disable the Facility Email button
+OBJECT SET ENABLED(*;"vtaFacilitySupportPlanPop";False)//Disable Support Plan dropdown
+OBJECT SET ENABLED(*;"vtaFacilitySupportPlanPopUse";False)//Disable the Support Plan Use button
+End if 
+vLastPage:=aPageNo
+If (aPageNo=1)
+OBJECT SET ENTERABLE([Agreement]CustomerCode;False)
+GOTO OBJECT([Customer]Notes)
+End if 
+End if 
+End if 
+If ((aPageNo=7) & (vBefp4=True) & ($FromCreditSale=False)) | (Modified([Agreement]BalanceOwing)) | (Modified([Agreement]MoveOut)) | (Modified([Agreement]OutNoticeDate)) | (Modified([Agreement]LastBillDate)) | (Modified([Agreement]LastBillAmt)) | (Modified([Agreement]NextBillDate))
+vBefp4:=False
+MoveOutCalc 
+End if 
+If (Modified([Agreement]MoveIn))
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+If ([Facility]BillonFirst)
+[Agreement]DaytoBill:=1
+[Agreement]NextBillDate:=GetDate (1;Month of([Agreement]MoveIn+30);Year of([Agreement]MoveIn+30))
+End if 
+If ([Agreement]NextBillDate<[Agreement]MoveIn)
+[Agreement]NextBillDate:=[Agreement]MoveIn
+End if 
+If ([Agreement]LastBillDate<[Agreement]MoveIn)
+[Agreement]LastBillDate:=[Agreement]MoveIn
+End if 
+[Agreement]PaidToDate:=[Agreement]MoveIn
+End if 
+vAmount:=0
+vTransID:=""
+vSpecialAnalysis:=""
+vKSSInactiveRefund:=""
+If (bAddCharge=1) | (bAddRec=1) | (bAddCredit=1) | (bAddRefund=1)
+If (bAddCharge=1)
+$perm:=40
+End if 
+If (bAddRec=1)
+$perm:=42
+End if 
+If (bAddCredit=1)
+$perm:=171
+End if 
+If (bAddRefund=1)
+$perm:=173
+///=========10280
+If ((<>sFacility="KE@") & ([Agreement]ActiveAgreemt=False) & (Substring([Agreement]AgreeNo;1;1)#"#"))
+CREATE EMPTY SET([Trxs];"Original")
+ADD TO SET([Trxs];"Original")
+vKSSInactiveRefund:=KSSInactiveCCbox ([Agreement]RAgreeNo)
+USE SET("Original")
+CLEAR SET("Original")
+End if 
+
+End if 
+If (PermissionsControl ($perm))
+LOAD RECORD([Trxs])
+If (Modified record([Customer]))
+SAVE RECORD([Customer])
+End if 
+bFromMoveIn:=True
+vtReverse:=False
+vTransID:=""//10708
+vOriginalReceipt:=""//10708
+vAuthcode:=""
+If (bAddCredit=1) | (bAddRefund=1)
+vtReverse:=True
+If (bAddRefund=1) & ([Trxs]CCTransID>"")
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+vTransID:=[Trxs]OriginalReceipt
+vOriginalReceipt:=[Trxs]CCTransID
+vAuthcode:=[Trxs]CCAuthNo
+Else 
+vTransID:=[Trxs]CCTransID
+vOriginalReceipt:=[Trxs]OriginalReceipt
+vAuthcode:=[Trxs]CCAuthNo
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Code=[Trxs]AnalysisCode)
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ([Analysis]SpecialOptions=57))//10852
+vTransID:=[Trxs]CCTransID
+vOriginalReceipt:=[Trxs]OriginalReceipt
+vAuthcode:=[Trxs]CCAuthNo
+End if 
+
+vAmount:=[Trxs]TotAmt
+vDate:=[Trxs]DateBanked
+vSpecialAnalysis:=[Trxs]AnalysisCode
+If (vDate=!00-00-00!)
+vDate:=[Trxs]TrxDate
+End if 
+End if 
+End if 
+If (bAddCharge=1) | (bAddCredit=1)
+FORM SET INPUT([Trxs];"ModCharges")
+End if 
+If (bAddRec=1) | (bAddRefund=1)
+
+//04/08/15 DAM Added for Panama fo sending AutoCCEmail
+If ([Facility]Country="PA")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+ARRAY LONGINT(arMatchNo;0)
+ARRAY TEXT(arAnalysisCode;0)
+ARRAY REAL(arTotalAmt;0)
+SELECTION TO ARRAY([Trxs]Match;arMatchNo;[Trxs]AnalysisCode;arAnalysisCode;[Trxs]TotAmt;arTotalAmt)
+
+If ([Facility]InvUseAgrBalFwd)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+End if 
+End if 
+
+FORM SET INPUT([Trxs];"ModReceipts")
+End if 
+bBoth:=0
+READ WRITE([Trxs])
+Repeat 
+bPrtRec:=0
+bEmailReceipt:=0
+GERROR:=""
+ReservationAgreement:=False
+ADD RECORD([Trxs])
+
+If (GERROR="OK")
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+
+If (bPrtRec=1)
+vRecNo:=Record number([Trxs])
+End if 
+Until (bBoth#1)
+If ([Trxs]CCTransID>"") | ([Trxs]CCAuthNo>"")//Dont allow Cancel even on failed CC trx as Note is written  SDD 21/11/05
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+READ ONLY([Trxs])
+viMatch:=-1
+vRecalc:=True
+End if 
+If ([Customer]Balance>0)
+OBJECT SET COLOR(*;"Number777";-3)//Set Red
+Else 
+OBJECT SET RGB COLORS(*;"Number777";0x0006616D;0x00FFFFFF)
+End if 
+End if 
+If (bMod=1)//| (Form event=On Double Clicked ) Does not work, causes problem's by registering double click's on area's outside the subform and on other page's of the main form
+If (Selected record number([Trxs])#0)
+bFromMoveIn:=True
+LOAD RECORD([Trxs])
+vtReverse:=([Trxs]TotAmt<0)
+If ([Trxs]Charge=True)
+$pqr:=148
+$trxdateperm:=False
+Else 
+$pqr:=149
+$trxdateperm:=PermissionsControl (204;False)
+End if 
+
+//14/07/15 DAM Added for deletion "W" Ezidebit transaction 9541
+GERROR:=""
+
+If ($pqr=149) & ($trxdateperm=True)
+Case of 
+: (Current user="Designer") & (Shift down)
+FORM SET INPUT([Trxs];"TransactionIn")
+: ([Trxs]Charge=True)
+FORM SET INPUT([Trxs];"ModCharges")
+: ([Trxs]Charge=False)
+FORM SET INPUT([Trxs];"ModReceipts")
+Else 
+//Do Nothing
+End case 
+bPrtRec:=0
+bEmailReceipt:=0
+If ([Trxs]Match=0)
+viMatch:=-1
+Else 
+viMatch:=[Trxs]Match
+End if 
+READ WRITE([Trxs])
+MODIFY RECORD([Trxs])
+If (OK=1) | (bDelete=1)
+vRecalc:=True
+Else 
+viMatch:=0
+End if 
+READ ONLY([Trxs])
+If (bPrtRec=1)//This is done in ReCalc
+vRecNo:=Record number([Trxs])
+End if 
+Else 
+If (PermissionsControl ($pqr))
+Case of 
+: (Current user="Designer") & (Shift down)
+FORM SET INPUT([Trxs];"TransactionIn")
+: ([Trxs]Charge=True)
+FORM SET INPUT([Trxs];"ModCharges")
+: ([Trxs]Charge=False)
+FORM SET INPUT([Trxs];"ModReceipts")
+Else 
+//Do Nothing
+End case 
+bPrtRec:=0
+bEmailReceipt:=0
+If ([Trxs]Match=0)
+viMatch:=-1
+Else 
+viMatch:=[Trxs]Match
+End if 
+READ WRITE([Trxs])
+MODIFY RECORD([Trxs])
+If (OK=1) | (bDelete=1)
+vRecalc:=True
+Else 
+viMatch:=0
+End if 
+READ ONLY([Trxs])
+If (bPrtRec=1)//This is done in ReCalc
+vRecNo:=Record number([Trxs])
+End if 
+End if 
+End if 
+
+//14/07/15 DAM Added for deletion "W" Ezidebit transaction 9541
+If (GERROR="OK")
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+
+Else 
+AlertMessage (Get localized string("NoTrxMod"))
+End if 
+bMod:=0
+End if 
+If (bPrtRec=1)
+PrintReceiptOption 
+End if 
+If (bReturn=1)
+If (PermissionsControl (178))
+LOAD RECORD([Trxs])
+If ([Trxs]Charge=False) & ([Trxs]AgreeNo=[Agreement]RAgreeNo) & ([Trxs]TotAmt>0)
+ChequeReturn 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("Please select the receipt that is being refunded!"))
+End if 
+End if 
+End if 
+If (bReturnPayment=1)
+If (PermissionsControl (177))
+LOAD RECORD([Trxs])
+Case of 
+: ([Trxs]CCTransID>"")
+bFromMoveIn:=True
+vtReverse:=False
+vtReverse:=True
+vTransID:=[Trxs]CCTransID
+vAmount:=[Trxs]TotAmt
+vOriginalReceipt:=[Trxs]OriginalReceipt
+vAuthcode:=[Trxs]CCAuthNo
+vDate:=[Trxs]DateBanked
+vSpecialAnalysis:=[Trxs]AnalysisCode
+If (vDate=!00-00-00!)
+vDate:=[Trxs]TrxDate
+End if 
+FORM SET INPUT([Trxs];"ModReceipts")
+bBoth:=0
+READ WRITE([Trxs])
+Repeat 
+bPrtRec:=0
+bEmailReceipt:=0
+ADD RECORD([Trxs])
+If (bPrtRec=1)
+vRecNo:=Record number([Trxs])
+End if 
+Until (bBoth#1)
+If ([Trxs]CCTransID>"") | ([Trxs]CCAuthNo>"")//Dont allow Cancel even on failed CC trx as Note is written  SDD 21/11/05
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+READ ONLY([Trxs])
+viMatch:=-1
+vRecalc:=True
+: ([Trxs]Charge=False) & ([Trxs]AgreeNo=[Agreement]RAgreeNo) & ([Trxs]TotAmt>0)
+RefundPayment 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("Please select the receipt that is being refunded!"))
+End case 
+End if 
+End if 
+If (asShowHistory#vLastHist)
+vRecalc:=True
+vLastHist:=asShowHistory
+End if 
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]NoEditMthsAdv)
+OBJECT SET ENTERABLE([Agreement]MthsAdv;False)
+End if 
+End if 
+If (vRecalc=True) | (bOut=1)
+ReCalc 
+
+If ([Customer]Balance>0)
+OBJECT SET COLOR(*;"Number777@";-3)//Set Red
+Else 
+OBJECT SET RGB COLORS(*;"Number777@";0x0006616D;0x00FFFFFF)
+End if 
+vrCustBalance:=[Customer]Balance
+REDRAW(vrCustBalance)
+
+End if 
+
+
+If ([Facility]BPay>1) & ([Facility]BillerCode #0) & ([Facility]Country="AU") & (GetTextNo ([Facility]BPayDigitalKey;1;",")#"")//10781 & 10847
+OBJECT SET VISIBLE(*;"TextCRN1";True)
+OBJECT SET VISIBLE(*;"TextCRN2";True)
+OBJECT SET VISIBLE(*;"bBPAY";True)
+If ([Customer]CRN#"")
+OBJECT SET ENABLED(*;"bBPAY";False)
+Else 
+OBJECT SET ENABLED(*;"bBPAY";True)
+End if 
+
+
+Else 
+OBJECT SET VISIBLE(*;"TextCRN1";False)
+OBJECT SET VISIBLE(*;"TextCRN2";False)
+OBJECT SET VISIBLE(*;"bBPAY";False)
+End if 
+
+End if 

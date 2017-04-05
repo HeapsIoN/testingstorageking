@@ -1,0 +1,54 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (bOkNext=True)
+CANCEL
+Else 
+
+If ([Contacts]ContactNo>"")
+LOAD RECORD([UnitType])
+CREATE RECORD([Quote])
+[Quote]ContactNo:=[Contacts]ContactNo
+Case of 
+: ([UnitType]OrgAnalysis>"") & ([Contacts]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis>"")
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Contacts]ContactNo;1;5)+"RF")
+End case 
+[Quote]AnalysisCode:=[Analysis]Code
+Case of 
+: (<>sProduct="@B")
+[Quote]Size:=Get localized string("Berth Type")+": "+[UnitType]Description
+: (<>sProduct="@R")
+[Quote]Size:=Get localized string("Appliance Type")+": "+[UnitType]Description
+: (<>sFacility="ST@")
+[Quote]Size:=Get localized string("Support Plan Type")+": "+[UnitType]Description
+: (<>sProduct="@C")
+[Quote]Size:=Get localized string("Space Type")+": "+[UnitType]Description
+Else 
+[Quote]Size:=Get localized string("Unit Type")+": "+[UnitType]Description
+End case 
+[Quote]UnitTypeCode:=[UnitType]RUnitType
+[Quote]Lngth:=[UnitType]UnitTypeLength
+
+If ([UnitType]VariableLength)
+$Continue:=False
+Repeat 
+$Length:=Num(RequestMessage (Get localized string("Please enter the length used. Do not exceed maximum length of")+" "+String([UnitType]UnitTypeLength);String([UnitType]UnitTypeLength)))
+If ($Length<=[UnitType]UnitTypeLength)
+$Continue:=True
+End if 
+[Quote]Lngth:=$Length
+Until ($Continue)
+OBJECT SET VISIBLE(*;"@Length";True)
+End if 
+
+[Quote]Price:=CalculateBaseRateNoUT (0;2;[Quote]Lngth)
+
+//02/07/14 DAM Added the condition below for fixing blank records are added for 
+If ([UnitType]UnitTypeCode>"")
+SAVE RECORD([Quote])
+End if 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+End if 
+End if 

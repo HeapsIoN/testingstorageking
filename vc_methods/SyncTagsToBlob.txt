@@ -1,0 +1,48 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 25/2/11 Change to UTF8
+
+C_TEXT($1;$vtStartTag;$vtEndTag)//$1 = Tag to search for
+C_POINTER($0;$2;$3)//$2 = Blob to search, $3 = Result Blob
+C_LONGINT($vliStartPosition;$vliOffset;$vliLength;$vliCharsToRead)
+C_LONGINT($4)//$4 = Delete Tags and content after processing, 1=yes, 0=no
+
+SET BLOB SIZE($3->;0)
+
+$vliStartPosition:=-1
+$vtStartTag:=$1
+$vtEndTag:=Replace string($1;"<";"</")
+$vliOffset:=0
+$vliLength:=-1
+$vliCharsToRead:=32000
+
+Repeat 
+$vliOffset:=$vliOffset-Length($1)
+If ($vliOffset<0)
+$vliOffset:=0
+End if 
+
+$vtText:=BLOB to text($2->;Mac text without length;$vliOffset;$vliCharsToRead)
+
+If ($vliStartPosition=-1)
+If (Position($vtStartTag;$vtText)#0)
+$vliStartPosition:=$vliOffset-Length($vtText)+Position($vtStartTag;$vtText)+Length($vtStartTag)-1
+$vliOffset:=$vliStartPosition
+$vtText:=BLOB to text($2->;Mac text without length;$vliOffset;$vliCharsToRead)
+End if 
+End if 
+
+If ($vliStartPosition>0)
+If (Position($vtEndTag;$vtText)#0)
+$vliLength:=$vliOffset-Length($vtText)+Position($vtEndTag;$vtText)-$vliStartPosition-1
+End if 
+End if 
+Until (($vliStartPosition#-1) & ($vliLength#-1)) | ($vtText="") | ($vliOffset=BLOB size($2->))
+
+
+If ($vliStartPosition#-1) & ($vliLength#-1)
+COPY BLOB($2->;$3->;$vliStartPosition;0;$vliLength)
+If ($4=1)
+DELETE FROM BLOB($2->;$vliStartPosition-Length($1);BLOB size($3->)+(Length($1)*2)+1+2)//Last 2 is for char(13)+char(10) at end of line
+End if 
+End if 
+$0:=$3

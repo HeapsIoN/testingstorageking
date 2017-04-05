@@ -1,0 +1,391 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//ProcCreditCard
+
+C_TEXT($0)//Authorization Code
+C_BOOLEAN($1)//Display Decline / Error Alerts
+C_TEXT($2)//S
+C_REAL($3;$Amount)//$1 = Transaction Amount
+C_TEXT($4)//Card Number
+C_TEXT($5)//Expiry Date
+C_TEXT($6)//TransID
+C_TEXT($7;$8;$9)//AgreeNo, Description, CustomerCode
+C_TEXT($10;$11)//Customer Name, Address
+C_TEXT($12;$Blank)//City
+C_TEXT($13)//Zip Code
+C_TEXT($14;$15)//custProfileID, custPaymentProfID
+C_BOOLEAN($16)//TaxExempt
+C_BOOLEAN($17)//Token not available
+C_TEXT($18)//CCV Number
+C_BOOLEAN($19)//Use card on file
+C_TEXT($20;$name)//custnamr
+C_TEXT(;$type;$Business;$merchantid;$SharedSecret;$UUID;$PayerType;$Success)
+
+// //10/11/14 by Hamid
+//If (Count parameters=20)
+//$name:=$20
+//End if 
+
+C_TEXT($Service;$Merchant;$User;$PassW)
+C_TIME($Time)
+C_TEXT($Country)
+C_TEXT($UID;$varCT)
+C_DATE($varD)
+C_TIME($varT)
+C_LONGINT($SecCount;viTick1;viTick2;viTick3;viTick4;viTick5;$Logging;$Timeout)
+If (Not(IsAWebProcess ))
+Open window(20;50;400;150;5;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Credit Card")+"    ")
+End if 
+$Blank:=""
+$Time:=Current time
+$SecCount:=Tickcount
+$Service:=Substring(GetTextNo ([Facility]MerchantDetails;1;",");1;20)
+$Merchant:=Substring(GetTextNo ([Facility]MerchantDetails;2;",");1;20)
+$MerchantEzi:=String(GetTextNo ([Facility]MerchantDetails;2;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;3;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;4;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;5;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;6;","))
+$User:=Substring(GetTextNo ([Facility]MerchantDetails;3;",");1;20)
+$PassW:=Substring(GetTextNo ([Facility]MerchantDetails;4;",");1;20)
+$Logging:=Num(Substring(GetTextNo ([Facility]MerchantDetails;5;",");1;1))
+$Timeout:=Num(Substring(GetTextNo ([Facility]MerchantDetails;6;",");1;3))
+$Country:=[Facility]Country
+$Amount:=Abs(Round($3;2))
+If ($Logging#1)
+$Logging:=0
+End if 
+If ($Timeout<15) | ($Timeout>90)
+$Timeout:=65
+End if 
+$Expiry:=Replace string($5;"/";"")
+If (Length($Expiry)>4)
+$Expiry:=Substring($Expiry;1;2)+Substring($Expiry;5;2)
+End if 
+vCCText:=""
+If (GetTextNo ([Facility]MerchantDetails;1;",")#"Realex") & (GetTextNo ([Facility]MerchantDetails;1;",")#"AuthorizeNet CIM") & ((GetTextNo ([Facility]MerchantDetails;1;",")#"EziDebit") | ((GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & $17)) & (GetTextNo ([Facility]MerchantDetails;1;",")#"Advam StoredPAN") & (GetTextNo ([Facility]MerchantDetails;1;",")#"BPOINT") & ((GetTextNo ([Facility]MerchantDetails;1;",")#"Cheq") | ((GetTextNo ([Facility]MerchantDetails;1;",")="Cheq") & $17)) & (GetTextNo ([Facility]MerchantDetails;1;",")#"NAB CM") & (GetTextNo ([Facility]MerchantDetails;1;",")#"CardSave") & ((GetTextNo ([Facility]MerchantDetails;1;",")#"Transaction Express") | ((GetTextNo ([Facility]MerchantDetails;1;",")="Transaction Express") | ((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters")) & ($19=False)))
+
+Case of 
+: (CheckCCValid ($4)=False)
+vCCText:=Get localized string("Invalid Credit Card Number")+" : "+("x"*(Length($4)-4))+"-"+Substring($4;Length($4)-3)+" "+Get localized string("for")+" "+$7
+If (Not(IsAWebProcess ))
+AlertMessage (vCCText)
+End if 
+$0:="ERRCCN"
+: (CheckCCExpiry ($Expiry;$7)=False)
+vCCText:=Get localized string("Invalid Credit Card Expiry Date")+" : "+$Expiry+" for "+$7
+If (Not(IsAWebProcess ))
+AlertMessage (vCCText)
+End if 
+$0:="ERREXP"
+: ($Service="CTel")//FB10114
+$0:=ProcCCcTel ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;$10;$11;$12;$13;$Merchant;$User;$PassW)//;$Logging;$Timeout)
+: ($Service="AuthorizeNet")//FB10114
+If ($19=True)// Added for Non Present Account
+$User:=Substring(GetTextNo ([Facility]MerchantDetails2;3;",");1;20)
+$PassW:=Substring(GetTextNo ([Facility]MerchantDetails2;4;",");1;20)
+End if 
+$0:=ProcCCAuthNet ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;Substring($10;1;25);Substring($11;1;25);$Blank;$13;$Blank;$User;$PassW)//;$Logging;$Timeout)
+: ($Service="Verisign")//FB10114
+$0:=ProcCCVerisign ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;$10;$11;$12;$13;$Merchant;$User;$PassW)//;$Logging;$Timeout)
+: ($Service="Advam")//FB10114
+If (True)//(Current date<!01/04/2011!)  Needs to have a licencing code here
+$0:=WSC_AdvamCCTransaction ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;$10;$11;$12;$13;$Merchant;$User;$PassW;$Logging;$Timeout;$Country;vOriginalReceipt)
+Else 
+AlertMessage (Get localized string("To use the Advam CC interface you must be on the Storman CC Monthly Plan - Please contact Storman Sales to order this plan!"))
+End if 
+: ($Service="BPOINT")
+If ($2="P")
+$PaymentType:="PAYMENT"
+Else 
+$PaymentType:="REFUND"
+End if 
+
+If ($19)
+$TxnType:="RECURRING"
+$CardNo:=$14
+Else 
+$TxnType:="CUSTOMER_PRESENT"
+$CardNo:=$4
+End if 
+
+$0:=wsc_bpoint_ProcessPayment ($user;$PassW;$Merchant;$PaymentType;$TxnType;"";$7;$9;"";"";Int($Amount*100);$CardNo;$5;$18;vOriginalReceipt;$1)
+: ($Service="NAB")//FB10114
+$0:=ProcCCNAB ($User;$PassW;$Timeout;$Amount;$2;$9;$6;$4;$5;$Country;$Logging)
+
+: ($Service="EziDebit")
+
+//30/01/15 DAM Added code for processing EziDebit refund
+//$0:=WSC_EziCCRealtime ($MerchantEzi;$4;$5;$18;$10;$Amount;$10;$7;"";"";"";"";"";$1)
+If (bAddRefund=1)
+$0:=WSC_EziProcessRefund ($MerchantEzi;$6;"";$Amount;$1)
+Else 
+$EziPayRef:=""
+$EziPayRef:=[Agreement]AgreeNo+Substring(String(Year of(Current date));2)+String(Month of(Current date))+String(Day of(Current date))+Substring(Replace string(String(Current time);":";"");1;5)//Generate payment ref
+$0:=WSC_EziCCRealtime ($MerchantEzi;$4;$5;$18;$10;$Amount;$10;$EziPayRef;"";"";"";"";"";$1)//FB10114
+End if 
+
+: ($Service="Payment Express")//FB10114
+$0:=ProcCCPaymentExpress ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;$10;$11;$12;$13;$User;$PassW;$18;$Logging;$Timeout)
+: ($Service="eMatters")
+
+If ($19=False)
+$readers:=Substring(GetTextNo ([Facility]MerchantDetails;3;",");1;20)
+$password:=Substring(GetTextNo ([Facility]MerchantDetails;4;",");1;20)
+
+If ([Customer]CustomerCode="@MISCL")//- Added by Hamid 28/8/2015 - 9660
+$Name:=vCustomerName
+Else 
+$Name:=[Customer]CustomerName
+End if 
+
+
+$CreditCardHolderName:=$10//vCCName
+$CreditCardNumber:=$4//vCCNo
+$CreditCardExpiryMonth:=Substring($5;1;2)//vCCExpiry
+$CreditCardExpiryYear:=Substring($5;3;4)//vCCExpiry
+$FinalPrice:=String($3)//[Trxs]TotAmt
+$UID:=$9+"_"+String(Generate UUID)
+
+If (bAddRefund=1)
+$Action:="Refund"
+$0:=eMattersAPI ($password;$readers;$Name;$CreditCardHolderName;$CreditCardNumber;$CreditCardExpiryMonth;$CreditCardExpiryYear;$FinalPrice;$UID;$Action)
+Else 
+$Action:="Process"
+$0:=eMattersAPI ($password;$readers;$Name;$CreditCardHolderName;$CreditCardNumber;$CreditCardExpiryMonth;$CreditCardExpiryYear;$FinalPrice;$UID;$Action)
+End if 
+
+Else 
+$varD:=Current date
+$varT:=Current time
+$UID:=""
+$varct:=Replace string(String($vart);":";"")
+$UID:=String(Day of($varD))+String(Month of($varD))+String(Year of($varD))+$varCT
+$0:=EmattersPaymentRefund ($User;$PassW;"";$20;"";GetTextNo ($10;1;",");$4;Substring($Expiry;1;2);Substring($Expiry;3;2);"";$Amount;"";"";0;"";"";0;0;"";"";"";$UID;0;"")
+End if 
+
+
+If ($0#"Ok")
+AlertMessage ("Credit card No:"+$4+" Amt:"+String($Amount;"###,###.00")+" not procced!")
+End if 
+: ($Service="Cheq")//FB10114
+$0:=WSC_CheqChargeCard ($1;$3;$4;$5;$7;$10;$11;$12;$13;$14;$18;$2;vOriginalReceipt;$User;$PassW)
+: ($Service="Transaction Express")
+//Card Present
+If (bAddRefund=1)
+If ([Analysis]SpecialOptions=57)
+//Refund for DD
+$0:=TrxExpressProcessTrx ($User;$PassW;$Amount;$4;$5;16;$15;False)
+Else 
+//Refund for CC
+$0:=TrxExpressProcessTrx ($User;$PassW;$Amount;$4;$5;4;$15;False)
+End if 
+Else 
+$0:=TrxExpressProcessTrx ($User;$PassW;$Amount;$4;$5;1;"";False)
+End if 
+
+Else 
+If (Not(IsAWebProcess ))
+AlertMessage (Get localized string("Automated Credit Card processing has not been setup. You can do this via the Maintenance menu -> System Setup -> Modules tab. Please contact Technical Support if you require further assistance.."))
+Else 
+$0:="ERR"
+End if 
+End case 
+If ($Logging=1)
+SyncRecordLog (Get localized string("CC Processing for Agreement")+" :"+$7+" "+Get localized string("started at")+" "+String($Time)+" "+Get localized string("finished at")+" "+String(Current time)+" "+Get localized string("Elapsed time")+" = "+String(Current time-$Time)+" - "+String($SecCount)+","+String(viTick1)+","+String(viTick2)+","+String(viTick3)+","+String(viTick4)+","+String(viTick5)+","+String(Tickcount))
+End if 
+If ([Trxs]Charge=False)
+[Trxs]Qty:=Tickcount-$SecCount
+End if 
+Else 
+Case of 
+: (GetTextNo ([Facility]MerchantDetails;1;",")="AuthorizeNet CIM")
+// Original Code in Comments
+//If ([Customer]customerProfileID#"") & ([Customer]custPaymentProfID#"")
+//$0:=WSC_AuthnetCreateCustProfTrx ($User;$PassW;$2;String($Amount;"######0.00");$14;$15;$16;vTransID)
+//Else 
+//$0:=WSC_ProcCardPresentAuthNet ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;$10;$11;$12;$13;$Merchant;$User;$PassW;$Logging;vCCV;$Country;vOriginalReceipt)
+//  //AlertMessage (Get localized string("Please check that the Customer Profile and Payment Profile ID's found in Autopay/Notices tab have values"))
+//End if 
+
+If ($19=True)
+$User:=Substring(GetTextNo ([Facility]MerchantDetails2;3;",");1;20)
+$PassW:=Substring(GetTextNo ([Facility]MerchantDetails2;4;",");1;20)
+If ([Customer]customerProfileID#"") & ([Customer]custPaymentProfID#"")
+$0:=WSC_AuthnetCreateCustProfTrx ($User;$PassW;$2;String($Amount;"######0.00");$14;$15;$16;vTransID)
+Else 
+AlertMessage (Get localized string("Please check that the Customer Profile and Payment Profile ID's found in Autopay/Notices tab have values"))
+End if 
+Else 
+$0:=WSC_ProcCardPresentAuthNet ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;$10;$11;$12;$13;$Merchant;$User;$PassW;$Logging;vCCV;$Country;vOriginalReceipt)//FB10114
+End if 
+
+: ($Service="BPOINT")
+If ($2="P")
+$PaymentType:="PAYMENT"
+Else 
+$PaymentType:="REFUND"
+End if 
+
+If ($19)
+$TxnType:="RECURRING"
+$CardNo:=$14
+Else 
+$TxnType:="CUSTOMER_PRESENT"
+$CardNo:=$4
+End if 
+
+$0:=wsc_bpoint_ProcessPayment ($user;$PassW;$Merchant;$PaymentType;$TxnType;"";$7;$9;"";"";Int($Amount*100);$CardNo;$5;$18;vOriginalReceipt;$1)
+: (GetTextNo ([Facility]MerchantDetails;1;",")="Advam StoredPAN")//FB10114
+If ($19=True)
+$0:=WSC_AdvamStoredPAN ($1;$2;$Amount;"";"";$6;$7;$8;$14;"";$11;$12;$13;$Merchant;$User;$PassW;$Logging;$Timeout;$Country;vOriginalReceipt)
+Else 
+$0:=WSC_AdvamCCTransaction ($1;$2;$Amount;$4;$5;$6;$7;$8;$9;$10;$11;$12;$13;$Merchant;$User;$PassW;$Logging;$Timeout;$Country;vOriginalReceipt)
+End if 
+: (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+
+If (GetTextNo ([Facility]MerchantDetails;10;",")="True") & ($8="Daily Processing")//processing EziDebit RealTime
+$Token:=$15
+$ChangeToCent:=$Amount*100
+$PaymentAmountInCents:=String($ChangeToCent)
+$CustomerName:=$10
+$EziPayRef:=[Agreement]AgreeNo+Substring(String(Year of(Current date));2)+String(Month of(Current date))+String(Day of(Current date))+Substring(Replace string(String(Current time);":";"");1;5)//Generate payment ref
+$0:=WSC_EziProcRealtimeTokenPayme ($MerchantEzi;$Token;$PaymentAmountInCents;$CustomerName;$EziPayRef)
+Else 
+If (bAddRefund=1)
+$0:=WSC_EziProcessRefund ($MerchantEzi;$6;"";$Amount;$1)
+Else 
+// EziDebit Batch
+$0:=WSC_EziAddPayment ($MerchantEzi;"";[Customer]customerProfileID;String([Trxs]TrxDate);String($Amount*100;"######0");EziPayRef;"";$1;[Trxs]TrxDate)
+End if 
+End if 
+
+//End if 
+: ($Service="Cheq") & ($2="C")//FB10114
+$0:=WSC_CheqChargeCard ($1;$3;$4;$5;$7;$10;$11;$12;$13;$14;$18;$2;vOriginalReceipt;$User;$PassW)
+: ($Service="Cheq") & ($19)
+$0:=WSC_CheqChargeFromPrev ($1;$3;$5;$7;$11;$13;$14;$18;$User;$PassW)
+: ($Service="NAB CM")
+$0:=WSC_NAB ($User;$PassW;String($Timeout);"trigger";"8";$9;"";"";"";"";"";$Amount;$Country;$6)
+: ($Service="eMatters")
+//--------- code
+//****  needs to complete
+$readers:=Substring(GetTextNo ([Facility]MerchantDetails;3;",");1;20)
+//$MerchantCode:=GetTextNo ([Facility]MerchantDetails;5;",")
+$MerchantCode:=Substring(GetTextNo ([Facility]MerchantDetails;3;",");1;20)
+$CustomerNumber:=$9//[Customer]CustomerCode
+//$InvoiceNumber:=[Trxs]CCAuthNo
+//$varD:=Current date
+$varT:=Current time
+$InvoiceNumber:=""
+$varct:=Replace string(String($vart);":";"")
+//$InvoiceNumber:=String(Day of($varD))+String(Month of($varD))+String(Year of($varD))+$varCT
+$InvoiceNumber:=$varCT
+If (bAddRefund=1)
+$Action:="Refund"
+$Amount:=vMinus
+Else 
+$Action:="Process"
+$Amount:=vPlus
+End if 
+//If ([Customer]customerProfileID#"")
+//OBJECT SET ENABLED(*;"Button2";True)
+//Else 
+//OBJECT SET ENABLED(*;"Button2";False)
+//End if 
+eMattersBillSmart ($readers;$Action;$MerchantCode;$CustomerNumber;String($Amount);$InvoiceNumber)
+
+
+: ($Service="CardSave")//FB10114
+$0:=CardSave ($User;$PassW;$Amount;$4;$5;$6;$9;$10;$11;$12;$13;$18;$1;$14;$19)
+: ($Service="Transaction Express")//FB10114
+//End if 
+If (bAddRefund=1)
+If ([Analysis]SpecialOptions=57)
+//Refund for DD
+$0:=TrxExpressProcessTrx ($User;$PassW;$Amount;$4;$5;16;$15;False)
+Else 
+//Refund for CC
+$0:=TrxExpressProcessTrx ($User;$PassW;$Amount;$4;$5;4;$15;False)
+End if 
+Else 
+//Process Card on file
+$0:=TrxExpressProcessTrx ($User;$PassW;$Amount;"";"";14;$15;False)
+End if 
+
+: ($Service="Realex")
+$merchantid:=GetTextNo ([Facility]MerchantDetails;3;",")
+$SharedSecret:=GetTextNo ([Facility]MerchantDetails;4;",")
+If ($8="Daily Processing")
+
+If ($14#"")
+$0:=RealexRaisingCCPayment ($merchantid;"internet";"1";[Facility]CurrencyCode;String($3);$14;$14;$SharedSecret)
+
+If ($0="OK")
+$0:=[Trxs]CCAuthNo
+SAVE RECORD([Trxs])
+End if 
+
+Else 
+$0:="ERR"+Get localized string("Cannot process a credit card for")+" :"+$7
+End if 
+
+Else 
+$type:="VISA"//SWITCH  and LASER are same as VISA
+If ($4="51@") | ($4="52@") | ($4="53@") | ($4="54@") | ($4="55@")//MC
+$type:="MC"
+End if 
+If ($4="37@") | ($4="34@")//It is an Amex card
+$type:="AMEX"
+End if 
+If (($4="300@") | ($4="301@") | ($4="38@") | ($4="39@") | ($4="309@") | ($4="302@") | ($4="303@") | ($4="304@") | ($4="305@") | ($4="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$type:="DINERS"
+End if 
+$Business:="Business"
+$UUID:=Generate UUID//Ref
+Case of 
+: ($2="P")
+$Success:=RealexAuthRequest ($merchantid;$UUID;[Facility]CurrencyCode;String($3);$4;$5;$10;$type;$SharedSecret;"internet")//FB10114
+If ($Success#"00")
+AlertMessage (Substring($Success;4;Length($Success)))
+$0:=$Success
+Else 
+AlertMessage ("Transaction approved")
+$0:=[Trxs]CCAuthNo
+End if 
+//: ($2="C")
+//$PayerType:="payer-new"
+//$Success:=RealVaultPayerSetUpEdit ($merchantid;$UUID;$Business;$10;$10;$PayerType;$SharedSecret)
+//If ($Success="S")
+//$refundhash:=GetTextNo ([Facility]MerchantDetails;6;",")
+//$Success:=RealexProcessingRefund ($merchantid;"internet";$refundhash;[Facility]CurrencyCode;String(-1*$3);$UUID;$UUID;$SharedSecret;$4;$5;$10;$type)
+//If ($Success#"Ok")
+//AlertMessage (Substring($Success;4;Length($Success)))
+//$0:=$Success
+//$Success:=RealexDeleteStoredCard ($merchantid;$UUID;$UUID;$SharedSecret)
+//Else 
+//AlertMessage ("Transaction approved.")
+//$0:=[Trxs]CCAuthNo
+//End if 
+//Else 
+//AlertMessage (Get localized string("The Credit Card has not been processed."))
+//End if 
+End case 
+End if 
+
+End case 
+End if 
+
+If (([Trxs]CCAuthNo#"") & ($0="OK") & ($Service="eMatters"))
+$0:=[Trxs]CCAuthNo
+End if 
+
+If (($0="ERR@") | ($0="DEC@")) & (Substring([Agreement]CustomerCode;1;5)=<>sFacility)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:=Get localized document path("Attempted Credit Card Transaction for Card")+":"+Substring($4;13)+", Exp:"+$Expiry+", Amt:"+String($Amount;"###,###.00")+", Result="+$0+", Message="+vCCText
+SAVE RECORD([NotesHistory])
+End if 
+If (Not(IsAWebProcess ))
+CLOSE WINDOW
+End if 

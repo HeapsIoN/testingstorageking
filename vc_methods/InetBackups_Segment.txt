@@ -1,0 +1,85 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//InetBackups_Segment
+
+//Breaks Supplied File into segments of specified size for uploading to Backup Server
+C_TEXT($0;$1;$4;$5)
+C_POINTER($3)
+C_LONGINT($2)
+
+C_LONGINT($BackupFileSegmentSize;$BackupFileSize)
+C_LONGINT($OS)
+C_TEXT($SegmentFilePath;$SegmentFileName;$Command;$UnixBackupFilePath;$UnixSegmentFilePath;$Input;$Output;$Error)
+C_TEXT($BackupFilePath;$vtResponseCode;$vtResponseDescription;$SevenZipWinPathName;$SevenZipMacPathName)
+C_BOOLEAN($SevenZipFound)
+
+$0:=""
+$BackupFilePath:=$1//Path of the Backup File
+$BackupFileSegmentSize:=$2//Size that the Backup File will be broken into
+$SegmentFilePath:=$4//Path of the Segments
+$SegmentFileName:=$5//File Name of the Segments
+$BackupFileSize:=0
+PLATFORM PROPERTIES($OS)//3=Windows, Else Macintosh
+$Command:=""
+$UnixBackupFilePath:=""
+$UnixSegmentFilePath:=""
+$SevenZipWinPathName:=<>sResourcesPath+"7za.exe"
+$SevenZipMacPathName:=<>sResourcesPath+"7za"
+$SevenZipFound:=False
+
+//Vars to hold paramaters for Launch External Process command
+$Input:=""
+$Output:=""
+$Error:=""
+
+$vtResponseCode:=""
+$vtResponseDescription:=""
+
+//Check that 7Zip is found at the path specified
+If ($OS=3)//Windows
+If (Test path name($SevenZipWinPathName)=Is a document)
+$SevenZipFound:=True
+Else 
+SyncRecordLog (Get localized string("Internet Backups: Could not find 7Zip archiver.")+"   ("+$SevenZipWinPathName+")")
+End if 
+Else 
+If (Test path name($SevenZipMacPathName)=Is a document)
+$SevenZipFound:=True
+Else 
+SyncRecordLog (Get localized string("Internet Backups: Could not find 7Zip archiver.")+"   ("+$SevenZipMacPathName+")")
+End if 
+End if 
+
+
+
+
+If ($SevenZipFound)//7Zip EXE found
+//Zip the BackupFileName into the SegmentFilePath of size BackupFileSegmentSize
+If ($OS=3)
+$Command:=$SevenZipWinPathName+" a -v"+String($2)+"b "+Char(34)+$SegmentFilePath+$SegmentFileName+Char(34)+" "
+For ($Counter;1;Size of array($3->))
+$Command:=$Command+Char(34)+$BackupFilePath+GetFile ($3->{$Counter})+Char(34)+" "
+End for 
+Else 
+$Command:=UnixPath ($SevenZipMacPathName)+" a -v"+String($2)+"b "+UnixPath ($SegmentFilePath)+$SegmentFileName+" "
+For ($Counter;1;Size of array($3->))
+$Command:=$Command+Char(34)+UnixPath ($BackupFilePath)+GetFile ($3->{$Counter})+Char(34)+" "
+End for 
+End if 
+LAUNCH EXTERNAL PROCESS($Command;$Input;$Output;$Error)
+
+//Return Error status
+If ($Error="")//Success
+$vtResponseCode:="000"
+$vtResponseDescription:="OK"
+Else 
+$vtResponseCode:="101"
+$vtResponseDescription:=$Error
+End if 
+Else //7Zip EXE not found
+$vtResponseCode:="102"
+$vtResponseDescription:="7Zip Archiver not found"
+End if 
+$0:=$vtResponseCode+";"+$vtResponseDescription
+
+
+

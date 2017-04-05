@@ -1,0 +1,185 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+C_DATE($Date)
+C_TEXT(vLastNo)
+If (PermissionsControl (137)) & (<>sProduct#"M@") & ([Facility]CentralAddress="")
+READ WRITE(*)
+DEFAULT TABLE([Agreement])
+ConfirmTwo (Get localized string("WARNING - Deleting old agreements & transactions will mean that recaculated activity data for KeyStats may not be correct! - Continue?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+AlertMessage (Get localized string("Make sure you have taken a backup of your datafile before continuing with this procedure..."))
+LogAction (False;"Print Old & Delete commenced")
+If (<>tLogging=False)
+$Date:=Current date-35
+$Date:=GetDate (1;Month of($Date);Year of($Date))-1
+vDate:=RequestDate (Get localized string("Remove Agreements with Trxs prior to")+":";$Date)
+If (OK=1)
+If (vDate<=$Date)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing=0)
+CREATE EMPTY SET("AgreemtDelete")
+CREATE EMPTY SET("AgreemtPrint")
+CREATE EMPTY SET("HasNotes")
+MESSAGES OFF
+Open window(20;50;400;150;0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Searching for Inactive Agreements prior to")+" "+String(vDate;6)+"..."+"    ")
+For ($i;1;Records in selection)
+GOTO XY(2;3)
+MESSAGE(Get localized string("Processing")+" "+[Agreement]AgreeNo+"  "+[Agreement]CustomerCode+(" "*(7-Length([Agreement]CustomerCode)))+String($i)+" "+Get localized string("of")+" "+String(Records in selection)+"     ")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([Trxs])=0)
+ADD TO SET("AgreemtDelete")
+Else 
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+If ([Trxs]TrxDate<=vDate)
+ADD TO SET("AgreemtPrint")
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Agreement]CustomerCode)
+If (Records in selection([NotesHistory])>0)
+ADD TO SET("HasNotes")
+End if 
+//            ADD TO SET("AgreemtDelete")
+End if 
+End if 
+NEXT RECORD
+End for 
+CLOSE WINDOW
+MESSAGES ON
+USE SET("AgreemtDelete")
+If (Records in selection([Agreement])>0)
+vTitle:=Get localized string("Delete Agreements")
+vLegend:=Get localized string("There are")+" "+String(Records in selection([Agreement]))+" "+Get localized string("agreements with no transactions!")+Char(13)+Get localized string("Please highlight the agreements to be deleted.")
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+FORM SET OUTPUT([Agreement];"DeleteAgreemt")
+FORM SET INPUT([Agreement];"ModDetails")
+DISPLAY SELECTION([Agreement];Multiple selection;*)
+If (bSelect=1)
+USE SET("UserSet")
+End if 
+If (bSelect=1) | (bSelect2=1)
+If (Records in selection([Agreement])>0)
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection)+" "+Get localized string("agreement records. Are you sure?"))
+If (OK=1)
+READ WRITE([Agreement])
+FIRST RECORD([Agreement])
+DELETE SELECTION([Agreement])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+End if 
+End if 
+End if 
+End if 
+USE SET("AgreemtPrint")
+If (Records in selection([Agreement])>0)
+vTitle:=Get localized string("Print Out Agreements")
+vLegend:=Get localized string("There are")+" "+String(Records in selection([Agreement]))+" "+Get localized string("agreements to print & delete!")+Char(13)+Get localized string("Please highlight the agreements to be printed.")
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+FORM SET OUTPUT([Agreement];"DeleteAgreemt")
+FORM SET INPUT([Agreement];"ModDetails")
+DISPLAY SELECTION([Agreement];Multiple selection;*)
+If (bCancel=1)
+LogAction (True;"Print Old & Delete finished")
+ABORT
+End if 
+If (bSelect=1)
+USE SET("UserSet")
+End if 
+CREATE SET([Agreement];"AgreemtPrint")
+CREATE SET([Agreement];"AgreemtDelete")
+INTERSECTION("AgreemtPrint";"HasNotes";"HasNotes")
+End if 
+RELATE MANY SELECTION([Trxs]AgreeNo)
+BEEP
+If (Records in selection([Agreement])>0)
+ConfirmTwo (Get localized string("There are")+" "+String(Records in selection([Agreement]))+" "+Get localized string("agreements to print and delete. Continue?"))
+If (OK=1)
+PrintAllAgreemts 
+USE SET("HasNotes")
+If (Records in selection>0)
+ConfirmTwo (Get localized string("Print Notes History for")+" "+String(Records in selection([Agreement]))+" "+Get localized string("Agreements with Notes?"))
+If (OK=1)
+RELATE ONE SELECTION([Agreement];[Customer])
+RELATE MANY SELECTION([NotesHistory]CustomerCode)
+FORM SET OUTPUT([NotesHistory];"PrintNotes")
+ConfirmTwo (Get localized string("PrintNotesSMS"))
+If (OK#1)
+QUERY SELECTION([NotesHistory];[NotesHistory]Category#"Storman SMS")
+End if 
+ORDER BY([NotesHistory];[NotesHistory]CustomerCode;>)
+BREAK LEVEL(1;1)
+PrintSelection ("P";->[NotesHistory])
+FORM SET OUTPUT([NotesHistory];"Output")
+End if 
+End if 
+CLEAR SET("HasNotes")
+BEEP
+ConfirmTwo (Get localized string("Check printout is complete. Start deleting letters & transactions?"))
+If (OK=1)
+READ WRITE(*)
+USE SET("AgreemtDelete")
+RELATE MANY SELECTION([Letters]AgreeNo)
+DELETE SELECTION([Letters])
+RELATE MANY SELECTION([Trxs]AgreeNo)
+QUERY SELECTION([Trxs];[Trxs]Match#-999)//Don't delete stock transactions
+DELETE SELECTION([Trxs])
+RELATE ONE SELECTION([Agreement];[Customer])//This code down to CLEAR SET("Temp") added SDD 16/3/95
+CREATE SET([Customer];"CustDelete")
+RELATE MANY SELECTION([Agreement]CustomerCode)
+CREATE SET([Agreement];"Temp")
+DIFFERENCE("Temp";"AgreemtDelete";"Temp")
+USE SET("Temp")
+RELATE ONE SELECTION([Agreement];[Customer])
+CLEAR SET("Temp")
+CREATE SET([Customer];"Temp")
+DIFFERENCE("CustDelete";"Temp";"CustDelete")
+CLEAR SET("Temp")
+USE SET("AgreemtDelete")
+USE SET("CustDelete")
+RELATE MANY SELECTION([GateLog]CustCode)
+DELETE SELECTION([GateLog])
+RELATE MANY SELECTION([NotesHistory]CustomerCode)
+DELETE SELECTION([NotesHistory])
+AlertMessage (Get localized string("Old letters & trxs have now been deleted. Confirm at the next dialog if agreements & customers & photos should also be deleted. By deleting customers & agreements, statistical data on analysis reports will be lost."))
+RELATE MANY SELECTION([PhotosCards]Code)
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection([PhotosCards]))+" "+Get localized string("of")+" "+String(Records in table([PhotosCards]))+" "+Get localized string("photos for old customers?"))
+If (OK=1)
+DELETE SELECTION([PhotosCards])
+End if 
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection([Agreement]))+" "+Get localized string("old agreements?"))
+If (OK=1)
+DELETE SELECTION([Agreement])
+Else 
+UNLOAD RECORD([Agreement])
+End if 
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection([Customer]))+" "+Get localized string("old customers?"))
+If (OK=1)
+If (Records in selection([PhotosCards])>0) & (Records in selection([PhotosCards])<Records in table([PhotosCards]))
+DELETE SELECTION([PhotosCards])
+End if 
+DELETE SELECTION([Customer])
+Else 
+APPLY TO SELECTION([Customer];[Customer]NoTrxs:=True)
+UNLOAD RECORD([Customer])
+End if 
+UNLOAD RECORD([PhotosCards])
+CLEAR SET("AgreemtDelete")
+CLEAR SET("CustDelete")
+READ ONLY(*)
+UnloadAll 
+ALL RECORDS([Facility])
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Cut-off date cannot be greater than")+" "+String($Date;6))
+End if 
+End if 
+LogAction (True;"Print Old & Delete finished")
+End if 
+LogAction (True;"Print Old & Delete finished")
+End if 
+Else 
+AlertMessage (Get localized string("Please contact Storman Support about using this feature"))
+End if 

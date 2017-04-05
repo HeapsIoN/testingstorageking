@@ -1,0 +1,86 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Data Change)
+C_LONGINT($Index)
+
+Case of 
+: ([Unit]SUFacilityID=0) & (Old([Unit]SUFacilityID)#0)//Changing it to '0' from another number effectively resetting the setting
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+C_TEXT($OldUnitAgreeNo)
+
+$OldUnitAgreeNo:=Old([Unit]AgreeNo)
+$Index:=Find in field([Agreement]RAgreeNo;$OldUnitAgreeNo)
+If ($Index#-1)
+GOTO RECORD([Agreement];$Index)
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;Char(Line feed);";";1;String(Num(Old([Unit]SUFacilityID))))//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+If ($Index#-1)
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$Index);"")
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;Char(Line feed)+Char(Line feed);Char(Line feed))
+Else 
+AlertMessage (Get localized string("The SU Facility details were not able to be removed from Agreement")+" "+[Agreement]AgreeNo)
+End if 
+SAVE RECORD([Agreement])
+End if 
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+
+: ([Unit]SUFacilityID=0) & (Old([Unit]SUFacilityID)=0)//Changing it back to 'unset'
+
+: ([Unit]SUFacilityID#0) & (Old([Unit]SUFacilityID)#0)
+
+$OldUnitAgreeNo:=Old([Unit]AgreeNo)
+$Index:=Find in field([Agreement]RAgreeNo;$OldUnitAgreeNo)
+If ($Index#-1)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+GOTO RECORD([Agreement];$Index)
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;Char(Line feed);";";1;String(Num(Old([Unit]SUFacilityID))))//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+If ($Index#-1)
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$Index);"")
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;Char(Line feed)+Char(Line feed);Char(Line feed))
+Else 
+AlertMessage (Get localized string("The SU Facility details were not able to be removed from Agreement")+" "+[Agreement]AgreeNo)
+End if 
+End if 
+
+If (Position(","+String([Unit]SUFacilityID)+",";[Agreement]SUFacilitiesUpdated)=0)
+SyncRecordLog (Get localized string("Linking Facility to Agreement")+" "+[Agreement]RAgreeNo)
+
+RELATE ONE([Unit]AgreeNo)
+If (Position(",";[Agreement]SUFacilitiesUpdated)#1)
+[Agreement]SUFacilitiesUpdated:=","+[Agreement]SUFacilitiesUpdated
+End if 
+[Agreement]SUFacilitiesUpdated:=[Agreement]SUFacilitiesUpdated+String(Num([Unit]SUFacilityID))+","
+SAVE RECORD([Agreement])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+End if 
+
+Else // ([Unit]SUFacilityID#0) and Old([Unit]SUFacilityID)=0
+$Index:=Find in field([Unit]SUFacilityID;[Unit]SUFacilityID)
+If ($Index#-1)//Another Unit has this Facility ID
+AlertMessage (Get localized string("Another Unit has this Facility Assigned to it"))
+[Unit]SUFacilityID:=Old([Unit]SUFacilityID)
+Else 
+If (Position(","+String([Unit]SUFacilityID)+",";[Agreement]SUFacilitiesUpdated)=0)
+SyncRecordLog (Get localized string("Linking Facility to Agreement")+" "+[Agreement]RAgreeNo+" "+Get localized string("was")+" 0")
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+RELATE ONE([Unit]AgreeNo)
+If (Position(",";[Agreement]SUFacilitiesUpdated)#1)
+[Agreement]SUFacilitiesUpdated:=","+[Agreement]SUFacilitiesUpdated
+End if 
+[Agreement]SUFacilitiesUpdated:=[Agreement]SUFacilitiesUpdated+String(Num([Unit]SUFacilityID))+","
+SAVE RECORD([Agreement])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+End if 
+End if 
+End case 
+End if 

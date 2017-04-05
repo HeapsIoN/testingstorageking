@@ -1,0 +1,130 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//DigitalKey (Required) 
+C_TEXT($2)//Token (Required) 
+C_TEXT($3)//PaymentAmountInCents (Required) 
+C_TEXT($4)//CustomerName (Required) 
+C_TEXT($5)//PaymentReference (Required) 
+
+C_TEXT(Ezi_resp1)
+C_TEXT(Ezi_resp2)
+C_TEXT(Ezi_resp3)
+C_TEXT(Ezi_resp4)
+C_TEXT(Ezi_resp5)
+C_LONGINT($Ezi_resp6)
+C_TEXT($Ezi_resp7)
+
+C_TEXT($root)
+C_TEXT($subElem)
+C_TEXT($nameSpace)
+
+
+$nameSpace:="https://px.ezidebit.com.au/"
+$root:=DOM Create XML Ref("ProcessRealtimeTokenPayment";$nameSpace)
+
+$subElem:=DOM Create XML element($root;"/ProcessRealtimeTokenPayment/digitalKey")
+DOM SET XML ELEMENT VALUE($subElem;$1)
+
+$subElem:=DOM Create XML element($root;"/ProcessRealtimeTokenPayment/token")
+DOM SET XML ELEMENT VALUE($subElem;$2)
+
+$subElem:=DOM Create XML element($root;"/ProcessRealtimeTokenPayment/paymentAmountInCents")
+DOM SET XML ELEMENT VALUE($subElem;$3)
+
+$subElem:=DOM Create XML element($root;"/ProcessRealtimeTokenPayment/customerName")
+DOM SET XML ELEMENT VALUE($subElem;$4)
+
+$subElem:=DOM Create XML element($root;"/ProcessRealtimeTokenPayment/paymentReference")
+DOM SET XML ELEMENT VALUE($subElem;$5)
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+DOM EXPORT TO VAR($root;$Content)
+SyncRecordLog ("EziDebit CCRealTimeToken. Highlander: "+String([Facility]Highlander)+" Request: "+$Content)
+If ([Facility]Highlander)
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-5/pci";"https://px.ezidebit.com.au/IPCIService/ProcessRealtimeTokenPayment";"ProcessRealtimeTokenPayment";"https://px.ezidebit.com.au/";Web Service manual)
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-5/pci";"https://px.ezidebit.com.au/IPCIService/ProcessRealtimeTokenPayment";"ProcessRealtimeTokenPayment";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+Else 
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-3/pci";"https://px.ezidebit.com.au/IPCIService/ProcessRealtimeTokenPayment";"ProcessRealtimeTokenPayment";"https://px.ezidebit.com.au/";Web Service manual)
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-3/pci";"https://px.ezidebit.com.au/IPCIService/ProcessRealtimeTokenPayment";"ProcessRealtimeTokenPayment";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+End if 
+
+If (OK=1)
+C_BLOB($blob)
+C_TEXT($resRoot)
+C_TEXT($resSubElem)
+WEB SERVICE GET RESULT($blob;"XMLOut";*)
+$resRoot:=DOM Parse XML variable($blob)
+DOM EXPORT TO VAR($resRoot;$Content)
+SyncRecordLog ("EziDebit CCRealTimeToken call result: "+$Content)
+
+$resSubElem:=DOM Find XML element($resRoot;"/ProcessRealtimeTokenPaymentResponse/ProcessRealtimeTokenPaymentResult/Error")
+DOM GET XML ELEMENT VALUE($resSubElem;$Ezi_resp6)
+
+$StrErr:=""
+If ($Ezi_resp6=0)
+
+$resSubElem:=DOM Find XML element($resRoot;"/ProcessRealtimeTokenPaymentResponse/ProcessRealtimeTokenPaymentResult/Data/BankReceiptID")
+DOM GET XML ELEMENT VALUE($resSubElem;Ezi_resp1)
+
+$resSubElem:=DOM Find XML element($resRoot;"/ProcessRealtimeTokenPaymentResponse/ProcessRealtimeTokenPaymentResult/Data/ExchangePaymentID")
+DOM GET XML ELEMENT VALUE($resSubElem;Ezi_resp2)
+
+$resSubElem:=DOM Find XML element($resRoot;"/ProcessRealtimeTokenPaymentResponse/ProcessRealtimeTokenPaymentResult/Data/PaymentResult")
+DOM GET XML ELEMENT VALUE($resSubElem;Ezi_resp3)
+
+$resSubElem:=DOM Find XML element($resRoot;"/ProcessRealtimeTokenPaymentResponse/ProcessRealtimeTokenPaymentResult/Data/PaymentResultCode")
+DOM GET XML ELEMENT VALUE($resSubElem;Ezi_resp4)
+
+$resSubElem:=DOM Find XML element($resRoot;"/ProcessRealtimeTokenPaymentResponse/ProcessRealtimeTokenPaymentResult/Data/PaymentResultText")
+DOM GET XML ELEMENT VALUE($resSubElem;Ezi_resp5)
+vCCText:="BankReceiptID : "
+vCCText:=vCCText+String(Ezi_resp1)
+vCCText:=vCCText+" ExchangePaymentID : "
+vCCText:=vCCText+String(Ezi_resp2)
+vCCText:=vCCText+" PaymentResult :"
+vCCText:=vCCText+String(Ezi_resp3)
+vCCText:=vCCText+" PaymentResultCode : "
+vCCText:=vCCText+String(Ezi_resp4)
+vCCText:=vCCText+" PaymentResultText : "
+vCCText:=vCCText+String(Ezi_resp5)
+If (Ezi_resp3="A")
+$0:="S"
+[Trxs]CCTransID:=$5
+[Trxs]OriginalReceipt:=Ezi_resp1
+[Trxs]CCAuthNo:=Ezi_resp2
+If ([Analysis]SetBankedDate)
+[Trxs]Confirmed:=True
+[Trxs]DateBanked:=Current date
+Else 
+[Trxs]Confirmed:=False
+End if 
+[Trxs]TrxDate:=Current date
+$StrErr:="WSC_EziProcRealtimeTokenPayme result: Ok"+Char(13)
+Else 
+$0:="ERR"+Ezi_resp5
+AlertMessage ("Payment for customer: "+$4+" failed with error: "+Ezi_resp5)
+End if 
+
+Else 
+$resSubElem:=DOM Find XML element($resRoot;"/ProcessRealtimeTokenPaymentResponse/ProcessRealtimeTokenPaymentResult/ErrorMessage")
+DOM GET XML ELEMENT VALUE($resSubElem;$Ezi_resp7)
+$StrErr:="WSC_EziProcRealtimeTokenPayme result:"+Char(13)
+$StrErr:=$StrErr+"Error Code: "
+$StrErr:=$StrErr+String($Ezi_resp6)
+$StrErr:=$StrErr+" ; Error Message: "
+$StrErr:=$StrErr+$Ezi_resp7
+vCCText:=$StrErr
+$0:="Err"+String($Ezi_resp6)
+AlertMessage ($Ezi_resp7)
+End if 
+SyncRecordLog ($StrErr)
+
+DOM CLOSE XML($resRoot)
+End if 
+
+DOM CLOSE XML($root)

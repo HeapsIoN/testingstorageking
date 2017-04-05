@@ -1,0 +1,130 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($MonthNo;$BaseNo)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Monthly Summary Report started.")// records the report being started in the eventlog
+If (PermissionsControl (55))
+$Date:=GetDate (1;Month of(Current date);Year of(Current date))-1
+OK:=1
+If (<>tBatch=False)
+$Date:=RequestDate (Get localized string("Enter Month End Date for Report:");$Date)
+Else 
+$Date:=vMthDate
+End if 
+If (OK=1)
+QUERY([Activity];[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=$Date)
+If (Records in selection([Activity])=1)
+$BaseNo:=[Activity]ActivityMonth
+ARRAY REAL(aTotals;38;13)
+ARRAY TEXT(aCustName;38)
+aCustName{1}:=Get localized string("Cash Receipts")
+aCustName{2}:=Get localized string("Rental Fees")
+aCustName{3}:=Get localized string("Deposit")
+aCustName{4}:=Get localized string("Late Fees")
+aCustName{5}:=Get localized string("Insurance")
+aCustName{6}:=Get localized string("Merchandise")
+aCustName{7}:=Get localized string("Other")
+aCustName{8}:=Get localized string("Tax")
+aCustName{9}:=Get localized string("Total")
+aCustName{10}:=""
+aCustName{11}:=Get localized string("Liabilities")
+aCustName{12}:=Get localized string("Deposit")
+aCustName{13}:=Get localized string("Prepaid Rent")
+aCustName{14}:=""
+aCustName{15}:=Get localized string("Rent Charged")
+aCustName{16}:=Get localized string("Rental Fees")
+aCustName{17}:=Get localized string("Deposit")
+aCustName{18}:=Get localized string("Late Fees")
+aCustName{19}:=Get localized string("Insurance")
+aCustName{20}:=Get localized string("Merchandise")
+aCustName{21}:=Get localized string("Other")
+aCustName{22}:=Get localized string("Tax")
+aCustName{23}:=Get localized string("Total")
+aCustName{24}:=""
+aCustName{25}:=Get localized string("Occupancy %ages")
+aCustName{26}:=Get localized string("Number")
+aCustName{27}:=Get localized string("Area")
+aCustName{28}:=Get localized string("Economic")
+aCustName{29}:=Get localized string("Arrears")
+aCustName{30}:=""
+aCustName{31}:=""
+aCustName{32}:=""
+aCustName{33}:=""
+aCustName{34}:=""
+aCustName{35}:=""
+aCustName{36}:=""
+aCustName{37}:=""
+aCustName{38}:=""
+For ($i;1;38)
+For ($j;1;13)
+aTotals{$i}{$j}:=0
+End for 
+End for 
+$MonthNo:=$BaseNo
+For ($j;1;12)
+$p:=Get pointer("vHdr"+String($j))
+$p->:=Substring(GetMonthName ($MonthNo);1;3)
+QUERY([Activity];[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;[Activity]ActivityMonth=$MonthNo)
+ORDER BY([Activity];[Activity]ActivityDate;<)
+aTotals{2}{$j}:=Sum([Activity]RentRec)
+aTotals{3}{$j}:=Sum([Activity]DepositRec)
+aTotals{4}{$j}:=Sum([Activity]LateFeeRec)
+aTotals{5}{$j}:=Sum([Activity]InsureRec)
+aTotals{6}{$j}:=Sum([Activity]MerchRec)
+aTotals{7}{$j}:=Sum([Activity]OtherRec)
+aTotals{8}{$j}:=Sum([Activity]TaxRec)
+aTotals{9}{$j}:=aTotals{2}{$j}+aTotals{3}{$j}+aTotals{4}{$j}+aTotals{5}{$j}+aTotals{6}{$j}+aTotals{7}{$j}+aTotals{8}{$j}
+aTotals{12}{$j}:=[Activity]DepositsHeld
+aTotals{13}{$j}:=[Activity]AdvancePaidValue
+aTotals{16}{$j}:=Sum([Activity]RentChg)
+aTotals{17}{$j}:=Sum([Activity]DepositChg)
+aTotals{18}{$j}:=Sum([Activity]LateFeeChg)
+aTotals{19}{$j}:=Sum([Activity]InsureChg)
+aTotals{20}{$j}:=Sum([Activity]MerchChg)
+aTotals{21}{$j}:=Sum([Activity]OtherChg)
+aTotals{22}{$j}:=Sum([Activity]TaxChg)
+aTotals{23}{$j}:=aTotals{16}{$j}+aTotals{17}{$j}+aTotals{18}{$j}+aTotals{19}{$j}+aTotals{20}{$j}+aTotals{21}{$j}+aTotals{22}{$j}
+If ([Activity]TotUnitNo>0)
+aTotals{26}{$j}:=Round([Activity]OccupUnitNo*100/[Activity]TotUnitNo;2)
+End if 
+If ([Activity]TotUnitArea>0)
+aTotals{27}{$j}:=Round([Activity]OccupArea*100/[Activity]TotUnitArea;2)
+End if 
+If ([Activity]TotValue>0)
+aTotals{28}{$j}:=Round([Activity]OccupValActual*100/[Activity]TotValue;2)
+End if 
+If ([Activity]ActiveAgreemts>0)
+aTotals{29}{$j}:=Round(([Activity]Arrears1No+[Activity]Arrears2No+[Activity]Arrears3No+[Activity]Arrears4No)*100/[Activity]ActiveAgreemts;2)
+If (<>sFacility="PL@")
+aTotals{29}{$j}:=Round(([Activity]Arrears2No+[Activity]Arrears3No+[Activity]Arrears4No)*100/[Activity]ActiveAgreemts;2)
+End if 
+End if 
+$MonthNo:=$MonthNo-1
+If (($MonthNo%100)=0)
+$MonthNo:=$MonthNo-88
+End if 
+End for 
+For ($i;1;38)
+For ($j;1;12)
+aTotals{$i}{13}:=aTotals{$i}{13}+aTotals{$i}{$j}
+End for 
+End for 
+For ($i;26;29)
+aTotals{$i}{13}:=Round(aTotals{$i}{13}/12;2)
+End for 
+vTitle:=Get localized string("MenuReportmonthlySummary")
+vLegend:=Get localized string("For the period up to")+" "+String($Date;6)
+vHdr13:=Get localized string("Total")
+ALL RECORDS([Activity])
+REDUCE SELECTION([Activity];30)
+FORM SET OUTPUT([Activity];"MonthlySum")
+PrintSelection ("L";->[Activity])
+FORM SET OUTPUT([Activity];"Output")
+Else 
+AlertMessage (Get localized string("There is no activity data for :")+" "+String($Date)+".")
+End if 
+End if 
+End if 
+LogAction (True;"Monthly Summary Report ended.")

@@ -1,0 +1,62 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): eugene.
+// Date and time: 31/08/16, 10:00:00
+// ----------------------------------------------------
+// Method: ExportXeroStatements
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+
+C_DATE($StartDate;$EndDate)
+C_TEXT(vLoc;$OldLoc;$Ext;$t;$Type;$TaxCode;$NominalAc;$tempor)
+C_LONGINT($i;$j;$k;$Mult)
+$Ext:="csv"
+$t:=","
+$cr:=Char(13)
+
+vLoc:=Select folder("Please select where you would like to save this export")
+
+SetFacility 
+
+//CREATE EMPTY SET([Customer];"ToExport")
+$StartDate:=RequestDate ("Export statements from:";Current date)
+//$StartDate:=RequestDate (Get localized string("Please enter date range to export statements. Start Date:");Current date)
+If (OK=1)
+$EndDate:=RequestDate ("Export statements to:";Current date)
+//$EndDate:=RequestDate (Get localized string("End Date")+":";Current date)
+If (OK=1)
+
+$DocRef:=Create document(vLoc+"XeroStatements"+Replace string(String($EndDate);"/";"");$Ext)
+
+If (OK=1)
+QUERY([Trxs];[Trxs]DateBanked>=$StartDate;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility+"@";*)
+///QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility;*)
+
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+//*Date,*Amount,Payee,Description,Reference,Check Number
+
+$tempor:="*Date,*Amount,Payee,Description,Reference,Check Number"
+//SEND PACKET($DocRef;"Date"+$t+"Amount"+$t+"Payee"+$t+"Description"+$t+"Reference"+$t+"Check Number"+$cr)
+
+SEND PACKET($DocRef;$tempor+$cr)
+
+For ($i;1;Records in selection([Trxs]))
+QUERY([Customer];[Customer]CustomerCode=[Trxs]CustomerCode)
+$tempor:=String([Trxs]DateBanked;7)+$t+String([Trxs]TotAmt)+$t+Replace string([Customer]CustomerName;",";"")+$t+[Trxs]Description+$t+[Trxs]CustomerCode+$t+"n/a"//+$cr
+$tempor:=Replace string($tempor;$cr;" ")+$cr
+SEND PACKET($DocRef;$tempor)
+NEXT RECORD([Trxs])
+End for 
+
+CLOSE DOCUMENT($DocRef)
+AlertMessage (Get localized string("Export Complete!"))
+End if 
+End if 
+End if 

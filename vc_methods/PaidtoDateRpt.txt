@@ -1,0 +1,83 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+C_BOOLEAN(forCompleted)
+C_LONGINT($i)
+C_LONGINT(viComments)
+forCompleted:=False
+LogAction (False;"Paid to Date Report started.")// records the report being started in the eventlog
+If (PermissionsControl (58))
+DEFAULT TABLE([Agreement])
+SetFacility 
+OK:=1
+vReportSettings:=[Facility]ReportSettings
+If (<>tBatch=False)
+//Open window(120;120;525;522;5)
+Open window((Screen width/2)-203;(Screen height/2)-203;(Screen width/2)+203;(Screen height/2)+203;5;Get localized string("Paid to Date Agreements Report"))
+DIALOG([Agreement];"PaidtoDialog")
+CLOSE WINDOW
+
+If (OK=1)
+If (vReportSettings#[Facility]ReportSettings)
+UpdateSystem (128;->vReportSettings;Get localized string("KeyStatsDialogMethod"))
+End if 
+End if 
+Else 
+viComments:=Num(vReportSettings[[22]])
+bIndex:=1
+bAgree:=0
+bAll:=0
+sAll:=1
+sCust:=0
+sUnit:=0
+End if 
+If (OK=1)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"MISCL";*)
+If (bAll=1)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+Else 
+QUERY([Agreement]; & ;[Agreement]BalanceOwing>0)
+End if 
+If (Records in selection([Agreement])>0)
+READ WRITE
+FIRST RECORD
+
+$WinRef:=Open window(20;50;450;150;0)
+For ($i;1;Records in selection)
+GOTO XY(2;2)
+MESSAGE("Calculating Paid to Dates for Agreement "+String($i)+" of "+String(Records in selection([Agreement])))
+[Agreement]DaysOverdue:=Current date-[Agreement]PaidToDate
+SAVE RECORD
+NEXT RECORD
+End for 
+CLOSE WINDOW($WinRef)
+READ ONLY
+End if 
+If (bIndex=1)
+QUERY SELECTION([Agreement]DaysOverdue>0)
+End if 
+If (sAll=1)
+ORDER BY([Agreement]DaysOverdue;<;[Agreement]UnitsOccup;>)
+Else 
+If (sUnit=1)
+ORDER BY([Agreement]UnitsOccup;>;[Agreement]DaysOverdue;<)
+Else 
+ORDER BY([Agreement]AgreeNo;>;[Agreement]DaysOverdue;<)
+End if 
+End if 
+
+If (viComments=1)
+FORM SET OUTPUT([Agreement];"PaidtoDateRptComments")
+Else 
+FORM SET OUTPUT([Agreement];"PaidtoDateRpt")
+End if 
+BREAK LEVEL(0)
+ACCUMULATE([Agreement]BalanceOwing;[Agreement]TotRentUnpaid;[Agreement]TotLateUnpaid;[Agreement]TotOthrUnpaid;[Agreement]DaysOverdue)
+vNumber:=0
+PrintSelection ("L")
+FORM SET OUTPUT([Agreement];"Output")
+
+End if 
+End if 
+LogAction (True;"Paid to Date Report ended.")

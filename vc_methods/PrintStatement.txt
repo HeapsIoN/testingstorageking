@@ -1,0 +1,274 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 18/10/10, 11:04:48
+// ----------------------------------------------------
+// Method: PrintStatement
+// Description
+// Allows for printing of a statement
+//
+// Parameters
+//$1 = If reservation
+// ----------------------------------------------------
+
+C_BOOLEAN($Reservation)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+
+$Reservation:=$1
+
+If (Shift down) & ($Reservation=False)
+$x:=New process("PrintOutOld";128000;"PrintOutOld";[Agreement]RAgreeNo)
+ACCEPT
+Else 
+
+If ([Facility]InvStatement=2)
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]InvNo=0)
+DISTINCT VALUES([Trxs]TrxDate;$TrxDate)
+CREATE SET([Trxs];"SearchInvNo")
+For ($inv;1;Size of array($TrxDate))
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+End for 
+CLEAR SET("SearchInvNo")
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+
+vtInvAgree:=""
+If ([Facility]InvUseAgrBalFwd=True)
+If ([Reservation]RReserveNo>"")
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+End if 
+Else 
+If ([Reservation]RReserveNo>"")
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+End if 
+End if 
+CREATE SET([Trxs];"Temp")
+FIRST RECORD([Trxs])
+
+If ([Reservation]RReserveNo>"")
+$Date1:=[Reservation]ReservedDate
+Else 
+If ([Agreement]PriorLastBill#!00-00-00!)
+$Date1:=[Agreement]PriorLastBill
+Else 
+$Date1:=[Agreement]LastBillDate
+End if 
+End if 
+
+If ([Facility]StatementLastZeroBal=True)
+If ([Facility]InvUseAgrBalFwd=True)
+If ([Reservation]RReserveNo>"")
+$Date3:=CalculateLastZeroBalance (2)
+Else 
+$Date3:=CalculateLastZeroBalance (1)
+End if 
+Else 
+$Date3:=CalculateLastZeroBalance (0)
+End if 
+Else 
+$Date3:=$Date1
+End if 
+
+
+If ($Date3<$Date1)
+$Date1:=$Date3
+End if 
+
+If ($Date1>Current date)
+$Date1:=Current date
+End if 
+
+If (Count parameters>2)
+$Date1:=$2
+Else 
+$Date1:=RequestDate (Get localized string("Transaction Start Date:");$Date1)
+End if 
+
+If (OK=1)
+LAST RECORD([Trxs])
+If ($Date1>[Trxs]TrxDate)
+$Date2:=$Date1
+Else 
+$Date2:=[Trxs]TrxDate
+End if 
+
+If (Count parameters>2)
+$Date2:=$3
+Else 
+$Date2:=RequestDate (Get localized string("Transaction End Date:");$Date2)
+End if 
+
+If (OK=1)
+vOpenBalText:=Get localized string("Opening balance as at")+" "+String($Date1)
+vCloseBalText:=Get localized string("Closing balance as at")+" "+String($Date2)
+If ([Facility]InvUseAgrBalFwd=True)
+If ([Reservation]RReserveNo>"")
+vOpenBal:=BalanceDateCalc (0;$Date1;True;[Reservation]RReserveNo)
+vCloseBal:=BalanceDateCalc (0;$Date2;False;[Reservation]RReserveNo)
+Else 
+vOpenBal:=BalanceDateCalc (0;$Date1;True;[Agreement]RAgreeNo)
+vCloseBal:=BalanceDateCalc (0;$Date2;False;[Agreement]RAgreeNo)
+End if 
+Else 
+If ([Reservation]RReserveNo>"")
+vOpenBal:=BalanceDateCalc (1;$Date1;True;[Reservation]CustomerCode)
+vCloseBal:=BalanceDateCalc (1;$Date2;False;[Reservation]CustomerCode)
+Else 
+vOpenBal:=BalanceDateCalc (1;$Date1;True;[Agreement]CustomerCode)
+vCloseBal:=BalanceDateCalc (1;$Date2;False;[Agreement]CustomerCode)
+End if 
+End if 
+If ([Facility]InvStatement>0) & (Windows Ctrl down=False)
+CREATE EMPTY SET([Trxs];"Statement")
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$Date2;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=False)
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+USE SET("Temp")
+QUERY SELECTION([Trxs];[Trxs]InvDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]InvDate<=$Date2;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+USE SET("Statement")
+ARRAY DATE(adTransactionDate;0)
+ARRAY TEXT(asTransactionDescription;0)
+ARRAY REAL(arTransactionCharge;0)
+ARRAY REAL(arTransactionReceipt;0)
+ARRAY LONGINT(aiTransactionInvNo;0)
+DISTINCT VALUES([Trxs]InvNo;aiTransactionInvNo)
+For ($i;1;Size of array(aiTransactionInvNo))
+If (aiTransactionInvNo{$i}=0)
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:=[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=0
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+Else 
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+If ([Facility]StatementDetail)
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+If ([Facility]InvStatement=2)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+Else 
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+End if 
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)+" "+[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=[Trxs]TotAmt
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+NEXT RECORD([Trxs])
+End for 
+Else 
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=Sum([Trxs]TotAmt)
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+End if 
+End if 
+USE SET("Statement")
+End for 
+REDUCE SELECTION([Trxs];Size of array(adTransactionDate))
+SORT ARRAY(adTransactionDate;asTransactionDescription;arTransactionCharge;arTransactionReceipt;>)
+vi:=1
+Case of 
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False) & ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintFooterTwo")
+: ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintTwo")
+Else 
+FORM SET OUTPUT([Trxs];"InquiryPrintNew")
+End case 
+CLEAR SET("Statement")
+Else 
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$Date2)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+FORM SET OUTPUT([Trxs];"InquiryPrint")
+End if 
+PrintSelection ("P";->[Trxs])
+FORM SET OUTPUT([Trxs];"TransOut")
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+End if 
+USE SET("Temp")
+CLEAR SET("Temp")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+ReCalc 
+End if 

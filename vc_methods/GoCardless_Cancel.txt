@@ -1,0 +1,97 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// Bill Customer 
+
+C_TEXT($0;$1;$MerchantID)
+SetFacility 
+$0:=""
+$MerchantID:=GetTextNo ([Facility]DDAccountDetails;1;",")
+$AccessToken:=GetTextNo ([Facility]DDAccountDetails;4;",")
+
+$t:=Char(9)
+$TransactionResponse:=""
+$Batch:=""
+$Content:=""
+$Hash:=""
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+
+//Server Details
+//For sandbox account
+If ([Facility]TestAccount)
+$ServerAddress:="sandbox.gocardless.com"
+Else 
+$ServerAddress:="gocardless.com"
+End if 
+
+
+$RequestURL:="/api/v1/pre_authorizations/"+[Customer]DDProfileID+"/cancel"
+$ServerPort:="443"
+
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+
+C_TEXT($body_t;$Response)
+$body_t:="id="+[Customer]DDProfileID
+$body_t:=URLEncode ($body_t)
+
+$Header:=$Header+"PUT "+"https://"+$ServerAddress+$RequestURL+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr
+$Header:=$Header+"Accept: "+"application/json"+$cr
+$Header:=$Header+"Authorization: bearer "+$AccessToken+$cr
+$Header:=$Header+"Content-length: "+String(Length($body_t))+$cr+$cr
+$Header:=$Header+$body_t+$cr+$cr
+
+$Url:="https://"+$ServerAddress+$RequestURL+""
+
+//SET TEXT TO PASTEBOARD($Header)
+SyncRecordLog ("GoCardless_Cancel Header:"+$Header)
+
+$Error:=TCP_Open ($ServerAddress;443;$TCPID;2)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header)
+$Reply:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 90 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10))// & (Position($Reply;"result")>0))
+$Message:=$Reply
+//SET TEXT TO PASTEBOARD($Message)
+SyncRecordLog ("GoCardless_Cancel Message:"+$Message)
+$Error:=TCP_Close ($TCPID)
+If ($Message="")
+$0:="ERRTCP"
+End if 
+$Error:=TCP_Close ($TCPID)
+Else 
+$0:="ERRTCP"
+End if 
+
+If ($0="")
+$IDPos:=Position(String(Char(34))+"status"+String(Char(34))+":"+String(Char(34))+"cancelled"+String(Char(34));$Message)
+If ($IDPos>0)
+$0:=""
+Else 
+AlertMessage ("Direct Debit profile for Customer "+[Customer]CustomerName+" could not be deleted")
+SyncRecordLog ("Direct Debit profile for Customer "+[Customer]CustomerName+" could not be deleted")
+READ WRITE([NotesHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]Note:=$Message
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="GoCardless"
+SAVE RECORD([NotesHistory])
+$0:="ERRGoCardless"
+End if 
+End if 

@@ -1,0 +1,142 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$Saved;$Count)
+C_PICTURE($Blank)
+C_DATE($Date)
+$Date:=!00-00-00!
+$Facility:=""
+tBoolean:=False
+If (UpdateSystem (60;->tBoolean;Get localized string("Unable to stop sending data as Facility record is locked!")))
+$CurrentUser:=SetSyncUser ("Sync";3)
+If ([UserLogins]RecordStatus=3)
+Open window(20;50;300;150;0;Get localized string("Progress"))
+$Saved:=0
+$Count:=0
+READ WRITE([Letters])
+QUERY([Letters];[Letters]AgreeNo=<>sFacility+"UNIT@")
+APPLY TO SELECTION([Letters];[Letters]DateSent:=!2001-01-01!)
+QUERY([Letters];[Letters]DateSent<!1970-01-01!)
+DELETE SELECTION([Letters])
+QUERY([Letters];[Letters]AgreeNo#<>sFacility+"UNIT@")
+ORDER BY([Letters];[Letters]AgreeNo;>)
+For ($i;1;Records in selection([Letters]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Letters")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Letters]))+"     ")
+//If (Picture size([Letters]Letter_)>0)
+//bConfirm:=True
+//$Doc:=WR New offscreen area 
+//ON ERR CALL("ErrorBlob")
+//WR PICTURE TO AREA ($Doc;[Letters]Letter_)
+//ON ERR CALL("")
+//If (bConfirm)
+//[Letters]LetterBLOB:=WR Area to blob ($Doc;1)
+//COMPRESS BLOB([Letters]LetterBLOB;Fast compression mode)
+//Else 
+//$Count:=$Count+1
+//If ($Date<[Letters]DateSent)
+//$Date:=[Letters]DateSent
+//End if 
+//End if 
+//WR DELETE OFFSCREEN AREA ($Doc)
+//$Saved:=$Saved+Picture size([Letters]Letter_)-BLOB size([Letters]LetterBLOB)
+//End if 
+//[Letters]Letter_:=$Blank
+[Letters]Size:=BLOB size([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+NEXT RECORD([Letters])
+End for 
+READ ONLY([Letters])
+UNLOAD RECORD([Letters])
+If ($Count>0)
+AlertMessage (Get localized string("There were")+" "+String($Count)+" "+Get localized string("customer letters which could not be converted sucessfully. The most recent was")+" "+String($Date)+"!")
+$Count:=0
+$Date:=!00-00-00!
+End if 
+READ WRITE([Contacts])
+QUERY([Contacts];[Contacts]CallDate<!1970-01-01!)
+DELETE SELECTION([Contacts])
+ALL RECORDS([Contacts])
+For ($i;1;Records in selection([Contacts]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Contacts")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Contacts]))+"     ")
+If (Picture size([Contacts]Letter_)>0)
+bConfirm:=True
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorBlob")
+WR PICTURE TO AREA ($Doc;[Contacts]Letter_)
+ON ERR CALL("ErrorLog")
+If (bConfirm)
+[Contacts]Letter:=WR Area to blob ($Doc;1)
+COMPRESS BLOB([Contacts]Letter;Fast compression mode)
+Else 
+$Count:=$Count+1
+If ($Date<[Contacts]CallDate)
+$Date:=[Contacts]CallDate
+End if 
+End if 
+WR DELETE OFFSCREEN AREA ($Doc)
+$Saved:=$Saved+Picture size([Contacts]Letter_)-BLOB size([Contacts]Letter)
+End if 
+If (Picture size([Contacts]Email_)>0)
+bConfirm:=True
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorBlob")
+WR PICTURE TO AREA ($Doc;[Contacts]Email_)
+ON ERR CALL("ErrorLog")
+If (bConfirm)
+[Contacts]Email:=WR Area to blob ($Doc;1)
+COMPRESS BLOB([Contacts]Email;Fast compression mode)
+Else 
+$Count:=$Count+1
+If ($Date<[Contacts]CallDate)
+$Date:=[Contacts]CallDate
+End if 
+End if 
+WR DELETE OFFSCREEN AREA ($Doc)
+$Saved:=$Saved+Picture size([Contacts]Email_)-BLOB size([Contacts]Email)
+End if 
+[Contacts]Letter_:=$Blank
+[Contacts]Email_:=$Blank
+[Contacts]Size:=BLOB size([Contacts]Letter)+BLOB size([Contacts]Email)
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+End for 
+READ ONLY([Contacts])
+UNLOAD RECORD([Contacts])
+If ($Count>0)
+AlertMessage (Get localized string("There were")+" "+String($Count)+" "+Get localized string("contact letters which could not be converted sucessfully.  Most recent was")+" "+String($Date)+"!")
+$Count:=0
+$Date:=!00-00-00!
+End if 
+READ WRITE([Notices])
+ALL RECORDS([Notices])
+For ($i;1;Records in selection([Notices]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Notices")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Notices]))+"     ")
+//Deleted section here from AddFacilityCode method
+[Notices]FacilityCode:=$Facility
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+READ ONLY([Notices])
+UNLOAD RECORD([Notices])
+If ($Count>0)
+AlertMessage (Get localized string("There were")+" "+String($Count)+" "+Get localized string("Notices which could not be converted sucessfully. These should be restored from a backup."))
+$Count:=0
+End if 
+CLOSE WINDOW
+End if 
+SetSyncUser ("Sync";2)
+SetSyncUser ($CurrentUser)
+tBoolean:=True
+UpdateSystem (60;->tBoolean;Get localized string("Unable to resume sending data as Facility record is locked!"))
+Case of 
+: ($Saved>(1024*1024))
+AlertMessage (Get localized string("SUGGESTION - Run 4D Tools Compact - Space saved")+" = "+String(Round($Saved/1024/1024;3))+" MB")
+: ($Saved>1024)
+AlertMessage (Get localized string("SUGGESTION - Run 4D Tools Compact - Space saved")+" = "+String(Round($Saved/1024;3))+" kb")
+Else 
+AlertMessage (Get localized string("WARNING - Space saved")+" = "+String($Saved)+" "+Get localized string("bytes!"))
+End case 
+Else 
+AlertMessage (Get localized string("WARNING - Compressing of letters was not completed successfully in the update process - Please contact support."))
+End if 

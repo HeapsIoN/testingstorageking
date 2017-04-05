@@ -1,0 +1,533 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//Report Name
+C_LONGINT($NoLines;$Format;$NoCol;$Pos;$PlusMinus;$i;$j;$y;$z)
+C_TEXT($Temp;$Command)
+C_TEXT($Layout;$LayoutB;$LayoutD;$LayoutG;$LayoutT;$StAcct;$EdAcct)
+C_BOOLEAN($Sum;$Printit)
+C_TIME(vDoc)
+DEFAULT TABLE([ChartAccts])
+SetFacility 
+QUERY([ChartAccts];[ChartAccts]ReportName=$1)
+vText:=[ChartAccts]ReportCode
+$Command:=Substring(GetGLNextLine ;1;80)
+ARRAY REAL(vPrint;6)
+ARRAY REAL(vAccum;6)
+ARRAY REAL(vSTotal;6)
+ARRAY REAL(vTTotal;6)
+ARRAY REAL(vGTotal;6)
+ARRAY REAL(vPCent;6)
+ARRAY REAL(aData;6;0)
+ARRAY TEXT(aDetail;0)
+ARRAY TEXT(aLayout;0)
+bPercents:=False
+For ($i;1;6)
+vPrint{$i}:=0
+vAccum{$i}:=0
+vSTotal{$i}:=0
+vTTotal{$i}:=0
+vGTotal{$i}:=0
+End for 
+$NoLines:=0
+$Format:=Num(Substring($Command;12;1))
+If ($Format>5)
+$Layout:="Header3CTall"
+$LayoutD:="Detail3CTall"
+$LayoutB:="Break3CTall"
+$LayoutT:="Break3CTall"
+$LayoutG:="Break3CTallG"
+Else 
+If ($Format>2)
+$Layout:="HeaderWide"
+$LayoutD:="DetailWide"
+$LayoutB:="BreakWide"
+$LayoutT:="BreakWide"
+$LayoutG:="BreakWide"
+Else 
+$Layout:="HeaderTall"
+$LayoutD:="DetailTall"
+$LayoutB:="BreakTall"
+$LayoutT:="BreakTallT"
+$LayoutG:="BreakTallG"
+End if 
+End if 
+PAGE SETUP([ChartAccts];$Layout)
+If (bPrintAll#1)
+PRINT SETTINGS
+If (OK#1)
+ABORT
+End if 
+End if 
+Open window(20;50;300;150;0;Get localized string("Progress"))
+
+If (bDontCalc=0)
+CalcPeriodYTD //($Format)
+bDontCalc:=bPrintAll//Don't CalcYTD if PrintAll
+End if 
+GOTO XY(2;2)
+MESSAGE(Get localized string("Building Report Totals")+"...                       ")
+$NoCol:=6
+Case of 
+: ($Format=1)
+vHdr1:=Get localized string("This Month")
+vHdr2:=Get localized string("Year to date")
+$NoCol:=2
+: ($Format=2)
+vHdr1:=Get localized string("This Year")
+vHdr2:=Get localized string("Last Year")
+$NoCol:=2
+: ($Format=3)
+vHdr1:=Get localized string("Budget")
+vHdr2:=Get localized string("Actual")
+vHdr3:=Get localized string("Difference")
+vHdr4:=Get localized string("Budget")
+vHdr5:=Get localized string("Actual")
+vHdr6:=Get localized string("Difference")
+: ($Format=4)
+vHdr1:=Get localized string("Last Year")
+vHdr2:=Get localized string("Actual")
+vHdr3:=Get localized string("Difference")
+vHdr4:=Get localized string("Last Year")
+vHdr5:=Get localized string("Actual")
+vHdr6:=Get localized string("Difference")
+: ($Format=5)
+vHdr1:=Get localized string("Last Year")
+vHdr2:=Get localized string("Budget")
+vHdr3:=Get localized string("Actual")
+vHdr4:=Get localized string("Actual")
+vHdr5:=Get localized string("Budget")
+vHdr6:=Get localized string("Last Year")
+: ($Format=6)
+vHdr1:=Get localized string("Budget")
+vHdr2:=Get localized string("Actual")
+vHdr3:=Get localized string("Difference")
+: ($Format=7)
+vHdr1:=Get localized string("Budget")
+vHdr2:=Get localized string("Actual")
+vHdr3:=Get localized string("Last Year")
+Else 
+//Do Nothing
+End case 
+$Command:=Substring(GetGLNextLine ;1;80)
+While ($Command>"")
+Boolean:=False
+$Printit:=False
+$Sum:=False
+Case of 
+: ($Command="REPORT TIT@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+vTitle:=Substring($Temp;1;$Pos-1)
+: ($Command="REPORT LEG@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+vDateLine:=Substring($Temp;1;$Pos-1)
+If (Position("0";vDateLine)<1)//If no year in the date
+vDateLine:=vDateLine+" "+String(GetPeriodEndDate (vPeriod);6)
+End if 
+: ($Command="PRINT HEAD@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+vDesc:=Substring($Temp;1;$Pos-1)
+Boolean:=True
+$NoLines:=PrinttoArray ($NoLines;"H")
+: ($Command="PRINT RANG@") | ($Command="PRINT SUMRANG@")
+If (Substring($Command;7;3)="SUM")
+$Sum:=True
+Else 
+$Sum:=False
+End if 
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+$StAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$StAcct)
+If ($z#0)
+$StAcct:=Delete string($StAcct;$z;1)
+End if 
+Until ($z=0)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$EdAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$EdAcct)
+If ($z#0)
+$EdAcct:=Delete string($EdAcct;$z;1)
+End if 
+Until ($z=0)
+$Temp:=Substring($Temp;$Pos+2)
+If ($Temp="CRED@")
+$PlusMinus:=-1
+Else 
+$PlusMinus:=1
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctNo>=$StAcct;*)
+QUERY([ChartAccts]; & ;[ChartAccts]AcctNo<=$EdAcct)
+If ($Sum)
+ORDER BY([ChartAccts];[ChartAccts]AcctNo;>)
+CREATE EMPTY SET([ChartAccts];"ToPrint")
+$StAcct:=""
+For ($i;1;Records in selection)
+If (Substring([ChartAccts]AcctNo;1;4)#$StAcct)
+ADD TO SET([ChartAccts];"ToPrint")
+$StAcct:=Substring([ChartAccts]AcctNo;1;4)
+End if 
+NEXT RECORD([ChartAccts])
+End for 
+USE SET("ToPrint")
+CLEAR SET("ToPrint")
+End if 
+$Printit:=True
+: ($Command="PRINT SUBRANG@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+$SubCode:=Substring($Temp;1;$Pos-1)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$StAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$StAcct)
+If ($z#0)
+$StAcct:=Delete string($StAcct;$z;1)
+End if 
+Until ($z=0)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$EdAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$EdAcct)
+If ($z#0)
+$EdAcct:=Delete string($EdAcct;$z;1)
+End if 
+Until ($z=0)
+$Temp:=Substring($Temp;$Pos+2)
+If ($Temp="CRED@")
+$PlusMinus:=-1
+Else 
+$PlusMinus:=1
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctNo>=$StAcct;*)
+QUERY([ChartAccts]; & ;[ChartAccts]AcctNo<=$EdAcct)
+$j:=1
+Repeat 
+If ($Subcode[[$j]]="-")
+$Subcode:=Delete string($Subcode;$j;1)
+$j:=$j-1
+End if 
+If ($Subcode[[$j]]>="0") & ($Subcode[[$j]]<="9")
+QUERY SELECTION BY FORMULA([ChartAccts];[ChartAccts]AcctNo[[$j]]=$Subcode[[$j]])
+End if 
+$j:=$j+1
+Until ($j>Length($Subcode))
+$Printit:=True
+: ($Command="PRINT PROFI@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+vDesc:=Substring($Temp;1;$Pos-1)
+$Temp:=Substring($Temp;$Pos+2)
+If ($Temp="CRED@")
+$PlusMinus:=-1
+Else 
+$PlusMinus:=1
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctNo="P&L")
+RELATE MANY SELECTION([ChartTotals]AcctNo)
+PrintAccumulate ($Format;$PlusMinus)
+$PrtFlag:=False
+For ($i;1;$NoCol)
+vSTotal{$i}:=vSTotal{$i}+vPrint{$i}
+vTTotal{$i}:=vTTotal{$i}+vPrint{$i}
+vGTotal{$i}:=vGTotal{$i}+vPrint{$i}
+$p:=Get pointer("vPrint"+String($i))
+$p->:=vPrint{$i}*$PlusMinus
+If (vPrint{$i}#0)
+$PrtFlag:=True
+End if 
+vPrint{$i}:=0
+End for 
+If ($PrtFlag=True)
+$NoLines:=PrinttoArray ($NoLines;"D")
+End if 
+: ($Command="ACCUMULAT@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+$StAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$StAcct)
+If ($z#0)
+$StAcct:=Delete string($StAcct;$z;1)
+End if 
+Until ($z=0)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$EdAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$EdAcct)
+If ($z#0)
+$EdAcct:=Delete string($EdAcct;$z;1)
+End if 
+Until ($z=0)
+QUERY([ChartAccts];[ChartAccts]AcctNo>=$StAcct;*)
+QUERY([ChartAccts]; & ;[ChartAccts]AcctNo<=$EdAcct)
+FIRST RECORD
+For ($y;1;Records in selection)
+RELATE MANY SELECTION([ChartTotals]AcctNo)
+PrintAccumulate ($Format;$PlusMinus)
+For ($i;1;$NoCol)
+vAccum{$i}:=vAccum{$i}+vPrint{$i}
+End for 
+NEXT RECORD
+End for 
+: ($Command="ACCUM SUBR@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+$SubCode:=Substring($Temp;1;$Pos-1)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$StAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$StAcct)
+If ($z#0)
+$StAcct:=Delete string($StAcct;$z;1)
+End if 
+Until ($z=0)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$Temp:=Substring($Temp;$Pos+1)
+$Pos:=Position("'";$Temp)
+$EdAcct:=Substring($Temp;1;$Pos-1)
+Repeat 
+$z:=Position("-";$EdAcct)
+If ($z#0)
+$EdAcct:=Delete string($EdAcct;$z;1)
+End if 
+Until ($z=0)
+QUERY([ChartAccts];[ChartAccts]AcctNo>=$StAcct;*)
+QUERY([ChartAccts]; & ;[ChartAccts]AcctNo<=$EdAcct)
+$j:=1
+Repeat 
+If ($Subcode[[$j]]="-")
+$Subcode:=Delete string($Subcode;$j;1)
+$j:=$j-1
+End if 
+If ($Subcode[[$j]]>="0") & ($Subcode[[$j]]<="9")
+QUERY SELECTION BY FORMULA([ChartAccts];[ChartAccts]AcctNo[[$j]]=$Subcode[[$j]])
+End if 
+$j:=$j+1
+Until ($j>Length($Subcode))
+FIRST RECORD
+For ($y;1;Records in selection)
+RELATE MANY SELECTION([ChartTotals]AcctNo)
+PrintAccumulate ($Format;$PlusMinus)
+For ($i;1;$NoCol)
+vAccum{$i}:=vAccum{$i}+vPrint{$i}
+End for 
+NEXT RECORD
+End for 
+: ($Command="PRINT ACCUM@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+vDesc:=Substring($Temp;1;$Pos-1)
+$Temp:=Substring($Temp;$Pos+2)
+If ($Temp="CRED@")
+$PlusMinus:=-1
+Else 
+$PlusMinus:=1
+End if 
+For ($i;1;$NoCol)
+vSTotal{$i}:=vSTotal{$i}+vAccum{$i}
+vTTotal{$i}:=vTTotal{$i}+vAccum{$i}
+vGTotal{$i}:=vGTotal{$i}+vAccum{$i}
+$p:=Get pointer("vPrint"+String($i))
+$p->:=vAccum{$i}*$PlusMinus
+vAccum{$i}:=0
+End for 
+$NoLines:=PrinttoArray ($NoLines;"D")
+: ($Command="PRINT SUBTOTA@") | ($Command="PRINT TOTA@") | ($Command="PRINT GRA@")
+$Pos:=Position("'";$Command)
+$Temp:=Substring($Command;$Pos+1)
+$Pos:=Position("'";$Temp)
+vDesc:=Substring($Temp;1;$Pos-1)
+$Temp:=Substring($Temp;$Pos+2)
+If ($Temp="CRED@")
+$PlusMinus:=-1
+Else 
+$PlusMinus:=1
+End if 
+If ($Format=3) | ($Format=4) | ($Format=6)
+vSTotal{3}:=(vSTotal{1}-vSTotal{2})*$PlusMinus
+vSTotal{6}:=(vSTotal{4}-vSTotal{5})*$PlusMinus
+vTTotal{3}:=(vTTotal{1}-vTTotal{2})*$PlusMinus
+vTTotal{6}:=(vTTotal{4}-vTTotal{5})*$PlusMinus
+vGTotal{3}:=(vGTotal{1}-vGTotal{2})*$PlusMinus
+vGTotal{6}:=(vGTotal{4}-vGTotal{5})*$PlusMinus
+End if 
+For ($i;1;$NoCol)
+$p:=Get pointer("vPrint"+String($i))
+Case of 
+: ($Command="PRINT SUBTOTA@")
+$p->:=vSTotal{$i}*$PlusMinus
+: ($Command="PRINT TOTA@")
+$p->:=vTTotal{$i}*$PlusMinus
+: ($Command="PRINT GRA@")
+$p->:=vGTotal{$i}*$PlusMinus
+Else 
+//Do Nothing
+End case 
+End for 
+Case of 
+: ($Command="PRINT SUBTOTA@")
+$NoLines:=PrinttoArray ($NoLines;"B")
+: ($Command="PRINT TOTA@") | ($Command="PRINT GRANDNU@")
+$NoLines:=PrinttoArray ($NoLines;"T")
+: ($Command="PRINT GRA@")
+$NoLines:=PrinttoArray ($NoLines;"G")
+Else 
+//Do Nothing
+End case 
+: ($Command="CLEAR SUBTOTA@")
+For ($i;1;$NoCol)
+vSTotal{$i}:=0
+End for 
+: ($Command="CLEAR TOTA@")
+For ($i;1;$NoCol)
+vSTotal{$i}:=0
+vTTotal{$i}:=0
+End for 
+: ($Command="CLEAR GRA@")
+For ($i;1;$NoCol)
+vSTotal{$i}:=0
+vTTotal{$i}:=0
+vGTotal{$i}:=0
+End for 
+: ($Command="PAGE BR@")
+$NoLines:=PrinttoArray ($NoLines;"F")
+: ($Command="PERCENTAGES ON @")
+bPercents:=True
+Case of 
+: ($Command[[16]]="S")
+For ($i;1;6)
+vPCent{$i}:=vSTotal{$i}
+End for 
+: ($Command[[16]]="T")
+For ($i;1;6)
+vPCent{$i}:=vTTotal{$i}
+End for 
+: ($Command[[16]]="G")
+For ($i;1;6)
+vPCent{$i}:=vGTotal{$i}
+End for 
+Else 
+bPercents:=False
+End case 
+Else 
+//Do Nothing
+End case 
+If ($Printit=True)
+ORDER BY([ChartAccts];[ChartAccts]AcctNo;>)
+FIRST RECORD
+For ($y;1;Records in selection)
+If ($Sum)
+QUERY([ChartTotals];[ChartTotals]AcctNo=Substring([ChartAccts]AcctNo;1;4)+"@")
+Else 
+RELATE MANY([ChartTotals]AcctNo)
+End if 
+PrintAccumulate ($Format;$PlusMinus)
+$PrtFlag:=False
+For ($i;1;$NoCol)
+vSTotal{$i}:=vSTotal{$i}+vPrint{$i}
+vTTotal{$i}:=vTTotal{$i}+vPrint{$i}
+vGTotal{$i}:=vGTotal{$i}+vPrint{$i}
+$Point:=Get pointer("vPrint"+String($i))
+$Point->:=vPrint{$i}*$PlusMinus
+If (vPrint{$i}#0)
+$PrtFlag:=True
+End if 
+vPrint{$i}:=0
+End for 
+vDesc:=[ChartAccts]Description
+If ($PrtFlag=True)
+$NoLines:=PrinttoArray ($NoLines;"D")
+End if 
+NEXT RECORD
+End for 
+End if 
+$Command:=Substring(GetGLNextLine ;1;80)
+End while 
+CLOSE WINDOW
+//Print Report here    $NoLines = size of array
+If ($Format>2) & (bPercents=True)
+$Layout:="HeaderWide%age"
+$LayoutD:="DetailWide%age"
+$LayoutB:="BreakWide%age"
+$LayoutT:="BreakWide%age"
+$LayoutG:="BreakWide%age"
+End if 
+$j:=$NoLines
+$NoLines:=-9
+If (bFile=1)
+vDoc:=Create document($1;"TEXT")
+End if 
+For ($i;1;$j)
+If (aLayout{$i}="F")
+$NoLines:=-1
+Else 
+vDesc:=aDetail{$i}
+For ($j;1;6)
+$p:=Get pointer("vPrint"+String($j))
+If (aLayout{$i}="H")
+$p->:=0
+Else 
+$p->:=aData{$j}{$i}
+End if 
+If (bPercents=True)
+$p:=Get pointer("vPcent"+String($j))
+If (vPCent{$j}=0)
+$p->:=0
+Else 
+$p->:=Round(Abs(aData{$j}{$i}*100/vPCent{$j});2)
+End if 
+If (aData{$j}{$i}<0)
+$p->:=$p->*(-1)
+End if 
+End if 
+End for 
+If (bFile=1)
+SEND PACKET(vDoc;vDesc+Char(9)+String(vPrint1)+Char(9)+String(vPrint2)+Char(9)+String(vPrint3)+Char(9)+String(vPrint4)+Char(9)+String(vPrint5)+Char(9)+String(vPrint6)+Char(13))
+End if 
+Case of 
+: (aLayout{$i}="D") | (aLayout{$i}="H")
+$NoLines:=PrintLine ($NoLines;$LayoutD;$Layout;aLayout{$i})
+: (aLayout{$i}="B")
+$NoLines:=PrintLine ($NoLines;$LayoutB;$Layout;aLayout{$i})
+: (aLayout{$i}="T")
+$NoLines:=PrintLine ($NoLines;$LayoutT;$Layout;aLayout{$i})
+: (aLayout{$i}="G")
+$NoLines:=PrintLine ($NoLines;$LayoutG;$Layout;aLayout{$i})
+Else 
+//Do Nothing
+End case 
+End if 
+End for 
+PAGE BREAK
+If (bFile=1)
+CLOSE DOCUMENT(vDoc)
+End if 

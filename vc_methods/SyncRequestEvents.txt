@@ -1,0 +1,100 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SyncRequestEvents  WS_Sync
+//Method that uses a web service to request events from MV server
+C_BOOLEAN($0)//True if successful else false
+C_TEXT($1;$EventType)//FacilityCode
+C_LONGINT($2;$Zero;$Interval;$EventCount;$Pos;$i)//NextSeqNo
+C_DATE($3)//VersionDate
+C_BLOB($Blob)
+C_TEXT($Result)
+C_TEXT($CurErr)
+
+$CurErr:=Method called on error
+$0:=False
+$EventType:="RCV"
+$Zero:=0
+$Tickcount:=Tickcount
+$Result:=""
+SET BLOB SIZE($Blob;0)
+SET BLOB SIZE(vbEventContent;0)
+$Server:="MV"
+If ($2=-7)
+$Server:="SHOF"
+End if 
+vError:=False
+ON ERR CALL("ErrorWS")
+WEB SERVICE SET PARAMETER("WS_FacilityCode";$1)
+WEB SERVICE SET PARAMETER("WS_RequestType";$EventType)
+WEB SERVICE SET PARAMETER("WS_SeqNo";$2)
+WEB SERVICE SET PARAMETER("WS_VersionDate";$3)
+WEB SERVICE SET PARAMETER("WS_EventCountIn";$Zero)
+WEB SERVICE SET PARAMETER("WS_EventBlobIn";$Blob)
+WEB SERVICE CALL("https://"+GetDNS ($Server;True)+"/4DSOAP/";"Storman#WS_Sync";"WS_Sync";"http://www.storpay.com/webservices";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT($Result;"WS_SuccessMsg")
+WEB SERVICE GET RESULT($Interval;"WS_ConnectAgainInterval")
+WEB SERVICE GET RESULT($EventCount;"WS_EventCountOut")
+WEB SERVICE GET RESULT(vbEventContent;"WS_EventBlobOut";*)// Memory clean-up on the final return value.
+ON ERR CALL($CurErr)
+If (vError=True)//Unable to connect - try three times then wait 15 mins and try again
+vMax:=vMax+1
+Else 
+vMax:=0
+End if 
+vtNextSyncTime:=Current time+$Interval
+If ($Result="None")
+$0:=True
+End if 
+If ($Result="301@")
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]CentralAddress:=Substring($Result;5)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+$0:=True
+End if 
+If ($EventCount>0)
+If (SyncDecode ($EventCount;$1;String($2-$2;"###"))="000")
+$Result:="Received "+String($EventCount)+" events for "+$1+" from "+$Server+". - SeqNo "+String($2)+" - Elapsed time = "+String((Tickcount-$Tickcount)/60;"####.00")
+$Pos:=Find in array(<>asSiteCodes;$1)
+If ($Pos>0) & ($2>0)//Don't set for $2=-7 SHOF
+<>aiEventSeqNo{$Pos}:=$2
+End if 
+End if 
+End if 
+If ($0#True)
+SyncRecordLog ("WSS - "+$Result)
+
+If ($Result=("@"+Get localized string("Sequence No Mismatch Site")+"@"))
+If ($2#$EventCount) & ($2-$EventCount<=100) & ($2-$EventCount>0) & ($EventCount>1)
+QUERY([EventLog];[EventLog]FacilityCode=$1;*)
+QUERY([EventLog]; & ;[EventLog]SeqNo=$2)
+$Pos:=Find in array(<>asSiteCodes;$1)
+If (Records in selection([EventLog])>0)
+SyncRecordLog ("WSS - SyncRequestEvents - Setting SyncStatus & SeqNo to Zero for SeqNo:"+String($2)+" - "+String(Records in selection([EventLog]))+" events.")
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+For ($i;1;Records in selection([EventLog]))
+[EventLog]SyncStatus:=0
+[EventLog]SeqNo:=0
+SAVE RECORD([EventLog])
+NEXT RECORD([EventLog])
+End for 
+<>aiEventSeqNo{$Pos}:=<>aiEventSeqNo{$Pos}-1
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+Else 
+<>aiEventSeqNo{$Pos}:=<>aiEventSeqNo{$Pos}-1
+SyncRecordLog ("WSS - SyncRequestEvents - Setting SyncStatus & SeqNo to Zero for SeqNo:"+String($2)+" - "+String(Records in selection([EventLog]))+" events.")
+End if 
+Else 
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Syncing Error at")+" "+$1;"Attempted to Request for"+" "+$1+" - Server Host Error"+" #"+$Result+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+End if 
+End if 
+End if 
+Else 
+ON ERR CALL($CurErr)
+SyncRecordLog ("WSS - Webservice request call failed - try again in 10 minutes")
+vtNextSyncTime:=Current time+600//10 minutes
+End if 

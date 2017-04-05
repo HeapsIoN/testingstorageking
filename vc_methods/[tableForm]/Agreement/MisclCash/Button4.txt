@@ -1,0 +1,63 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(BRETURNPAYMENT)
+If (Form event=On Clicked)
+If (PermissionsControl (173))
+
+//23-12-16 DM chnged to FALSE for refunds
+NoSaveOnCard:=False
+FORM SET INPUT([Trxs];"ModReceipts")
+LOAD RECORD([Trxs])
+
+If (([Trxs]CCTransID#"") & ([Trxs]TotAmt#0))
+vAmount:=[Trxs]TotAmt
+vTransID:=[Trxs]OriginalReceipt
+vAuthcode:=[Trxs]CCAuthNo
+vSpecialAnalysis:=[Trxs]AnalysisCode
+vDate:=[Trxs]TrxDate
+vOriginalReceipt:=[Trxs]CCTransID
+Else 
+vAmount:=0
+vTransID:=""
+vOriginalReceipt:=""
+vDate:=Current date//Added by Hamid - 10027
+End if 
+
+//10/01/17 DM Commented the condition below to allow refunds for cash sales on different days
+//If (vDate=Current date)
+READ WRITE([Trxs])
+
+vtReverse:=True
+bFromMoveIn:=True
+vPayments:=0
+//bPrev:=0
+//bRepDate:=0
+ADD RECORD([Trxs])
+
+If (bAccept=1) | (bBoth=1)
+[Trxs]Match:=viCashMatch
+SAVE RECORD([Trxs])
+End if 
+
+If (([Trxs]CCTransID>"") & ([Trxs]CCTransID#"ERR@") & ([Trxs]CCTransID#"DEC@")) | (([Trxs]CCAuthNo>"") & ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@"))
+OBJECT SET ENABLED(bDelete;False)
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+
+READ ONLY([Trxs])
+vRecalc:=True
+trxBalance:=0
+NoSaveOnCard:=False
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=viCashMatch)
+//Else 
+//AlertMessage ("This transaction cannot be refunded. Refunds must be processed on the same day as the original receipt!")
+//End if 
+End if 
+End if 

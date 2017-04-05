@@ -1,0 +1,83 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Send)
+C_TEXT($Data)
+If (Form event=On Header)
+OBJECT SET TITLE(*;"Text15";<>vtUnitsCap)
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+
+If (Form event=On Printing Detail)
+If ([Unit]Vacant)
+vT1:="Yes"
+REDUCE SELECTION([Agreement];0)
+REDUCE SELECTION([Customer];0)
+Else 
+vT1:=""
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+End if 
+If (bConfirm)
+$Send:=GateAction ("Read2";[Unit]UnitNumeric;"";0;"";Current date;0;0;0;[Unit]UnitSection;[Unit]UnitLetter)
+$Data:=CalcBinHex (1;CalcBinHex (4;Substring($Send;4;6));24)
+//CalcBinHex (4;CalcBinHex (3;Substring($Data;1;Length($Data)-5)))
+vOldUser:=Num(CalcBinHex (7;Substring($Data;6;14)))
+bUnit:=Num(CalcBinHex (7;Substring($Data;1;5)))
+bLast:=Num(CalcBinHex (7;Substring($Data;20;5)))
+If ([Unit]UnitNumeric=vOldUser) & ([Unit]UnitSection=bUnit) & ([Unit]UnitLetter=bLast)
+$Data:=CalcBinHex (4;Substring($Send;12;8))
+If (Num($Data)#Num([Customer]GatePIN)) & ([Unit]Vacant=False)
+[Unit]UnitSize:=Get localized string("WRONG GATEPIN")
+End if 
+If ([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)
+If ([Customer]AllowAccessArrs=False) & (Substring($Send;11;1)#"2")
+[Unit]UnitSize:=Get localized string("SHOULD BE LOCKOUT")
+End if 
+Else 
+If (Substring($Send;11;1)#"0") & (Substring($Send;11;1)#"4")//4=Customer on site
+[Unit]UnitSize:=Get localized string("WRONG LOCKOUT")
+End if 
+End if 
+vLeg8:=CalcBinHex (6;Substring($Send;24;2);8)
+bCode:=Num(CalcBinHex (7;Substring(vLeg8;1;3)))+1
+bUnit:=Num(CalcBinHex (7;Substring(vLeg8;4)))
+If (bCode#[Customer]GateTimeZone) & ([Unit]Vacant=False)
+[Unit]UnitSize:=Get localized string("WRONG TIMEZONE")
+End if 
+If (bUnit#[Unit]MuxController)
+[Unit]UnitSize:=Get localized string("WRONG MUXNO")
+End if 
+Else 
+[Unit]UnitSize:=Get localized string("INVALID READ")
+End if 
+End if 
+If ([Unit]UnitNumeric=vNextUser)
+vLastNo:="DUP"
+Else 
+vLastNo:=""
+If ([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)
+vLastNo:=Get localized string("Yes")
+End if 
+End if 
+vLeg6:=""
+If ([Customer]AllowAccessArrs)
+vLeg6:=Get localized string("Yes")
+End if 
+vLeg7:="B"
+If ([Unit]InputPort)
+vLeg7:="A"
+End if 
+vNextUser:=[Unit]UnitNumeric
+End if 
+If (Form event=On Printing Detail)
+QUERY([PhotosCards];[PhotosCards]UnitAccess="All";*)
+QUERY([PhotosCards]; | ;[PhotosCards]UnitAccess=[Unit]UnitNo;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Code=[Customer]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+SetFormats 

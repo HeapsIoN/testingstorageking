@@ -1,0 +1,118 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+ARRAY TEXT(ArrivedBoxes;0)
+If (Form event=On Clicked)
+RURentAmt:=[Agreement]RentAmt
+//If ([BillPlan]CasualBilling)
+//If ([BillPlan]PlanPeriod="Week")
+//RUAgreePeriods:=Round([Agreement]RegularRent*7;2)
+//Else 
+//RUAgreePeriods:=Round([Agreement]RegularRent*7/0.2308;2)
+//End if 
+//Else 
+//RUAgreePeriods:=[Agreement]RegularRent
+//End if 
+RUAgreePeriods:=vAgreePeriods
+For ($i;1;Size of array(aUnitNo))
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+aUnitNo{$i})
+
+Case of 
+: (<>sProduct="@B")
+$PosProrate:=Find in array(aDescription;Get localized string("Depature Prorata for berth")+" "+aUnitNo{$i})
+: (<>sProduct="@R")
+$PosProrate:=Find in array(aDescription;Get localized string("Retunt Prorata for appliance")+" "+aUnitNo{$i})
+: (<>sProduct="@C")
+$PosProrate:=Find in array(aDescription;Get localized string("Move Out Prorata for space")+" "+aUnitNo{$i})
+Else 
+$PosProrate:=Find in array(aDescription;Get localized string("Move Out Prorata for unit")+" "+aUnitNo{$i})
+End case 
+If ($PosProrate>0)
+$BillProrate:=aBill{$PosProrate}
+Else 
+$BillProrate:=False
+End if 
+
+Case of 
+: (<>sProduct="@B")
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for berth")+" "+aUnitNo{$i})
+: (<>sProduct="@R")
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for appliance")+" "+aUnitNo{$i})
+: (<>sProduct="@C")
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for space")+" "+aUnitNo{$i})
+Else 
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for unit")+" "+aUnitNo{$i})
+End case 
+If ($PosDeposit>0)
+$BillDeposit:=aBill{$PosDeposit}
+Else 
+$BillDeposit:=False
+End if 
+
+$PosInsurance:=Find in array(aDescription;"Move Out Prorata for insurance "+aUnitNo{$i})
+If ($PosInsurance>0)
+$BillInsurance:=aBill{$PosInsurance}
+Else 
+$BillInsurance:=False
+End if 
+RemoveUnit (True;$BillProrate;$BillDeposit;$BillInsurance;False)
+MoveInCode 
+
+//12/02/13 DAM to call Kinitek when Unit was vacated
+
+QUERY([BarCode];[BarCode]UnitNo=<>sFacility+aUnitNo{$i};*)
+QUERY([BarCode]; & ;[BarCode]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([BarCode]; & ;[BarCode]Active=True)
+
+If (Records in selection([BarCode])=1)
+[BarCode]Active:=False
+APPEND TO ARRAY(ArrivedBoxes;[BarCode]Code)
+SAVE RECORD([BarCode])
+End if 
+
+
+End for 
+
+bChange:=True
+bNewChange:=True
+
+//21/08/13 DAM Added code to create a shipping transaction when moving out
+If (Size of array(ArrivedBoxes)>0) & ([Agreement]BnS#"")
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=6)
+
+$Kg:=Size of array(ArrivedBoxes)*25
+$PostCode:=GetTextNo ([Agreement]BnS;1;",")
+$Suburb:=GetTextNo ([Agreement]BnS;2;",")
+QUERY([Shipping];[Shipping]FacilityCode=<>sFacility;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=Num($PostCode);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=$Suburb;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+
+If (Records in selection([Shipping])=1) & (Records in selection([Analysis])=1)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]UnitNo:=[Unit]UnitNo
+[Trxs]Qty:=1
+[Trxs]DateFrom:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=[Shipping]Price
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+SAVE RECORD([Trxs])
+Else 
+AlertMessage ("Please check analysis code and shipping record for= "+String($Kg)+" Kg, Post code= "+$PostCode)
+End if 
+
+
+Else 
+AlertMessage ("You need to add the shipping charge manually.")
+End if 
+
+End if 

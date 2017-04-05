@@ -1,0 +1,110 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$Pos)
+C_TEXT($UnitStatus;$UnitCategory)
+//Case of 
+//: ([Facility]RoundDefault=1)
+//<>iRound:=2
+//: ([Facility]RoundDefault=5)
+//<>iRound:=5
+//: ([Facility]RoundDefault=100)
+//<>iRound:=0
+//Else 
+//<>iRound:=1
+//End case 
+<>iRound:=[Facility]RoundDefault
+<>iRoundMethod:=[Facility]RoundMethod
+<>FieldSettings:=[Facility]FieldSettings
+<>sCurrency:=GetTextNo ([Facility]CurrencyFormat;1;";")
+<>sFormat:=GetTextNo ([Facility]CurrencyFormat;2;";")
+If (<>sFormat="") | (Length(<>sFormat)<5)
+<>sFormat:="##,###,##0.00"
+End if 
+<>sFormatNeg:=<>sFormat+" ;"+<>sFormat+"-;"+Replace string(Replace string(<>sFormat;"#";"");",";"")+" "
+<>sFormatZero:=<>sFormat+" ;"+<>sFormat+"-; "
+<>sLetterSignOff:=[Facility]LetterSignOff
+<>tGateUseLetter:=[Facility]GateOption
+ARRAY LONGINT(<>aiColours;5)
+For ($i;1;5)
+<>aiColours{$i}:=GetPrefNo ([Facility]Colours;$i)
+End for 
+If (<>aiColours{1}>=0)
+<>aiColours{1}:=-3848
+End if 
+If (<>aiColours{2}>=0)
+<>aiColours{2}:=-53509
+End if 
+If (<>aiColours{3}>=0)
+<>aiColours{3}:=-61449
+End if 
+If (<>aiColours{4}>=0)
+<>aiColours{4}:=-6
+End if 
+If (<>aiColours{5}>=0)
+<>aiColours{5}:=-15
+End if 
+LoadFacilityCountries 
+If (<>bEnglishSpelling=False)
+<>DrawerHelpTip:=Get localized string("This is for the check writer's name, check no, or credit card no, or other general details or comments.")
+Else 
+<>DrawerHelpTip:=Get localized string("This is for cheque writer's name, cheque no, or credit card no, or other general details or comments.")
+End if 
+If (<>dYearStart=!00-00-00!)
+<>dCashBookStart:=!2000-01-01!
+//<>dYearStart:=!2000-01-01!
+End if 
+While (Current date>Add to date(<>dYearStart;1;0;0))
+<>dYearStart:=Add to date(<>dYearStart;1;0;0)
+End while 
+<>dCashBookStart:=[Facility]CashBookStart
+If (<>dCashBookStart<!2000-01-01!)
+<>dCashBookStart:=!2000-01-01!
+End if 
+If (Application type#4D Server)//These arrays must not be updated when running on server as they must contain every site for MV - SDD 1/9/05
+ARRAY TEXT(<>asCharges;0)
+ARRAY TEXT(<>asChargeDesc;0)
+ARRAY TEXT(<>asChargeCat;0)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Code;<>asCharges;[Analysis]Description;<>asChargeDesc;[Analysis]KeyStatsCategory;<>asChargeCat)
+ARRAY TEXT(<>asReceipts;0)
+ARRAY TEXT(<>asReceiptDesc;0)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Code;<>asReceipts;[Analysis]Description;<>asReceiptDesc)
+End if 
+//Default is Rented,Vacant,Reserved,Company,Repair,ToClean,Locked,OnSite,Unavail
+Case of 
+: ([Facility]FacilityCode="SSCSD")
+$UnitStatus:=Get localized string("ChangeSiteBox-SSCSD")
+$UnitCategory:="RVVROVRRX"
+: ([Facility]ProductCode="@R")
+$UnitStatus:=Get localized string("ChangeSiteAppliance")
+$UnitCategory:="RVVROVRXX"
+: ([Facility]ProductCode="@B")
+$UnitStatus:=Get localized string("ChangeSiteBerth")//First three are used by system and must exist
+$UnitCategory:="RVVOOVRRX"
+: ([Facility]ProductCode="@C")
+$UnitStatus:=Get localized string("ChangeSiteBox")
+$UnitCategory:="RVVOOVRRX"//Unavail is used by ReCalcUnits
+Else 
+$UnitStatus:=Get localized string("ChangeSiteBox")
+$UnitCategory:="RVVOOVRRX"//Unavail is used by ReCalcUnits
+End case 
+
+ARRAY TEXT(<>asUnitCategory;Length($UnitCategory))
+ARRAY TEXT(<>asUnitStatus;Size of array(<>asUnitCategory))
+For ($i;1;Size of array(<>asUnitCategory))
+<>asUnitCategory{$i}:=Substring($UnitCategory;$i;1)
+$Pos:=Position(",";$UnitStatus)
+
+
+<>asUnitStatus{$i}:=Substring($UnitStatus;1;$Pos-1)
+$UnitStatus:=Substring($UnitStatus;$Pos+1)
+End for 
+If (Length([Facility]ReportSettings)<255)
+vReportSettings:=[Facility]ReportSettings+(" "*(255-Length([Facility]ReportSettings)))
+UpdateSystem (128;->vReportSettings;Get localized string("Report Settings could not be updated correctly!");False;True)
+End if 

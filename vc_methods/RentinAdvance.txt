@@ -1,0 +1,96 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+C_BOOLEAN($RentAdvMethod)
+LogAction (False;"Prepaid Report started.")// records the report being started in the eventlog
+If (PermissionsControl (83))
+DEFAULT TABLE([Agreement])
+SetFacility 
+If (<>tBatch=True)
+OK:=1
+$RentAdvMethod:=[Facility]RentAdvFlag
+vReportSettings:=[Facility]ReportSettings
+tExTax:=Num(vReportSettings[[26]])
+bAdd:=Num(vReportSettings[[27]])
+Else 
+vReportSettings:=[Facility]ReportSettings
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+//Open window(20;50;427;405;5)
+Open window((Screen width/2)-197;(Screen height/2)-201;(Screen width/2)+197;(Screen height/2)+201;5;Get localized string("MenuMoreReportsprepaidReport"))
+DIALOG([Agreement];"RentAdvDialog")//Documentation
+CLOSE WINDOW
+$RentAdvMethod:=(bAgree=1)
+If (OK=1)
+If (vReportSettings#[Facility]ReportSettings)
+UpdateSystem (128;->vReportSettings;Get localized string("KeyStatsDialogMethod"))
+End if 
+End if 
+End if 
+If (OK=1) & ([Facility]Version<610) & (Current date<!2006-04-16!)
+ConfirmTwo (Get localized string("Prepaid Report1");"OK";Get localized string("Visit website"))
+If (OK=0)
+OPEN URL("http://my.storman.com/support/knowledgebase/reports/";*)
+End if 
+End if 
+
+If (OK=1)
+LogAction (False;Get localized string("Prepaid Report commenced"))
+If (<>tLogging=False)
+
+RentinAdvanceCalc (<>sFacility;vMthDate;$RentAdvMethod;False)
+If ([Facility]UnitNoRpts)
+ORDER BY([Agreement]UnitsOccup;>;[Agreement]AgreeNo;>)
+Else 
+ORDER BY([Agreement]CustomerCode;>;[Agreement]AgreeNo;>)
+End if 
+vTitle:=Get localized string("Prepaid Report as at ")+String(vMthDate)
+vNotes:=""
+If ($RentAdvMethod)
+vLeg5:=Get localized string("Calculated on Daily Basis")
+Else 
+vLeg5:=Get localized string("Calculated on Whole Month Basis")
+If (bAdd=1)
+vNotes:=Get localized string("Prepaid Report2")+Char(13)+Char(13)
+End if 
+End if 
+If (tExTax=1)
+vNotes:=vNotes+Get localized string("All Amounts are Excluding Tax")+Char(13)+Char(13)
+Else 
+vNotes:=vNotes+Get localized string("All Amounts are Including Tax")+Char(13)+Char(13)
+End if 
+//SDD This seems to be commented out as it must be calculated elsewhere as it appears on the report
+//If (Size of array(aPrepaidAnalysis)>0)
+//If (vNotes>"")
+//vNotes:=vNotes+Char(13)+Char(13)
+//End if 
+//vNotes:=vNotes+"SUMMARY BY PREPAID CATEGORY"+Char(13)
+//$Total:=0
+//For ($i;1;Size of array(aPrepaidAnalysis))
+//$j:=Round((Length(aPrepaidAnalysis{$i})*1.5)+Length(String(aOBal{$i};"###,###.00"));0)
+//vNotes:=vNotes+aPrepaidAnalysis{$i}+((40-$j)*" ")+String(aOBal{$i};"###,###.00")+Char(13)
+//$Total:=$Total+aOBal{$i}
+//End for 
+//$j:=Length(String($Total;"#,###,###.00"))
+//vNotes:=vNotes+"Total"+((32-$j)*" ")+String($Total;"#,###,###.00")
+GetAnalysis 
+FORM SET OUTPUT([Agreement];"RentAdvance")
+BREAK LEVEL(0)
+ACCUMULATE([Agreement]NoticeAmtToBill;[Agreement]BalanceOwing)
+PrintSelection ("P")
+READ WRITE([Agreement])
+QUERY SELECTION([Agreement]NoticeAmtToBill#0)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=0)
+USE SET("ToPrint")
+CLEAR SET("ToPrint")
+QUERY SELECTION([Agreement]BalFwd#0)
+APPLY TO SELECTION([Agreement];[Agreement]BalFwd:=0)
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+End if 
+LogAction (True;Get localized string("Prepaid Report finished"))
+End if 
+End if 
+LogAction (True;Get localized string("Prepaid Report finished"))

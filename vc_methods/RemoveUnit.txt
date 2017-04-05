@@ -1,0 +1,580 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 18/09/13 Removed line #414 as calculation based on Rack rate instead of Actual Rented Rate
+C_LONGINT($i;$x;$OK;$xDays;$yDays)
+C_TEXT($Desc)
+C_BOOLEAN($1;$Silent;$2;$BillProrate;$3;$BillDeposit;$4;$BillInsurance)
+$x:=Selected record number([Unit])
+$Silent:=False
+$BillProrate:=True
+$BillDeposit:=True
+$BillInsurance:=True
+$RemoveOne:=True
+
+If (Count parameters>0)
+$Silent:=$1
+$BillProrate:=$2
+$BillDeposit:=$3
+$BillInsurance:=$4
+$RemoveOne:=$5
+End if 
+
+If ($x>0) & ($x<=Records in selection([Unit]))
+READ WRITE([Unit])
+LOAD RECORD([Unit])
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+RELATE ONE([Unit]UnitTypeCode)
+If (Locked([Unit])=False) & (Locked([UnitType])=False)
+
+If ($Silent)
+OK:=1
+Else 
+ConfirmTwo (Get localized string("Remove Unit")+" "+[Unit]UnitNo+" "+Get localized string("Agreement Number")+" "+[Agreement]AgreeNo)
+End if 
+If (OK=1)
+vbUpdateGate:=[Facility]UseGateSys
+[UnitType]NoVacant:=[UnitType]NoVacant+1
+SAVE RECORD([UnitType])
+$Desc:=[Unit]AgreeNo
+[Unit]Vacant:=True
+
+
+If ([Facility]FacilityCode="ST@")
+// SU to Billing - If removing the Unit
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;Char(Line feed);";";1;String(Num(Old([Unit]SUFacilityID))))//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+If ($Index#-1)
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$Index)+Char(Line feed);"")
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;Char(Line feed)+Char(Line feed);Char(Line feed))
+[Unit]SUFacilityID:=0
+Else 
+If ($Silent=False)
+AlertMessage (Get localized string("The SU Facility details were not able to be removed from Agreement")+" "+[Agreement]AgreeNo)
+End if 
+End if 
+End if 
+
+[Unit]Status:=<>asUnitStatus{2}//Vacant 
+If ([Facility]MoveOutUnitStatus)
+[Unit]Status:=<>asUnitStatus{6}//ToClean
+End if 
+If ([Unit]ReservedTo>"")
+[Unit]Status:=<>asUnitStatus{3}//Reserved
+End if 
+[Unit]UpdatePULS:=<>tUtilities
+[Unit]AgreeNo:=""
+[Agreement]InsureValue:=[Agreement]InsureValue-[Unit]InsureValue
+
+If ($Silent=False)
+Repeat 
+[Unit]MoveOut:=RequestDate (Get localized string("Please enter Move Out date")+":";Current date;Get localized string("OK");Get localized string("Cancel");"";Get localized string("Please enter the requested information");True)
+If ([Unit]MoveOut<([Agreement]MoveIn))
+AlertMessage (Get localized string("The move out date cannot be less than")+" "+String([Agreement]MoveIn;6)+". "+Get localized string("Please check carefully")+".")
+End if 
+If ([Unit]MoveOut<([Unit]MoveIn))
+AlertMessage (Get localized string("The move out date cannot be less than")+" "+String([Unit]MoveIn;6)+". "+Get localized string("Please check carefully")+".")
+End if 
+If ([Unit]MoveOut<[Facility]CantModPrior)
+AlertMessage (Get localized string("The move out date cannot be less than")+" "+String([Facility]CantModPrior;6)+". "+Get localized string("Please check carefully")+".")
+End if 
+vDate:=[Unit]MoveOut
+Until (OK=1) & ([Unit]MoveOut>=([Agreement]MoveIn)) & ([Unit]MoveOut>=([Unit]MoveIn)) & ([Unit]MoveOut>=[Facility]CantModPrior)
+Else 
+[Unit]MoveOut:=vDate
+End if 
+
+$OK:=1
+If (Abs([Unit]MoveOut-[Unit]MoveIn)<3)
+If ($Silent=False)
+ConfirmTwo (Get localized string("The move out date is very similar to the move in date. If this is not a real move out then the Graph of Move-Ins & Move-Outs will be adversely affected. Is this a real move out?");Get localized string("Yes");Get localized string("No"))
+Else 
+//17/06/13 DAM Added to fix not real move out
+$j:=Find in array(aUnitNo;[Unit]UnitNo)
+If (aReal{$j}=True)
+OK:=1
+Else 
+OK:=0
+End if 
+End if 
+$OK:=OK
+If ($OK=0)
+[Unit]MoveOut:=Old([Unit]MoveOut)
+End if 
+End if 
+[Unit]UpdateGate:=[Facility]UseGateSys
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]IncreaseFrom:=!00-00-00!
+SAVE RECORD([Unit])
+READ WRITE([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=$Desc)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+If ($OK=0)
+DELETE RECORD([UnitHistory])//Don't record history where it is not a real MoveOut
+
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)//Update Unit MoveIn and MoveOut Dates from last unit history if it's not a real MoveOut
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+FIRST RECORD([UnitHistory])
+[Unit]MoveIn:=[UnitHistory]MoveIn
+[Unit]MoveOut:=[UnitHistory]MoveOut
+Else 
+[Unit]MoveIn:=!00-00-00!
+[Unit]MoveOut:=!00-00-00!
+End if 
+SAVE RECORD([Unit])
+Else 
+[UnitHistory]MoveOut:=[Unit]MoveOut
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+End if 
+End if 
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+//READ ONLY([Unit])
+If ($OK=1)
+If (vUnits="")
+$t:=""
+Else 
+$t:=","
+End if 
+vUnits:=vUnits+$t+[UnitType]UnitTypeCode//to check if there is a unit of this type on the waiting list
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+If ($Silent=False)
+AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String([Agreement]LastBillDate;6)+", "+Get localized string("Next Bill Date")+" "+Get localized string("is")+" "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+End if 
+Else 
+$xDays:=[Agreement]NextBillDate-[Unit]MoveOut-1
+If (vAgreePeriods=0) | ([Agreement]MthsAdv=0)//this shouldn't need to happen but catching the error in case this is a cause 20/4/10
+SyncRecordLog (Get localized string("Possible creation of NAN's in RemoveUnit method [Agreement]RegularRent=")+String([Agreement]RegularRent)+" [Agreement]MthsAdv="+String([Agreement]MthsAdv))
+End if 
+//QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+QUERY([BillPlan];[BillPlan]Code=[Agreement]LastBillPlan)
+
+//11/01/13 DAM added for creating prorate when removing multiple units from an agreement. Original code for $RemoveOne=true
+If ($RemoveOne=True)
+If ([BillPlan]PlanPeriod="Week")
+If (vAgreePeriods=0)
+$Amt:=0
+Else 
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+If (vDate>[Agreement]BillPlanValidTo)
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]LastMthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+End if 
+End if 
+$Mths:=Round($yDays/7;0)
+Else 
+If (vAgreePeriods=0)
+$Amt:=0
+Else 
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+//20/06/13 DAM added it to be able to move out units if the billing plan is changed. Added for weekly as well
+If (vDate>[Agreement]BillPlanValidTo)
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]LastMthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+End if 
+End if 
+$Mths:=Round($yDays/30;0)
+End if 
+
+Else 
+If ([BillPlan]PlanPeriod="Week")
+If (RUAgreePeriods=0)
+$Amt:=0
+Else 
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]WeeklyRentedValue*(RURentAmt/RUAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+//20/06/13 DAM
+If (vDate>[Agreement]BillPlanValidTo)
+$Amt:=[Unit]WeeklyRentedValue*(RURentAmt/RUAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]WeeklyRentedValue*(RURentAmt/RUAgreePeriods)*[Agreement]LastMthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+End if 
+End if 
+$Mths:=Round($yDays/7;0)
+Else 
+If (RUAgreePeriods=0)
+$Amt:=0
+Else 
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]RentedValue*(RURentAmt/RUAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+
+//20/06/13 DAM
+If (vDate>[Agreement]BillPlanValidTo)
+$Amt:=[Unit]RentedValue*(RURentAmt/RUAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]RentedValue*(RURentAmt/RUAgreePeriods)*[Agreement]LastMthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+
+End if 
+End if 
+$Mths:=Round($yDays/30;0)
+End if 
+
+End if 
+
+RELATE ONE([Unit]UnitTypeCode)
+
+Case of 
+: ([BillPlan]CasualBilling)
+$MonthlyRate:=CalculateBaseRate (3;0)
+: ([BillPlan]PlanPeriod="Week")
+$MonthlyRate:=CalculateBaseRate (1;0)
+Else 
+$MonthlyRate:=CalculateBaseRate (0;0)
+End case 
+
+$Rate:=$MonthlyRate*(1-([BillPlan]DiscPercentage/100))
+
+//fb 7958 25.08.2015 by eugene mod hist!!
+$Amt:=RoundAmt ($xDays/$yDays*$Amt*(-1))*(1-([BillPlan]DiscPercentage/100))
+//$Rate:=RoundAmt ($xDays/$yDays*$Rate)
+If ([BillPlan]DiscPercentage>0)
+$BillPlanDesc:=" "+Get localized string("less Billing Plan Disc")+" "+String([BillPlan]DiscPercentage)+"% "+Get localized string("of")+" "+String($Rate;<>sFormat)
+Else 
+$BillPlanDesc:=""
+End if 
+
+If ($Silent=False)
+ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Move Out Date for this Unit")+" = "+String([Unit]MoveOut)+Char(13)+Get localized string("Create Pro-rata credit for this Unit to Next Bill Date")+" = "+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+Else 
+OK:=1
+End if 
+
+If (OK=1) & ($BillProrate)
+READ WRITE([Trxs])
+GetAnalysis (True)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Unit]MoveOut)
+[Trxs]Charge:=True
+If (Records in selection([Analysis])=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+$Desc:=[Analysis]Description
+$i:=Position(" ";$Desc)-1
+If ($i<2)
+$i:=Length($Desc)
+End if 
+Else 
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+$Desc:="Rental Fee"
+$i:=4
+End if 
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+Case of 
+: (<>sProduct="@B")
+[Trxs]Description:=Substring($Desc;1;$i)+" "+Get localized string("Credit")+" "+Get localized string("Berth")+" "+[Unit]UnitNo
+: (<>sProduct="@R")
+[Trxs]Description:=Substring($Desc;1;$i)+" "+Get localized string("Credit")+" "+Get localized string("Appliance")+" "+[Unit]UnitNo
+: (<>sProduct="@C")
+[Trxs]Description:=Substring($Desc;1;$i)+" "+Get localized string("Credit")+" "+Get localized string("Space")+" "+[Unit]UnitNo
+Else 
+[Trxs]Description:=Substring($Desc;1;$i)+" "+Get localized string("Credit")+" "+Get localized string("Unit")+" "+[Unit]UnitNo
+End case 
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Unit]MoveOut+1)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Weekly Rate for this Unit")+" = "+String([Unit]WeeklyRentedValue*(1-([BillPlan]DiscPercentage/100));<>sFormat)+Char(13)
+If ([BillPlan]PeriodicBilling=True)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = 1"+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = "+String($Mths;"##0")+Char(13)//+String([BillPlan]PeriodstoPay;"##0")+Char(13)`replaced 6/9/11 NLT as stuffing desc where agreement mths adv <> billplan mths adv
+End if 
+//[Transaction]Narration:=[Transaction]Narration+"T = Weekly Rate for all Units = "+String([Agreement]RegularRent;<>sFormat)+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Monthly Rate for Unit")+" = "+String([Unit]RentedValue*(1-([BillPlan]DiscPercentage/100));<>sFormat)+Char(13)
+If ([BillPlan]PeriodicBilling=True)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = 1"+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = "+String($Mths;"##0")+Char(13)//+String([BillPlan]PeriodstoPay;"##0")+Char(13)`replaced 6/9/11 NLT as stuffing desc where agreement mths adv <> billplan mths adv
+End if 
+//[Transaction]Narration:=[Transaction]Narration+"T = Monthly Rate for all Units = "+String([Agreement]RegularRent;<>sFormat)+Char(13)
+End if 
+//If ([BillPlan]DiscPercentage>0)
+//[Transaction]Narration:=[Transaction]Narration+"    "+Get localized string("less Billing Plan Disc")+" "+String([BillPlan]DiscPercentage)+"% = "+String($Rate;<>sFormat)+Char(13)
+//End if 
+//[Transaction]Narration:=[Transaction]Narration+"N = LastBillAmt = "+String([Agreement]LastBillAmt;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N x M x (X / Y) = "+String($Amt;<>sFormat)+Char(13)
+SAVE RECORD([Trxs])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=$DsCust
+[Trxs]AgreeNo:=$DsAgreeNo
+[Trxs]TrxDate:=GetValidDate ($DsTrxDate)
+[Trxs]Charge:=$DsChge
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=$DsConfirm
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+SAVE RECORD([Trxs])
+End if 
+End if 
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+If ($Silent=False)
+AlertMessage (Get localized string("You will need to manually adjust the rent."))
+End if 
+End if 
+End if 
+End if 
+If ([Unit]Deposit>0)
+
+If ($Silent=False)
+ConfirmTwo (Get localized string("Do you wish to refund the deposit of")+" "+<>sCurrency+String([UnitType]DepositAmt)+" "+Get localized string("for this Unit?");Get localized string("Yes");Get localized string("No"))
+Else 
+OK:=1
+End if 
+
+If (OK=1) & ($BillDeposit)
+QUERY([Analysis];[Analysis]SortOrder=2)
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+Case of 
+: (<>sProduct="@B")
+[Trxs]Description:=Get localized string("Refund")+" "+[Analysis]Description+" "+Get localized string("Berth")+" "+[Unit]UnitNo
+: (<>sProduct="@R")
+[Trxs]Description:=Get localized string("Refund")+" "+[Analysis]Description+" "+Get localized string("Appliance")+" "+[Unit]UnitNo
+: (<>sProduct="@C")
+[Trxs]Description:=Get localized string("Refund")+" "+[Analysis]Description+" "+Get localized string("Space")+" "+[Unit]UnitNo
+Else 
+[Trxs]Description:=Get localized string("Refund")+" "+[Analysis]Description+" "+Get localized string("Unit")+" "+[Unit]UnitNo
+End case 
+
+[Trxs]TrxDate:=GetValidDate ([Unit]MoveOut)
+[Trxs]DateFrom:=[Unit]MoveOut
+[Trxs]DateTo:=[Unit]MoveOut
+[Trxs]TotAmt:=RoundAmt ([Unit]Deposit*-1)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+End if 
+End if 
+
+// 02/07/13 DAM Added for vaults
+If (<>sProduct="@T") & (vInsureCertNo="")
+vInsureValue:=[Unit]InsureValue
+vInsureCertNo:=[Unit]InsureCertNo
+End if 
+
+[Unit]InsureValue:=0
+[Unit]InsureCertNo:=""
+
+//18/02/14 DAM Added for correct calculation Extra/Compulsory insurance at MO for BnS
+If ($BillInsurance) | ([Agreement]BnS="")// It will never remove Ins / ORC for vaults 
+InsuranceCalc (True;True;True)
+End if 
+
+If ([Agreement]BnS#"")
+$xDays:=[Agreement]NextBillDate-[Unit]MoveOut-1
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"IN"
+$Pos:=Find in array(aUnitNo;[Unit]UnitNo)
+$Amt:=aIns{$Pos}
+If ($Amt>=0)
+[Trxs]Description:=Get localized string("Prorata Insurance")+" "+[Unit]UnitNo
+Else 
+[Trxs]Description:="Insurance Credit"+" "+[Unit]UnitNo
+End if 
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+[Trxs]Narration:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String(Current date+1)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Monthly Rate for Insurance")+" = "+String($Rate;<>sFormat)+Char(13)
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = "+String($Mths;"##0")+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = "+String($Mths;"##0")+Char(13)
+End if 
+[Trxs]Narration:=[Trxs]Narration+"N x M x X / Y = "+String($Amt;<>sFormat)+Char(13)
+
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+End if 
+
+SAVE RECORD([Unit])
+End if 
+RELATE MANY([Agreement]RAgreeNo)
+[Agreement]UnitsOccup:=""
+FIRST RECORD([Unit])
+vTotal:=0
+For ($i;1;Records in selection([Unit]))
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+[Unit]UnitNo+", "
+RELATE ONE([Unit]UnitTypeCode)
+//vTotal:=vTotal+CalculateBaseRate (2;0)  SDD 18/09/13 Removed this line and added line below as it is calculating Unit List Price instead of the price it is actually being rented for
+vTotal:=vTotal+[Unit]RentedValue
+NEXT RECORD([Unit])
+End for 
+[Agreement]UnitsOccup:=Substring([Agreement]UnitsOccup;1;Length([Agreement]UnitsOccup)-2)
+[Agreement]RegularRent:=vTotal
+[Agreement]AgreedDisc:=0
+If ([Agreement]RegularRent#Old([Agreement]RegularRent))
+vPrevRegRent:=Old([Agreement]RegularRent)
+Else 
+vPrevRegRent:=0
+End if 
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+End if 
+//SDD 11/09/13 Following lines restored to ensure refund calculation is correct.
+If ([Facility]TaxAddtoAmt=True)//Added 2/3/95 to correctly calculate if further units adjusted
+[Agreement]LastBillAmt:=Round((([Agreement]RegularRent*[Agreement]MthsAdv)*(1+(GetTaxRate ([Unit]MoveOut)/100)));2)
+[Agreement]LastDiscAmt:=Round(([Agreement]DiscountAmt*(1+(GetTaxRate ([Unit]MoveOut)/100)));2)
+Else 
+
+///fb11246
+If (vDate>[Agreement]BillPlanValidTo)
+[Agreement]LastBillAmt:=Round([Agreement]RegularRent*[Agreement]MthsAdv;2)
+Else 
+[Agreement]LastBillAmt:=Round([Agreement]RegularRent*[Agreement]LastMthsAdv;2)
+End if 
+
+
+[Agreement]LastDiscAmt:=Round([Agreement]DiscountAmt;2)
+End if 
+//If ([BillPlan]PeriodicBilling)
+//[Agreement]LastMthsAdv:=1
+//Else 
+//[Agreement]LastMthsAdv:=[Agreement]MthsAdv
+//End if 
+//If ([Agreement]NewRentAmt>0)
+//ALERT("If there is a rent increase scheduled for this customer, please be sure to adjus"+"t it for removing this unit!")
+//End if 
+Else 
+If ($Silent=False)
+AlertMessage (Get localized string("Either the Unit or UnitType file is locked by another process. Unable to remove unit from agreement!"))
+End if 
+End if 
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+//READ ONLY([Unit])
+Else 
+If ($Silent)
+AlertMessage (Get localized string("Please select unit to remove first"))
+End if 
+End if 
+If (([Facility]UnitPerAgreement=True) | ([BillPlan]CasualBilling)) & (Records in selection([Unit])>0)
+OBJECT SET VISIBLE(bSelect;False)
+OBJECT SET VISIBLE(*;"Picture33";False)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use this icon to delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use  this icon to delete appliances")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use  this icon to delete support plans")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use  this icon to delete spaces")
+Else 
+varm15:=Get localized string("Use  this icon to delete units")
+End case 
+Else 
+OBJECT SET VISIBLE(bSelect;True)
+OBJECT SET VISIBLE(*;"Picture33";True)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use these icons to add / delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use these icons to add / delete appliances")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use these icons to add / delete support plans")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use these icons to add / delete spaces")
+Else 
+varm15:=Get localized string("Use these icons to add / delete units")
+End case 
+End if 

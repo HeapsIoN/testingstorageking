@@ -1,0 +1,95 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//90% identical to method WS_ImportMVSite except that this one is called by a local process and not as a Web service
+//Method to enable a MV site to upload it's own exported data to MV via an FTP server
+
+//Performs 3 functions:
+//- Deactivate Syncing - Inserts a '302' error in the [Facility]syncerror field for the specified Facility
+//- Get FTP Details - Reads the 'MV.xml' file found in the 'Preferences' folder for the FTP server details and returns them to the calling process
+//- Download Import - Instructs MV to download the exported and uploaded datafile from the FTP server specified
+
+
+C_TEXT($0;$1;$2;WS_vtFacilityCode;WS_vtAction;WS_vtError)
+C_LONGINT($3;WS_viTable)
+
+WS_vtFacilityCode:=$1
+WS_vtAction:=$2
+WS_viTable:=$3
+WS_vtError:=""
+
+Case of 
+: (WS_vtAction="DeactivateSyncing")//Site is about to do an export, deactivate syncing
+READ WRITE([Facility])
+QUERY([Facility];[Facility]FacilityCode=WS_vtFacilityCode)
+LOAD RECORD([Facility])
+Case of 
+: (Records in selection([Facility])>1)
+WS_vtError:="101"//More than one Facility found
+
+: (Records in selection([Facility])=0)//Facility Not found
+WS_vtError:="102"
+
+: (Read only state([Facility])=True)//Read Only
+WS_vtError:="103"
+
+: (Locked([Facility])=True)//Locked
+WS_vtError:="104"
+
+Else //All Good
+[Facility]SyncError:="302"
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+UNLOAD RECORD([Facility])
+WS_vtError:="100"
+End case 
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing")+" - "+WS_vtError)
+
+: (WS_vtAction="GetFTPDetails")//MV 'Preferences' folder should have FTP details stored in 'MV.xml'
+$FTPHost:=ReadMVXML ("ImportFTPServer";"Host")
+$FTPUser:=ReadMVXML ("ImportFTPServer";"Username")
+$FTPPass:=ReadMVXML ("ImportFTPServer";"Passsword")
+$FTPPath:=ReadMVXML ("ImportFTPServer";"Path")
+
+Case of 
+: ($FTPHost="")
+WS_vtError:="201"//FTP Host is not supplied
+: ($FTPUser="")
+WS_vtError:="202"//FTP User is not supplied
+: ($FTPPass="")
+WS_vtError:="203"//FTP Password is not supplied
+: ($FTPPath="")
+WS_vtError:="204"//FTP Path is not supplied
+Else 
+WS_vtError:="200"+","+$FTPHost+","+$FTPUser+","+$FTPPass+","+$FTPPath//All details supplied and returned to site
+End case 
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details")+" - "+WS_vtError)
+
+: (WS_vtAction="DownloadImport")//Site informs that Upload of Datafile to FTP server is complete
+
+QUERY([Facility];[Facility]FacilityCode=WS_vtFacilityCode)
+LOAD RECORD([Facility])
+Case of 
+: (Records in selection([Facility])>1)
+WS_vtError:="301"//More than one Facility found
+
+: (Records in selection([Facility])=0)//Facility Not found
+WS_vtError:="302"
+
+: (Read only state([Facility])=True)//Read Only
+WS_vtError:="303"
+
+: (Locked([Facility])=True)//Locked
+WS_vtError:="304"
+
+Else //All Good
+[Facility]SyncError:="402"
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+UNLOAD RECORD([Facility])
+WS_vtError:="300"
+End case 
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Download Import")+" - "+WS_vtError)
+Else 
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Invalid Action:")+" "+WS_vtAction)
+End case 
+
+$0:=WS_vtError

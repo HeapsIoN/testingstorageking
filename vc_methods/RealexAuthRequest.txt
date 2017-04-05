@@ -1,0 +1,161 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//merchantid
+C_TEXT($2)//orderid
+C_TEXT($3)//currency code -- The currency and amount of this transaction. See the realauth Developer’s Guide for details of the currency codes
+C_TEXT($4)// amount -- The amount should be in thesmallest unit of the required currency (i.e. 2000 = £20, $20 or €20)
+C_TEXT($5)// Card number
+C_TEXT($6)// Card expdate
+C_TEXT($7)//chname
+C_TEXT($8)//type
+C_TEXT($9)// Secret Key
+C_TEXT($10)//account
+
+//Currency Codes :
+//EUR Euro
+//GBP Pound Sterling
+//USD US Dollar
+//SEK Swedish Krona
+//CHF Swiss Franc
+//HKD Hong Kong Dollar
+//JPY Japanese Yen
+
+C_TEXT($valRootRef;$valElemRef;$response;$Content;$valueElmRes;$vsMonth;$vsDay;$vsYear;$type;$timestamp;$time;$sha1hash;$amount)
+C_DATE($vdDate)
+
+
+$vdDate:=Current date
+$vsMonth:=String(Month of($vdDate))
+If (Length($vsMonth)<2)
+$vsMonth:="0"+$vsMonth
+End if 
+$vsDay:=String(Day of($vdDate))
+If (Length($vsDay)<2)
+$vsDay:="0"+$vsDay
+End if 
+$vsYear:=String(Year of($vdDate))
+If ($vsYear="0")
+$vsYear:="0000"
+End if 
+
+$time:=Replace string(String(Current time);":";"")
+$timestamp:=$vsYear+$vsMonth+$vsDay+$time
+$amount:=String(100*Num($4))
+
+$sha1hash:=""
+$sha1hash:=$timestamp
+$sha1hash:=$sha1hash+"."+$1
+$sha1hash:=$sha1hash+"."+$2
+$sha1hash:=$sha1hash+"."+$amount
+$sha1hash:=$sha1hash+"."+$3
+$sha1hash:=$sha1hash+"."+$5
+
+
+$valRootRef:=DOM Create XML Ref("request";"";"type";"auth";"timestamp";$timestamp)
+$valxmlPath:="/request/merchantid"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+$valxmlPath:="/request/account"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$10)
+
+$valxmlPath:="/request/orderid"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$2)
+
+$valxmlPath:="/request/amount"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath;"currency";$3)
+DOM SET XML ELEMENT VALUE($valElemRef;$amount)
+
+$valxmlPath:="/request/card"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+
+$valxmlPath:="/request/card/number"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$5)
+
+$valxmlPath:="/request/card/expdate"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$6)
+
+$valxmlPath:="/request/card/chname"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$7)
+
+$valxmlPath:="/request/card/type"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$8)
+
+$valxmlPath:="/request/autosettle"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath;"flag";"1")
+//DOM SET XML ELEMENT VALUE($valElemRef;"")
+
+
+$valxmlPath:="/request/sha1hash"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+
+$sha1hash:=Generate digest($sha1hash;SHA1 digest)
+$sha1hash:=$sha1hash+"."+$9
+$sha1hash:=Generate digest($sha1hash;SHA1 digest)
+DOM SET XML ELEMENT VALUE($valElemRef;$sha1hash)
+
+
+DOM EXPORT TO VAR($valRootRef;$Content)
+SyncRecordLog ($Content)
+
+$httpStatus_l:=HTTP Request(HTTP POST method;"https://epage.payandshop.com/epage-remote.cgi";$Content;$response)
+
+
+If ($httpStatus_l=200)
+SyncRecordLog ($response)
+$xml_Struct_Ref:=DOM Parse XML variable($response)
+$documentRef:=DOM Get XML document ref($xml_Struct_Ref)
+$valFound:=DOM Find XML element($documentRef;"response/result")
+
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+
+$Content:=""
+$Content:="RealexAuthRequest response for Ref#:"+$2
+
+
+If ($valueElmRes="00")
+$0:="00"
+[Trxs]OriginalReceipt:="REC"+$2
+
+$valFound:=DOM Find XML element($documentRef;"response/authcode")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+[Trxs]CCAuthNo:=$valueElmRes
+
+$valFound:=DOM Find XML element($documentRef;"response/pasref")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+[Trxs]CCTransID:=$valueElmRes
+Else 
+$0:="ERR"+$valueElmRes
+End if 
+
+$Content:=$Content+" (Code: "+$valueElmRes
+$Content:=$Content+")  ["
+
+$valFound:=DOM Find XML element($documentRef;"response/message")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+If ($0#"00")
+$0:="ERR"+$valueElmRes
+End if 
+
+$Content:=$Content+$valueElmRes
+$Content:=$Content+"]"
+
+SyncRecordLog ($Content)
+
+//If (Application type=4D Server)
+//EXECUTE ON CLIENT("@";"AlertMessage";$Content)
+//End if 
+
+DOM CLOSE XML($valRootRef)//Close Request XML
+DOM CLOSE XML($xml_Struct_Ref)//Close Response XML
+Else 
+$0:="http"+String($httpStatus_l)
+End if 

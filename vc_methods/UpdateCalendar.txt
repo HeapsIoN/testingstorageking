@@ -1,0 +1,58 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1;$2)
+C_TEXT($3;$4;$OldNote)// $3 - New Note, $4 Old if there are chagnes to contact name/mobile
+C_LONGINT($x;$y)
+$OldNote:=""
+If (Count parameters=4)
+$OldNote:=$4
+End if 
+
+If ($1#$2) | ($OldNote#"")
+READ WRITE([Activity])
+If ($2#!00-00-00!)
+QUERY([Activity];[Activity]ActivityDate=$2;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=<>sFacility)
+If (Records in selection([Activity])=1)
+
+If ($OldNote="")
+If (Length($3)>40)
+$y:=40
+Else 
+$y:=Length($3)
+End if 
+$x:=Position(Substring($3;1;$y);[Activity]CalendarNotes)
+Else 
+If (Length($OldNote)>40)
+$y:=40
+Else 
+$y:=Length($OldNote)
+End if 
+$x:=Position(Substring($OldNote;1;$y);[Activity]CalendarNotes)
+End if 
+
+If ($x>0)
+$y:=Position(Char(13);Substring([Activity]CalendarNotes;$x);0;*)
+If ($y<1)
+$y:=Length(Substring([Activity]CalendarNotes;$x))
+End if 
+[Activity]CalendarNotes:=Delete string([Activity]CalendarNotes;$x;$y)
+SAVE RECORD([Activity])
+End if 
+End if 
+End if 
+If ($1#!00-00-00!)
+QUERY([Activity];[Activity]ActivityDate=$1;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=<>sFacility)
+If (Records in selection([Activity])=0)
+CREATE RECORD([Activity])
+[Activity]FacilityCode:=<>sFacility
+[Activity]ActivityDate:=$1
+[Activity]ActivityWeek:=GetWeekMonthNo (1;[Activity]ActivityDate)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;[Activity]ActivityDate)
+End if 
+[Activity]CalendarNotes:=[Activity]CalendarNotes+$3+Char(13)
+SAVE RECORD([Activity])
+End if 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+End if 

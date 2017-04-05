@@ -1,0 +1,94 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($UnitMoveOut;$Size)
+C_BOOLEAN($Enable)
+$Enable:=False
+$UnitMoveOut:=0
+$Size:=Size of array(aUnitNo)
+If (Form event=On Clicked)
+For ($i;1;Size of array(aUnitNo))
+If (aMoveOut{$i}=True)// IF the TickBox is ticked for Move Out
+If (aReal{$i}=True)// Real Move Out to create transactions
+
+
+Case of 
+: (<>sProduct="@B")
+APPEND TO ARRAY(aDescription;Get localized string("Depature Prorata for berth")+" "+aUnitNo{$i})
+: (<>sProduct="@R")
+APPEND TO ARRAY(aDescription;Get localized string("Retunt Prorata for appliance")+" "+aUnitNo{$i})
+: (<>sProduct="@C")
+APPEND TO ARRAY(aDescription;Get localized string("Move Out Prorata for space")+" "+aUnitNo{$i})
+Else 
+APPEND TO ARRAY(aDescription;Get localized string("Move Out Prorata for unit")+" "+aUnitNo{$i})
+End case 
+APPEND TO ARRAY(aAmount;aProrate{$i})
+APPEND TO ARRAY(aBill;True)
+
+If (aDeposit{$i}=True)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+aUnitNo{$i})
+Case of 
+: (<>sProduct="@B")
+APPEND TO ARRAY(aDescription;Get localized string("Refund Deposit for berth")+" "+aUnitNo{$i})
+: (<>sProduct="@R")
+APPEND TO ARRAY(aDescription;Get localized string("Refund Deposit for appliance")+" "+aUnitNo{$i})
+: (<>sProduct="@C")
+APPEND TO ARRAY(aDescription;Get localized string("Refund Deposit for space")+" "+aUnitNo{$i})
+Else 
+APPEND TO ARRAY(aDescription;Get localized string("Refund Deposit for unit")+" "+aUnitNo{$i})
+End case 
+
+APPEND TO ARRAY(aAmount;[Unit]Deposit*-1)
+APPEND TO ARRAY(aBill;True)
+End if 
+
+If (aIns{$i}#0)
+APPEND TO ARRAY(aDescription;"Move Out Prorata for insurance "+aUnitNo{$i})
+APPEND TO ARRAY(aAmount;aIns{$i})
+APPEND TO ARRAY(aBill;True)
+End if 
+End if 
+$Enable:=True
+End if 
+End for 
+
+If ($Enable=True)
+$k:=Find in array(aMoveOut;False)
+While ($k>0)
+DELETE FROM ARRAY(aMoveOut;$k)
+DELETE FROM ARRAY(aUnitType;$k)
+DELETE FROM ARRAY(aUnitRate;$k)
+DELETE FROM ARRAY(aUnitNo;$k)
+DELETE FROM ARRAY(aReal;$k)
+DELETE FROM ARRAY(aProrate;$k)
+DELETE FROM ARRAY(aIns;$k)
+DELETE FROM ARRAY(aDeposit;$k)
+$k:=Find in array(aMoveOut;False)
+End while 
+If (vTransfer=3)
+FORM GOTO PAGE(8)
+Else 
+FORM NEXT PAGE
+End if 
+Else 
+
+Case of 
+: (<>sProduct="@B")
+AlertMessage ("You need to select the Berth!")
+: (<>sProduct="@R")
+AlertMessage ("You need to select the Appliance!")
+: (<>sProduct="@C")
+AlertMessage ("You need to select the Unit!")
+Else 
+AlertMessage ("You need to select the Unit!")
+End case 
+
+End if 
+
+vTotMoveIn:=0
+For ($i;1;Size of array(aBill))
+If (aBill{$i}=True)
+vTotMoveIn:=vTotMoveIn+aAmount{$i}
+End if 
+End for 
+
+End if 
+

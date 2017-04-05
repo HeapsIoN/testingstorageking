@@ -1,0 +1,107 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 04/05/11, 13:39:26
+// ----------------------------------------------------
+// Method: RCUpdateArray
+// Description
+// Updates array values for rent control update
+// $1 = False if increase, True if decrease
+// Parameters
+// ----------------------------------------------------
+
+ARRAY LONGINT(aiCustTypeID;0)
+ARRAY REAL(arMonthlyRate;0)
+ARRAY REAL(arWeeklyRate;0)
+ARRAY REAL(arDailyRate;0)
+ARRAY LONGINT(aiLength;4)
+aiLength{1}:=-2
+aiLength{2}:=-3
+aiLength{3}:=-3
+aiLength{4}:=-3
+
+TextToArrays (->[UnitType]CTPrices;->aiLength;->aiCustTypeID;->arMonthlyRate;->arWeeklyRate;->arDailyRate)
+
+$j:=Size of array(aiCustTypeID)
+$i:=1
+
+While ($j>0) & ($i#0)
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=aiCustTypeID{$i};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([UnitType]RUnitType;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+If (Records in selection([MarketingTypes])#1)
+DELETE FROM ARRAY(aiCustTypeID;$i)
+DELETE FROM ARRAY(arMonthlyRate;$i)
+DELETE FROM ARRAY(arWeeklyRate;$i)
+DELETE FROM ARRAY(arDailyRate;$i)
+End if 
+
+$j:=Size of array(aiCustTypeID)
+$i:=$i+1
+
+If ($i>$j)
+$i:=0
+End if 
+
+End while 
+
+If ($1)
+For ($i;1;Size of array(aiCustTypeID))
+If ([UnitType]RCPercentIncr>0)
+$Percent:=arMonthlyRate{$i}-(Round(arMonthlyRate{$i}*[UnitType]RCPercentIncrL/100;1))
+Else 
+$Percent:=0
+End if 
+$Fixed:=Round(arMonthlyRate{$i}-[UnitType]RCFixedIncrL;1)
+Case of 
+: ($Percent>$Fixed)
+$RCNewRent:=$Percent
+: ($Fixed>=$Percent)
+$RCNewRent:=$Fixed
+Else 
+//Do Nothing
+End case 
+If ([UnitType]RCRoundRent=True)
+$RCNewRent:=RoundAmt ($RCNewRent;<>iRoundMethod;[UnitType]RCRoundCents)
+End if 
+If ($RCNewRent>[UnitType]RCUpperLimit)
+$RCNewRent:=[UnitType]RCUpperLimit
+End if 
+If ($RCNewRent<[UnitType]RCLowerLimit)
+$RCNewRent:=[UnitType]RCLowerLimit
+End if 
+arMonthlyRate{$i}:=$RCNewRent
+arWeeklyRate{$i}:=Round(arMonthlyRate{$i}*[Facility]RentWeeklyMthly;1)
+arDailyRate{$i}:=Round(arWeeklyRate{$i}/8;1)
+End for 
+Else 
+For ($i;1;Size of array(aiCustTypeID))
+$Percent:=arMonthlyRate{$i}+(Round(arMonthlyRate{$i}*[UnitType]RCPercentIncr/100;1))
+$Fixed:=Round(arMonthlyRate{$i}+[UnitType]RCFixedIncr;1)
+Case of 
+: ($Percent>$Fixed)
+$RCNewRent:=$Percent
+: ($Fixed>=$Percent)
+$RCNewRent:=$Fixed
+Else 
+//Do Nothing
+End case 
+If ([UnitType]RCRoundRent=True)
+$RCNewRent:=RoundAmt ($RCNewRent;<>iRoundMethod;[UnitType]RCRoundCents)
+End if 
+If ($RCNewRent>[UnitType]RCUpperLimit)
+$RCNewRent:=[UnitType]RCUpperLimit
+End if 
+If ($RCNewRent<[UnitType]RCLowerLimit)
+$RCNewRent:=[UnitType]RCLowerLimit
+End if 
+arMonthlyRate{$i}:=$RCNewRent
+arWeeklyRate{$i}:=Round(arMonthlyRate{$i}*[Facility]RentWeeklyMthly;1)
+arDailyRate{$i}:=Round(arWeeklyRate{$i}/8;1)
+End for 
+End if 
+
+[UnitType]CTPrices:=ArraysToText (->aiLength;->aiCustTypeID;->arMonthlyRate;->arWeeklyRate;->arDailyRate)

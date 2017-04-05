@@ -1,0 +1,56 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0;$Repeat)//Successful
+$0:=True
+Repeat 
+$Repeat:=False
+QUERY([Authenticate];[Authenticate]DateAuth=!1985-01-01!)
+//QUERY([Message];[Message]MsgDate=!01/01/1985!)  //Out of range of regular dates
+If (Records in selection([Authenticate])=0)
+CREATE RECORD([Authenticate])
+[Authenticate]DateAuth:=!1985-01-01!
+[Authenticate]TimeAuth:=Current time
+[Authenticate]ReferenceID:="Server Process"
+[Authenticate]RAgreeNo:=<>sFacility
+[Authenticate]SessionID:=String(vMthDate)
+SAVE RECORD([Authenticate])
+READ ONLY([Authenticate])
+LOAD RECORD([Authenticate])
+$Proc:=Process number("LogMonServer";*)
+//If (Process state($Proc)>=0)
+RESUME PROCESS($Proc)
+Open window((Screen width/2)-161;(Screen height/2)-75;(Screen width/2)+161;(Screen height/2)+75;5;Get localized string("Progress"))
+FORM SET INPUT([Authenticate];Get localized string("Progress"))
+Repeat 
+//If (Process state($Proc)=5) | (Process state($Proc)=1)  `Paused
+//RESUME PROCESS($Proc)
+//End if 
+DISPLAY RECORD([Authenticate])
+DELAY PROCESS(Current process;120)//2 secs
+QUERY([Authenticate];[Authenticate]DateAuth=!1985-01-01!)
+Until ([Authenticate]IPAddress="100") | (Records in selection([Authenticate])<1)
+CLOSE WINDOW
+If (Records in selection([Authenticate])=1)
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+DELETE RECORD([Authenticate])
+READ ONLY([Authenticate])
+Else 
+$0:=False
+End if 
+//Else 
+//ALERT("The server process LogMonServer is not running.  Please quit Server and relaunch!")
+//$0:=False
+//End if 
+Else 
+If (Current time>[Authenticate]TimeAuth) & ((Current time-[Authenticate]TimeAuth)<?00:05:00?)
+AlertMessage (Get localized string("A server process is already in progress. Please try again shortly."))
+Else 
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+$Repeat:=Not(Locked([Authenticate]))//Repeat if record is not locked and can be deleted
+DELETE RECORD([Authenticate])
+READ ONLY([Authenticate])
+End if 
+$0:=False
+End if 
+Until ($Repeat=False)

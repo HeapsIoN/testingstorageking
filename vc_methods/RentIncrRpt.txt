@@ -1,0 +1,47 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//CONFIRM("Print Rent Increases Report by Agreement or by Unit?";"Agreement";"Unit")
+//If (OK=1)
+//RentIncrPendingRpt   `this is the old report - may want to review?
+//Else 
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Rental Increase Report started.")// records the report being started in the eventlog
+vTotNetInc:=0
+SetFacility 
+$Ok:=ConfirmThree (Get localized string("Print Last Rental Increases or Future Rental Increases?");Get localized string("Last Increases");Get localized string("Future Increases");Get localized string("Cancel"))
+Case of 
+: ($Ok=1)
+vSDate:=RequestDate (Get localized string("Enter report start date:");Current date)
+If (OK=1)//give them an option to cancel 
+vEDate:=RequestDate (Get localized string("Enter report end date:");Current date)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail";*)
+QUERY([Unit]; & ;[Unit]LastInc>=vSDate;*)
+QUERY([Unit]; & ;[Unit]LastInc<=vEDate)
+QUERY SELECTION BY FORMULA([Unit];[Unit]MoveIn<[Unit]LastInc)
+vFrom:=1
+ORDER BY([Unit];[Unit]LastInc;>;[Unit]RentedValue;>;[Unit]NewRentAmt;>)
+FORM SET OUTPUT([Unit];"DailyRentIncrease")
+BREAK LEVEL(2)
+ACCUMULATE([Unit]RentedValue;[Unit]NewRentAmt)
+PrintSelection ("P";->[Unit])
+End if 
+
+: ($Ok=2)
+vDateFrom:=RequestDate (Get localized string("Enter report start date:");Current date)
+If (OK=1)//give them an option to cancel 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail";*)
+QUERY([Unit]; & ;[Unit]IncreaseFrom>=vDateFrom)
+vFrom:=3
+FORM SET OUTPUT([Unit];"DailyRentIncrease")
+BREAK LEVEL(2)
+ACCUMULATE([Unit]RentedValue;[Unit]NewRentAmt)
+ORDER BY([Unit];[Unit]IncreaseFrom;>;[Unit]RentedValue;>;[Unit]NewRentAmt;>)
+PrintSelection ("P";->[Unit])
+End if 
+Else 
+//Do nothing
+End case 
+//End if 
+LogAction (True;"Rental Increase Report ended.")

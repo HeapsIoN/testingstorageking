@@ -1,0 +1,81 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+SOAP DECLARATION(WS_PaymMethod;Is text;SOAP input)
+SOAP DECLARATION(WS_CCType;Is text;SOAP input)
+SOAP DECLARATION(WS_CCNo;Is text;SOAP input)
+SOAP DECLARATION(WS_RoutingN;Is text;SOAP input)
+SOAP DECLARATION(WS_Expirdate;Is text;SOAP input)
+SOAP DECLARATION(WS_CCStreetAdr;Is text;SOAP input)
+SOAP DECLARATION(WS_CCPostCode;Is text;SOAP input)
+SOAP DECLARATION(WS_CCCVV;Is text;SOAP input)
+SOAP DECLARATION(WS_Track;Is text;SOAP input)
+SOAP DECLARATION(WS_AutoPayFlag;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_UpdateAutopay"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+$String:=$String+"WS_PaymMethod: "+WS_PaymMethod+Char(13)
+$String:=$String+"WS_CCType: "+WS_CCType+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_RoutingN: "+WS_RoutingN+Char(13)
+$String:=$String+"WS_Expirdate: "+WS_Expirdate+Char(13)
+$String:=$String+"WS_CCStreetAdr: "+WS_CCStreetAdr+Char(13)
+$String:=$String+"WS_CCPostCode: "+WS_CCPostCode+Char(13)
+$String:=$String+"WS_CCCVV: "+WS_CCCVV+Char(13)
+$String:=$String+"WS_Track: "+WS_Track+Char(13)
+$String:=$String+"WS_AutoPayFlag: "+WS_AutoPayFlag+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+If (Records in selection([Facility])#0)
+QUERY([Customer];[Customer]CustomerCode=WS_Cust_Code)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")#"")
+If (Records in selection([Customer])#0)
+WS_RET_CODE:=True
+If (WS_AutoPayFlag="Y")
+[Agreement]AutoPay:=True
+Else 
+[Agreement]AutoPay:=False
+End if 
+Case of 
+: (WS_PaymMethod="CC")
+[Agreement]AutoPayType:=2
+: (WS_PaymMethod="ACH")
+[Agreement]AutoPayType:=3
+End case 
+If (WS_CCNo#"")
+//[Customer]CCNo:=Tokenizer (WS_CCNo)  //FB11185
+Encode256 ([Customer]CCNo)//FB11185
+End if 
+If (WS_Expirdate#"")
+[Customer]CCExpiry:=WS_Expirdate
+End if 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Customer not Found"
+End if 
+End if 
+Else 
+WS_ERROR:="Facility Not Found"
+WS_RET_CODE:=False
+End if 
+
+$String:="End WS_Insomniac_UpdateAutopay"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

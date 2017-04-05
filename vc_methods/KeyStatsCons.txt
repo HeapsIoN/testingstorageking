@@ -1,0 +1,482 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$x)
+C_TEXT($AreaUnit;$AreaRate)
+C_TEXT($CurrencyWithSymbol;$CurrencyNoSymbol)
+C_DATE($Year)
+C_REAL($ClosePrepaid;$OpenPrepaid)
+If (PermissionsControl (89))
+ALL RECORDS([Facility])
+vReportSettings:=[Facility]ReportSettings
+ARRAY TEXT(asSortBy;3)
+asSortBy{1}:=Get localized string("Facilities1")
+asSortBy{2}:=Get localized string("Regions")
+asSortBy{3}:=Get localized string("Categories")
+ARRAY TEXT(asNames;5)
+asNames{1}:=Get localized string("Today")
+asNames{2}:=Get localized string("Week Ended")
+asNames{3}:=Get localized string("Month Ended")
+asNames{4}:=Get localized string("Year to date")
+asNames{5}:=Get localized string("Other Date Range")
+vTitle:=Get localized string("Consolidated Key Statistics")+"..."
+asSortBy:=1
+asNames:=3
+Open window((Screen width/2)-193;(Screen height/2)-187;(Screen width/2)+193;(Screen height/2)+187;5;Get localized string("Consolidated Key Statistics Report"))
+DIALOG([Facility];"ConsDialog")
+CLOSE WINDOW
+ALL RECORDS([Facility])
+
+$AgedBreaks:=[Facility]AgedDebtorBreaks
+If (OK=1)
+$Sites:=""
+For ($i;1;Size of array(asFields))
+If (asSigns{$i}="•")
+Case of 
+: (asSortBy=1)
+QUERY([Facility];[Facility]ShortName=asFields{$i};*)
+: (asSortBy=2)
+QUERY([Facility];[Facility]Region=asFields{$i};*)
+: (asSortBy=3)
+QUERY([Facility];[Facility]Category=asFields{$i};*)
+Else 
+//Do nothing
+End case 
+QUERY([Facility]; & ;[Facility]ReCalcActivity>=vRptDate)//;*)
+//QUERY([Facility]; & ;[Facility]FacilityCode#<>sHOFacility)
+//While (End selection([Facility])=False)
+//  //$Sites:=$Sites+[Facility]FacilityCode+","  //SDD 20/5/11 No need to check this in MV - I think
+//NEXT RECORD([Facility])
+//End while 
+End if 
+End for 
+If ($Sites>"")
+AlertMessage (Get localized string("The following sites are not calculated up to")+" "+String(vRptDate)+". "+$Sites+". "+Get localized string("Unable to print the desired report."))
+Else 
+$Row:=Num(vReportSettings[[19]])
+If ($Row=1)
+$Row:=2
+End if 
+ARRAY TEXT(aCustName;48)
+aCustName{1}:=""//Header row for Sales / Marketing
+aCustName{2}:=Get localized string("Sales Enquiries")
+aCustName{3}:=Get localized string("New Reservations")
+aCustName{4}:=Get localized string("No of MoveIns")
+aCustName{5}:=Get localized string("No of MoveOuts")
+aCustName{6}:=Get localized string("Net Change +/-")
+aCustName{7}:=Get localized string("Conversion Rate (%age)")
+aCustName{8}:=Get localized string("Conversion Time (Days)")
+//End of Sales / Marketing
+aCustName{9}:=""//Header row for Occupancy
+aCustName{10}:=Get localized string("Total")
+aCustName{11}:=Get localized string("Occupied")
+aCustName{12}:=Get localized string("Vacant")
+aCustName{13}:=Get localized string("Company / Repair")
+aCustName{14}:=""
+aCustName{15}:=Get localized string("Occupancy Rate by Value")
+aCustName{16}:=Get localized string("Rental Discounting")
+aCustName{17}:=Get localized string("Yield at Full Occupancy")
+//aCustName{17}:="Yield Rented Units Only"
+aCustName{18}:=Get localized string("Current Occupancy Yield")
+//End of Occupancy
+aCustName{19}:=""//Header row for Income
+If ([Facility]FacilityCode="ST@")
+aCustName{20}:="Gross Support Fees"
+//aCustName{22}:=Get localized string("Net Support Fees")
+Else 
+aCustName{20}:=Get localized string("Gross Rental Fees")
+//aCustName{22}:=Get localized string("Net Rental Fees")
+End if 
+aCustName{21}:=Get localized string("Discount Variance")
+If ([Facility]FacilityCode="KE@")
+aCustName{22}:=Get localized string("Less Bad Debts written OFF")//bad debts for kss only
+If ($Row=2)
+aCustName{23}:=Get localized string("Plus Opening Rent in Advance")
+aCustName{24}:=Get localized string("Less Closing Rent in Advance")
+$Adjust4Prepaid:=" "+Get localized string("Net")
+Else 
+$Adjust4Prepaid:=""
+End if 
+aCustName{23+$Row}:=Get localized string("Net Rental Fees")
+aCustName{24+$Row}:=Get localized string("Deposit")
+aCustName{25+$Row}:=Get localized string("Late Fees")
+aCustName{26+$Row}:=Get localized string("Insurance")+$Adjust4Prepaid
+aCustName{27+$Row}:=Get localized string("Merchandise")
+aCustName{28+$Row}:=Get localized string("Other")+$Adjust4Prepaid
+aCustName{29+$Row}:=Get localized string("Tax")
+aCustName{30+$Row}:=Get localized string("Total Income")
+aCustName{31+$Row}:=Get localized string("Cash Receipts")
+aCustName{32+$Row}:=Get localized string("Credit Receipts")
+aCustName{33+$Row}:=Get localized string("Refunds/Ret Chks")
+aCustName{34+$Row}:=Get localized string("Total Receipts")
+aCustName{35+$Row}:=Get localized string("Buybacks")//merch returns for kss
+Else 
+If ($Row=2)
+aCustName{22}:=Get localized string("Plus Opening Rent in Advance")
+aCustName{23}:=Get localized string("Less Closing Rent in Advance")
+$Adjust4Prepaid:=" "+Get localized string("Net")
+Else 
+$Adjust4Prepaid:=""
+End if 
+If ([Facility]FacilityCode="ST@")
+aCustName{22+$Row}:="Net Support Fees"
+aCustName{27+$Row}:="Services & Other"+$Adjust4Prepaid
+Else 
+aCustName{22+$Row}:=Get localized string("Net Rental Fees")
+aCustName{27+$Row}:=Get localized string("Other")+$Adjust4Prepaid
+End if 
+aCustName{23+$Row}:=<>asChgCategory{2}//Get localized string("Deposit")
+aCustName{24+$Row}:=<>asChgCategory{3}//Get localized string("Late Fees")
+aCustName{25+$Row}:=<>asChgCategory{4}+$Adjust4Prepaid//Get localized string("Insurance")
+aCustName{26+$Row}:=<>asChgCategory{5}//Get localized string("Merchandise")
+aCustName{28+$Row}:=Get localized string("Tax")
+aCustName{29+$Row}:=Get localized string("Total Income")
+aCustName{30+$Row}:=""//Blank row
+aCustName{31+$Row}:=Get localized string("Cash Receipts")
+aCustName{32+$Row}:=Get localized string("Credit Receipts")
+aCustName{33+$Row}:=Get localized string("Refunds/Ret Chks")
+aCustName{34+$Row}:=Get localized string("Total Receipts")
+aCustName{35+$Row}:=""
+End if 
+
+If ($Row=0)
+aCustName{36}:=Get localized string("Rent Billed in Advance")
+aCustName{37}:=Get localized string("Rent Paid in Advance")
+End if 
+aCustName{38}:=Get localized string("Deposits Held")
+aCustName{39}:=Get localized string("No of Active Agreements")
+aCustName{40}:=Get localized string("No with Insurance")
+//End of Income
+aCustName{41}:=""//Header row for Arrears
+aCustName{42}:=Get localized string("Over")+" "+String(GetPrefNo ($AgedBreaks;4))+" "+Get localized string("Days")
+aCustName{43}:=String(GetPrefNo ($AgedBreaks;3)+1)+"-"+String(GetPrefNo ($AgedBreaks;4))+" "+Get localized string("Days")
+aCustName{44}:=String(GetPrefNo ($AgedBreaks;2)+1)+"-"+String(GetPrefNo ($AgedBreaks;3))+" "+Get localized string("Days")
+aCustName{45}:=Get localized string("Subtotal")
+aCustName{46}:="1-"+String(GetPrefNo ($AgedBreaks;2))+" "+Get localized string("Days")
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+aCustName{47}:=Get localized string("Inactive Customers")
+Else 
+aCustName{47}:=Get localized string("Total Arrears")
+End if 
+aCustName{48}:=Get localized string("Late Fees Waived")
+//End of Arrears
+ARRAY TEXT(asData;4;48)
+DEFAULT TABLE([Activity])
+$j:=0
+$Year:=<>dYearStart
+While (vRptDate>=Add to date($Year;1;0;0))//vRptDate was vMthDate - not sure why; changed 30/9/11 as was erroring NLT
+$Year:=Add to date($Year;1;0;0)
+End while 
+While (vRptDate<$Year)//vRptDate was vMthDate - not sure why; changed 30/9/11 as was erroring NLT
+$Year:=Add to date($Year;-1;0;0)
+End while 
+For ($i;1;4)
+For ($k;1;48)
+asData{$i}{$k}:=""
+End for 
+
+If ($j<Size of array(asSigns))
+Repeat 
+$j:=$j+1
+Until ($j=Size of array(asSigns)) | (asSigns{$j}="•")
+If (asSigns{$j}="•")
+//Unfortunately Auto Relations seems to be damaged some of the time.
+//AUTOMATIC RELATIONS(True;False)
+//QUERY([Activity];[Activity]ActivityDate>=vDate;*)
+//QUERY([Activity]; & ;[Activity]ActivityDate<=vRptDate;*)
+//Case of 
+//: (asSortBy=1)
+//QUERY([Facility];[Facility]ShortName=asFields{$j})
+//QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+//: (asSortBy=2)
+//QUERY([Activity]; & ;[Facility]Region=asFields{$j})
+//: (asSortBy=3)
+//QUERY([Activity]; & ;[Facility]Category=asFields{$j})
+//End case 
+//AUTOMATIC RELATIONS(False;False)
+QUERY([Activity];[Activity]ActivityDate>=vDate;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=vRptDate)
+Case of 
+: (asSortBy=1)
+QUERY([Facility];[Facility]ShortName=asFields{$j})
+: (asSortBy=2)
+QUERY([Facility];[Facility]Region=asFields{$j})
+: (asSortBy=3)
+QUERY([Facility];[Facility]Category=asFields{$j})
+Else 
+//Do Nothing
+End case 
+If (<>bMetric=False)
+$AreaUnit:=" s.ft"
+$AreaRate:=" psf"
+Else 
+$AreaUnit:=" sq.m"
+$AreaRate:=" psm"
+End if 
+$CurrencyWithSymbol:=Delete string([Facility]CurrencyFormat;2;1)//To remove the ';' separator
+$x:=Position(".";$CurrencyWithSymbol)//Remove cents
+If ($x>5)
+$CurrencyWithSymbol:=Substring($CurrencyWithSymbol;1;$x-1)
+End if 
+$CurrencyNoSymbol:=Substring($CurrencyWithSymbol;2)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=1)
+If ([Analysis]Taxable) & ((([Facility]TaxAddtoAmt=False) & (vReportSettings[[9]]="1")) | (([Facility]TaxAddtoAmt) & (vReportSettings[[9]]="2")))
+vTax:=GetTaxRate (vRptDate)
+$TaxMult:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$TaxMult:=1/(1+(vTax/100))
+End if 
+$PPTax:=$TaxMult
+Else 
+vTax:=0
+$TaxMult:=1
+If ([Analysis]Taxable)
+vTax:=GetTaxRate (vRptDate)
+$PPTax:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$PPTax:=1/(1+(vTax/100))
+End if 
+Else 
+$PPTax:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$PPTax:=1/(1+(vTax/100))
+End if 
+End if 
+End if 
+QUERY SELECTION([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+//NEXT RECORD([Facility])
+//While (End selection([Facility])=False)
+//QUERY SELECTION([Activity]; | ;[Activity]FacilityCode=[Facility]FacilityCode;*)
+//NEXT RECORD([Facility])
+//End while 
+//PREVIOUS RECORD([Facility])
+QUERY SELECTION([Activity])
+If (Current user="Designer") & (Shift down)
+AlertMessage (Get localized string("Activity records for")+" "+asFields{$j}+" = "+String(Records in selection([Activity])))
+End if 
+CREATE SET([Activity];"Activity")
+asData{$i}{1}:=Substring(asFields{$j};1;12)
+asData{$i}{2}:=String(Sum([Activity]InquiriesTaken);"###,##0")
+asData{$i}{3}:=String(Sum([Activity]ResvtnsTaken);"###,##0")
+asData{$i}{4}:=String(Sum([Activity]MoveIns);"###,##0")
+asData{$i}{5}:=String(Sum([Activity]MoveOuts);"###,##0")
+asData{$i}{6}:=String(Sum([Activity]MoveIns)-Sum([Activity]MoveOuts);"+###0;-##0;0")
+If ([Facility]FacilityCode="KE@")
+asData{$i}{20}:=String(Round(Sum([Activity]RentChg);0);$CurrencyNoSymbol)
+asData{$i}{21}:=String(Round(Sum([Activity]DiscChg);0);$CurrencyNoSymbol)
+$Tot9:=Round(Sum([Activity]BadDebtChg);0)*(-1)//bad debts for kss only
+asData{$i}{22}:=String($Tot9;$CurrencyNoSymbol)
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg);0)-$Tot9
+If ($Row=2)
+QUERY([Activity];[Activity]ActivityDate=vRptDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+asData{$i}{24}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);$CurrencyNoSymbol)
+$LastMth:=GetDate (1;Month of(Current date);Year of(Current date))-1
+QUERY([Activity];[Activity]ActivityDate=$LastMth;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+asData{$i}{23}:=String(Round([Activity]AdvBillRntValue*$PPTax;0);$CurrencyNoSymbol)
+USE SET("Activity")
+//Else 
+//asData{$i}{22}:=String($Tot1;$CurrencyNoSymbol)
+//asData{$i}{23}:=String($Tot2;$CurrencyNoSymbol)
+End if 
+If ($Row=2)
+$Tot1:=Round(Sum([Activity]RentChg)-Sum([Activity]DiscChg)+Num(asData{$i}{23})-Num(asData{$i}{24});0)-$Tot9
+End if 
+asData{$i}{23+$Row}:=String($Tot1;$CurrencyNoSymbol)
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+asData{$i}{24+$Row}:=String($Tot2;$CurrencyNoSymbol)
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+//If ($Row=2)
+//$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{$i}{49})-vCurrPrepaidLate;0)
+//End if 
+asData{$i}{25+$Row}:=String($Tot3;$CurrencyNoSymbol)
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+//If ($Row=2)
+//$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{$i}{50})-vCurrPrepaidIns;0)
+//End if 
+asData{$i}{26+$Row}:=String($Tot4;$CurrencyNoSymbol)
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{$i}{27+$Row}:=String($Tot5;$CurrencyNoSymbol)
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+//If ($Row=2)
+//$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{$i}{51})-vCurrPrepaidOther;0)
+//End if 
+asData{$i}{28+$Row}:=String($Tot6;$CurrencyNoSymbol)
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{$i}{29+$Row}:=String($Tot7;$CurrencyNoSymbol)
+$Tot8:=Abs(Round(Sum([Activity]MerchReturnChg)*$PPTax;0))//merch returns for kss
+asData{$i}{35+$Row}:=String($Tot8;$CurrencyNoSymbol)
+asData{$i}{30+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);$CurrencyNoSymbol)
+Else 
+asData{$i}{20}:=String(Round(Sum([Activity]RentChg)+(Sum([Activity]DiscChg)*$PPTax);0);$CurrencyNoSymbol)
+asData{$i}{21}:=String(Round(Sum([Activity]DiscChg)*$PPTax;0);$CurrencyNoSymbol)
+$Tot1:=Round(Sum([Activity]RentChg);0)
+$Tot2:=Round(Sum([Activity]DepositChg);0)
+If ($Row=2)
+QUERY([Activity];[Activity]ActivityDate=vRptDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+$ClosePrepaid:=Round([Activity]AdvBillRntValue*$PPTax;0)
+asData{$i}{23}:=String($ClosePrepaid;$CurrencyNoSymbol)
+$LastMth:=GetDate (1;Month of(vRptDate);Year of(Current date))-1
+QUERY([Activity];[Activity]ActivityDate=$LastMth;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+$OpenPrepaid:=Round([Activity]AdvBillRntValue*$PPTax;0)
+asData{$i}{22}:=String($OpenPrepaid;$CurrencyNoSymbol)
+$Tot1:=$Tot1+$OpenPrepaid-$ClosePrepaid
+USE SET("Activity")
+//asData{$i}{22}:=String($Tot1;$CurrencyNoSymbol)
+//asData{$i}{23}:=String($Tot2;$CurrencyNoSymbol)
+End if 
+asData{$i}{22+$Row}:=String($Tot1;$CurrencyNoSymbol)
+asData{$i}{23+$Row}:=String($Tot2;$CurrencyNoSymbol)
+$Tot3:=Round(Sum([Activity]LateFeeChg);0)
+//If ($Row=2)
+//$Tot3:=Round(Sum([Activity]LateFeeChg)+Num(asData{$i}{49})-vCurrPrepaidLate;0)
+//End if 
+asData{$i}{24+$Row}:=String($Tot3;$CurrencyNoSymbol)
+$Tot4:=Round(Sum([Activity]InsureChg);0)
+//If ($Row=2)
+//$Tot4:=Round(Sum([Activity]InsureChg)+Num(asData{$i}{50})-vCurrPrepaidIns;0)
+//End if 
+asData{$i}{25+$Row}:=String($Tot4;$CurrencyNoSymbol)
+$Tot5:=Round(Sum([Activity]MerchChg);0)
+asData{$i}{26+$Row}:=String($Tot5;$CurrencyNoSymbol)
+$Tot6:=Round(Sum([Activity]OtherChg);0)
+//If ($Row=2)
+//$Tot6:=Round(Sum([Activity]OtherChg)+Num(asData{$i}{51})-vCurrPrepaidOther;0)
+//End if 
+asData{$i}{27+$Row}:=String($Tot6;$CurrencyNoSymbol)
+$Tot7:=Round(Sum([Activity]TaxChg);0)//-(Sum([Activity]DiscChg)*$PPTax)+Sum([Activity]DiscChg);0)
+asData{$i}{28+$Row}:=String($Tot7;$CurrencyNoSymbol)
+If ([Facility]FacilityCode="SK@") & (vReportSettings[[16]]="1")
+asData{$i}{23+$Row}:=""
+asData{$i}{28+$Row}:=""
+$Tot7:=0
+End if 
+asData{$i}{29+$Row}:=String(Round($Tot1+$Tot2+$Tot3+$Tot4+$Tot5+$Tot6+$Tot7;0);$CurrencyWithSymbol)
+End if 
+End if 
+$Tot1:=Round(Sum([Activity]CashRec);0)
+asData{$i}{31+$Row}:=String($Tot1;$CurrencyNoSymbol)
+$Tot2:=Round(Sum([Activity]CreditRec);0)
+asData{$i}{32+$Row}:=String($Tot2;$CurrencyNoSymbol)
+$Tot3:=Round(Sum([Activity]Refunds);0)
+asData{$i}{33+$Row}:=String($Tot3;$CurrencyNoSymbol)
+asData{$i}{34+$Row}:=String(Round($Tot1+$Tot2+$Tot3;0);$CurrencyWithSymbol)
+//asData{$i}{48+$Row}:=String(Round(Sum([Activity]LateFeeWaived);0);$CurrencyNoSymbol)
+If (Sum([Activity]InquiriesTaken)>0)
+asData{$i}{7}:=String(Sum([Activity]Conversions)*100/Sum([Activity]InquiriesTaken);"###0.00")
+End if 
+If (Sum([Activity]Conversions)>0)
+asData{$i}{8}:=String(Sum([Activity]ConvertTime)/Sum([Activity]Conversions);"###0.00")
+End if 
+
+//Only include data for today    SDD 9/6/10 Following line was commented out which caused it to fail - Keep the following line
+QUERY SELECTION([Activity];[Activity]ActivityDate=vRptDate)
+asData{$i}{9}:=Get localized string("Units")
+asData{$i}{10}:=String(Sum([Activity]TotUnitNo);"###,##0")
+asData{$i}{11}:=String(Sum([Activity]OccupUnitNo);"###,##0")
+asData{$i}{12}:=String(Sum([Activity]VacantUnitNo);"###,##0")
+asData{$i}{13}:=String(Sum([Activity]OtherUnitNo);"###,##0")
+If (Sum([Activity]TotValue)>0)
+asData{$i}{15}:=String(Round(Sum([Activity]OccupValActual)/Sum([Activity]TotValue)*100;2);"##0.00%")
+asData{$i}{16}:=String(Round((Sum([Activity]OccupValue)-Sum([Activity]OccupValActual))/Sum([Activity]OccupValue)*100;2);"##0.00%")
+End if 
+If ([Activity]TotUnitArea>0)
+asData{$i}{17}:=String([Activity]TotValue*$TaxMult/[Activity]TotUnitArea*12;"##0.00"+$AreaRate)
+asData{$i}{18}:=String([Activity]OccupValActual*$TaxMult/[Activity]TotUnitArea*12;"##0.00"+$AreaRate)
+End if 
+asData{$i}{19}:=""
+If ($Row=0)
+asData{$i}{36}:=String(Round([Activity]AdvBillRntValue*$TaxMult;0);$CurrencyNoSymbol)
+asData{$i}{37}:=String(Round([Activity]AdvancePaidValue*$TaxMult;0);$CurrencyNoSymbol)
+End if 
+asData{$i}{38}:=String(Sum([Activity]DepositsHeld);$CurrencyWithSymbol)
+asData{$i}{39}:=String(Sum([Activity]ActiveAgreemts);"##,###,##0")
+If ([Facility]FacilityCode="KE@")
+QUERY([Agreement];[Agreement]MoveIn>=Date("1/"+String(Month of(vRptDate))+"/"+String(Year of(vRptDate)));*)
+If (Month of(vRptDate)=12)
+QUERY([Agreement]; & ;[Agreement]MoveIn<Date("1/"+String(Month of(vRptDate)+1)+"/"+String(Year of(vRptDate)+1)))
+Else 
+QUERY([Agreement]; & ;[Agreement]MoveIn<Date("1/"+String(Month of(vRptDate)+1)+"/"+String(Year of(vRptDate))))
+End if 
+$AgreementsSelection:=Records in selection([Agreement])
+If ($AgreementsSelection>0)
+If (<>sProduct="M@")
+asData{$i}{40}:=String(Round(((Sum([Activity]InsureNew)/$AgreementsSelection)*100)*100;2))+"%"
+Else 
+asData{$i}{40}:=String(Round(((Sum([Activity]InsureNew)/$AgreementsSelection)*100);2))+"%"
+End if 
+Else 
+asData{$i}{40}:="0%"
+End if 
+Else 
+asData{$i}{40}:=String(Sum([Activity]InsureAgreemts);"#,###,##0")
+End if 
+asData{$i}{41}:=Get localized string("Amount")
+asData{$i}{42}:=String(Round([Activity]Arrears4Value;0);$CurrencyNoSymbol)
+asData{$i}{43}:=String(Round([Activity]Arrears3Value;0);$CurrencyNoSymbol)
+asData{$i}{44}:=String(Round([Activity]Arrears2Value;0);$CurrencyNoSymbol)
+$Total:=[Activity]Arrears2Value+[Activity]Arrears3Value+[Activity]Arrears4Value
+asData{$i}{45}:=String(Round($Total;0);$CurrencyNoSymbol)
+asData{$i}{46}:=String(Round([Activity]Arrears1Value;0);$CurrencyNoSymbol)
+If ([Facility]FacilityCode="KE@") & (vReportSettings[[16]]="1")
+asData{$i}{47}:=String(Round([Activity]ArrearsInactiveValue;0);$CurrencyNoSymbol)
+Else 
+asData{$i}{47}:=String(Round([Activity]Arrears1Value+$Total;0);$CurrencyWithSymbol)
+End if 
+End if 
+End for 
+If ([Facility]FacilityCode="PL@")//Specific to Planet - Delete Conversion stats
+aCustName{7}:=""
+aCustName{8}:=""
+asData{1}{7}:=""
+asData{2}{7}:=""
+asData{3}{7}:=""
+asData{4}{7}:=""
+asData{1}{8}:=""
+asData{2}{8}:=""
+asData{3}{8}:=""
+asData{4}{8}:=""
+End if 
+READ WRITE([Activity])
+ALL RECORDS([Activity])
+REDUCE SELECTION([Activity];48)
+If (Records in selection([Activity])#48)
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+AlertMessage (Get localized string("The report cannot be printed due to lack of Activity records!"))
+End if 
+For ($i;1;48)
+Case of 
+: ($i<=8)
+[Activity]SortReport:=1
+: ($i<=18)
+[Activity]SortReport:=2
+: ($i<=40)
+[Activity]SortReport:=3
+Else 
+[Activity]SortReport:=4
+End case 
+SAVE RECORD([Activity])
+NEXT RECORD([Activity])
+End for 
+READ ONLY([Activity])
+[Facility]FacilityName:=Get localized string("For the Period from")+" "+String(vDate;1)+" "+Get localized string("to")+" "+String(vRptDate;1)
+ORDER BY([Activity];[Activity]SortReport;>)
+If (<>iPrinttoFile=1)
+
+Else 
+ALL RECORDS([Facility])
+FORM SET OUTPUT([Activity];"KeyStats")
+BREAK LEVEL(1)
+ACCUMULATE([Activity]DepositsHeld)
+vTitle:=Get localized string("MenuReportkeyStatisticsReport")+" - "+String(vDate;1)+" "+Get localized string("to")+" "+String(vRptDate;1)
+bFromMoveIn:=True
+PrintSelection ("P")
+FORM SET OUTPUT([Activity];"Output")
+End if 
+End if 
+End if 
+SetFacility 
+End if 

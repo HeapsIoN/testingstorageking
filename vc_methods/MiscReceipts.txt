@@ -1,0 +1,112 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (PermissionsControl (37))
+SetFacility 
+READ WRITE([Customer])
+READ WRITE([Agreement])
+READ WRITE([Trxs])
+READ WRITE([Analysis])
+DEFAULT TABLE([Trxs])
+FORM SET OUTPUT([Trxs];"TransOut")
+//INPUT FORM([Transaction];"MiscReceipts")
+FORM SET INPUT([Trxs];"CashSale")
+
+vDisable:=False
+vTitle:=Get localized string("Other Cash Sales")+"..."
+vMisc:=True
+vSearch:=False
+tBoolean:=False
+bLast:=1
+vPlus:=0
+vMinus:=0
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#1;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#2;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#4)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asCharges;0)
+ARRAY TEXT(asChargeDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asCharges;[Analysis]Description;asChargeDesc)
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asReceipts;0)
+ARRAY TEXT(asReceiptDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asReceipts;[Analysis]Description;asReceiptDesc)
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"MISCL";*)
+//$WeekEndDay:=<>iWeekEndDay
+//If ($WeekEndDay<1)
+//$WeekEndDay:=7  //This should pick up a variable at startup
+//End if 
+//If ($WeekEndDay<1)
+//$WeekEndDay:=1
+//End if 
+//If ($WeekEndDay>7)
+//$WeekEndDay:=7
+//End if 
+//If ($WeekEndDay>4)
+//$WeekEndDay:=$WeekEndDay-6
+//Else 
+//$WeekEndDay:=$WeekEndDay+1
+//End if 
+//$Week:=Trunc(((Current date-!01/01/2000!)-$WeekEndDay)/7;0)
+//$WeekDate:=Add to date(!01/01/2000!;0;0;$Week*7)
+//QUERY([Transaction]; & ;[Transaction]TrxDate>$WeekDate;*)
+//QUERY([Transaction]; & ;[Transaction]TrxDate<=$WeekDate+7;*)
+
+$WeekEndDay:=<>iWeekEndDay
+If ($WeekEndDay<1)
+$WeekEndDay:=1
+End if 
+If ($WeekEndDay>7)
+$WeekEndDay:=7
+End if 
+$check:=$WeekEndDay-Day number(Current date)
+If ($check=0)
+$check:=-7
+End if 
+If ($check>0)
+$check:=-7+$check
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>(Current date+$check);*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=(Current date+(7+$check));*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+ORDER BY([Trxs];[Trxs]TrxDate;<;[Trxs]TrxTime;<)
+Open window((Screen width/2)-421;(Screen height/2)-314;(Screen width/2)+421;(Screen height/2)+314;4;"Cash Sales Processing")
+MODIFY SELECTION(*)
+READ ONLY(*)
+CloseWindow 
+UnloadAll 
+SetFacility 
+End if 

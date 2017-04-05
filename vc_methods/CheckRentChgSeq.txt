@@ -1,0 +1,82 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Rental Audit Report started.")// records the report being started in the eventlog
+If (PermissionsControl (88))
+C_LONGINT($i;$j)
+If (<>tBatch=False)
+vDate:=RequestDate (Get localized string("Check Rental Transactions from what date:");Current date)// !01/01/2000! - Commented by Hamid - 8871
+Else 
+vDate:=!2000-01-01!
+End if 
+If (OK=1)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+ARRAY TEXT(aAgreeNos;0)
+ARRAY TEXT(aText;0)
+Open window(20;50;400;150;0;Get localized string("Progress"))
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" : "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"     ")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+//QUERY([Transaction]; & ;[Transaction]Description#"Prorata@";*)  `To exclude proratas
+QUERY([Trxs]; & ;[Trxs]TotAmt>0;*)//To exclude negative trxs
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@RF")
+If (Records in selection([Trxs])>1)
+ORDER BY([Trxs];[Trxs]DateFrom;>)
+$Text:=""
+If ([Agreement]MoveIn#[Trxs]DateFrom) & ([Agreement]MoveIn>=vDate) & ([Trxs]Description#"Bal@")
+$Text:=Get localized string("Rent Charge does not commence from MoveIn Date!")+Char(13)
+End if 
+$Date:=[Trxs]DateTo
+NEXT RECORD([Trxs])
+For ($j;2;Records in selection([Trxs]))
+If ([Trxs]DateFrom>$Date)
+$Text:=$Text+Get localized string("TrxDate")+":"+String([Trxs]TrxDate)+Get localized string(" - Rent Charge MISSING from ")+String($Date)+" "+Get localized string("to")+" "+String([Trxs]DateFrom)+Char(13)
+End if 
+If ([Trxs]DateFrom<$Date) & ([Trxs]Description#"Prorata@")
+$Text:=$Text+Get localized string("TrxDate")+":"+String([Trxs]TrxDate)+Get localized string(" - Rent Charge Overlap from ")+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String($Date)+Char(13)
+End if 
+If ([Trxs]TrxDate>=$Date) | ([Trxs]Description#"Prorata@")
+$Date:=[Trxs]DateTo
+End if 
+NEXT RECORD([Trxs])
+End for 
+LAST RECORD([Trxs])
+If ([Trxs]DateTo#[Agreement]NextBillDate) & ([Agreement]ActiveAgreemt) & ([Trxs]Description#"Prorata@")
+$Text:=$Text+Get localized string("Rent Charge does not continue until NextBillDate!")+Char(13)
+End if 
+If ($Text>"")
+INSERT IN ARRAY(aAgreeNos;0;1)
+INSERT IN ARRAY(aText;0;1)
+aAgreeNos{1}:=[Agreement]RAgreeNo
+aText{1}:=Substring($Text;1;Length($Text)-1)
+End if 
+End if 
+NEXT RECORD([Agreement])
+End for 
+CLOSE WINDOW
+If (Size of array(aAgreeNos)>0)
+SORT ARRAY(aAgreeNos;aText;>)
+QUERY WITH ARRAY([Agreement]RAgreeNo;aAgreeNos)
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+BREAK LEVEL(0)
+ACCUMULATE([Agreement]BalanceOwing)
+FORM SET OUTPUT([Agreement];"RentChargesMissing")
+vTitle:=Get localized string("Rental Audit Report - Charge Missing or Overlapped")
+PrintSelection ("P";->[Agreement])
+FORM SET OUTPUT([Agreement];"Output")
+ARRAY TEXT(aAgreeNos;0)
+ARRAY TEXT(aText;0)
+Else 
+If (<>tBatch=False)
+AlertMessage (Get localized string("There are no records to print for this report"))
+End if 
+End if 
+End if 
+End if 
+LogAction (True;"Rental Audit Report ended.")

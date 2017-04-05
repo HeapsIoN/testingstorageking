@@ -1,0 +1,65 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//27/06/13 DAM added to fix receipts for standardization
+
+ConfirmTwo ("Transactions or Analysis Code";"Transactions";"Analysis Code")
+
+If (OK=1)
+//ALL RECORDS([Transaction])
+QUERY([Trxs];[Trxs]Charge=False)
+ARRAY TEXT(atTransAC;0)
+ARRAY TEXT(arAnalysisDescription;0)
+
+DISTINCT VALUES([Trxs]AnalysisCode;atTransAC)
+
+For ($i;1;Size of array(atTransAC))
+QUERY([Analysis];[Analysis]Code=atTransAC{$i})
+If (Records in selection([Analysis])#1)
+APPEND TO ARRAY(arAnalysisDescription;[Analysis]Description)
+Else 
+
+If ([Analysis]Inactive=True) & ([Analysis]SortOrder>=50)
+APPEND TO ARRAY(arAnalysisDescription;[Analysis]Description)
+End if 
+
+End if 
+End for 
+Else 
+QUERY([Analysis];[Analysis]Inactive=True;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>=50)
+ARRAY TEXT(arAnalysisDescription;0)
+DISTINCT VALUES([Analysis]Description;arAnalysisDescription)
+End if 
+
+ARRAY TEXT(arStandardCodes;Size of array(arAnalysisDescription))
+ARRAY TEXT(arNewDescrp;Size of array(arAnalysisDescription))
+vDate:=Current date
+
+If (Records in selection([Analysis])#0)
+Open window((Screen width/2)-195;(Screen height/2)-252;(Screen width/2)+195;(Screen height/2)+252;4;Get localized string("Remove")+" "+<>vtUnitsCap+"(s)")
+DIALOG([Analysis];"Standard")
+CLOSE WINDOW
+If (bOK1=1)
+For ($i;1;Size of array(arStandardCodes))
+If (arStandardCodes{$i}#"") & (arNewDescrp{$i}#"")
+QUERY([Trxs];[Trxs]Description=arAnalysisDescription{$i};*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate)
+SyncRecordLog ("number of transactions "+String(Records in selection([Trxs]))+"Read Status="+String(Read only state([Trxs])))
+If (Records in selection([Trxs])#0)
+//ConfirmTwo ("There are "+String(Records in selection([Transaction]))+"transactions in selection. Do you want to continue?";"Y";"N")
+//If (OK=1)
+READ WRITE([Trxs])
+APPLY TO SELECTION([Trxs];[Trxs]AnalysisCode:=Substring([Trxs]AnalysisCode;1;5)+arStandardCodes{$i})
+APPLY TO SELECTION([Trxs];[Trxs]Description:=arNewDescrp{$i})
+//End if 
+READ ONLY([Trxs])
+Else 
+//AlertMessage ("There are no transactions for "+arAnalysisDescr{$i})
+End if 
+
+End if 
+End for 
+
+AlertMessage ("Standardisation for receipts is completed. Please check the eventlog for made changes")
+End if 
+End if 

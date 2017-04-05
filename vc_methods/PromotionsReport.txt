@@ -1,0 +1,113 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 14/06/10, 11:49:51
+// ----------------------------------------------------
+// Method: PromotionsReport
+// Description
+// Report to calculate promotion based information
+//
+// Parameters
+// ----------------------------------------------------
+LogAction (False;"Sales Promotions Report started.")// records the report being started in the eventlog
+If (PermissionsControl (194))
+
+C_LONGINT($j;vPromoSelect)
+
+If (<>sProduct="M@")
+vPromoSelect:=ConfirmThree (Get localized string("Do you want to run this for all sites or the current site?");Get localized string("All Sites");Get localized string("Current Site");Get localized string("Cancel"))
+Else 
+vPromoSelect:=2
+End if 
+
+If (vPromoSelect#3)
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+
+If (vPromoSelect=1)
+ALL RECORDS([Promotions])
+DISTINCT VALUES([Promotions]VoucherCode;atPromotionsCode)
+
+ARRAY TEXT(atPromotions;0)
+
+For ($j;1;Size of array(atPromotionsCode))
+QUERY([Promotions];[Promotions]VoucherCode=atPromotionsCode{$j})
+APPEND TO ARRAY(atPromotions;[Promotions]Description)
+End for 
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT")
+Else 
+QUERY([Promotions];[Promotions]PromoCode=<>sFacility+"@")
+
+SELECTION TO ARRAY([Promotions]VoucherCode;atPromotionsCode;[Promotions]Description;atPromotions)
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT")
+End if 
+
+SELECTION TO ARRAY([MarketingTypes]Description;atCustomerTypes)
+
+INSERT IN ARRAY(atCustomerTypes;1;5)
+
+atCustomerTypes{1}:=Get localized string("All Customers")
+atCustomerTypes{2}:=Get localized string("Active Customers")
+atCustomerTypes{3}:=Get localized string("Customer Referals")
+atCustomerTypes{4}:=Get localized string("Repeat Customers")
+atCustomerTypes{5}:=Get localized string("Longterm Customers")
+
+ARRAY TEXT(asSigns1;Size of array(atPromotions))
+For ($j;1;Size of array(asSigns1))
+asSigns1{$j}:="•"
+End for 
+
+ARRAY TEXT(asSigns;Size of array(atCustomerTypes))
+For ($j;1;Size of array(asSigns))
+asSigns{$j}:="•"
+End for 
+
+Open window((Screen width/2)-180;(Screen height/2)-272;(Screen width/2)+180;(Screen height/2)+272;5;Get localized string("Sales Promotion Report"))
+DIALOG([Promotions];"PromotionReportDialog")
+CLOSE WINDOW
+
+CREATE EMPTY SET([Promotions];"Promo")
+
+If (bCode=1)
+For ($j;1;Size of array(atPromotions))
+If (asSigns1{$j}="•")
+QUERY([Promotions];[Promotions]VoucherCode=atPromotionsCode{$j})
+FIRST RECORD([Promotions])
+ADD TO SET([Promotions];"Promo")
+End if 
+End for 
+Else 
+For ($j;1;Size of array(atCustomerTypes))
+If (asSigns{$j}="•")
+QUERY([Promotions];[Promotions]CustomerType=atCustomerTypes{$j})
+DISTINCT VALUES([Promotions]VoucherCode;atPromotionsCode)
+ARRAY TEXT(atPromotions;0)
+For ($i;1;Size of array(atPromotionsCode))
+QUERY([Promotions];[Promotions]VoucherCode=atPromotionsCode{$i})
+FIRST RECORD([Promotions])
+ADD TO SET([Promotions];"Promo")
+End for 
+End if 
+End for 
+End if 
+
+USE SET("Promo")
+CLEAR SET("Promo")
+
+DEFAULT TABLE([Promotions])
+FORM SET OUTPUT([Promotions];"PromotionReport")
+
+If (bCancel=0)
+PrintSelection ("P")
+End if 
+
+FORM SET OUTPUT([Promotions];"Output")
+
+End if 
+End if 
+LogAction (True;"Sales Promotions Report ended.")

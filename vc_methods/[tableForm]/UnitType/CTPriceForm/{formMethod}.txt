@@ -1,0 +1,80 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+Case of 
+: (Form event=On Load)
+LoadListBoxColour 
+OBJECT SET TITLE(*;"Header1";[Facility]CustomerTypeTitle)
+
+C_LONGINT($i;$j)
+ARRAY LONGINT(aiCustTypeID;0)
+ARRAY REAL(arMonthlyRate;0)
+ARRAY REAL(arWeeklyRate;0)
+ARRAY REAL(arDailyRate;0)
+ARRAY LONGINT(aiLength;4)
+aiLength{1}:=-2
+aiLength{2}:=-3
+aiLength{3}:=-3
+aiLength{4}:=-3
+
+TextToArrays (->[UnitType]CTPrices;->aiLength;->aiCustTypeID;->arMonthlyRate;->arWeeklyRate;->arDailyRate)
+
+$j:=Size of array(aiCustTypeID)
+$i:=1
+
+While ($j>0) & ($i#0)
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=aiCustTypeID{$i};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([UnitType]RUnitType;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+If (Records in selection([MarketingTypes])#1)
+DELETE FROM ARRAY(aiCustTypeID;$i)
+DELETE FROM ARRAY(arMonthlyRate;$i)
+DELETE FROM ARRAY(arWeeklyRate;$i)
+DELETE FROM ARRAY(arDailyRate;$i)
+End if 
+
+$j:=Size of array(aiCustTypeID)
+$i:=$i+1
+
+If ($i>$j)
+$i:=0
+End if 
+
+End while 
+
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([UnitType]RUnitType;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+
+For ($i;1;Records in selection([MarketingTypes]))
+
+$j:=Find in array(aiCustTypeID;[MarketingTypes]PrimaryKey)
+
+If ($j<1)
+APPEND TO ARRAY(aiCustTypeID;[MarketingTypes]PrimaryKey)
+APPEND TO ARRAY(arMonthlyRate;[UnitType]MonthlyRate)
+APPEND TO ARRAY(arWeeklyRate;[UnitType]WeeklyRate)
+APPEND TO ARRAY(arDailyRate;[UnitType]DailyRate)
+End if 
+
+NEXT RECORD([MarketingTypes])
+End for 
+
+ARRAY TEXT(atCustType;Size of array(aiCustTypeID))
+ARRAY LONGINT(aiCTSortOrder;Size of array(aiCustTypeID))
+
+
+For ($i;1;Size of array(aiCustTypeID))
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=aiCustTypeID{$i})
+atCustType{$i}:=[MarketingTypes]Description
+aiCTSortOrder{$i}:=[MarketingTypes]SortOrder
+End for 
+
+SORT ARRAY(aiCTSortOrder;atCustType;aiCustTypeID;arMonthlyRate;arWeeklyRate;arDailyRate;>)
+
+: (Form event=On Unload)
+
+[UnitType]CTPrices:=ArraysToText (->aiLength;->aiCustTypeID;->arMonthlyRate;->arWeeklyRate;->arDailyRate)
+
+End case 

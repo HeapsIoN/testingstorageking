@@ -1,0 +1,78 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+//Method to interrogate the MV datafile and return statistical counts of the Transactions within a Date Range, Financial Year To Date, and Month To Date
+
+C_DATE(WS_vdPaymentStatsYTDStartDate;WS_vdPaymentStatsStartDate;WS_vdPaymentStatsEndDate)
+C_TEXT(WS_vtPaymentsTotal;WS_vtPaymentsYTD;WS_vtPaymentsMTD;WS_vtPaymentsDateRange)
+
+SET QUERY DESTINATION(Into current selection)
+CREATE EMPTY SET([Trxs];"Payments")
+
+QUERY([Facility];[Facility]ProductCode#"MV")//=$vtaWebPaymentMVFacilitiesID{$MVFacilitiesCounter})
+SELECTION TO ARRAY([Facility]FacilityCode;$vtaWebPaymentSiteFacilitiesID)
+
+QUERY([Trxs];[Trxs]CCAuthNo#"";*)
+QUERY([Trxs]; & ;[Trxs]Description#"Web Payment@";*)//Remove Web Payments, these are already counted at Storpay
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+CREATE SET([Trxs];"PaymentsTotal")
+CREATE EMPTY SET([Trxs];"PaymentsDateRange")
+CREATE EMPTY SET([Trxs];"PaymentsYTD")
+CREATE EMPTY SET([Trxs];"PaymentsMTD")
+
+//Number of Payments Year To Date
+SET QUERY DESTINATION(Into set;"PaymentsYTD")
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=WS_vdPaymentStatsYTDStartDate)
+
+//Number of Payments Month To Date
+SET QUERY DESTINATION(Into set;"PaymentsMTD")
+$StartDate:=Date("01/"+String(Month of(Current date))+"/"+String(Year of(Current date)))
+$EndDate:=Date("01/"+String(Month of(Add to date(Current date;0;1;0)))+"/"+String(Year of(Current date)))-1
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=$StartDate;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$EndDate)
+
+//Number of Payments within the Given Date Range
+SET QUERY DESTINATION(Into set;"PaymentsDateRange")
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=WS_vdPaymentStatsStartDate;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=WS_vdPaymentStatsEndDate)
+
+$WS_vlPaymentsTotal:=Records in set("PaymentsTotal")
+$WS_vlPaymentsYTD:=Records in set("PaymentsYTD")
+$WS_vlPaymentsMTD:=Records in set("PaymentsMTD")
+$WS_vlPaymentsDateRange:=Records in set("PaymentsDateRange")
+
+WS_vtPaymentsTotal:=EncryptIt2 (String($WS_vlPaymentsTotal);True)
+WS_vtPaymentsYTD:=EncryptIt2 (String($WS_vlPaymentsYTD);True)
+WS_vtPaymentsMTD:=EncryptIt2 (String($WS_vlPaymentsMTD);True)
+WS_vtPaymentsDateRange:=EncryptIt2 (String($WS_vlPaymentsDateRange);True)
+
+CLEAR SET("PaymentsTotal")
+CLEAR SET("PaymentsDateRange")
+CLEAR SET("PaymentsYTD")
+CLEAR SET("PaymentsMTD")
+
+//Receive variables from StormanUsers
+SOAP DECLARATION(WS_vdPaymentStatsYTDStartDate;Is date;SOAP input)
+SOAP DECLARATION(WS_vdPaymentStatsStartDate;Is date;SOAP input)
+SOAP DECLARATION(WS_vdPaymentStatsEndDate;Is date;SOAP input)
+
+$String:="Start WS_GetWebPaymentStats"+Char(13)
+$String:=$String+"WS_vdPaymentStatsYTDStartDate: "+String(WS_vdPaymentStatsYTDStartDate)+Char(13)
+$String:=$String+"WS_vdPaymentStatsStartDate: "+String(WS_vdPaymentStatsStartDate)+Char(13)
+$String:=$String+"WS_vdPaymentStatsEndDate: "+String(WS_vdPaymentStatsEndDate)+Char(13)
+
+WSRecordLog ($String)
+//Send them back to the client
+SOAP DECLARATION(WS_vtPaymentsTotal;Is text;SOAP output)
+SOAP DECLARATION(WS_vtPaymentsYTD;Is text;SOAP output)
+SOAP DECLARATION(WS_vtPaymentsMTD;Is text;SOAP output)
+SOAP DECLARATION(WS_vtPaymentsDateRange;Is text;SOAP output)
+
+$String:="End WS_GetWebPaymentStats"+Char(13)
+$String:=$String+"WS_vtPaymentsTotal: "+WS_vtPaymentsTotal+Char(13)
+$String:=$String+"WS_vtPaymentsYTD: "+WS_vtPaymentsYTD+Char(13)
+$String:=$String+"WS_vtPaymentsMTD: "+WS_vtPaymentsMTD+Char(13)
+$String:=$String+"WS_vtPaymentsDateRange: "+WS_vtPaymentsDateRange+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

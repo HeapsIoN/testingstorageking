@@ -1,0 +1,61 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($Status)
+C_BOOLEAN($Sync)
+$Sync:=True
+If (Current user="Designer") | (<>sCurrentUser="AdminSupport")
+$Sync:=False
+CREATE SET([EventLog];"Temp")
+USE SET("UserSet")
+If (Records in selection=0)
+USE SET("Temp")
+End if 
+If (Records in selection>0)
+$Status:=ConfirmThree (Get localized string("Do what for")+" "+String(Records in selection)+" "+Get localized string("selected eventlog records?");Get localized string("Set Sync Status");Get localized string("Set Seq No");Get localized string("Delete");Get localized string("Cancel"))
+Case of 
+: ($Status=1)
+$Status:=Num(RequestMessage (Get localized string("Set Sync Status for")+" "+String(Records in selection)+" "+Get localized string("eventlog records to:");"1"))
+If (OK=1)
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]SyncStatus:=$Status)
+READ ONLY([EventLog])
+End if 
+: ($Status=2)
+$Status:=Num(RequestMessage (Get localized string("Set SeqNo for")+" "+String(Records in selection)+" "+Get localized string("eventlog records to:");"1000"))
+If (OK=1)
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]SeqNo:=$Status)
+READ ONLY([EventLog])
+End if 
+: ($Status=3)
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection)+" "+Get localized string("eventlog records.  Are you sure?"))
+If (OK=1)
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+DELETE SELECTION([EventLog])
+READ ONLY([EventLog])
+End if 
+: ($Status=4)
+ConfirmTwo (Get localized string("Set all unsynced events to synced? (Status=0 to 1)");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Sync:=True
+End if 
+Else 
+//do nothing
+End case 
+Else 
+AlertMessage (Get localized string("No selected records!"))
+End if 
+CLEAR SET("Temp")
+End if 
+If ($Sync)
+QUERY([EventLog];[EventLog]SyncStatus=0)
+ConfirmTwo (Get localized string("Set")+" "+String(Records in selection)+" "+Get localized string("eventlog records to Synced.  Are you sure?"))
+If (OK=1)
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]SyncStatus:=1)
+READ ONLY([EventLog])
+End if 
+End if 

@@ -1,0 +1,91 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+READ WRITE([Customer])
+READ WRITE([Trxs])
+READ WRITE([Agreement])
+READ WRITE([Reservation])
+LOAD RECORD([Agreement])
+LOAD RECORD([Reservation])
+LOAD RECORD([Customer])
+LOAD RECORD([Trxs])
+
+$Date:=RequestDate ("Please enter date for balance brought forward/deposit transactions.";Current date)
+If (OK=1)
+CREATE EMPTY SET([Agreement];"Deposits")
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]DepositAmt#0)
+For ($i;1;Records in selection([Agreement]))
+QUERY([Analysis];[Analysis]KeyStatsCategory="Deposit")
+
+For ($j;1;Records in selection([Analysis]))
+If ($j=1)
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code;*)
+Else 
+QUERY([Trxs]; | ;[Trxs]AnalysisCode=[Analysis]Code;*)
+End if 
+NEXT RECORD([Analysis])
+End for 
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([Trxs])=0)
+ADD TO SET([Agreement];"Deposits")
+End if 
+NEXT RECORD([Agreement])
+End for 
+
+USE SET("Deposits")
+CLEAR SET("Deposits")
+
+For ($k;1;Records in selection([Agreement]))
+
+RELATE ONE([Agreement]CustomerCode)
+
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]TrxDate:=$Date
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]Charge:=True
+[Trxs]Description:="Deposit"
+[Trxs]AnalysisCode:=Substring([Agreement]RAgreeNo;1;5)+"DP"
+[Trxs]TotAmt:=[Agreement]DepositAmt
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Match:=[Customer]NextMatch
+SAVE RECORD([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]TrxDate:=$Date
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]Charge:=True
+[Trxs]Description:="Balance Brought Forward Credit"
+[Trxs]AnalysisCode:=Substring([Agreement]RAgreeNo;1;5)+"BF"
+[Trxs]TotAmt:=[Agreement]DepositAmt*-1
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Match:=[Customer]NextMatch
+SAVE RECORD([Trxs])
+
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+
+viMatch:=-1
+bPrtRec:=0
+bEmailReceipt:=0
+asShowHistory:=1
+bAll:=0
+ReCalc 
+
+NEXT RECORD([Agreement])
+End for 
+
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([Reservation])
+READ ONLY([Customer])
+READ ONLY([Trxs])
+
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Trxs])

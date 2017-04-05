@@ -1,0 +1,47 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($0)//Error number -16000 returned by LogActivity if Locked
+$0:=0
+LOAD RECORD([UserLogins])
+If (Trigger event=On Saving New Record Event) | (Trigger event=On Saving Existing Record Event)
+Case of 
+: ([Contacts]Facility#Substring([Contacts]ContactNo;1;5))
+$0:=-16002
+: ([Contacts]CallDate<!1970-01-01!)
+$0:=-16020
+End case 
+End if 
+If ($0=0)
+Case of 
+: (Trigger event=On Saving New Record Event)
+//Save new PrimaryKey value
+If ([Contacts]PrimaryKey=0)
+[Contacts]PrimaryKey:=<>aliPrimaryKeys{Table(->[Contacts])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[Contacts])}:=<>aliPrimaryKeys{Table(->[Contacts])}-1
+Else 
+<>aliPrimaryKeys{Table(->[Contacts])}:=<>aliPrimaryKeys{Table(->[Contacts])}+1
+End if 
+End if 
+$0:=LogActivity ([Contacts]Facility;[Contacts]CallDate;->[Activity]InquiriesTaken;1)
+If (([Contacts]Outcome="Reserved") | ([Contacts]Outcome="Rented")) & (Old([Contacts]Outcome)="")
+$Days:=[Contacts]OutComeDate-[Contacts]CallDate
+If ($Days<0)
+$Days:=0
+End if 
+$0:=LogActivity ([Contacts]Facility;[Contacts]OutComeDate;->[Activity]Conversions;1;->[Activity]ConvertTime;$Days)
+End if 
+: (Trigger event=On Saving Existing Record Event)
+If (([Contacts]Outcome="Reserved") | ([Contacts]Outcome="Rented")) & (Old([Contacts]Outcome)="")
+$Days:=[Contacts]OutComeDate-[Contacts]CallDate
+If ($Days<0)
+$Days:=0
+End if 
+$0:=LogActivity ([Contacts]Facility;[Contacts]OutComeDate;->[Activity]Conversions;1;->[Activity]ConvertTime;$Days)
+End if 
+: (Trigger event=On Deleting Record Event)
+$0:=LogActivity ([Contacts]Facility;[Contacts]CallDate;->[Activity]InquiriesTaken;-1)
+End case 
+End if 
+If ($0=0)
+TriggerLog (12;"048";"";!00-00-00!;0;"";[Contacts]Facility;[Contacts]ContactNo)
+End if 

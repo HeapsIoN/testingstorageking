@@ -1,0 +1,99 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_GetTenantReserv"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_InternalUnitID;Text array;SOAP output)
+SOAP DECLARATION(WS_ExternalUnitID;Text array;SOAP output)
+SOAP DECLARATION(WS_UnitTypeID;Text array;SOAP output)
+SOAP DECLARATION(WS_UnitTypeDescription;Text array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_InternalUnitID;0)
+ARRAY TEXT(WS_ExternalUnitID;0)
+ARRAY TEXT(WS_UnitTypeID;0)
+ARRAY TEXT(WS_UnitTypeDescription;0)
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+If (Records in selection([Facility])#0)
+QUERY([Reservation];[Reservation]CustomerCode=WS_Cust_Code;*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+If (Records in selection([Reservation])#0)
+WS_RET_CODE:=True
+
+INSERT IN ARRAY(WS_InternalUnitID;Size of array(WS_InternalUnitID)+1;1)
+INSERT IN ARRAY(WS_ExternalUnitID;Size of array(WS_ExternalUnitID)+1;1)
+INSERT IN ARRAY(WS_UnitTypeID;Size of array(WS_UnitTypeID)+1;1)
+INSERT IN ARRAY(WS_UnitTypeDescription;Size of array(WS_UnitTypeDescription)+1;1)
+[Reservation]UnitsReserved:=Replace string([Reservation]UnitsReserved;" ";"")
+WS_InternalUnitID{1}:=[Reservation]UnitsReserved
+WS_ExternalUnitID{1}:=[Reservation]UnitsReserved
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_InternalUnitID{1})
+WS_UnitTypeID{1}:=[Unit]UnitTypeCode
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+WS_UnitTypeDescription{1}:=[UnitType]Description
+
+
+//Code if customer has more than 1 unit reserved
+
+//$k:=1
+//While (GetTextNo ([Reservation]UnitsReserved;$k;",")#"")
+//  //if(GetTextNo ([Reservation]UnitsReserved;$k;",")="")
+//$k:=$k+1
+//  //end if
+//End while 
+//
+//For ($i;1;$k-1)
+//INSERT IN ARRAY(WS_InternalUnitID;Size of array(WS_InternalUnitID)+1;1)
+//INSERT IN ARRAY(WS_ExternalUnitID;Size of array(WS_ExternalUnitID)+1;1)
+//INSERT IN ARRAY(WS_UnitTypeID;Size of array(WS_UnitTypeID)+1;1)
+//INSERT IN ARRAY(WS_UnitTypeDescription;Size of array(WS_UnitTypeDescription)+1;1)
+//[Reservation]UnitsReserved:=Replace string([Reservation]UnitsReserved;" ";"")
+//WS_InternalUnitID{$i}:=GetTextNo ([Reservation]UnitsReserved;$i;",")
+//WS_ExternalUnitID{$i}:=GetTextNo ([Reservation]UnitsReserved;$i;",")
+//QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_InternalUnitID{$i})
+//WS_UnitTypeID{$i}:=[Unit]UnitTypeCode
+//QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+//WS_UnitTypeDescription{$i}:=[UnitType]Description
+//End for 
+
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Reservation Not Found"
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Facility Not Found"
+End if 
+
+$String:="End WS_Insomniac_GetTenantReserv"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+
+$sizeofarray:=Size of array(WS_InternalUnitID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_InternalUnitID("+String($vlElem)+"):"+WS_InternalUnitID{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ExternalUnitID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ExternalUnitID("+String($vlElem)+"):"+WS_ExternalUnitID{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_UnitTypeID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_UnitTypeID("+String($vlElem)+"):"+WS_UnitTypeID{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_UnitTypeDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_UnitTypeDescription("+String($vlElem)+"):"+WS_UnitTypeDescription{$vlElem}+Char(13)
+End for 
+
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)

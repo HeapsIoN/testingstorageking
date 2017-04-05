@@ -1,0 +1,78 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_ReservationCost"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ItemTotalAmount;Is real;SOAP output)
+SOAP DECLARATION(WS_ItemDescription;Text array;SOAP output)
+SOAP DECLARATION(WS_ItemAmountt;Real array;SOAP output)
+SOAP DECLARATION(WS_ItemTaxAmount;Real array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_ItemDescription;2)
+ARRAY REAL(WS_ItemTaxAmount;2)
+ARRAY REAL(WS_ItemAmountt;2)
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+
+If (Records in selection([Facility])#0)
+WS_RET_CODE:=True
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"DP";*)
+QUERY([Analysis];[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])#0)
+WS_ItemTotalAmount:=[Analysis]DfltSellAmt
+WS_ItemDescription{1}:=[Analysis]Description
+WS_ItemAmountt{1}:=[Analysis]DfltSellAmt
+WS_ItemTaxAmount{1}:=[Analysis]TaxRate
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Deposit1 Not Found"
+End if 
+QUERY([Unit];[Unit]UnitNo=WS_UnitID)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+If (Records in selection([UnitType])#0)
+WS_ItemTotalAmount:=WS_ItemTotalAmount+[UnitType]DepositAmt
+WS_ItemDescription{2}:=[UnitType]Description
+WS_ItemAmountt{2}:=[UnitType]DepositAmt
+WS_ItemTaxAmount{2}:=0
+WS_RET_CODE:=True
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Depisit2 Not Found"
+End if 
+
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Facility Not Found"
+End if 
+
+$String:="End WS_Insomniac_ReservationCost"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_ItemTotalAmount :"+String(WS_ItemTotalAmount)+Char(13)
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ItemDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemDescription("+String($vlElem)+"):"+WS_ItemDescription{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ItemAmountt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemAmountt("+String($vlElem)+"):"+String(WS_ItemAmountt{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ItemTaxAmount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemTaxAmount("+String($vlElem)+"):"+String(WS_ItemTaxAmount{$vlElem})+Char(13)
+End for 
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

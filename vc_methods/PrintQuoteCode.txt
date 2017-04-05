@@ -1,0 +1,80 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+Case of 
+: (Form event=On Header)
+If ([Facility]PhoneFormat>"")
+OBJECT SET FORMAT([Facility]Phone;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Facility]Fax;[Facility]PhoneFormat)
+End if 
+If ([Facility]CompanyName#"")
+vtCompanyName:=[Facility]CompanyName+" "+Get localized string("trading as")
+Else 
+vtCompanyName:=""
+End if 
+vLeg1:=Get localized string("Phone")+" :"
+vLeg2:=Get localized string("Fax")+" :"
+If ([Facility]Country="DE")
+vSCity:=[Facility]PostZIPCode+"  "+[Facility]City+"  "+[Facility]State
+Else 
+vSCity:=[Facility]City+"  "+[Facility]State+"  "+[Facility]PostZIPCode
+End if 
+vQuoteDate:=Current date
+If (<>sFacility="PS@")
+viAdd:=Records in selection([Quote])-1
+QUERY([Analysis];[Analysis]Code=<>sFacility+"PR")
+vsPremium:=String([Analysis]DfltSellAmt;"###,##0.00")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"PRA")
+vsPremAdd:=String(viAdd*[Analysis]DfltSellAmt;"###,##0.00")
+vsPremTot:=String(Num(vsPremium)+Num(vsPremAdd);"###,##0.00")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"ST")
+vsStandard:=String([Analysis]DfltSellAmt;"###,##0.00")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"STA")
+vsStanAdd:=String(viAdd*[Analysis]DfltSellAmt;"###,##0.00")
+vsStanTot:=String(Num(vsStandard)+Num(vsStanAdd);"###,##0.00")
+End if 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+: (Form event=On Printing Detail)
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+vAnalysisD:=[Analysis]Description
+: (Form event=On Printing Break)
+If (<>sFacility="PS@")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"LK")
+vsLock:=String([Analysis]DfltSellAmt;"###,##0.00")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"IN")
+vsInsurance:=String([Analysis]DfltSellAmt;"###,##0.00")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"PR")
+vsPremium:=String([Analysis]DfltSellAmt;"###,##0.00")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"PRA")
+vsPremAdd:=String([Analysis]DfltSellAmt;"###,##0.00")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"PAT")
+vsAddTime:=String([Analysis]DfltSellAmt;"###,##0.00")
+End if 
+
+: (Form event=On Printing Footer)
+If ([Facility]TaxAddtoAmt=True)
+If ([Facility]TaxRate>0)
+vGSTIncExt:=Get localized string("Quotes are")+" "+<>tTaxName+" "+Get localized string("Exclusive")
+Else 
+vGSTIncExt:=""
+End if 
+Else 
+If ([Facility]TaxRate>0)
+vGSTIncExt:=Get localized string("Quotes are")+" "+<>tTaxName+" "+Get localized string("Inclusive")
+Else 
+vGSTIncExt:=""
+End if 
+
+End if 
+//$Position:=Position("trading as";[Facility]CompanyName)
+//If ($Position>0)
+//[Facility]CompanyName:=Substring([Facility]CompanyName;1;($Position-1))
+//End if 
+SetFooter 
+: (Form event=On Load)
+$j:=Find in array(<>aButton;"Invoice")
+If ($j>0)
+CANCEL
+End if 
+End case 

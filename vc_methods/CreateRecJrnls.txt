@@ -1,0 +1,341 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1;$2;$Date)//Date range for journals
+C_LONGINT($x;$i;$j;$k;$t;$3)//if QB, Great Plains, Cost Con, MYOB, Sage or from Trial Balance/GL report (6)
+C_TEXT($AcctNo)
+C_TEXT($Alert)
+READ WRITE([Journal])
+READ WRITE([CashBookTrxs])
+$Date:=$1
+$t:=0
+vIncomeReceipt:=False
+vSeparateFiles:=False
+CREATE EMPTY SET([Trxs];"ToReport")
+If ([Facility]AcctgSystem="QB")
+If (<>sProduct="M@")
+QUERY([Facility];[Facility]FacilityCode=<>sHOFacility)
+Else 
+SetFacility 
+End if 
+If ([Facility]CashAccrual=True)
+ConfirmTwo (Get localized string("Export Receipts by Income type or Receipt type?");Get localized string("Income");Get localized string("Receipts"))
+If (OK=1)
+vIncomeReceipt:=True
+End if 
+End if 
+End if 
+While ($Date<=$2)
+QUERY([Journal];[Journal]JrnlDate=$Date;*)
+QUERY([Journal]; & ;[Journal]JrnlType="REC")
+For ($i;1;Records in selection([Journal]))
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+DELETE SELECTION([CashBookTrxs])
+NEXT RECORD([Journal])
+End for 
+DELETE SELECTION([Journal])
+$Repeat:=4
+Repeat 
+QUERY([Facility];[Facility]GLCodeExt>"")
+If (Records in selection([Facility])=0)
+QUERY([Facility];[Facility]FacilityCode#<>sHOFacility)
+End if 
+Case of 
+: ([Facility]FacilityCode="KE@") & ($Repeat=4)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="100";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt<"200")
+$Repeat:=3
+$Prefix:="KVSI NZ - "
+: ([Facility]FacilityCode="KE@") & ($Repeat=3)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="200";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt<"500")
+$Repeat:=2
+$Prefix:="Kennards - "
+: ([Facility]FacilityCode="KE@") & ($Repeat=2)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="500";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt<"800")
+$Repeat:=1
+$Prefix:="KVSI - "//was Miller's
+: ([Facility]FacilityCode="KE@") & ($Repeat=1)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="800")
+$Repeat:=0
+$Prefix:="Managed - "
+Else 
+$Repeat:=0
+$Prefix:=""
+End case 
+If ([Facility]FacilityCode#"KE@") & (<>sProduct="M@") & ($Date=$1) & ($3=4)//if the call to this method was not from the GL or trial balance report, give the option to create separate files
+CONFIRM(Get localized string("Create one file for all facilities, or create one file for each facility?");Get localized string("One file only");Get localized string("Separate files"))
+If (OK=0)
+vSeparateFiles:=True
+End if 
+End if 
+If (vSeparateFiles=False)
+SCAN INDEX([Journal]JournalNo;1;<)
+FIRST RECORD([Journal])
+$j:=[Journal]JournalNo+1
+CREATE RECORD([Journal])
+[Journal]JournalNo:=$j
+[Journal]JrnlDate:=$Date
+[Journal]JrnlType:="REC"
+[Journal]PeriodNo:=GetPeriod ($Date)
+[Journal]Narration:=$Prefix+Get localized string("Storman Receipts Journal for")+" "+String($Date)
+SAVE RECORD([Journal])
+End if 
+ORDER BY([Facility];[Facility]GLCodeExt;>)
+For ($i;1;Records in selection([Facility]))
+If (vSeparateFiles=True)
+SCAN INDEX([Journal]JournalNo;1;<)
+FIRST RECORD([Journal])
+$j:=[Journal]JournalNo+1
+CREATE RECORD([Journal])
+[Journal]JournalNo:=$j
+[Journal]JrnlDate:=$Date
+[Journal]JrnlType:="REC"
+[Journal]PeriodNo:=GetPeriod ($Date)
+[Journal]Narration:=$Prefix+Get localized string("Storman Receipts Journal for")+" "+String($Date)
+SAVE RECORD([Journal])
+End if 
+//If (vIncomeReceipt=True)  //if cash accounting (only used for QB currently)
+//QUERY([Transaction];[Transaction]DateBanked=$Date;*)
+//QUERY([Transaction]; & ;[Transaction]Charge=False;*)
+//QUERY([Transaction]; & ;[Transaction]AnalysisCode=[Facility]FacilityCode+"@")
+//CREATE SET([Transaction];"ToSum")
+//QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+//SELECTION TO ARRAY([Analysis]Code;aAnlys)
+//SELECTION TO ARRAY([Analysis]GLCode;$aGLCode)
+//ARRAY REAL(aTaxs;Size of array(aAnlys))
+//ARRAY REAL(aTotal;Size of array(aAnlys))
+//ARRAY BOOLEAN($aUsed;Size of array(aAnlys))
+//For ($k;1;Size of array(aAnlys))
+//aTaxs{$k}:=0
+//aTotal{$k}:=0
+//$aUsed{$k}:=False
+//End for 
+//FIRST RECORD([Transaction])
+//For ($k;1;Records in selection([Transaction]))
+//  //If ([Transaction]AgreeNo=(◊sFacility+"@"))
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//For ($j;1;Records in subselection([Transaction]MiscDetls))
+//$x:=Find in array(aAnlys;[Transaction]MiscDetls'AnalysisCode)
+//If ($x>0)
+//aTaxs{$x}:=aTaxs{$x}+[Transaction]MiscDetls'TaxAmt
+//aTotal{$x}:=aTotal{$x}+[Transaction]MiscDetls'TotAmt
+//$aUsed{$x}:=True
+//Else 
+//AlertMessage (Get localized string("WARNING - The analysis code for charge:")+[Transaction]MiscDetls'AnalysisCode+" "+Get localized string("is not on file!"))
+//End if 
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End for 
+//  //End if 
+//NEXT RECORD([Transaction])
+//End for 
+//For ($k;1;Size of array(aAnlys))
+//If ($aUsed{$k}=True)
+//QUERY([ChartAccts];[ChartAccts]AcctNo=$aGLcode{$k})
+//If (Records in selection([ChartAccts])>1)
+//QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=[Facility]FacilityCode)
+//End if 
+//CREATE RECORD([CashBookTrxs])
+//[CashBookTrxs]JournalNo:=[Journal]JournalNo
+//[CashBookTrxs]TrxDate:=$Date
+//[CashBookTrxs]AcctNo:=[ChartAccts]AcctNo
+//[CashBookTrxs]Amount:=Round((aTotal{$k}-aTaxs{$k})*(-1);2)
+//[CashBookTrxs]GrossAmt:=Round(aTotal{$k}*(-1);2)
+//[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+","+[ChartAccts]Description;1;50)
+//[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+//If ([CashBookTrxs]Amount#0) | ([CashBookTrxs]GrossAmt#0)
+//SAVE RECORD([CashBookTrxs])
+//End if 
+//End if 
+//End for 
+//CREATE SET([Transaction];"Temp")
+//DIFFERENCE("ToSum";"Temp";"ToSum")
+//Else 
+QUERY([ChartAccts];[ChartAccts]AcctType="B1";*)//BankAcct
+QUERY([ChartAccts]; & ;[ChartAccts]AcctNo="@"+[Facility]GLCodeExt)
+$AcctNo:=[ChartAccts]AcctNo
+QUERY([Trxs];[Trxs]DateBanked=$Date;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Facility]FacilityCode+"@")
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]DontExport=False)
+CREATE SET([Trxs];"ToSum")
+ORDER BY([Analysis];[Analysis]GLCode;>)
+$BankAmt:=0
+$LastCode:=[Analysis]GLCode
+For ($j;1;Records in selection([Analysis]))
+USE SET("ToSum")
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=[Analysis]Code)
+If ([Supplier]UserName="SUM")
+$BankAmt:=$BankAmt+Sum([Trxs]TotAmt)
+Else 
+For ($k;1;Records in selection([Trxs]))
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$Date
+Case of 
+: ([Analysis]SortOrder>95)
+[CashBookTrxs]AcctNo:=[Supplier]Phone
+Else 
+[CashBookTrxs]AcctNo:=$AcctNo
+End case 
+[CashBookTrxs]Amount:=[Trxs]TotAmt
+Case of 
+: (($3=1) | ($3>=5)) & (Count parameters>2)//if Quickbooks or Sage, want GLCode
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+$LastCode+","+[Supplier]SupplierName;1;50)
+: ($3=3) & (Count parameters>2)//Cost Con
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Trxs]AgreeNo+" "+[Supplier]SupplierName;1;50)
+Else 
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" "+[Supplier]SupplierName;1;50)
+End case 
+[CashBookTrxs]DocNum:=[Trxs]Description
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+SAVE RECORD([CashBookTrxs])
+NEXT RECORD([Trxs])
+End for 
+End if 
+$SortOrder:=[Analysis]SortOrder
+NEXT RECORD([Analysis])
+If ([Analysis]GLCode#$LastCode)
+If ($BankAmt#0)
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$Date
+If ($SortOrder>95)
+[CashBookTrxs]AcctNo:=[Supplier]Phone
+Else 
+[CashBookTrxs]AcctNo:=$AcctNo
+End if 
+[CashBookTrxs]Amount:=$BankAmt
+Case of 
+: (($3=1) | ($3>=5)) & (Count parameters>2)//if Quickbooks or Sage, want GLCode
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+$LastCode+","+[Supplier]SupplierName;1;50)
+: ($3=3) & (Count parameters>2)//Cost Con
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Trxs]AgreeNo+" "+[Supplier]SupplierName;1;50)
+Else 
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" "+[Supplier]SupplierName;1;50)
+End case 
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+[CashBookTrxs]DocNum:=[Supplier]SupplierName
+SAVE RECORD([CashBookTrxs])
+End if 
+$LastCode:=[Analysis]GLCode
+$BankAmt:=0
+End if 
+CREATE SET([Trxs];"Temp")
+DIFFERENCE("ToSum";"Temp";"ToSum")
+End for 
+//End if 
+If (Records in set("ToSum")>0)
+USE SET("ToSum")
+//check for any trx created using take payment at other site:
+DISTINCT VALUES([Trxs]AnalysisCode;aTrxAnlys)
+$BankAmt:=0
+$z:=Size of array(aTrxAnlys)
+$s:=1
+$k:=1
+For ($s;1;$z)
+QUERY([Analysis];[Analysis]Code=aTrxAnlys{1})
+$GLCode:=[Analysis]GLCode
+If (Records in selection([Analysis])>0)
+CREATE EMPTY SET([Trxs];"GLCodes")
+For ($x;1;Records in selection([Analysis]))
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=[Analysis]Code)
+If (Records in selection([Trxs])>0) & ([Analysis]DontExport=False)
+CREATE SET([Trxs];"TempGL")
+UNION("GLCodes";"TempGL";"GLCodes")
+End if 
+$n:=Find in array(aTrxAnlys;[Analysis]Code)
+If ($n>0)
+DELETE FROM ARRAY(aTrxAnlys;$n;1)
+End if 
+$s:=$s+1
+NEXT RECORD([Analysis])
+End for 
+QUERY([Supplier];[Supplier]SupplierCode=$GLCode)
+USE SET("GLCodes")
+If ([Supplier]UserName="SUM")
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$Date
+Case of 
+: ([Analysis]SortOrder>95)
+[CashBookTrxs]AcctNo:=[Supplier]Phone
+Else 
+[CashBookTrxs]AcctNo:=$AcctNo
+End case 
+[CashBookTrxs]Amount:=Sum([Trxs]TotAmt)
+Case of 
+: (($3=1) | ($3>=5)) & (Count parameters>2)
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+$GLCode+","+[Supplier]SupplierName;1;50)
+Else 
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" "+[Supplier]SupplierName;1;50)
+End case 
+
+[CashBookTrxs]DocNum:=[Trxs]Description
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+SAVE RECORD([CashBookTrxs])
+DIFFERENCE("ToSum";"GLCodes";"ToSum")
+Else 
+For ($k;1;Records in selection([Trxs]))
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$Date
+Case of 
+: ([Analysis]SortOrder>95)
+[CashBookTrxs]AcctNo:=[Supplier]Phone
+Else 
+[CashBookTrxs]AcctNo:=$AcctNo
+End case 
+[CashBookTrxs]Amount:=[Trxs]TotAmt
+Case of 
+: (($3=1) | ($3>=5)) & (Count parameters>2)
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+$GLCode+","+[Supplier]SupplierName;1;50)
+Else 
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Trxs]AgreeNo+" "+[Supplier]SupplierName;1;50)
+End case 
+[CashBookTrxs]DocNum:=[Trxs]Description
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+SAVE RECORD([CashBookTrxs])
+NEXT RECORD([Trxs])
+End for 
+End if 
+End if 
+USE SET("ToSum")
+End for 
+QUERY SELECTION([Trxs];[Trxs]TotAmt#0)
+If (Records in selection([Trxs])>0)
+$t:=$t+Records in selection([Trxs])
+CREATE SET([Trxs];"TempToReport")
+UNION("TempToReport";"ToReport";"ToReport")
+End if 
+End if 
+NEXT RECORD([Facility])
+End for 
+Until ($Repeat=0)
+$Date:=$Date+1
+End while 
+If ($t>0)
+AlertMessage (Get localized string("There are")+" "+String($t)+" "+Get localized string("GL Report2"))
+USE SET("ToReport")
+DISTINCT VALUES([Trxs]AnalysisCode;aInvalidAnlys)
+$Alert:=""
+For ($x;1;Size of array(aInvalidAnlys))
+$Alert:=$Alert+aInvalidAnlys{$x}+","
+End for 
+AlertMessage ($Alert)
+End if 
+CLEAR SET("ToSum")
+CLEAR SET("Temp")
+CLEAR SET("ToReport")
+READ WRITE([Journal])
+READ WRITE([CashBookTrxs])
+UNLOAD RECORD([Journal])
+UNLOAD RECORD([CashBookTrxs])

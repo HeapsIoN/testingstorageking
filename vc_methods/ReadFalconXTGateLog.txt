@@ -1,0 +1,246 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Buffer;$Field)
+C_DATE($USDate)
+C_LONGINT($i;$j)
+ARRAY TEXT(asEmails;0)
+$Beep:=False
+If (Test path name(<>sTutPath+"LocalEvent.txt")=Is a document)
+$Doc:=Open document(<>sTutPath+"LocalEvent.txt")
+SET AUTOMATIC RELATIONS(True;False)
+READ WRITE([GateLog])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+While (Length($Buffer)>=10)//Otherwise EOF
+CREATE RECORD([GateLog])
+[GateLog]CustCode:=<>sFacility
+For ($i;1;14)//Fourteen fields
+$j:=Position(",";$Buffer)
+If ($j>1)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=3)
+[GateLog]GateNo:=Num($Field)
+: ($i=5)
+If ([Facility]FalconUSDate=True)
+$FirstPos:=Position("/";$Field)
+$SecondPos:=Position("/";$Field;$FirstPos+1)
+$Day:=Substring($Field;$FirstPos+1;$SecondPos-$FirstPos-1)
+$Month:=Substring($Field;1;$FirstPos-1)
+$MonthNum:=Num($Month)// if there is a space before date
+$Year:=Substring($Field;$SecondPos+1)
+[GateLog]GateDate:=Date($Day+"/"+String($MonthNum)+"/"+$Year)
+Else 
+[GateLog]GateDate:=Date($Field)
+End if 
+: ($i=6)
+[GateLog]GateTime:=Time($Field)
+: ($i=7)
+[GateLog]UnitNo:=Replace string($Field;" ";"")
+: ($i=11)
+[GateLog]GateActionText:=Replace string($Field;" ";"";1)
+: ($i=12)
+[GateLog]GateKeyed:=Replace string($Field;" ";"")
+Else 
+//Do nothing
+End case 
+End if 
+End for 
+If ([GateLog]GateNo=0) | ([GateLog]GateKeyed="") | ([GateLog]GateKeyed="0")
+//Ignore trx as it relates to arming / disarming unit
+If ([GateLog]GateActionText="Denied Unknown Code") | ([GateLog]GateActionText="@Alarm@")
+ReadGateLogAlarmAction 
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+""
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+SAVE RECORD([GateLog])
+$Beep:=True
+End if 
+////If ([GateLog]GateActionText="@Door Close@") //fb10417
+If (([GateLog]GateActionText="@Door Close@") | ([GateLog]GateActionText="@Enter Area@") | ([GateLog]GateActionText="@Door Open@"))
+
+QUERY([Unit];[Unit]UnitNo=[GateLog]UnitNo)
+UNLOAD RECORD([Customer])
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+If (Records in selection([Customer])>0)
+[GateLog]CustCode:=[Customer]CustomerCode
+Else 
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+SAVE RECORD([GateLog])
+End if 
+If ([GateLog]GateActionText="@Auto Log Off Site@")
+READ WRITE([Unit])
+QUERY([Unit];[Unit]UnitNo=[GateLog]UnitNo)
+UNLOAD RECORD([Customer])
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+If (Records in selection([Customer])>0)
+[GateLog]CustCode:=[Customer]CustomerCode
+Else 
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+SAVE RECORD([GateLog])
+APPLY TO SELECTION([Unit];[Unit]Status:="Rented")
+End if 
+Else 
+$Continue:=True
+QUERY([Customer];[Customer]GatePIN=[GateLog]GateKeyed)
+If (Records in selection([Customer])>0) & ([GateLog]GateActionText#"Denied Unknown Code")
+ORDER BY([Customer];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[Customer]CustomerCode
+$Length:=Length([GateLog]GateActionText)
+Case of 
+: (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False)
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+":"+Substring([Customer]CustomerName;1;31-$Length)
+Else 
+[GateLog]GateActionText:=[GateLog]GateActionText+":"+Substring([Customer]CustomerName;1;38-$Length)
+If ([Facility]AccessFee=True) & (([GateLog]GateActionText="@Area Enter@") | ([GateLog]GateActionText="@Enter Area@"))
+If ([Customer]CustomAccessFee#[Facility]AccessFeeCost)
+If ([Customer]CustomAccessFee>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Customer]CustomAccessFee
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Facility]AccessFeeCost
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+If ($Continue)
+QUERY([PhotosCards];[PhotosCards]PINCardNo=[GateLog]GateKeyed)
+If (Records in selection([PhotosCards])>0)
+ORDER BY([PhotosCards];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[PhotosCards]Code
+RELATE ONE([PhotosCards]Code)
+$Length:=Length([GateLog]GateActionText)
+Case of 
+: (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False)
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+":"+Substring([PhotosCards]Name;1;31-$Length)
+Else 
+[GateLog]GateActionText:=[GateLog]GateActionText+":"+Substring([PhotosCards]Name;1;38-$Length)
+If ([Facility]AccessFee=True) & (([GateLog]GateActionText="@Area Enter@") | ([GateLog]GateActionText="@Enter Area@"))
+If ([Customer]CustomAccessFee#[Facility]AccessFeeCost)
+If ([Customer]CustomAccessFee>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Customer]CustomAccessFee
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Facility]AccessFeeCost
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+End if 
+If ($Continue)
+QUERY([StaffPINS];[StaffPINS]PINNumber=[GateLog]GateKeyed)
+If (Records in selection([StaffPINS])>0)
+[GateLog]GateActionText:="STAFF:"+Substring([StaffPINS]Name;1;20)
+Else 
+If ([GateLog]GateActionText="@Enter Area@") | ([GateLog]GateActionText="@Area Enter@")
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateKeyed+" "+[GateLog]UnitNo+" should be denied"
+Else 
+[GateLog]GateActionText:="INVALID:"+[GateLog]GateKeyed
+End if 
+End if 
+End if 
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+If (([GateLog]GateActionText="@Area Enter@") | ([GateLog]GateActionText="@Area Exit@") | ([GateLog]GateActionText="@Auto Door Rearm@") | ([GateLog]GateActionText="@Exit Area@") | ([GateLog]GateActionText="@Enter Area@") | ([GateLog]GateActionText="@Auto Log Off Site@")) & ([Facility]OnSiteDisable=False)
+READ WRITE([Unit])
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+RELATE MANY SELECTION([Unit]AgreeNo)
+QUERY SELECTION([Unit];[Unit]Vacant=False)//SDD 18/03/13 Add line to prevent changes to vacant units
+If (Records in selection([Unit])<10)//SDD 18/03/13 In case lines above returned lots of units
+If ([GateLog]GateActionText="@Area Enter@") | ([GateLog]GateActionText="@Enter Area@")
+APPLY TO SELECTION([Unit];[Unit]Status:="OnSite")
+Else 
+APPLY TO SELECTION([Unit];[Unit]Status:="Rented")
+End if 
+End if 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+SAVE RECORD([GateLog])
+$Beep:=True
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+DELETE DOCUMENT(<>sTutPath+"LocalEvent.txt")
+If ([GateLog]GateDate>=vdLastGateDate) & ([GateLog]GateDate<=Current date)
+vdLastGateDate:=[GateLog]GateDate
+vtLastGateTime:=[GateLog]GateTime
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+READ ONLY([GateLog])
+UNLOAD RECORD([GateLog])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+End if 
+If ($Beep)//Trx Received
+BEEP
+End if 

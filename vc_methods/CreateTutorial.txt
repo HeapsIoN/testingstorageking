@@ -1,0 +1,829 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Only called when new tutorial database is being set up
+C_BOOLEAN($1)
+C_LONGINT($i;$j;$x;$y;$z)
+C_TEXT($Path;$ImportDoc)
+C_TEXT($Country;$Product)
+If ($1)
+$Doc:=Open document(<>sTutPath+"NewSpecs.txt")
+RECEIVE PACKET($Doc;$Path;Char(13))
+CLOSE DOCUMENT($Doc)
+DELETE DOCUMENT(Document)
+$Country:=GetTextNo ($Path;1;",")
+$Product:=GetTextNo ($Path;2;",")
+OK:=1
+bAdd:=0
+bPrint:=0
+Else 
+//Open window(20;50;470;350;0)
+Open window((Screen width/2)-192;(Screen height/2)-180;(Screen width/2)+192;(Screen height/2)+180;5;"Select Country")
+DIALOG([Facility];"Country")
+CLOSE WINDOW
+If (OK=1)
+$Country:=asCountryCodes{asCountries}
+//Case of 
+//: (aPageNo=1)
+//$Country:="AU"
+//: (aPageNo=2)
+//$Country:="NZ"
+//: (aPageNo=3)
+//$Country:="US"
+//: (aPageNo=4)
+//$Country:="GB"
+//: (aPageNo=5)
+//$Country:="CA"
+//: (aPageNo=6)
+//$Country:="SG"
+//: (aPageNo=7)
+//$Country:="HK"
+//: (aPageNo=8)
+//$Country:="ZA"
+//: (aPageNo=9)
+//$Country:="TH"
+//Else 
+//$Country:="AU"
+//End case 
+Case of 
+: (Test path name(<>sResourcesPath+"Marina.txt")=Is a document)
+$Product:="BB"
+: (Test path name(<>sResourcesPath+"Rental.txt")=Is a document)
+$Product:="RR"
+: (Test path name(<>sResourcesPath+"Vault.txt")=Is a document)
+$Product:="TT"
+Else 
+$Product:="SP"
+End case 
+End if 
+End if 
+If (OK=1)
+$Path:=<>sTutPath+"Facility"+<>sSeparator
+If (Test path name($Path)=Is a folder) & ($1=False)
+ConfirmTwo (Get localized string("Create tutorial from your facility folder or Storman default folder?");Get localized string("Facility Folder");Get localized string("Storman Folder"))
+If (OK=0)
+$Path:=<>sTutPath+"Demo"+<>sSeparator
+End if 
+Else 
+$Path:=<>sTutPath+"Demo"+<>sSeparator
+End if 
+QUERY([UserLogins];[UserLogins]Name="Sync")//Don't log while creating tutorial data file
+READ WRITE([Facility])
+If (Test path name($Path+"System")=Is a document)
+SET CHANNEL(10;$Path+"System")
+RECEIVE RECORD([Facility])
+[Facility]TutorialData:=True
+[Facility]MaxUnits:=50
+[Facility]DeleteLogDays:=100
+SAVE RECORD([Facility])
+SET CHANNEL(11)
+bImport:=0
+Else 
+bImport:=0//Current date-!01/01/1999!
+Case of 
+: ($Product="BB")
+CREATE RECORD([Facility])
+[Facility]BusinessName:="The Demonstration Marina Ltd"
+[Facility]FacilityName:="City Marina"
+[Facility]FacilityCode:="SSCTY"
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]PDFName:="PDFCreator"
+[Facility]UsePDFWriter:=True
+[Facility]SVGMapScale:=5
+[Facility]PhotoCompression:=100
+[Facility]Custom1:="Custom Field 1"
+[Facility]Custom2:="Custom Field 2"
+[Facility]Custom3:="Custom Field 3"
+[Facility]Custom4:="Custom Field 4"
+[Facility]GatePINRandomLen:=6
+<>sFacility:="SSCTY"
+[Facility]Country:=$Country
+LoadFacilityCountries 
+[Facility]TaxNumber:=<>tDemoTaxNumber
+[Facility]TaxRate:=<>rDemoTaxRate
+[Facility]Address:=<>tDemoAddress
+[Facility]City:=<>tDemoCity
+[Facility]State:=<>tDemoState
+[Facility]PostZIPCode:=<>tDemoPostZIPCode
+[Facility]Phone:=<>tDemoPhone
+[Facility]Fax:=<>tDemoFax
+[Facility]PhoneFormat:=<>tDemoPhoneFormat
+[Facility]ShowABNInv:=<>bSetupShowABN
+[Facility]CurrencyFormat:=<>tSetupCurrencyFormat
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]YearStartDate:=<>dYearStart
+Repeat 
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;1;0;0)
+Until ([Facility]YearStartDate>=Current date)
+If ([Facility]YearStartDate>Current date)
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;-1;0;0)
+End if 
+<>dYearStart:=[Facility]YearStartDate
+[Facility]MinBalArrears:=20
+[Facility]NextAgreeNo:=58
+[Facility]NextReserveNo:=1
+[Facility]NextContactNo:=6
+[Facility]HeaderonInv:=True
+[Facility]PrtDialogInv:=True
+[Facility]BillonFirst:=False
+[Facility]RefundPolicy:=1
+[Facility]RentWeeklyMthly:=0.2308
+[Facility]InsWeeklyMthly:=0.2308
+[Facility]WeekEndDay:=7
+[Facility]PriorRefndPol:=0
+[Facility]RefndAgrChange:="000000000"
+[Facility]RefndWklyMths:=5
+[Facility]NoticeDaysReqd:=7
+[Facility]BackupInfo:="51030101"
+[Facility]AgedDebtorBreaks:="1,30,60,90,"//1=Incl Tax,2=Excl Tax then breaks
+If (<>iPlatform=3)
+[Facility]GateModemInit:="C:\\CSTech\\AccessEz\\Lock.dat"
+Else 
+[Facility]GateModemInit:=Replace string(<>sTutPath;"Tutorial:";"Lock.dat")
+End if 
+[Facility]LastDaily:=Current date-1
+[Facility]AddressStyle:=1
+[Facility]AddressXPos:=40
+[Facility]AddressYPos:=9
+[Facility]ReCalcActivity:=[Facility]LastDaily-1
+[Facility]CashBookStart:=[Facility]YearStartDate
+<>dCashBookStart:=[Facility]CashBookStart
+[Facility]InsuranceAgent:="The Insurance Company Ltd"+Char(13)+"Storage City"
+[Facility]InsuranceAgentType:=3
+[Facility]GateTrigger1:=1
+[Facility]GateTrigger2:=2
+[Facility]GateTrigger3:=3
+[Facility]ReportSettings:="TY211NCN1104"
+[Facility]MarketingTypeTitle:="Marketing Type"
+[Facility]CustomerTypeTitle:="Customer Type"
+[Facility]BusinessTypeTitle:="Business Type"
+vReportSettings:=[Facility]ReportSettings
+[Facility]AutoFirstName:=2
+[Facility]GateOnStart:=False
+[Facility]ModemSettings:=29706
+[Facility]RemindFollowups:=True
+[Facility]TutorialData:=True
+[Facility]Version:=<>iVersion
+[Facility]ProductCode:=$Product
+
+<>sProduct:=$Product
+Case of 
+: ([Facility]ProductCode="@B")
+<>vtUnits:="berth"
+<>vtUnitsCap:="Berth"
+
+: ([Facility]ProductCode="@R")
+<>vtUnits:="appliance"
+<>vtUnitsCap:="Appliance"
+: ([Facility]ProductCode="@C")
+<>vtUnits:="space"
+<>vtUnitsCap:="Space"
+Else 
+<>vtUnits:="unit"
+<>vtUnitsCap:="Unit"
+
+End case 
+If (bAdd=1)
+[Facility]UseGateSys:=True
+Else 
+[Facility]UseGateSys:=False
+End if 
+[Facility]SyncingOn:=False
+[Facility]UseCashBook:=False
+[Facility]LastBanking:=Current date-4
+[Facility]MaxUnits:=50
+[Facility]DeleteLogDays:=100
+[Facility]PullDownDefault:=1
+[Facility]PrintOverdues:=True
+[Facility]PrintListAP:=True
+[Facility]ShowSizeonInv:=True
+[Facility]PrtMthRptsDP:=True
+[Facility]PrintLogafterDP:=False
+[Facility]CombineNxtDueDays:=7
+[Facility]AgreemtSortDefault:=1
+[Facility]LoginStartup:=False
+[Facility]LetterSignOff:="John & Jane Smith"
+: ($Product="RR")
+CREATE RECORD([Facility])
+[Facility]BusinessName:="The Demonstration Hire Company Ltd"
+[Facility]FacilityName:="City Facility"
+[Facility]FacilityCode:="SSCTY"
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]PDFName:="PDFCreator"
+[Facility]UsePDFWriter:=True
+[Facility]PhotoCompression:=100
+[Facility]Custom1:="Custom Field 1"
+[Facility]Custom2:="Custom Field 2"
+[Facility]Custom3:="Custom Field 3"
+[Facility]Custom4:="Custom Field 4"
+[Facility]HideGraphics:=True
+[Facility]GatePINRandomLen:=6
+<>sFacility:="SSCTY"
+[Facility]Country:=$Country
+LoadFacilityCountries 
+[Facility]TaxNumber:=<>tDemoTaxNumber
+[Facility]TaxRate:=<>rDemoTaxRate
+[Facility]Address:=<>tDemoAddress
+[Facility]City:=<>tDemoCity
+[Facility]State:=<>tDemoState
+[Facility]PostZIPCode:=<>tDemoPostZIPCode
+[Facility]Phone:=<>tDemoPhone
+[Facility]Fax:=<>tDemoFax
+[Facility]PhoneFormat:=<>tDemoPhoneFormat
+[Facility]ShowABNInv:=<>bSetupShowABN
+[Facility]CurrencyFormat:=<>tSetupCurrencyFormat
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]YearStartDate:=<>dYearStart
+Repeat 
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;1;0;0)
+Until ([Facility]YearStartDate>=Current date)
+If ([Facility]YearStartDate>Current date)
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;-1;0;0)
+End if 
+<>dYearStart:=[Facility]YearStartDate
+[Facility]MinBalArrears:=20
+[Facility]NextAgreeNo:=58
+[Facility]NextReserveNo:=1
+[Facility]NextContactNo:=6
+[Facility]HeaderonInv:=True
+[Facility]PrtDialogInv:=True
+[Facility]BillonFirst:=False
+[Facility]RefundPolicy:=1
+[Facility]RentWeeklyMthly:=0.2308
+[Facility]InsWeeklyMthly:=0.2308
+[Facility]WeekEndDay:=7
+[Facility]PriorRefndPol:=0
+[Facility]RefndAgrChange:="000000000"
+[Facility]RefndWklyMths:=5
+[Facility]NoticeDaysReqd:=7
+[Facility]BackupInfo:="51030101"
+[Facility]GateSysType:=2
+[Facility]AgedDebtorBreaks:="1,30,60,90,"//1=Incl Tax,2=Excl Tax then breaks
+If (<>iPlatform=3)
+[Facility]GateModemInit:="C:\\CSTech\\AccessEz\\Lock.dat"
+Else 
+[Facility]GateModemInit:=Replace string(<>sTutPath;"Tutorial:";"Lock.dat")
+End if 
+[Facility]LastDaily:=Current date-1
+[Facility]AddressStyle:=1
+[Facility]AddressXPos:=40
+[Facility]AddressYPos:=9
+[Facility]ReCalcActivity:=[Facility]LastDaily-1
+[Facility]CashBookStart:=[Facility]YearStartDate
+<>dCashBookStart:=[Facility]CashBookStart
+[Facility]InsuranceAgent:="The Insurance Company Ltd"+Char(13)+"Rental City"
+[Facility]InsuranceAgentType:=3
+[Facility]GateTrigger1:=1
+[Facility]GateTrigger2:=2
+[Facility]GateTrigger3:=3
+[Facility]ReportSettings:="TY211NCN1104"
+[Facility]FutureMoveIns:=92
+[Facility]MarketingTypeTitle:="Marketing Type"
+[Facility]CustomerTypeTitle:="Customer Type"
+[Facility]BusinessTypeTitle:="Business Type"
+[Facility]DailyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]WeeklyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]MonthlyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]YearlyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+vReportSettings:=[Facility]ReportSettings
+[Facility]AutoFirstName:=2
+[Facility]GateOnStart:=False
+[Facility]ModemSettings:=29706
+[Facility]RemindFollowups:=True
+[Facility]TutorialData:=True
+[Facility]Version:=<>iVersion
+[Facility]ProductCode:=$Product
+<>sProduct:=$Product
+Case of 
+: ([Facility]ProductCode="@B")
+<>vtUnits:="berth"
+<>vtUnitsCap:="Berth"
+
+: ([Facility]ProductCode="@R")
+<>vtUnits:="appliance"
+<>vtUnitsCap:="Appliance"
+: ([Facility]ProductCode="@C")
+<>vtUnits:="space"
+<>vtUnitsCap:="Space"
+Else 
+<>vtUnits:="unit"
+<>vtUnitsCap:="Unit"
+
+End case 
+If (bAdd=1)
+[Facility]UseGateSys:=True
+Else 
+[Facility]UseGateSys:=False
+End if 
+[Facility]SyncingOn:=False
+[Facility]UseCashBook:=False
+[Facility]LastBanking:=Current date-4
+[Facility]MaxUnits:=50
+[Facility]DeleteLogDays:=100
+[Facility]PullDownDefault:=1
+[Facility]PrintOverdues:=True
+[Facility]PrintListAP:=True
+[Facility]ShowSizeonInv:=True
+[Facility]PrtMthRptsDP:=True
+[Facility]PrintLogafterDP:=False
+[Facility]CombineNxtDueDays:=7
+[Facility]AgreemtSortDefault:=1
+[Facility]LoginStartup:=False
+[Facility]LetterSignOff:="John & Jane Smith"
+: ($Product="TT")
+CREATE RECORD([Facility])
+[Facility]BusinessName:="The Demonstration Vault Company Ltd"
+[Facility]FacilityName:="City Facility"
+[Facility]FacilityCode:="SSCTY"
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]PDFName:="PDFCreator"
+[Facility]UsePDFWriter:=True
+[Facility]SVGMapScale:=80
+[Facility]PhotoCompression:=100
+[Facility]Custom1:="Custom Field 1"
+[Facility]Custom2:="Custom Field 2"
+[Facility]Custom3:="Custom Field 3"
+[Facility]Custom4:="Custom Field 4"
+[Facility]GatePINRandomLen:=6
+<>sFacility:="SSCTY"
+[Facility]Country:=$Country
+LoadFacilityCountries 
+[Facility]TaxNumber:=<>tDemoTaxNumber
+[Facility]TaxRate:=<>rDemoTaxRate
+[Facility]Address:=<>tDemoAddress
+[Facility]City:=<>tDemoCity
+[Facility]State:=<>tDemoState
+[Facility]PostZIPCode:=<>tDemoPostZIPCode
+[Facility]Phone:=<>tDemoPhone
+[Facility]Fax:=<>tDemoFax
+[Facility]PhoneFormat:=<>tDemoPhoneFormat
+[Facility]ShowABNInv:=<>bSetupShowABN
+[Facility]CurrencyFormat:=<>tSetupCurrencyFormat
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]YearStartDate:=<>dYearStart
+Repeat 
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;1;0;0)
+Until ([Facility]YearStartDate>=Current date)
+If ([Facility]YearStartDate>Current date)
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;-1;0;0)
+End if 
+<>dYearStart:=[Facility]YearStartDate
+[Facility]MinBalArrears:=20
+[Facility]NextAgreeNo:=60
+[Facility]NextReserveNo:=3
+[Facility]NextContactNo:=6
+[Facility]HeaderonInv:=True
+[Facility]PrtDialogInv:=True
+[Facility]BillonFirst:=False
+[Facility]RefundPolicy:=1
+[Facility]RentWeeklyMthly:=0.2308
+[Facility]InsWeeklyMthly:=0.2308
+[Facility]WeekEndDay:=7
+[Facility]PriorRefndPol:=0
+[Facility]RefndAgrChange:="000000000"
+[Facility]RefndWklyMths:=5
+[Facility]NoticeDaysReqd:=7
+[Facility]BackupInfo:="51030101"
+[Facility]AgedDebtorBreaks:="1,30,60,90,"//1=Incl Tax,2=Excl Tax then breaks
+If (<>iPlatform=3)
+[Facility]GateModemInit:="C:\\CSTech\\AccessEz\\Lock.dat"
+Else 
+[Facility]GateModemInit:=Replace string(<>sTutPath;"Tutorial:";"Lock.dat")
+End if 
+[Facility]LastDaily:=Current date-1
+[Facility]AddressStyle:=1
+[Facility]AddressXPos:=40
+[Facility]AddressYPos:=9
+[Facility]ReCalcActivity:=[Facility]LastDaily-1
+[Facility]CashBookStart:=[Facility]YearStartDate
+<>dCashBookStart:=[Facility]CashBookStart
+[Facility]InsuranceAgent:="The Insurance Company Ltd"+Char(13)+"Storage City"
+[Facility]InsuranceAgentType:=3
+[Facility]GateTrigger1:=1
+[Facility]GateTrigger2:=2
+[Facility]GateTrigger3:=3
+[Facility]ReportSettings:="TY211NCN1104"
+[Facility]MarketingTypeTitle:="Marketing Type"
+[Facility]CustomerTypeTitle:="Customer Type"
+[Facility]BusinessTypeTitle:="Business Type"
+vReportSettings:=[Facility]ReportSettings
+[Facility]AutoFirstName:=2
+[Facility]GateOnStart:=False
+[Facility]ModemSettings:=29706
+[Facility]RemindFollowups:=True
+[Facility]TutorialData:=True
+[Facility]Version:=<>iVersion
+[Facility]ProductCode:=$Product
+<>sProduct:=$Product
+Case of 
+: ([Facility]ProductCode="@B")
+<>vtUnits:="berth"
+<>vtUnitsCap:="Berth"
+
+: ([Facility]ProductCode="@R")
+<>vtUnits:="appliance"
+<>vtUnitsCap:="Appliance"
+: ([Facility]ProductCode="@C")
+<>vtUnits:="space"
+<>vtUnitsCap:="Space"
+Else 
+<>vtUnits:="unit"
+<>vtUnitsCap:="Unit"
+
+End case 
+If (bAdd=1)
+[Facility]UseGateSys:=True
+Else 
+[Facility]UseGateSys:=False
+End if 
+[Facility]SyncingOn:=False
+[Facility]UseCashBook:=False
+[Facility]LastBanking:=Current date-4
+[Facility]MaxUnits:=50
+[Facility]DeleteLogDays:=100
+[Facility]PullDownDefault:=1
+[Facility]PrintOverdues:=True
+[Facility]PrintListAP:=True
+[Facility]ShowSizeonInv:=True
+[Facility]PrtMthRptsDP:=True
+[Facility]PrintLogafterDP:=False
+[Facility]CombineNxtDueDays:=7
+[Facility]AgreemtSortDefault:=1
+[Facility]LoginStartup:=False
+[Facility]LetterSignOff:="John & Jane Smith"
+Else 
+
+CREATE RECORD([Facility])
+[Facility]BusinessName:="The Demonstration Storage Company Ltd"
+[Facility]FacilityName:="City Facility"
+[Facility]FacilityCode:="SSCTY"
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]PDFName:="PDFCreator"
+[Facility]UsePDFWriter:=True
+[Facility]SVGMapScale:=10
+[Facility]PhotoCompression:=100
+[Facility]Custom1:="Custom Field 1"
+[Facility]Custom2:="Custom Field 2"
+[Facility]Custom3:="Custom Field 3"
+[Facility]Custom4:="Custom Field 4"
+[Facility]GatePINRandomLen:=6
+<>sFacility:="SSCTY"
+[Facility]Country:=$Country
+LoadFacilityCountries 
+[Facility]TaxNumber:=<>tDemoTaxNumber
+[Facility]TaxRate:=<>rDemoTaxRate
+[Facility]Address:=<>tDemoAddress
+[Facility]City:=<>tDemoCity
+[Facility]State:=<>tDemoState
+[Facility]PostZIPCode:=<>tDemoPostZIPCode
+[Facility]Phone:=<>tDemoPhone
+[Facility]Fax:=<>tDemoFax
+[Facility]PhoneFormat:=<>tDemoPhoneFormat
+[Facility]ShowABNInv:=<>bSetupShowABN
+[Facility]CurrencyFormat:=<>tSetupCurrencyFormat
+[Facility]RoundDefault:=<>iSetupRound
+[Facility]YearStartDate:=<>dYearStart
+Repeat 
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;1;0;0)
+Until ([Facility]YearStartDate>=Current date)
+If ([Facility]YearStartDate>Current date)
+[Facility]YearStartDate:=Add to date([Facility]YearStartDate;-1;0;0)
+End if 
+<>dYearStart:=[Facility]YearStartDate
+[Facility]MinBalArrears:=20
+[Facility]NextAgreeNo:=58
+[Facility]NextReserveNo:=4
+[Facility]NextContactNo:=7
+[Facility]HeaderonInv:=True
+[Facility]CustomInvFooter:=True
+[Facility]GraphiconInv:=True
+[Facility]PrtDialogInv:=True
+[Facility]BillonFirst:=False
+[Facility]RefundPolicy:=1
+[Facility]RentWeeklyMthly:=0.2308
+[Facility]InsWeeklyMthly:=0.2308
+[Facility]WeekEndDay:=7
+[Facility]PriorRefndPol:=0
+[Facility]RefndAgrChange:="000000000"
+[Facility]RefndWklyMths:=5
+[Facility]NoticeDaysReqd:=7
+[Facility]BackupInfo:="51030101"
+[Facility]AgedDebtorBreaks:="1,30,60,90,"//1=Incl Tax,2=Excl Tax then breaks
+If (<>iPlatform=3)
+[Facility]GateModemInit:="C:\\CSTech\\AccessEz\\Lock.dat"
+Else 
+[Facility]GateModemInit:=Replace string(<>sTutPath;"Tutorial:";"Lock.dat")
+End if 
+[Facility]LastDaily:=Current date-1
+[Facility]AddressStyle:=1
+[Facility]AddressXPos:=40
+[Facility]AddressYPos:=9
+[Facility]ReCalcActivity:=[Facility]LastDaily-1
+[Facility]CashBookStart:=[Facility]YearStartDate
+<>dCashBookStart:=[Facility]CashBookStart
+[Facility]InsuranceAgent:="The Insurance Company Ltd"+Char(13)+"Storage City"
+[Facility]InsuranceAgentType:=3
+[Facility]GateTrigger1:=1
+[Facility]GateTrigger2:=2
+[Facility]GateTrigger3:=3
+[Facility]ReportSettings:="TY211NCN1104"
+[Facility]MarketingTypeTitle:="Marketing Type"
+[Facility]CustomerTypeTitle:="Customer Type"
+[Facility]BusinessTypeTitle:="Business Type"
+vReportSettings:=[Facility]ReportSettings
+[Facility]AutoFirstName:=2
+[Facility]GateOnStart:=False
+[Facility]ModemSettings:=29706
+[Facility]RemindFollowups:=True
+[Facility]TutorialData:=True
+[Facility]Version:=<>iVersion
+[Facility]ProductCode:=$Product
+<>sProduct:=$Product
+Case of 
+: ([Facility]ProductCode="@B")
+<>vtUnits:="berth"
+<>vtUnitsCap:="Berth"
+
+: ([Facility]ProductCode="@R")
+<>vtUnits:="appliance"
+<>vtUnitsCap:="Appliance"
+: ([Facility]ProductCode="@C")
+<>vtUnits:="space"
+<>vtUnitsCap:="Space"
+Else 
+<>vtUnits:="unit"
+<>vtUnitsCap:="Unit"
+
+End case 
+If (bAdd=1)
+[Facility]UseGateSys:=True
+Else 
+[Facility]UseGateSys:=False
+End if 
+[Facility]SyncingOn:=False
+[Facility]UseCashBook:=False
+[Facility]LastBanking:=Current date-4
+[Facility]MaxUnits:=50
+[Facility]DeleteLogDays:=100
+[Facility]PullDownDefault:=1
+[Facility]PrintOverdues:=True
+[Facility]PrintListAP:=True
+[Facility]ShowSizeonInv:=True
+[Facility]PrtMthRptsDP:=True
+[Facility]PrintLogafterDP:=False
+[Facility]CombineNxtDueDays:=7
+[Facility]AgreemtSortDefault:=1
+[Facility]LoginStartup:=False
+[Facility]LetterSignOff:="John & Jane Smith"
+End case 
+[Facility]DailyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]WeeklyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]MonthlyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]YearlyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+<>sLetterSignOff:=[Facility]LetterSignOff
+[Facility]PrimaryKeyMin:=1
+[Facility]PrimaryKeyMax:=20000000
+[Facility]SVGBackgroundImage:=True
+SAVE RECORD([Facility])
+
+DemoCreateFacility 
+
+InitNextPrimaryKeys 
+//CREATE RECORD([StaffPINS])
+//[StaffPINS]Name:="John"
+//[StaffPINS]PINNumber:="1234"
+//[StaffPINS]TimeZoneNo:=1
+//[StaffPINS]FacilityCode:=[Facility]FacilityCode
+//SAVE RECORD([StaffPINS])
+End if 
+InitSites 
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+Open window(20;50;450;150;0)
+ARRAY TEXT(asFiles;Get last table number)
+//For ($j;1;2)
+//If ($j=1)
+//$x:=25
+//$y:=Get last table number-25
+//$z:=-1
+//Else 
+//$x:=2
+//$y:=6
+//$z:=1
+//InitArrays   //Call this again to setup arrays
+//End if 
+
+For ($i;1;Size of array(asFiles))
+If (Is table number valid($i))
+asFiles{$i}:=Table name($i)+".slk"
+//If ($i#10) & ($i#11) & ($i#13) & ($i#14) & ($i#16) & ($i#18) & ($i#19) & ($i#20) & ($i#23) & ($i#24)
+$ImportDoc:=$Path+$Country+asFiles{$i}//Use country if possible
+If (Test path name($ImportDoc)#Is a document)
+$ImportDoc:=$Path+asFiles{$i}
+End if 
+If (Test path name($ImportDoc)=Is a document)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Importing from")+" "+asFiles{$i}+"          ")
+$p:=Table($i)
+DEFAULT TABLE($p->)
+READ WRITE($p->)
+FORM SET INPUT("Output")
+IMPORT SYLK($ImportDoc)
+READ ONLY($p->)
+UNLOAD RECORD($p->)
+End if 
+//End if 
+End if 
+End for 
+InitArrays 
+//End for 
+If (<>bEnglishSpelling=False)
+READ WRITE([Analysis])
+QUERY([Analysis];[Analysis]Description="@Cheque@")
+APPLY TO SELECTION([Analysis];[Analysis]Description:=Replace string([Analysis]Description;"Cheque";"Check"))
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+End if 
+READ WRITE([Analysis])
+ALL RECORDS([Analysis])
+APPLY TO SELECTION([Analysis];[Analysis]Groups:="ALL")
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+READ WRITE([Notices])
+QUERY([Notices];[Notices]DaysAfter>0;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]RefDateField=0)
+APPLY TO SELECTION([Notices];[Notices]RefDateField:=44)
+READ ONLY([Notices])
+UNLOAD RECORD([Notices])
+bImport:=0
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]RegularRent#0)
+APPLY TO SELECTION([Agreement];[Agreement]AutoPayAmt:=[Agreement]RegularRent)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@")
+For ($i;1;Records in selection([Agreement]))
+RELATE MANY([Agreement]RAgreeNo)
+RELATE ONE([Agreement]BillingPlanCode)
+$Total:=0
+
+For ($j;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([BillPlan]PlanPeriod="Week")
+If ([UnitType]WeeklyRate<=0)
+[UnitType]WeeklyRate:=Round([UnitType]MonthlyRate*[Facility]RentWeeklyMthly;2)
+End if 
+$Total:=$Total+CalculateBaseRate (2;0)
+Else 
+$Total:=$Total+CalculateBaseRate (2;0)
+End if 
+NEXT RECORD([Unit])
+End for 
+[Agreement]RegularRent:=Round($Total;2)
+[Agreement]DiscountAmt:=Round(([Agreement]RegularRent*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]LastMthsAdv:=[Agreement]MthsAdv
+[Agreement]AutoPayType:=1
+[Agreement]AutoPayAmt:=[Agreement]RentAmt
+[Agreement]AuthCCSigned:=[Agreement]MoveIn
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+CLOSE WINDOW
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+CalcRentedValues (<>sFacility;!00-00-00!;False;True)
+DEFAULT TABLE([Unit])
+READ WRITE([Unit])
+ALL RECORDS([Unit])
+Open window(20;50;300;150;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Checking Move-In and Move-Out dates in Unit file")+"           ")
+For ($i;1;Records in selection)
+RELATE ONE([Unit]AgreeNo)
+If (Records in selection([Agreement])>0)
+If (Abs([Unit]MoveIn-[Agreement]MoveIn)<10)
+[Unit]MoveIn:=[Agreement]MoveIn
+End if 
+If (Abs([Unit]MoveOut-[Agreement]MoveOut)<10)
+[Unit]MoveOut:=[Agreement]MoveOut
+End if 
+[Unit]Vacant:=False
+[Unit]Status:=<>asUnitStatus{1}
+Else 
+[Unit]Vacant:=True
+If ([Unit]ReservedTo>"")
+[Unit]Status:=<>asUnitStatus{3}
+//Else Status is already set
+//  [Unit]Status:=?asUnitStatus{2}
+End if 
+End if 
+$j:=Position("x";[Unit]UnitSize)
+If ($j>1) & ([Unit]UnitLength=0) & ([Unit]UnitWidth=0)
+[Unit]UnitLength:=Num(Substring([Unit]UnitSize;1;$j-1))
+[Unit]UnitWidth:=Num(Substring([Unit]UnitSize;$j+1))
+[Unit]UnitAreaSize:=Round([Unit]UnitLength*[Unit]UnitWidth;2)
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]XCoordinate:=[Unit]XCoordinate
+[Unit]YCoordinate:=[Unit]YCoordinate
+If ([Unit]Status="Reserved")
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]QuotedRate:=[UnitType]MonthlyRate
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+ReCalcUnits 
+READ WRITE([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveIn>!00-00-00!;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+For ($i;1;Records in selection([UnitHistory]))
+QUERY([Unit];[Unit]RUnitNo=[UnitHistory]UnitNo)
+[UnitHistory]MoveIn:=[Unit]MoveIn
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+READ ONLY([UnitHistory])
+If (<>t4DWrite)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Loading Sample Notices Letters")+"                                     ")
+DEFAULT TABLE([Notices])
+READ WRITE([Notices])
+ALL RECORDS
+LoadLetters ($Path)
+End if 
+CLOSE WINDOW
+<>tBatch:=True
+CalcBalance (True;False;True;True)
+<>tBatch:=False
+$Date:=Current date-59
+For ($i;1;60)
+If ($i>57)
+$j:=2//Calculate Arrears
+Else 
+$j:=0//Don't calc Arrears as it will take forever
+End if 
+$j:=DailyActivity ($Date;$j;0;True)//Dont CalcRentedValues during here as it takes too long
+$Date:=$Date+1
+End for 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+CheckMatching (False;2;True;!00-00-00!;[Facility]FacilityCode)
+SET WINDOW TITLE(Get localized string("Tutorial Database"))
+If (bPrint=1) & (<>t4DWrite)
+$i:=Test path name(<>sTutPath+"DemoInst.4w7")
+If ($i=1)
+ConfirmTwo (Get localized string("The Storman demo instructions will now be printed. Please select paper size in Page Setup. Continue?"))
+If (OK=1)
+$Area:=WR New offscreen area 
+WR OPEN DOCUMENT ($Area;<>sTutPath+"DemoInst.4w7";"4WR7")
+WR SET PRINT OPTION ($Area;wr number of copies option;1)
+WR EXECUTE COMMAND ($Area;wr cmd page setup)
+WR EXECUTE COMMAND ($Area;wr cmd print)
+WR DELETE OFFSCREEN AREA ($Area)
+End if 
+Else 
+AlertMessage (Get localized string("The Demonstration instructions file could not be found!"))
+End if 
+End if 
+InitSites 
+CheckDemoDates (True;False)
+
+DemoCreateBillPlan 
+DemoCreateMarketingTypes (True;"")
+DemoCreateAnalysisCodes 
+DemoCreateOtherChgs 
+DemoCreateCustomers 
+DemoAddToCustomers 
+DemoCreatePictures 
+DemoCreateStaffPINs 
+
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)//Don't log while creating tutorial data file
+READ WRITE([EventLog])
+ALL RECORDS([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]SyncStatus:=1)
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+bImport:=0
+Case of 
+: ([Facility]ProductCode="SL")//Lite Version
+SET MENU BAR(5)
+: ([Facility]ProductCode="PR")//Prospector
+SET MENU BAR(4)
+Else 
+SET MENU BAR(1)//WAS 6 Regular Storman without Central
+End case 
+vsWindowTitle:=Get localized string("Tutorial Database")
+DISABLE MENU ITEM(1;5)
+SET MENU ITEM(1;9;"Facility Database")
+<>sCurrentUser:="Admin"
+
+Else 
+QUIT 4D
+End if 

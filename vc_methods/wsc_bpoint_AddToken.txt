@@ -1,0 +1,105 @@
+//%attributes = {"folder":"bpoint","lang":"en"} comment added and reserved by 4D.
+// Method Name: wsc_bpoint_AddToken
+// Syntax: wsc_bpoint_AddToken($username_t; $password_t; $merchantNumber_t; $crn1_t; $crn2_t; $crn3_t; $cardNumber_t; $expiryDate_t) -> text
+// Created by: Robert.Richardson on: 14/05/12, 15:42:39
+// Description:
+//  Adds a customers credit card data to be stored as a token
+
+// Returns: 
+C_TEXT($0;$errCode_t)
+C_TEXT(token_t)
+C_TEXT(maskedCardNumber_t)
+C_TEXT($cardType_t)
+C_TEXT(errMessage_t)
+
+// Required Parameters: 
+C_TEXT($1;$username_t)
+C_TEXT($2;$password_t)
+C_TEXT($3;$merchantNumber_t)
+C_TEXT($4;$crn1_t)
+C_TEXT($5;$crn2_t)
+C_TEXT($6;$crn3_t)
+C_TEXT($7;$cardNumber_t)
+C_TEXT($8;$expiryDate_t)
+
+// Optional Parameters: --none--
+
+// Other Variables:
+C_TEXT($root)
+C_TEXT($subelem)
+C_TEXT($namespace)
+
+errMessage_t:=""
+token_t:=""
+maskedCardNumber_t:=""
+
+$namespace:="urn:Eve"
+$root:=DOM Create XML Ref("AddToken";$namespace)
+
+$subelem:=DOM Create XML element($root;"/AddToken/username")
+DOM SET XML ELEMENT VALUE($subelem;$1)
+
+$subelem:=DOM Create XML element($root;"/AddToken/password")
+DOM SET XML ELEMENT VALUE($subelem;$2)
+
+$subelem:=DOM Create XML element($root;"/AddToken/merchantNumber")
+DOM SET XML ELEMENT VALUE($subelem;$3)
+
+$subelem:=DOM Create XML element($root;"/AddToken/tokenRequest/CRN1")
+DOM SET XML ELEMENT VALUE($subelem;$4)
+
+$subelem:=DOM Create XML element($root;"/AddToken/tokenRequest/CRN2")
+DOM SET XML ELEMENT VALUE($subelem;$5)
+
+$subelem:=DOM Create XML element($root;"/AddToken/tokenRequest/CRN3")
+DOM SET XML ELEMENT VALUE($subelem;$6)
+
+$subelem:=DOM Create XML element($root;"/AddToken/tokenRequest/CardNumber")
+DOM SET XML ELEMENT VALUE($subelem;$7)
+
+$subelem:=DOM Create XML element($root;"/AddToken/tokenRequest/ExpiryDate")
+DOM SET XML ELEMENT VALUE($subelem;$8)
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+
+WEB SERVICE CALL("https://www.bpoint.com.au/evolve/service.asmx";"urn:Eve/AddToken";"AddToken";"urn:Eve";Web Service manual)
+$BpointError:=Num(WEB SERVICE Get info(0))
+
+If ($BpointError=0)
+C_BLOB($blob)
+C_TEXT($resroot)
+C_TEXT($ressubelem)
+WEB SERVICE GET RESULT($blob;"XMLOut";*)
+$resroot:=DOM Parse XML variable($blob)
+
+$ressubelem:=DOM Find XML element($resroot;"/AddTokenResponse/AddTokenResult/Token")
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;token_t)
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/AddTokenResponse/AddTokenResult/MaskedCardNumber")
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;maskedCardNumber_t)
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/AddTokenResponse/AddTokenResult/CardType")
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$cardType_t)
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/AddTokenResponse/response/ResponseCode")
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$errCode_t)
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/AddTokenResponse/response/ResponseMessage")
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;errMessage_t)
+End if 
+DOM CLOSE XML($resroot)
+
+End if 
+
+DOM CLOSE XML($root)
+
+$0:=$errCode_t

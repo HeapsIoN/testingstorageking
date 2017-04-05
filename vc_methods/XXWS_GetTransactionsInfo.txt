@@ -1,0 +1,156 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+SOAP DECLARATION(WS_IsAgreement;Is Boolean;SOAP input;"WS_IsAgreement")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+
+SOAP DECLARATION(WS_PurchaseOrder;Is text;SOAP output;"WS_PurchaseOrder")
+SOAP DECLARATION(WS_ArrearsComment;Is text;SOAP output;"WS_ArrearsComment")
+SOAP DECLARATION(WS_TotRentUnpaid;Is real;SOAP output;"WS_TotRentUnpaid")
+SOAP DECLARATION(WS_TotLateUnpaid;Is real;SOAP output;"WS_TotLateUnpaid")
+SOAP DECLARATION(WS_TotInsUnpaid;Is real;SOAP output;"WS_TotInsUnpaid")
+SOAP DECLARATION(WS_TotOthrUnpaid;Is real;SOAP output;"WS_TotOthrUnpaid")
+SOAP DECLARATION(WS_BalanceOwing;Is real;SOAP output;"WS_BalanceOwing")
+
+SOAP DECLARATION(WS_adTrxDate;Is date;SOAP output;"WS_adTrxDate")
+SOAP DECLARATION(WS_atTrxDescription;Is text;SOAP output;"WS_atTrxDescription")
+SOAP DECLARATION(WS_alTrxInvNo;Is longint;SOAP output;"WS_alInvNo")
+SOAP DECLARATION(WS_alTrxSeqNo;Is longint;SOAP output;"WS_alSeqNo")
+SOAP DECLARATION(WS_arTrxNetAmt;Is real;SOAP output;"WS_arTrxNetAmt")
+SOAP DECLARATION(WS_arTrxTaxAmt;Is real;SOAP output;"WS_arTrxTaxAmt")
+SOAP DECLARATION(WS_arTrxTotAmt;Is real;SOAP output;"WS_arTrxTotAmt")
+SOAP DECLARATION(WS_arTrxBalance;Is real;SOAP output;"WS_arTrxBalance")
+SOAP DECLARATION(WS_abTrxMatch;Is Boolean;SOAP output;"WS_abTrxMatch")
+
+$String:="Start WS_GetTransactionInfo"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+If (WS_IsAgreement=True)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtAgreementNumber)
+End if 
+Case of 
+: (Records in selection([Agreement])=0) & (Records in selection([Reservation])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement found"
+: (Records in selection([Agreement])=1) | (Records in selection([Reservation])=1)
+If (WS_IsAgreement=True)
+RELATE ONE([Agreement]CustomerCode)
+Else 
+RELATE ONE([Reservation]CustomerCode)
+End if 
+
+If ([Customer]Password=WS_vtPassword)
+
+QUERY([Trxs];[Trxs]AgreeNo=WS_vtAgreementNumber)
+For ($j;1;Records in selection([Trxs]))
+APPEND TO ARRAY(WS_adTrxDate;[Trxs]TrxDate)
+APPEND TO ARRAY(WS_atTrxDescription;[Trxs]Description)
+APPEND TO ARRAY(WS_alTrxInvNo;[Trxs]InvNo)
+APPEND TO ARRAY(WS_alTrxSeqNo;[Trxs]SeqNo)
+vTot:=[Trxs]TotAmt
+vTax:=[Trxs]TaxAmt
+vNet:=vTot-vTax
+APPEND TO ARRAY(WS_arTrxNetAmt;vNet)
+APPEND TO ARRAY(WS_arTrxTaxAmt;vTax)
+APPEND TO ARRAY(WS_arTrxTotAmt;vTot)
+APPEND TO ARRAY(WS_arTrxBalance;[Trxs]Balance)
+APPEND TO ARRAY(WS_abTrxMatch;[Trxs]Match)
+NEXT RECORD([Trxs])
+End for 
+
+WS_PurchaseOrder:=[Agreement]PurchaseOrder
+WS_ArrearsComment:=[Customer]ArrearsComment
+WS_TotRentUnpaid:=[Agreement]TotRentUnpaid
+WS_TotInsUnpaid:=[Agreement]TotInsUnpaid
+WS_TotOthrUnpaid:=[Agreement]TotOthrUnpaid
+WS_BalanceOwing:=[Agreement]BalanceOwing
+
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+
+End case 
+End if 
+
+$String:="End WS_GetTransactionsInfo"+Char(13)
+
+$sizeofarray:=Size of array(WS_adTrxDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adTrxDate("+String($vlElem)+"):"+String(WS_adTrxDate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_atTrxDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_atTrxDescription("+String($vlElem)+"):"+WS_atTrxDescription{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_alTrxInvNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_alTrxInvNo("+String($vlElem)+"):"+String(WS_alTrxInvNo{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_alTrxSeqNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_alTrxSeqNo("+String($vlElem)+"):"+String(WS_alTrxSeqNo{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arTrxNetAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arTrxNetAmt("+String($vlElem)+"):"+String(WS_arTrxNetAmt{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arTrxTaxAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arTrxTaxAmt("+String($vlElem)+"):"+String(WS_arTrxTaxAmt{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arTrxTotAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arTrxTotAmt("+String($vlElem)+"):"+String(WS_arTrxTotAmt{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arTrxBalance)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arTrxBalance("+String($vlElem)+"):"+String(WS_arTrxBalance{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_abTrxMatch)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_abTrxMatch("+String($vlElem)+"):"+String(WS_abTrxMatch{$vlElem})+Char(13)
+End for 
+
+
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_PurchaseOrder: "+WS_PurchaseOrder+Char(13)
+$String:=$String+"WS_ArrearsComment: "+WS_ArrearsComment+Char(13)
+$String:=$String+"WS_TotRentUnpaid: "+String(WS_TotRentUnpaid)+Char(13)
+$String:=$String+"WS_TotInsUnpaid: "+String(WS_TotInsUnpaid)+Char(13)
+$String:=$String+"WS_TotOthrUnpaid: "+String(WS_TotOthrUnpaid)+Char(13)
+$String:=$String+"WS_BalanceOwing: "+String(WS_BalanceOwing)+Char(13)
+
+ReadOnlyAll 
+UnloadAll 
+
+WSRECORDLOG ($String)

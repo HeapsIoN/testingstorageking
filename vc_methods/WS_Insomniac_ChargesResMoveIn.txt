@@ -1,0 +1,177 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+SOAP DECLARATION(WS_Promotioion;Is text;SOAP input)
+SOAP DECLARATION(WS_InsuranceID;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_ChargesResMoveIn"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+$String:=$String+"WS_Promotioion: "+WS_Promotioion+Char(13)
+$String:=$String+"WS_InsuranceID: "+WS_InsuranceID+Char(13)
+
+WSRECORDLOG ($String)
+
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ItemDescription;Text array;SOAP output)
+SOAP DECLARATION(WS_StartDateStr;Text array;SOAP output)
+SOAP DECLARATION(WS_EndDateStr;Text array;SOAP output)
+SOAP DECLARATION(WS_ItemAmount;Real array;SOAP output)
+SOAP DECLARATION(WS_ItemTaxAmountt;Real array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_ItemDescription;0)
+ARRAY TEXT(WS_StartDateStr;0)
+ARRAY TEXT(WS_EndDateStr;0)
+ARRAY REAL(WS_ItemAmount;0)
+ARRAY REAL(WS_ItemTaxAmountt;0)
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+If (Records in selection([Facility])#0)
+QUERY([Customer];[Customer]CustomerCode=WS_Cust_Code)
+If (Records in selection([Customer])#0)
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitID;*)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+If (Records in selection([Unit])#0)
+QUERY([Reservation];[Reservation]CustomerCode=WS_Cust_Code;*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+If (Records in selection([Reservation])#0)
+
+WS_RET_CODE:=True
+// Rental Fee
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1;1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1;1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1;1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1;1)
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Reservation]ExpMoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String([Reservation]ExpMoveIn)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+Case of 
+: ([UnitType]OrgAnalysis#"") & ([Customer]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis#"")
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+"RF")
+End case 
+
+QUERY([BillPlan];[BillPlan]Code=WS_Promotioion;*)
+QUERY([BillPlan]; & ;[BillPlan]KioskInactive=False)
+If (Records in selection([BillPlan])#0)
+If ([BillPlan]DiscPercentage#0)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=([UnitType]MonthlyRate-(100-[BillPlan]DiscPercentage)/100)*[BillPlan]PeriodstoPay
+Else 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=([UnitType]MonthlyRate-[BillPlan]DiscFixedAmt)*[BillPlan]PeriodstoPay
+End if 
+Else 
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]MonthlyRate
+End if 
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[Analysis]Description
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=[Analysis]TaxRate
+
+// Deposit
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True)
+If (Records in selection([Analysis])#0)
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1;1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1;1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1;1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1;1)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[UnitType]DepositAmt+[Analysis]DfltSellAmt
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Reservation]ExpMoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String([Reservation]ExpMoveIn)
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[Analysis]Description
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=[Analysis]TaxRate
+End if 
+
+//Insurance
+If (WS_InsuranceID#"")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"IN";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True)
+If (Records in selection([Analysis])#0)
+INSERT IN ARRAY(WS_ItemDescription;Size of array(WS_ItemDescription)+1;1)
+INSERT IN ARRAY(WS_StartDateStr;Size of array(WS_StartDateStr)+1;1)
+INSERT IN ARRAY(WS_EndDateStr;Size of array(WS_EndDateStr)+1;1)
+INSERT IN ARRAY(WS_ItemAmount;Size of array(WS_ItemAmount)+1;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;Size of array(WS_ItemTaxAmountt)+1;1)
+WS_ItemAmount{Size of array(WS_ItemAmount)}:=[Analysis]DfltSellAmt
+WS_StartDateStr{Size of array(WS_StartDateStr)}:=String([Reservation]ExpMoveIn)
+WS_EndDateStr{Size of array(WS_EndDateStr)}:=String([Reservation]ExpMoveIn)
+WS_ItemDescription{Size of array(WS_ItemDescription)}:=[Analysis]Description
+WS_ItemTaxAmountt{Size of array(WS_ItemTaxAmountt)}:=[Analysis]TaxRate
+End if 
+End if 
+
+
+QUERY([Analysis];[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"DP";*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"RF";*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"IN";*)
+QUERY([Analysis]; & ;[Analysis]Code=WS_FacilityID+"@")
+$size:=Size of array(WS_ItemDescription)
+If (Records in selection([Analysis])#0)
+For ($i;$size+1;$size+Records in selection([Analysis]))
+INSERT IN ARRAY(WS_ItemDescription;$i;1)
+INSERT IN ARRAY(WS_StartDateStr;$i;1)
+INSERT IN ARRAY(WS_EndDateStr;$i;1)
+INSERT IN ARRAY(WS_ItemAmount;$i;1)
+INSERT IN ARRAY(WS_ItemTaxAmountt;$i;1)
+WS_ItemAmount{$i}:=[Analysis]DfltSellAmt
+WS_StartDateStr{$i}:=String([Reservation]ExpMoveIn)
+WS_EndDateStr{$i}:=String([Reservation]ExpMoveIn)
+WS_ItemDescription{$i}:=[Analysis]Description
+WS_ItemTaxAmountt{$i}:=[Analysis]TaxRate
+End for 
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Reservation not found"
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Unit not found"
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Customer not found"
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Facility not found"
+End if 
+
+$String:="End WS_Insomniac_ChargesResMoveIn"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$sizeofarray:=Size of array(WS_ItemDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemDescription("+String($vlElem)+"):"+WS_ItemDescription{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_StartDateStr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_StartDateStr("+String($vlElem)+"):"+WS_StartDateStr{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_EndDateStr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_EndDateStr("+String($vlElem)+"):"+WS_EndDateStr{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ItemAmount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemAmount("+String($vlElem)+"):"+String(WS_ItemAmount{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ItemTaxAmountt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ItemTaxAmountt("+String($vlElem)+"):"+String(WS_ItemTaxAmountt{$vlElem})+Char(13)
+End for 
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

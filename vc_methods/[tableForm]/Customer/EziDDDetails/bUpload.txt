@@ -1,0 +1,78 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($UUID)
+C_BOOLEAN($CustCreate)
+C_TEXT($EziDebitNewRefenrece;$tempCode)
+//C_BOOLEAN($Valid)
+
+If (Form event=On Clicked)
+If ([Agreement]RAgreeNo>"")
+vContractStartDateYear:=Year of([Agreement]AuthCCSigned)
+vContractStartDateMonth:=Month of([Agreement]AuthCCSigned)
+vContractStartDateDay:=Day of([Agreement]AuthCCSigned)
+Else 
+vContractStartDateYear:=Year of(Current date)
+vContractStartDateMonth:=Month of(Current date)
+vContractStartDateDay:=Day of(Current date)
+End if 
+
+vContractStartDateMonthString:=PadStringLeft (String(vContractStartDateMonth);2;"0")
+vContractStartDateDayString:=PadStringLeft (String(vContractStartDateDay);2;"0")
+
+vContractStartDate:=String(vContractStartDateYear)+"-"+vContractStartDateMonthString+"-"+vContractStartDateDayString
+//If ($Valid=True)
+$Merchant:=GetTextNo ([Facility]DDAccountDetails;6;",")
+
+If ($Merchant="EziDebit")
+vCustomerMob:=Replace string(vCustomerMob;"_";"")
+//If (vCustomerMob="")
+//AlertMessage ("Please enter Mobile phone.")
+//Else 
+$DigKey:=String(GetTextNo ([Facility]DDAccountDetails;1;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;2;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;3;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;4;","))+"-"+String(GetTextNo ([Facility]DDAccountDetails;5;","))
+If (vBankAccName#"") & (vBankAccNo#"") & (vBankBSB#"")
+If ([Customer]DDProfileID#"")
+$CustCreate:=True
+$Success:=WSC_EziEditCustomerDetails ($DigKey;"";[Customer]DDProfileID;"";[Agreement]AgreeNo;vCustomerName;vCustomerFirstName;vAddress1;vAddress2;vCustomerSuburb;vCustomerState;vCustomerPostZIPCode;vCustomerEmail;vCustomerMob;"No";"No";"No";"")
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully updated"))
+End if 
+Else 
+
+//21/07/15 DAM Modified DD Add
+$UUID:=Generate UUID
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;[Agreement]AgreeNo;vCustomerName;vCustomerFirstName;vAddress1;vAddress2;vCustomerSuburb;vCustomerState;vCustomerPostZIPCode;vCustomerEmail;vCustomerMob;vContractStartDate;"No";"No";"No";"";True;False)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+$CustCreate:=True
+[Customer]DDProfileID:=$UUID
+Else 
+$CustCreate:=False
+End if 
+
+End if 
+
+If ($CustCreate) & (vBankBSB#"")
+$Success2:=WSC_EziEditCustomerBankAccount ($DigKey;"";[Customer]DDProfileID;vBankAccName;vBankBSB;vBankAccNo;"YES";"")
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Direct Debit Profile successfully updated"))
+vEziDDStatus:="Active"
+
+If ([Customer]DDPaymentProfileID="")
+[Customer]DDPaymentProfileID:=$UUID
+End if 
+
+[Customer]BSB:=vBankBSB
+[Customer]BankAccountName:=vBankAccName
+[Customer]BankAcct:=vBankAccNo
+
+ACCEPT
+Else 
+[Customer]DDPaymentProfileID:=""
+[Customer]DDProfileID:=""
+End if 
+
+End if 
+Else 
+AlertMessage ("Please enter Bank Account details before uploading!")
+End if 
+End if 
+End if 

@@ -1,0 +1,107 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE(cwSelectDate)
+C_LONGINT(cwOffset;cwLastIndex)
+ARRAY TEXT(cwMonth;12)
+ARRAY LONGINT(cwYear;14)
+C_DATE($FirstDayDate)
+C_LONGINT($Params;$DateDayNum;$DayNum;$NumDays;$StartOffset;$WkDayNum)
+ARRAY TEXT($Labels;7)
+$Params:=Count parameters
+If ($Params>0)
+cwSelectDate:=$1//use this date
+Else 
+If (cwSelectDate=!00-00-00!)//no date specified use the current date
+cwSelectDate:=Current date
+End if 
+End if 
+$DateDayNum:=Day of(cwSelectDate)//get the day number for the selected date
+$FirstDayDate:=Add to date(cwSelectDate;0;0;(1-$DateDayNum))//get the date of the first of month
+$DayNum:=Day number($FirstDayDate)//get day of week for the first of the month
+$NumDays:=Day of(Add to date($FirstDayDate;0;1;-1))//get the number of days in the month
+//determine the offset
+$WkDayNum:=[Facility]WeekEndDay+1
+If ($WkDayNum>7)
+$WkDayNum:=$WkDayNum-7
+End if 
+$StartOffset:=8-$WkDayNum
+If ($StartOffset=7)
+$StartOffset:=0
+End if 
+cwOffset:=$DayNum+$StartOffset-1
+If (cwOffset>=7)
+cwOffset:=cwOffset-7
+End if 
+//fill the week day labels based on cwStartWeekOn
+$Labels{1}:=Get localized string("Su")
+$Labels{2}:=Get localized string("M")
+$Labels{3}:=Get localized string("T")
+$Labels{4}:=Get localized string("W")
+$Labels{5}:=Get localized string("Th")
+$Labels{6}:=Get localized string("F")
+$Labels{7}:=Get localized string("S")
+For ($Loop;1;7)
+$LabePtr:=Get pointer("cwWeekDay"+String($Loop))
+$LabePtr->:=$Labels{$WkDayNum}
+$WkDayNum:=$WkDayNum+1
+If ($WkDayNum>7)
+$WkDayNum:=1
+End if 
+End for 
+//hide/show the correct calendar squares
+OBJECT SET VISIBLE(*;"Rectangle7";False)
+For ($Loop;1;38)
+$ButtonPtr:=Get pointer("bDay"+String($Loop))
+$DayTextPtr:=Get pointer("DayText"+String($Loop))
+$DayNum:=$Loop-cwOffset
+If (($DayNum<=0) | ($DayNum>$NumDays))
+$DayText:=""
+Else 
+$DayText:=String($DayNum)
+End if 
+$DayTextPtr->:=$DayText
+If ($DayText="")
+OBJECT SET VISIBLE($ButtonPtr->;False)
+Else 
+OBJECT SET VISIBLE($ButtonPtr->;True)
+If ($Loop>35)
+OBJECT SET VISIBLE(*;"Rectangle7";True)
+End if 
+End if 
+End for 
+//fill the month popup - commented code re-implemented due to changing of resource handling in V11
+//For ($Loop;1;12)
+//cwMonth{$Loop}:=Get indexed string(11;12+$Loop)
+//End for 
+cwMonth{1}:=Get localized string("January")
+cwMonth{2}:=Get localized string("February")
+cwMonth{3}:=Get localized string("March")
+cwMonth{4}:=Get localized string("April")
+cwMonth{5}:=Get localized string("May")
+cwMonth{6}:=Get localized string("June")
+cwMonth{7}:=Get localized string("July")
+cwMonth{8}:=Get localized string("August")
+cwMonth{9}:=Get localized string("September")
+cwMonth{10}:=Get localized string("October")
+cwMonth{11}:=Get localized string("November")
+cwMonth{12}:=Get localized string("December")
+
+cwMonth:=Month of(cwSelectDate)
+cwMonth{0}:=cwMonth{cwMonth}
+//fill the year popup 3 years before and after the current year
+$Year:=Year of(cwSelectDate)
+For ($Loop;1;14)
+cwYear{$Loop}:=$Year-4+$Loop
+End for 
+cwYear:=4
+cwYear{0}:=cwYear{cwYear}
+//select the current date
+cwLastIndex:=Day of(cwSelectDate)+cwOffset
+$Object:=Get pointer("DayText"+String(cwLastIndex))
+$Button:=Get pointer("bDay"+String(cwLastIndex))
+$Button->:=1
+// FONT STYLE($Object->;cwSelectStyle)
+// $Color:=-(cwSelectColor+(256*745))
+//SET COLOR($Object->;-6)  `Blue
+OBJECT SET FONT STYLE($Object->;Bold)
+OBJECT SET RGB COLORS($Object->;0x00CC0000;0x00FFFFFF)
+CalendarLoad 

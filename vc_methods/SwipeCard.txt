@@ -1,0 +1,605 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1;$2;$3;$Accept;$OK;$Valid;$FromCash)//$1=Accept after successful trx, $2=Use Card on File, $3=From Cash Sale
+C_LONGINT($SpecOptions)
+C_TEXT(EziPayRef;$TrxsOriginalReceipt;$TrxsCCAuthNo;$TrxsCCTransID)
+C_REAL(vInvoiceModAmt;$TotalAmt)//Amount to modify totals for any Custom AutoCC invoices
+C_LONGINT(bAddCheck)
+vCCNo:=""
+vCCName:=""
+vCCExpiry:=""
+vCCV:=""
+vTrack:=""
+bAddCheck:=0//fb9651 by Denis
+bAddCheck:=bAdd
+
+vAutoNotice:=False
+$Accept:=True
+$0:=False
+If (Count parameters>0)
+$Accept:=$1
+End if 
+If (Count parameters<3)
+$FromCash:=False
+Else 
+$FromCash:=$3
+End if 
+SetFacility 
+$OK:=False
+If ($2)
+$OK:=True
+//vCCNo:=Tokenizer ([Customer]CCNo;False)
+vCCNo:=Decode256 
+vCCName:=[Customer]CCName
+vCCExpiry:=[Customer]CCExpiry
+vCCV:=""
+vTrack:=""
+Else 
+
+//19/05/14 DAM Added the condition below for Trx Express refund
+If (GetTextNo ([Facility]MerchantDetails;1;",")="Transaction Express") & (vtReverse) & ($2)
+OK:=1
+vTrack:=""
+Else 
+SwipeCardForm 
+End if 
+
+If (OK=1)
+$OK:=True
+End if 
+End if 
+If ($OK)
+CREATE SET([Customer];"CustSet")
+If (GetTextNo ([Facility]MerchantDetails;4;",")>"")
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="AuthorizeNet CIM") & ($2=True)) | ((GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & ($2=True)) | (GetTextNo ([Facility]MerchantDetails;1;",")="Cheq") | ((GetTextNo ([Facility]MerchantDetails;1;",")="Advam StoredPAN") & ($2=True)) | ((GetTextNo ([Facility]MerchantDetails;1;",")="BPOINT") & ($2=True)) | (GetTextNo ([Facility]MerchantDetails;1;",")="NAB CM") | ((GetTextNo ([Facility]MerchantDetails;1;",")="Transaction Express") & ($2=True)) | ((GetTextNo ([Facility]MerchantDetails;1;",")="CardSave") & ($2=True))
+
+// 10/09/12 DAM Added to fix Thinc CM as it doesn't require [Customer]custPaymentProfID. 
+Case of 
+: ([Customer]customerProfileID>"") & ([Customer]custPaymentProfID#"")
+$Valid:=True
+EziPayRef:=[Agreement]AgreeNo+Substring(String(Year of(Current date));2)+String(Month of(Current date))+String(Day of(Current date))+Substring(Replace string(String(Current time);":";"");1;5)//Generate payment ref
+: ((GetTextNo ([Facility]MerchantDetails;1;",")="NAB CM") | (GetTextNo ([Facility]MerchantDetails;1;",")="Advam StoredPAN")) & ([Customer]customerProfileID>"")
+$Valid:=True
+: ((GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & (bAddRefund=1))
+$Valid:=True
+Else 
+AlertMessage (Get localized string("This customer has not had a credit card added. Please go to the Autopay tab and press Add."))
+$Valid:=False
+End case 
+
+//If ([Customer]customerProfileID>"") & ([Customer]custPaymentProfID#"")
+//$Valid:=True
+//EziPayRef:=[Agreement]AgreeNo+Substring(String(Year of(Current date));2)+String(Month of(Current date))+String(Day of(Current date))+Substring(Replace string(String(Current time);":";"");1;5)  //Generate payment ref
+//Else 
+//AlertMessage (Get localized string("This customer has not had a credit card added. Please go to the Autopay tab and press Add."))
+//$Valid:=False
+//End if 
+Else 
+
+//19/05/14 DAM Added the condition below for Trx Express refund
+If (GetTextNo ([Facility]MerchantDetails;1;",")="Transaction Express") & (vtReverse)
+$Valid:=True
+Else 
+If (CheckCCValid (vCCNo)) & (CheckCCExpiry (vCCExpiry))
+$Valid:=True
+End if 
+End if 
+
+End if 
+If ([Trxs]TotAmt=0)
+AlertMessage (Get localized string("Cannot process a credit card for")+" "+<>sCurrency+"0!")
+$Valid:=False
+End if 
+If ($Valid)
+
+//20/10/15 DAM Added for Ezidebit refunds FB 9855
+If (bAddRefund=1) & (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+// leave selected AC so refund is added with the same AC as transaction
+$SpecOptions:=[Analysis]SpecialOptions
+Else 
+If ($2)
+//15/17/15 DAM Added to use customer card type special option // 2/11/15 DAM Added 57 for Master Card
+If ([Customer]SpecialOption=0) | ([Customer]SpecialOption=62)
+$SpecOptions:=54
+Else 
+$SpecOptions:=[Customer]SpecialOption
+End if 
+Else 
+$SpecOptions:=54
+End if 
+
+If ((GetTextNo ([Facility]DDAccountDetails;4;",")="Transaction Express") & ([Analysis]SpecialOptions=57))
+$SpecOptions:=57
+End if 
+
+If (vCCNo="37@") | (vCCNo="34@")//It is an Amex card
+$SpecOptions:=55
+End if 
+If ((vCCNo="300@") | (vCCNo="301@") | (vCCNo="38@") | (vCCNo="39@") | (vCCNo="309@") | (vCCNo="302@") | (vCCNo="303@") | (vCCNo="304@") | (vCCNo="305@") | (vCCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$SpecOptions:=56
+End if 
+
+End if 
+
+If ([Analysis]SpecialOptions#$SpecOptions)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+If (Records in selection([Analysis])=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+If (vtReverse)
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Refund")
+Else 
+[Trxs]Description:=[Analysis]Description
+End if 
+
+//05/06/15 DAM Added for CC Surcharge
+If ([Trxs]TotAmt>0) & (bAddRec=1)
+vPlus:=[Trxs]TotAmt
+If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))
+
+C_REAL($Surcharge)
+$Surcharge:=0
+If ([Trxs]CustomerCode="@MISCL@")// 10/06/15 DAM Cash sale
+[Trxs]TotAmt:=vPlus
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=vPlus-[Trxs]TotAmt
+AlertMessage ("This analysis code has a surcharge. The receipt amount of "+String([Trxs]TotAmt)+", will incur a surcharge of "+String($Surcharge)+", The total amount including the surcharge will be "+String(vPlus))
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+Else 
+ConfirmTwo ("Do you want the receipt amount to be "+String(vPlus)+" including or excluding the surcharge?";"Excluding";"Including")
+If (OK=1)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+[Trxs]TotAmt:=vPlus
+[Trxs]CashReceived:=vPlus
+End if 
+End if 
+
+End if 
+End if 
+asReceiptDesc:=Find in array(asReceiptDesc;[Analysis]Description)
+Else 
+$OK:=False
+End if 
+End if 
+If ($OK=False)
+AlertMessage (Get localized string("The credit card number does not match the Analysis Code selected!  Please choose the correct analysis code."))
+Else 
+If (vtReverse)//Add Refund
+If (vTransID>"") & (vAmount>0)
+If (vDate=Current date) & (Current time<?18:00:00?) & ([Trxs]TotAmt=vAmount)//Card can be voided
+ConfirmTwo (Get localized string("Are you sure you want to void the payment on")+" "+vCCName+" "+Get localized string("for")+" "+String([Trxs]TotAmt;"###,###.00")+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+[Trxs]CCAuthNo:=ProcCreditCard (True;"V";[Trxs]TotAmt;vCCNo;vCCExpiry;vTransID;[Trxs]AgreeNo;"Void Trx";[Trxs]CustomerCode;vCCName;Substring([Customer]MailAddress;1;60);[Customer]MailCity;[Customer]MailPostZIPCode;[Customer]customerProfileID;[Customer]custPaymentProfID;[Agreement]TaxExempt;$FromCash;"";$2)
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & ($FromCash=False)
+//DAM Fixed 9863
+//[Trxs]Confirmed:=False
+If ([Analysis]SetBankedDate)
+[Trxs]Confirmed:=True
+[Trxs]DateBanked:=Current date
+Else 
+[Trxs]Confirmed:=False
+End if 
+End if 
+
+[Trxs]TotAmt:=-1*[Trxs]TotAmt
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+If ($Accept)
+If ([Analysis]SetBankedDate=True)
+[Trxs]DateBanked:=[Trxs]TrxDate
+End if 
+vInvoiceModAmt:=[Trxs]TotAmt//Set the invoice modifier so invoice has correct totals
+vAutoNotice:=True
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt;2)
+Else 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+End if 
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+//***Added by Hamid - 10024
+$TrxsOriginalReceipt:=[Trxs]OriginalReceipt
+$TrxsCCAuthNo:=[Trxs]CCAuthNo
+$TrxsCCTransID:=[Trxs]CCTransID
+SAVE RECORD([Trxs])
+ReCalc 
+QUERY([Trxs];[Trxs]OriginalReceipt=$TrxsOriginalReceipt;*)
+QUERY([Trxs]; & ;[Trxs]CCAuthNo=$TrxsCCAuthNo;*)
+QUERY([Trxs]; & ;[Trxs]CCTransID=$TrxsCCTransID)
+READ WRITE([Trxs])
+//***
+If ([Customer]AutoEmailCC=True)
+SAVE RECORD([Trxs])
+//Check if AutoCCVSuccess notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCVSuccess")
+If (Records in selection([Notices])>0)
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card had a previous charge for")+" "+<>sCurrency+String(Abs([Trxs]TotAmt))+" "+Get localized string("voided, at")+" "+String(Current time)+" "+Lowercase(Get localized string("On1"))+" "+String([Trxs]TrxDate)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+End if 
+vPayments:=vPayments+[Trxs]TotAmt
+[Trxs]CashReceived:=[Trxs]TotAmt
+//  Added bAccept:=1 to trigger UpdateReceipt method
+bAccept:=1
+//If (bFromMoveIn=False)
+bAbortArray:=1
+//End if 
+ACCEPT
+End if 
+$0:=True
+Else 
+If ([Customer]AutoEmailCC=True)
+//Check if AutoCCVFailure notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCVFailure")
+If (Records in selection([Notices])>0)
+vInvoiceModAmt:=0//Set the invoice modifier so invoice has correct totals
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card failed to have a charge voided for")+" "+<>sCurrency+String(Abs([Trxs]TotAmt))+" "+Get localized string("at")+" "+String(Current time)+" "+Lowercase(Get localized string("On1"))+" "+String([Trxs]TrxDate)+" "+Get localized string("The error received was")+" "+[Trxs]CCAuthNo
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+End if 
+OBJECT SET ENABLED(bAccept;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bCancel;True)
+bCancel:=1
+vOriginalReceipt:=""
+CANCEL
+End if 
+End if 
+Else 
+ConfirmTwo (Get localized string("Refund card")+" "+vCCName+" "+Get localized string("for")+" "+String([Trxs]TotAmt;"###,###.00")+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+[Trxs]CCAuthNo:=ProcCreditCard (True;"C";[Trxs]TotAmt;vCCNo;vCCExpiry;vTransID;[Trxs]AgreeNo;"Credit Trx";[Trxs]CustomerCode;vCCName;Substring([Customer]MailAddress;1;60);[Customer]MailCity;[Customer]MailPostZIPCode;[Customer]customerProfileID;[Customer]custPaymentProfID;[Agreement]TaxExempt;$FromCash;"";$2)
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & ($FromCash=False)
+//DAM Fixed 9863
+//[Trxs]Confirmed:=False
+If ([Analysis]SetBankedDate)
+[Trxs]Confirmed:=True
+[Trxs]DateBanked:=Current date
+Else 
+[Trxs]Confirmed:=False
+End if 
+End if 
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+If ($Accept)
+If ([Analysis]SetBankedDate=True)
+[Trxs]DateBanked:=[Trxs]TrxDate
+End if 
+vInvoiceModAmt:=[Trxs]TotAmt//Set the invoice modifier so invoice has correct totals
+vAutoNotice:=True
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt;2)
+Else 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+End if 
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+//***Added by Hamid - 10024
+$TrxsOriginalReceipt:=[Trxs]OriginalReceipt
+$TrxsCCAuthNo:=[Trxs]CCAuthNo
+$TrxsCCTransID:=[Trxs]CCTransID
+SAVE RECORD([Trxs])
+//13/01/17 DM Added if statement for processing refunds for cash sales
+If (vMisc=False)
+ReCalc 
+End if 
+QUERY([Trxs];[Trxs]OriginalReceipt=$TrxsOriginalReceipt;*)
+QUERY([Trxs]; & ;[Trxs]CCAuthNo=$TrxsCCAuthNo;*)
+QUERY([Trxs]; & ;[Trxs]CCTransID=$TrxsCCTransID)
+READ WRITE([Trxs])
+//***
+If ([Customer]AutoEmailCC=True)
+SAVE RECORD([Trxs])
+//Check if AutoCCRSuccess notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCRSuccess")
+If (Records in selection([Notices])>0)
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card was refunded successfully for")+" "+<>sCurrency+String(Abs([Trxs]TotAmt))+" "+Get localized string("at")+" "+String(Current time)+" "+Lowercase(Get localized string("On1"))+" "+String([Trxs]TrxDate)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+End if 
+vPayments:=vPayments+[Trxs]TotAmt
+[Trxs]CashReceived:=[Trxs]TotAmt
+bAccept:=1
+//If (bFromMoveIn=False)
+bAbortArray:=1
+//End if 
+ACCEPT
+End if 
+$0:=True
+Else 
+If ([Customer]AutoEmailCC=True)
+//Check if AutoCCRFailure notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCRFailure")
+If (Records in selection([Notices])>0)
+vInvoiceModAmt:=0//Set the invoice modifier so invoice has correct totals
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card failed to be refunded for")+" "+<>sCurrency+String(Abs([Trxs]TotAmt))+" "+Get localized string("at")+" "+String(Current time)+" "+Get localized string("On1")+" "+String([Trxs]TrxDate)+" The error received was "+[Trxs]CCAuthNo
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+End if 
+OBJECT SET ENABLED(bAccept;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bCancel;True)
+bCancel:=1
+vOriginalReceipt:=""
+CANCEL
+End if 
+End if 
+End if 
+Else 
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+// DAM Fixed for FB9858
+//AlertMessage (Get localized string("This merchant does not support credit card refunds. You will need to process the refund manually."))
+AlertMessage ("This merchant does not support refunds for Batched transactions. You will need to process the refund manually.")
+Else 
+AlertMessage (Get localized string("You must select the previous credit card transaction before clicking the Add Refund button to be able to void or credit it."))
+End if 
+End if 
+Else 
+//27/10/15 DAM Added calculation for Ezidebit surcharges
+C_REAL($SurchargeAmt)
+ARRAY TEXT(WS_CCtype1;0)
+ARRAY REAL(WS_FixedFee1;0)
+ARRAY REAL(WS_PercentFee1;0)
+$SurchargeAmt:=0
+//If ([Facility]Highlander) & (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+//$DigitalKey:=""
+//$DigitalKey:=String(GetTextNo ([Facility]MerchantDetails;2;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;3;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;4;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;5;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;6;","))
+//$SurchargeAmt:=WSC_EziGetCustomerFees ($DigitalKey;"";"";"WEB";"";True;$2)
+//End if 
+If ($SurchargeAmt>0)
+//ConfirmTwo (Get localized string("Process card")+" "+vCCName+" "+Get localized string("for")+" "+String([Trxs]TotAmt;"###,###.00")+" will incur a surcharge of "+String(Round($SurchargeAmt;2);"###,###.00")+". Do you wish to continue?";Get localized string("Yes");Get localized string("No"))
+ConfirmTwo ("Processing this credit card for"+" "+String([Trxs]TotAmt;"###,###.00")+" will incur a surcharge of "+String(Round($SurchargeAmt;2);"###,###.00")+". Do you wish to continue?";Get localized string("Yes");Get localized string("No"))
+Else 
+ConfirmTwo (Get localized string("Process card")+" "+vCCName+" "+Get localized string("for")+" "+String([Trxs]TotAmt;"###,###.00")+"?";Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+[Trxs]CCAuthNo:=ProcCreditCard (True;"P";[Trxs]TotAmt;vCCNo;vCCExpiry;"0";[Trxs]AgreeNo;"Manual Trx";[Trxs]CustomerCode;vCCName;Substring([Customer]MailAddress;1;60);[Customer]MailCity;[Customer]MailPostZIPCode;[Customer]customerProfileID;[Customer]custPaymentProfID;[Agreement]TaxExempt;$FromCash;vCCV;$2)
+$TotalAmt:=0
+$TotalAmt:=[Trxs]TotAmt
+If ((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@"))
+[Trxs]CCAuthNo:=GVAR_AuthCode
+[Trxs]CCTransID:=VAR_emattersMainID
+SAVE RECORD([Trxs])
+End if 
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & ($FromCash=False)
+[Trxs]Confirmed:=False
+End if 
+
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+If ($Accept)
+If ($FromCash=True)
+bAbortArray:=1
+End if 
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+If ([Analysis]SetBankedDate=True)
+[Trxs]DateBanked:=[Trxs]TrxDate
+End if 
+vInvoiceModAmt:=[Trxs]TotAmt//Set the invoice modifier so invoice has correct totals
+vAutoNotice:=True
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=Round([Reservation]Balance-[Trxs]TotAmt;2)
+Else 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+End if 
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+If ([Customer]AutoEmailCC=True)
+SAVE RECORD([Trxs])
+//Check if AutoCCSuccess notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCSuccess")
+If (Records in selection([Notices])>0)
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card was processed successfully for")+" "+<>sCurrency+String([Trxs]TotAmt)+" "+Get localized string("at")+" "+String(Current time)+" "+Get localized string("On1")+" "+String([Trxs]TrxDate)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+End if 
+vPayments:=vPayments+[Trxs]TotAmt
+[Trxs]CashReceived:=[Trxs]TotAmt
+bAccept:=1
+//If (bFromMoveIn=False)
+bAbortArray:=1
+//End if 
+ACCEPT
+End if 
+$0:=True
+Else 
+OBJECT SET ENABLED(BLOAD;False)
+OBJECT SET ENABLED(bCCInst;False)
+OBJECT SET ENABLED(bEnter;False)
+OBJECT SET ENABLED(bAccept;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bDelete;False)// 01/07/15 DAM Hidden "Delete" button when CC failed
+OBJECT SET ENABLED(bCancel;True)
+
+$Code:=""
+$Code:=[Analysis]Code
+If ([Analysis]FailedFeeAnalysis>"") & (([Analysis]FailedFeeFixed#0) | ([Analysis]FailedFeePerc#0)) & (vPlus>0) & (vNewReceipt=True) & ([Trxs]CustomerCode#"@MISCL")
+AlertMessage ("The Analysis code has a surcharge for failed transactions setup, a failed fee transaction will be added to the customer.")
+$ReceiptAmount:=vPlus
+$Date:=Current date
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Agree:=[Trxs]AgreeNo
+$Cust:=[Trxs]CustomerCode
+$Fixed:=[Analysis]FailedFeeFixed
+$Percent:=[Analysis]FailedFeePerc
+End if 
+
+If ([Customer]AutoEmailCC=True)
+//Check if AutoCCFailure notice exists
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AutoCCFailure")
+If (Records in selection([Notices])>0)
+vInvoiceModAmt:=0//Set the invoice modifier so invoice has correct totals
+CREATE SET([Agreement];"CCCharge")
+EmailAutoCC 
+CLEAR SET("CCCharge")
+Else 
+CREATE RECORD([Message])
+[Message]Address:=[Customer]EmailAddress
+[Message]Subject:=Get localized string("Credit Card Processed")
+[Message]MsgBody:=Get localized string("Your credit card failed to be processed for")+" "+<>sCurrency+String([Trxs]TotAmt)+" "+Get localized string("at")+" "+String(Current time)+" "+Get localized string("On1")+" "+String([Trxs]TrxDate)+" "+Get localized string("The error received was")+" "+[Trxs]CCAuthNo
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+SAVE RECORD([Message])
+SendMail 
+End if 
+bCancel:=1
+vOriginalReceipt:=""
+CANCEL
+End if 
+
+//01/07/15 DAM Added Surcharge for Failed Transactions
+QUERY([Analysis];[Analysis]Code=$Code)
+If ([Analysis]FailedFeeAnalysis>"") & (([Analysis]FailedFeeFixed#0) | ([Analysis]FailedFeePerc#0)) & (vPlus>0) & (vNewReceipt=True) & ([Trxs]CustomerCode#"@MISCL")
+//AlertMessage ("The Analysis code has a surcharge for failed transactions setup, a failed fee transaction will be added to the customer.")
+//$ReceiptAmount:=$TotalAmt
+//$Date:=Current date
+//$Facility:=Substring([Trxs]CustomerCode;1;5)
+//$Agree:=[Trxs]AgreeNo
+//$Cust:=[Trxs]CustomerCode
+//$Fixed:=[Analysis]FailedFeeFixed
+//$Percent:=[Analysis]FailedFeePerc
+QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]FailedFeeAnalysis)
+If (Records in selection([Analysis])>=1)
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]AgreeNo:=$Agree
+[Trxs]CustomerCode:=$Cust
+[Trxs]Charge:=True
+
+[Trxs]Narration:="Failed Surcharge for Receipt Amt: "+String($ReceiptAmount)+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"Fixed Surcharge Amount: "+String($Fixed)+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"% Surcharge Amount: "+String($Percent)+"%"+Char(Line feed)
+
+$PercCalc:=$ReceiptAmount-$Fixed
+$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))//$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+[Trxs]Narration:=[Trxs]Narration+"Calculated % surchage: "+String(Round($PercCalc;2))+Char(Line feed)
+[Trxs]Narration:=[Trxs]Narration+"Total Amount: "+String(Round($Fixed;2))+"+"+String(Round($PercCalc;2))+"="+String(Round($Fixed+$PercCalc;2))
+
+[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+SAVE RECORD([Trxs])
+
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+
+// To Disable "Cancel" button
+gError:="OK"
+
+End if 
+End if 
+
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+USE SET("CustSet")
+CLEAR SET("CustSet")
+SET AUTOMATIC RELATIONS(False;False)
+End if 
+bAdd:=bAddCheck
+vCCNo:=""
+vCCName:=""
+vCCExpiry:=""
+vCCV:=""
+vTrack:=""

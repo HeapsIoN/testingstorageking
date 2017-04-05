@@ -1,0 +1,111 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($UnrecTot;vTotCrdt;vTotDbt)
+ARRAY TEXT($aaAnlysCode;0)
+
+QUERY([Trxs];[Trxs]DateReconciled=!00-00-00!;*)
+QUERY([Trxs]; | ;[Trxs]Reconciled=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+ORDER BY([Trxs];[Trxs]DateReconciled;>;[Trxs]DateBanked;>;[Trxs]AnalysisCode;>;[Trxs]TaxAmt;>)
+$UnrecTot:=Round(Sum([Trxs]TaxAmt);2)
+vUser:=<>sCurrentUser
+vTotCrdt:=0
+vTotDbt:=0
+vLeg:="FromMenu"
+
+READ WRITE([Trxs])
+CREATE SET([Trxs];"ToSum")
+DISTINCT VALUES([Trxs]DateBanked;aBankDte)// to allow to sum totals for different dates banked
+DISTINCT VALUES([Trxs]AnalysisCode;$aaAnlysCode)
+CREATE EMPTY SET([Trxs];"ToDisplay")
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+ORDER BY([Analysis];[Analysis]GLCode;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Code;$aAnlysCode;[Analysis]GLCode;$aGLCode)
+For ($r;Size of array($aAnlysCode);1;-1)
+If (Find in array($aaAnlysCode;$aAnlysCode{$r})<1)
+DELETE FROM ARRAY($aAnlysCode;$r;1)
+DELETE FROM ARRAY($aGLCode;$r;1)
+End if 
+End for 
+$Amt:=0
+//Open window(20;50;300;150;0;Get localized string("Progress"))
+$ProgressWin:=Open window(20;50;450;150;0)
+For ($r;1;Size of array(aBankDte))
+USE SET("ToSum")
+//GOTO XY(2;2)
+//MESSAGE(Get localized string("Processing")+" "+String($r)+" "+Get localized string("of")+" "+String(Size of array(aBankDte))+"    ")
+GOTO XY(2;2)
+MESSAGE("Processing Transactions "+String($r)+" of "+String(Size of array(aBankDte)))
+QUERY SELECTION([Trxs];[Trxs]DateBanked=aBankDte{$r})
+ORDER BY([Trxs];[Trxs]AnalysisCode;>)
+CREATE SET([Trxs];"DateBanked")
+If (Size of array($aAnlysCode)>0)
+$LastCode:=$aGLCode{1}
+For ($j;1;Size of array($aAnlysCode))
+USE SET("DateBanked")
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=$aAnlysCode{$j})//this should ensure checks and cash summed together
+RELATE ONE([Trxs])//relate the Analysis table
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If ([Supplier]UserName="SUM")
+For ($l;1;Records in selection([Trxs]))
+$Amt:=$Amt+[Trxs]TotAmt
+[Trxs]TaxAmt:=0//in case anything has been saved to the tax field previously
+SAVE RECORD([Trxs])
+$TrxNo:=Record number([Trxs])//added 24/1/06 NLT
+NEXT RECORD([Trxs])
+End for 
+$l:=0
+Else 
+For ($k;1;Records in selection([Trxs]))
+[Trxs]TaxAmt:=[Trxs]TotAmt//so can search on tax field to show lines to display
+ADD TO SET([Trxs];"ToDisplay")
+SAVE RECORD([Trxs])
+$TrxNo:=Record number([Trxs])
+NEXT RECORD([Trxs])
+End for 
+$k:=0
+End if 
+$GLCode:=""
+If ($j+1<=Size of array($aGLCode))
+$GLCode:=$aGLCode{$j+1}
+End if 
+If ($GLCode#$LastCode)
+If ($Amt#0)
+//PREVIOUS RECORD([Transaction])`didn't work if you had 2 lots of trxs with diff anlys code but same GLCode
+GOTO RECORD([Trxs];$TrxNo)
+[Trxs]TaxAmt:=$Amt
+ADD TO SET([Trxs];"ToDisplay")
+SAVE RECORD([Trxs])
+End if 
+$LastCode:=$GLCode
+$Amt:=0
+End if 
+CREATE SET([Trxs];"Temp")
+DIFFERENCE("ToSum";"Temp";"ToSum")
+End for 
+End if 
+End for 
+CLOSE WINDOW($ProgressWin)
+USE SET("ToDisplay")
+SetFacility //so it appears at top of report 
+vTotDbt:=0
+vTotCrdt:=0
+For ($s;1;Records in selection([Trxs]))//this to get the totals in the Header, 05/2006
+If ([Trxs]TaxAmt<0)
+vTotDbt:=vTotDbt+[Trxs]TaxAmt
+Else 
+vTotCrdt:=vTotCrdt+[Trxs]TaxAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+vCashBkBal:=vBankBal+vTotDbt+vTotCrdt
+ORDER BY([Trxs];[Trxs]Reconciled;>;[Trxs]DateReconciled;>;[Trxs]DateBanked;>;[Trxs]AnalysisCode;>;[Trxs]TaxAmt;>)
+$UnrecTot:=Round(Sum([Trxs]TaxAmt);2)
+vUser:=<>sCurrentUser
+ACCUMULATE([Trxs]DateReconciled)
+BREAK LEVEL(4)
+FORM SET OUTPUT([Trxs];"UnreconciledTrx")
+PrintSelection ("P";->[Trxs])
+FORM SET OUTPUT([Trxs];"TransOut")

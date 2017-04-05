@@ -1,0 +1,48 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//This procedure called by Daily
+C_TEXT($1;$Notice)//NoticeBilled
+C_LONGINT($i;$tempPosition)
+$Notice:=$1
+FIRST RECORD([Agreement])
+For ($i;1;Records in selection([Agreement]))
+If ($Notice>"")
+[Agreement]NoticeBilled:=$Notice
+[Agreement]NoticeSent:=False//SDD added 5/5/93
+End if 
+[Agreement]NoticeDate:=[Agreement]NextBillDate
+UpdateNewRent 
+
+//If ([Agreement]AgreeNo="@#00000020@")
+//ALERT("!")
+//End if 
+
+$tempPosition:=0
+$tempPosition:=Position("#";[Agreement]RAgreeNo)
+If ($tempPosition>0)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+[Agreement]NoticeAmtToBill:=Sum([OtherChgs]Amount)
+REDUCE SELECTION([OtherChgs];0)
+Else 
+[Agreement]NoticeAmtToBill:=[Agreement]RentAmt
+End if 
+
+[Agreement]NoticeBillRent:=True//SDD added 16/1/95
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If ([Facility]LateFeeReset)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Rent";*)
+$BalanceCalc:=[Agreement]TotRentUnpaid
+Else 
+$BalanceCalc:=[Agreement]BalanceOwing
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>[Facility]LastDaily)
+$BalanceCalc:=$BalanceCalc-Sum([Trxs]TotAmt)
+
+If ($BalanceCalc<=[Facility]MinBalArrears)//added = 13/6/06 NLT as was not setting LCSD if balowing was 0 and MinBalArrears was 0
+
+[Agreement]LateCycleStDate:=[Agreement]NextBillDate
+End if 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 

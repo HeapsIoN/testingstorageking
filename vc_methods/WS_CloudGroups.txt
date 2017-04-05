@@ -1,0 +1,158 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 07/03/16, 15:29:15
+// ----------------------------------------------------
+// Method: WS_CloudGroups
+// Description
+// 
+// This method is used to bulk send Groups from a site to Storman Hub
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_ORFacilityCode;Is text;SOAP input)
+SOAP DECLARATION(WS_Actiontext;Is text;SOAP input)// A - Add, E- Edit, D - Remove, R - review
+SOAP DECLARATION(WS_GroupButton;Is text;SOAP input)
+SOAP DECLARATION(WS_GroupCallCentre;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_GroupIDs;Is text;SOAP input)
+SOAP DECLARATION(WS_GroupNames;Is text;SOAP input)
+SOAP DECLARATION(WS_GroupOverrides;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_GroupPermission;Is text;SOAP input)
+SOAP DECLARATION(WS_GroupPrimaryKey;Is longint;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+C_TEXT($String)
+C_TEXT(vName)
+$String:=""
+$String:="Start WS_CloudGroups"+Char(13)
+$String:=$String+"WS_ORFacilityCode: "+WS_ORFacilityCode+Char(13)
+$String:=$String+"WS_Actiontext: "+WS_Actiontext+" "+Char(13)
+$String:=$String+"WS_GroupCallCentre: "+String(WS_GroupCallCentre)+" "+Char(13)
+$String:=$String+"WS_GroupIDs: "+WS_GroupIDs+" "+Char(13)
+$String:=$String+"WS_GroupOverrides: "+String(WS_GroupOverrides)+" "+Char(13)
+$String:=$String+"WS_GroupPermission: "+WS_GroupPermission+" "+Char(13)
+$String:=$String+"WS_GroupPrimaryKey: "+String(WS_GroupPrimaryKey)+" "+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True
+
+QUERY([Facility];[Facility]FacilityCode=WS_ORFacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If ([Facility]ODBCPassword#"") & ([Facility]ODBCPassword=WS_WebServicePassword)
+
+READ WRITE([Groups])
+READ WRITE([UserLogins])
+QUERY([Groups];[Groups]GroupID=WS_GroupIDs)
+
+
+Case of 
+: ((WS_Actiontext="A"))//CREATE NEW GROUP
+
+If (Records in selection([Groups])=0)
+
+CREATE RECORD([Groups])
+[Groups]Buttons:=WS_GroupButton
+[Groups]CallCentre:=WS_GroupCallCentre
+[Groups]GroupID:=WS_GroupIDs
+[Groups]Name:=WS_GroupNames
+[Groups]Override:=WS_GroupOverrides
+[Groups]Permissions:=WS_GroupPermission
+[Groups]PrimaryKey:=WS_GroupPrimaryKey
+SAVE RECORD([Groups])
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=9999
+WS_ORErrorDescription:="Unable to add new group into database Storman, this group already exists."
+End if 
+
+: ((WS_Actiontext="E"))//EDIT AN EXISTING GROUP
+
+If (Records in selection([Groups])=1)
+[Groups]Buttons:=WS_GroupButton
+[Groups]CallCentre:=WS_GroupCallCentre
+[Groups]GroupID:=WS_GroupIDs
+[Groups]Name:=WS_GroupNames
+[Groups]Override:=WS_GroupOverrides
+[Groups]Permissions:=WS_GroupPermission
+[Groups]PrimaryKey:=WS_GroupPrimaryKey
+SAVE RECORD([Groups])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=9999
+WS_ORErrorDescription:="Group record not found in database Storman."
+End if 
+
+: (WS_Actiontext="D")//DELETE A GROUP
+
+If (Records in selection([Groups])=1)
+DELETE RECORD([Groups])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1051
+WS_ORErrorDescription:="Group record not found in database Storman."
+End if 
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_Actiontext="C")//CLEAR (DELETE) ALL GROUPS & USERS
+
+QUERY([Groups];[Groups]GroupID=WS_ORFacilityCode+"@")
+DELETE SELECTION([Groups])
+QUERY([UserLogins];[UserLogins]UserID=WS_ORFacilityCode+"@")
+DELETE SELECTION([UserLogins])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+End case 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+UNLOAD RECORD([Groups])
+READ ONLY([Groups])
+
+$String:="End WS_CloudGroups"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

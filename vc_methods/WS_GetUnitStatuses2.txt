@@ -1,0 +1,75 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 21/04/11, 10:52:31
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_GetUnitStatuses
+// Description
+// Returns all units and their statuses for a given facility
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_asUTRUnitNo;String array;SOAP output)
+SOAP DECLARATION(WS_asUTAgreeNo;String array;SOAP output)
+SOAP DECLARATION(WS_atUTStatus;Text array;SOAP output)
+SOAP DECLARATION(WS_atUTBldgLocation;Text array;SOAP output)
+SOAP DECLARATION(WS_atCustomerName;Text array;SOAP output)
+SOAP DECLARATION(WS_UTDescription;String array;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+SOAP DECLARATION(WS_Types;String array;SOAP output)
+
+$String:="Start WS_GetUnitStatues2"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+
+If (Records in selection([Facility])=1)
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Unit];[Unit]RUnitNo=[Facility]FacilityCode+"@")
+SELECTION TO ARRAY([Unit]RUnitNo;WS_asUTRUnitNo;[Unit]AgreeNo;WS_asUTAgreeNo;[Unit]Status;WS_atUTStatus;[Unit]BldgLocation;WS_atUTBldgLocation;[Customer]CustomerName;WS_atCustomerName;[UnitType]Description;WS_UTDescription;[UnitType]RUnitType;WS_Types)
+SET AUTOMATIC RELATIONS(False;False)
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+Else 
+//WS_OLD=WS_Error:="Incorrect Password"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+//WS_OLD=WS_Error:="Facility not found"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+$String:="End WS_GetUnitStatues"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

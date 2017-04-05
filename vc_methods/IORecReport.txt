@@ -1,0 +1,60 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN(vRentAdvMethod)
+C_DATE(vOldDate)
+LogAction (False;"Income Occupancy Report started.")// records the report being started in the eventlog
+If (PermissionsControl (62))
+DEFAULT TABLE([Agreement])
+SetFacility 
+If (<>tBatch=True)
+OK:=1
+vRentAdvMethod:=[Facility]RentAdvFlag
+Else 
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+//Open window(20;50;460;340;5)
+Open window((Screen width/2)-220;(Screen height/2)-188;(Screen width/2)+220;(Screen height/2)+188;5;Get localized string("Income/Occupancy Reconciliation Report1"))
+DIALOG([Agreement];"IORecDialog")
+CLOSE WINDOW
+vRentAdvMethod:=(bAgree=1)
+End if 
+If (OK=1)
+LogAction (False;Get localized string("Income and Occupancy Reconciliation Report commenced"))
+vOldDate:=(GetDate (1;Month of(vMthDate);Year of(vMthDate)))
+If (<>tLogging=False)
+vTitle:=Get localized string("Income and Occupancy Reconciliation Report as at")+" "+String(vMthDate)
+vNotes:=""
+If (vRentAdvMethod)
+vLeg5:=Get localized string("Calculated on Daily Basis")
+Else 
+vLeg5:=Get localized string("Calculated on Whole Month Basis")
+End if 
+If (CalcRentedValues (<>sFacility;vMthDate))
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; | ;[Agreement]MoveOut>=vMthDate;*)//vOldDate;*)
+QUERY([Agreement]; | ;[Agreement]BalanceOwing<0;*)
+QUERY([Agreement]; | ;[Customer]LatestTrxDate>(vMthDate-32);*)//vOldDate;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=vMthDate;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#<>sFacility+"PETTY")
+If ([Facility]UnitNoRpts)
+ORDER BY([Agreement]UnitsOccup;>;[Agreement]AgreeNo;>)
+Else 
+ORDER BY([Agreement]CustomerCode;>;[Agreement]AgreeNo;>)
+End if 
+FORM SET OUTPUT([Agreement];"IORecReport")
+BREAK LEVEL(0)
+ACCUMULATE(vOldRent;vMthRent;vActualRent;vOccVal;vVariance;vRentChg)
+CREATE EMPTY SET([Trxs];"billing")
+PrintSelection ("L")
+USE SET("billing")
+CLEAR SET("billing")
+UNLOAD RECORD([Agreement])
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+End if 
+End if 
+LogAction (True;Get localized string("Income and Occupancy Reconciliation Report finished"))
+End if 
+End if 
+LogAction (True;"Income Occupancy Report ended.")

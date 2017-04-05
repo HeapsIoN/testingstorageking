@@ -1,0 +1,246 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+LogAction (False;"Deposits Held Report started.")// records the report being started in the eventlog
+If (PermissionsControl (84))
+START TRANSACTION
+
+SET AUTOMATIC RELATIONS(True;True)
+
+$stateAgree:=Read only state([Agreement])
+$stateResv:=Read only state([Reservation])
+READ WRITE([Agreement])
+READ WRITE([Reservation])
+OK:=1
+$Sort:=True
+$Zero:=True
+vTTotal:=0
+If (<>tBatch=False)
+ConfirmTwo (Get localized string("Deposits Held Report1");Get localized string("Move-Ins");Get localized string("Number"))
+$Sort:=(OK=1)
+ConfirmTwo (Get localized string("Exclude zero balance deposits?");Get localized string("Yes");Get localized string("No"))
+$Zero:=(OK=1)
+End if 
+
+<>ProgressInd:=0
+$WinRef:=Open window(20;50;450;150;0)
+
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@")
+$TotAgree:=Records in selection([Agreement])
+
+CREATE EMPTY SET([Agreement];"$AgreeToPrint")
+
+For ($i;1;Records in selection([Agreement]))
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+
+GOTO XY(2;2)
+MESSAGE("Calculating Deposits for Agreement "+String($i)+" of "+String(Records in selection([Agreement])))
+
+//RELATE MANY([Agreement]RAgreeNo)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+
+//30/10/14 DAM Added Get localized string
+QUERY SELECTION([Trxs];[Analysis]KeyStatsCategory=Get localized string("Deposit"))
+
+[Agreement]DepositAmt:=Sum([Trxs]TotAmt)
+
+SAVE RECORD([Agreement])
+If ($Zero)
+If ([Agreement]DepositAmt#0)
+ADD TO SET([Agreement];"$AgreeToPrint")
+End if 
+Else 
+If ([Agreement]ActiveAgreemt=False)
+If ([Agreement]DepositAmt#0)
+ADD TO SET([Agreement];"$AgreeToPrint")
+End if 
+Else 
+ADD TO SET([Agreement];"$AgreeToPrint")
+End if 
+End if 
+
+NEXT RECORD([Agreement])
+End for 
+<>ProgressInd:=100
+
+USE SET("$AgreeToPrint")
+CLEAR SET("$AgreeToPrint")
+
+//QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+//QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Deposit")
+//
+//CREATE EMPTY SET([Transaction];"$TrxQuery")
+//For ($i;1;Records in selection([Analysis]))
+//QUERY([Transaction];[Transaction]AnalysisCode=[Analysis]Code)
+//CREATE SET([Transaction];"$TrxProc")
+//UNION("$TrxQuery";"$TrxProc";"$TrxQuery")
+//CLEAR SET("$TrxProc")
+//NEXT RECORD([Analysis])
+//End for 
+//
+//
+//For ($i;1;$TotAgree)
+//<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+//USE SET("$TrxQuery")
+//QUERY SELECTION([Transaction];[Transaction]AgreeNo=[Agreement]RAgreeNo)
+//[Agreement]DepositAmt:=Sum([Transaction]TotAmt)
+//SAVE RECORD([Agreement])
+//NEXT RECORD([Agreement])
+//End for 
+//
+//<>ProgressInd:=100
+//
+//If ($Zero)
+//  //QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+//  //QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+//  //QUERY([Agreement]; & ;[Agreement]DepositAmt#0)
+//QUERY SELECTION([Agreement];[Agreement]DepositAmt#0)
+//Else 
+//  //QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+//  //QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+//CREATE SET([Agreement];"$AgreeToQuery")
+//QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=False;*)
+//QUERY SELECTION([Agreement]; & ;[Agreement]DepositAmt=0)
+//CREATE SET([Agreement];"$ToRemove")
+//DIFFERENCE("$AgreeToQuery";"$ToRemove";"$AgreeToQuery")
+//USE SET("$AgreeToQuery")
+//CLEAR SET("$ToRemove")
+//CLEAR SET("$AgreeToQuery")
+//End if 
+
+If ($Sort)
+ORDER BY([Agreement];[Agreement]MoveIn;>)
+Else 
+ORDER BY([Agreement];[Agreement]UnitsOccup;>)
+End if 
+BREAK LEVEL(0)
+ACCUMULATE([Agreement]DepositAmt)
+FORM SET OUTPUT([Agreement];"Deposits")
+If (<>iPrinttoFile=3)
+ARRAY TEXT(aFieldNames;5)
+aFieldNames{1}:="[Agreement]AgreeNo"
+aFieldNames{2}:="[Agreement]UnitsOccup"
+aFieldNames{3}:="[Agreement]MoveIn"
+aFieldNames{4}:="OnDetail[Customer]CustomerName"
+aFieldNames{5}:="[Agreement]DepositAmt"
+vpTable:=->[Agreement]
+CreateExcelReport (5;Records in selection([Agreement]);"RELATE ONE([Agreement]CustomerCode)";Get localized string("MenuMoreReportsdepositsHeldReport");Get localized string("As at ")+String(Current date);"")//no of columns on report, no of rows, lines to execute
+Else 
+PrintSelection ("P";->[Agreement])
+End if 
+FORM SET OUTPUT([Agreement];"Output")
+CLOSE WINDOW($WinRef)
+
+<>ProgressInd:=0
+$WinRef:=Open window(20;50;450;150;0)
+
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+"@")
+
+$TotAgree:=Records in selection([Reservation])
+
+CREATE EMPTY SET([Reservation];"$AgreeToPrint")
+
+For ($i;1;Records in selection([Reservation]))
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+//RELATE MANY([Reservation]RReserveNo)
+
+GOTO XY(2;2)
+MESSAGE("Calculating Deposits for Reservation "+String($i)+" of "+String(Records in selection([Reservation])))
+
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+
+QUERY SELECTION([Trxs];[Analysis]KeyStatsCategory=Get localized string("Deposit"))
+
+[Reservation]DepositAmt:=Sum([Trxs]TotAmt)
+
+SAVE RECORD([Reservation])
+If ($Zero)
+If ([Reservation]DepositAmt#0)
+ADD TO SET([Reservation];"$AgreeToPrint")
+End if 
+Else 
+If ([Reservation]ActiveReserve=False)
+If ([Reservation]DepositAmt#0)
+ADD TO SET([Reservation];"$AgreeToPrint")
+End if 
+Else 
+ADD TO SET([Reservation];"$AgreeToPrint")
+End if 
+End if 
+
+NEXT RECORD([Reservation])
+End for 
+<>ProgressInd:=100
+
+USE SET("$AgreeToPrint")
+CLEAR SET("$AgreeToPrint")
+
+//For ($i;1;$TotAgree)
+//<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+//USE SET("$TrxQuery")
+//QUERY SELECTION([Transaction];[Transaction]AgreeNo=[Reservation]RReserveNo)
+//[Reservation]DepositAmt:=Sum([Transaction]TotAmt)
+//SAVE RECORD([Reservation])
+//NEXT RECORD([Reservation])
+//End for 
+//<>ProgressInd:=100
+//
+//If ($Zero)
+//  //QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+"@";*)
+//  //QUERY([Reservation]; & ;[Reservation]ActiveReserve=True;*)
+//  //QUERY([Reservation]; & ;[Reservation]DepositAmt#0)
+//QUERY SELECTION([Reservation];[Reservation]DepositAmt#0)
+//Else 
+//  //QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+"@";*)
+//  //QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+//CREATE SET([Reservation];"$AgreeToQuery")
+//QUERY SELECTION([Reservation];[Reservation]ActiveReserve=False;*)
+//QUERY SELECTION([Reservation]; & ;[Reservation]DepositAmt=0)
+//CREATE SET([Reservation];"$ToRemove")
+//DIFFERENCE("$AgreeToQuery";"$ToRemove";"$AgreeToQuery")
+//USE SET("$AgreeToQuery")
+//CLEAR SET("$ToRemove")
+//CLEAR SET("$AgreeToQuery")
+//End if 
+
+CLEAR SET("$TrxQuery")
+If ($Sort)
+ORDER BY([Reservation];[Reservation]ReservedDate;>)
+Else 
+ORDER BY([Reservation];[Reservation]UnitsReserved;>)
+End if 
+BREAK LEVEL(0)
+ACCUMULATE([Reservation]DepositAmt)
+FORM SET OUTPUT([Reservation];"Deposits")
+PrintSelection ("P*";->[Reservation];False;True)
+FORM SET OUTPUT([Reservation];"Output")
+If ($Zero)
+QUERY([PhotosCards];[PhotosCards]Code=<>sFacility+"@";*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Deposit#0)
+Else 
+QUERY([PhotosCards];[PhotosCards]Code=<>sFacility+"@";*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+End if 
+If ($Sort)
+ORDER BY([PhotosCards];[PhotosCards]Name;>)
+Else 
+ORDER BY([PhotosCards];[PhotosCards]Code;>)
+End if 
+BREAK LEVEL(0)
+ACCUMULATE([PhotosCards]Deposit)
+FORM SET OUTPUT([PhotosCards];"Deposit")
+PrintSelection ("P*";->[PhotosCards];False;False)
+FORM SET OUTPUT([PhotosCards];"Output")
+If ($stateAgree)
+READ ONLY([Agreement])
+End if 
+If ($stateResv)
+READ ONLY([Reservation])
+End if 
+
+<>ProgressInd:=100
+SET AUTOMATIC RELATIONS(False;False)
+VALIDATE TRANSACTION
+End if 
+CLOSE WINDOW($WinRef)
+LogAction (True;"Deposits Held Report ended.")

@@ -1,0 +1,107 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//It appears this method is only called by LogMonLoopCode SDD 3/5/05
+//Changed LogMonLoopCode so that this is only called at night on a Central server
+C_BOOLEAN($1;$Action)//If True from LogMonLoopCode else False from DailyA
+C_LONGINT($i;$j;$x)//This method only execute for Central Server
+$Action:=False
+$i:=2//15/12/16 DAM Changed from 1 to 2 to run receivables recalc all the time
+vDate:=[Facility]ReCalcActivity
+$FromDate:=[Facility]ReCalcActivity
+$LastDaily:=[Facility]LastDaily
+If (<>sProduct="M@") & ($1)
+$LastDaily:=Current date
+If (Current time>?20:00:00?)
+$LastDaily:=Current date+1
+End if 
+Else 
+//15/12/16 DAM Added calculations during Daily for 7 days
+If ($1=False)
+vDate:=$LastDaily-5//Process for past 5 days
+
+If ($LastDaily+1)=GetDate (1;Month of($LastDaily+1);Year of($LastDaily+1))
+vDate:=$LastDaily-32//Process for past 32 days for end of the month
+End if 
+
+End if 
+
+End if 
+While (vDate<($LastDaily-1))//Process up to yesterday only
+$Action:=True
+vDate:=vDate+1
+//15/12/16 DAM Commented to recalculate Receivables all the time
+//If (vDate=($LastDaily-1))  //Always update Receivables for yesterday, but not today
+//$i:=2
+//End if 
+
+If (Application type=4D Server)
+Open window(20;Screen height-300;450;Screen height-200;0;Get localized string("Progress"))
+Else 
+Open window(20;50;450;150;0;Get localized string("Progress"))
+End if 
+GOTO XY(2;2)
+MESSAGE([Facility]FacilityCode+" - "+Get localized string("Calculating Daily Activity for")+" "+String(vDate;6)+"    ")
+While (DailyActivity (vDate;$i;2;False)#0)
+LOCKED BY([Activity];$Process;$User;$Machine;$ProcName)
+AlertMessage (Get localized string("WARNING - The Activity data for")+" "+String(vDate)+" "+Get localized string("cannot be updated as the record is locked by")+" "+String($Process)+"-"+$User+"-"+$ProcName+"!")
+End while 
+CLOSE WINDOW
+End while 
+If ($Action)
+If ($1)
+UpdateSystem (165;->vDate;"";True)
+Else 
+[Facility]ReCalcActivity:=vDate
+SAVE RECORD([Facility])
+End if 
+READ WRITE([Activity])//Next section added in 3.1.3 to cause Occupancy level in future to be correct.
+For ($i;1;5)
+QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=[Facility]ReCalcActivity+$i)
+If (Records in selection([Activity])=0)
+CREATE RECORD([Activity])
+[Activity]FacilityCode:=[Facility]FacilityCode
+[Activity]ActivityDate:=[Facility]ReCalcActivity+$i
+[Activity]ActivityWeek:=GetWeekMonthNo (1;[Activity]ActivityDate)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;[Activity]ActivityDate)
+SAVE RECORD([Activity])
+End if 
+End for 
+QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=[Facility]ReCalcActivity;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<([Facility]ReCalcActivity+30))
+If (Records in selection([Activity])>0)
+ORDER BY([Activity];[Activity]ActivityDate;>)
+$i:=[Activity]TotUnitNo
+$x:=[Activity]OtherUnitNo
+$j:=[Activity]OccupUnitNo
+NEXT RECORD([Activity])
+If (Application type=4D Server)
+Open window(20;Screen height-300;450;Screen height-200;0;Get localized string("Progress"))
+Else 
+Open window(20;50;450;150;0;Get localized string("Progress"))
+End if 
+While (End selection([Activity])=False)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Calculating Daily Occupancy for")+" "+String([Activity]ActivityDate;6)+"    ")
+[Activity]TotUnitNo:=$i
+[Activity]OtherUnitNo:=$x
+$j:=$j+[Activity]MoveIns-[Activity]MoveOuts
+[Activity]OccupUnitNo:=$j
+[Activity]VacantUnitNo:=$i-$j-$x
+SAVE RECORD([Activity])
+NEXT RECORD([Activity])
+End while //End new section added 3.1.3
+CLOSE WINDOW
+End if 
+End if 
+//SDD 27/1/12 Send Events To Storman HOF server as well - RWFR Have commented out for now as it is causing issues
+//If ([Facility]FacilityCode#"ST@")  //Must check no one else has this facility code
+//TriggerLogStormanHOF (1)
+//QUERY([Activity];[Activity]FacilityCode=[Facility]FacilityCode;*)
+//QUERY([Activity]; & ;[Activity]ActivityDate>=$FromDate;*)
+//QUERY([Activity]; & ;[Activity]ActivityDate<=$LastDaily)
+//For ($i;1;Records in selection([Activity]))
+//TriggerLogStormanHOF (10)
+//NEXT RECORD([Activity])
+//End for 
+//End if 

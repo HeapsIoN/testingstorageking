@@ -1,0 +1,86 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+C_POINTER($1)//Pointer to field to update
+C_TEXT($2;$Date)//Value to update with
+C_BLOB($Blob)
+C_LONGINT($Len)
+
+Case of 
+: (Type($1->)=Is date)
+$Date:=$2
+Case of 
+: ((($Date="@US") & (DateFormat =0)) | (($Date#"@US") & (DateFormat =1))) & ($Date#"@ISO")
+$Date:=Substring($Date;4;2)+Substring($Date;3;1)+Substring($Date;1;2)+Substring($Date;6)
+: ($Date="@ISO") & (DateFormat =0)
+$Date:=Substring($Date;9;2)+Substring($Date;5;4)+Substring($Date;1;4)
+: (($Date#"@ISO") & (DateFormat =2)) & ($Date#"@US")
+$Date:=Substring($Date;7)+Substring($Date;3;4)+Substring($Date;1;2)
+: ($Date="@ISO") & (DateFormat =1)
+$Date:=Substring($Date;6;2)+Substring($Date;8;3)+Substring($Date;5;1)+Substring($Date;1;4)
+: ($Date="@US") & (DateFormat =2)
+$Date:=Substring($Date;7)+Substring($Date;6;1)+Substring($Date;1;2)+Substring($Date;3;3)
+Else 
+//Do Nothing
+End case 
+If ($Date="@US")
+$Date:=Replace string($Date;"US";"")
+End if 
+If ($Date="@ISO")
+$Date:=Replace string($Date;"ISO";"")
+End if 
+$1->:=Date($Date)
+: (Type($1->)=Is time)
+$1->:=Time($2)
+: (Type($1->)=Is integer) | (Type($1->)=Is longint) | (Type($1->)=Is real)
+$1->:=Num($2)
+: (Type($1->)=Is Boolean)
+$1->:=($2="True")
+: (Type($1->)=Is subtable)
+//Not used anymore
+: (Type($1->)=Is picture) | (Type($1->)=Is BLOB)
+viBlobNo:=viBlobNo+1
+$Len:=Num(Substring(vsOffsets;(viBlobNo*7)-6;7))
+If ($Len>0)
+COPY BLOB(vbEventContent;$Blob;viPos;0;$Len)
+viPos:=viPos+BLOB size($Blob)
+//If (BLOB size($Blob)>0)
+//$DocRef:=Create document("Doc"+String(viBlobNo))
+//CLOSE DOCUMENT($DocRef)
+//BLOB TO DOCUMENT(Document;$Blob)
+//End if 
+If (Type($1->)=Is picture)
+Case of 
+: ([EventLog]EventTable=1)
+//commented out 25/10/06
+//BLOB TO DOCUMENT(<>sStormanPath+"Receive.4dw";$Blob)
+//
+//$Sync:=DR New offscreen area 
+//DR OPEN DOCUMENT ($Sync;<>sStormanPath+"Receive.4dw";0)
+//DELETE DOCUMENT(<>sStormanPath+"Receive.4dw")
+//
+//$1->:=DR Area to picture ($Sync;-2)
+//DR DELETE OFFSCREEN AREA ($Sync)
+//
+: ([EventLog]EventTable>=9) & ([EventLog]EventTable<=12)//Notices, Letter, Contacts  
+//This code should not execute    
+$Doc:=WR New offscreen area 
+ON ERR CALL("ErrorNone")//This to stop error when loading old 4D Write areas
+WR BLOB TO AREA ($Doc;$Blob)
+$1->:=WR Area to picture ($Doc;1;1)
+ON ERR CALL("ErrorLog")
+WR DELETE OFFSCREEN AREA ($Doc)
+Else 
+BLOB TO PICTURE($Blob;$1->)
+End case 
+Else 
+$1->:=$Blob
+End if 
+SET BLOB SIZE($Blob;0)
+End if 
+Else //String or Text
+If (Table($1)=26) & (Field name($1)="Password")
+$1->:=EncryptIt ($2;False)
+Else 
+$1->:=$2
+End if 
+End case 

@@ -1,0 +1,156 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+vTitle:=Get localized string("Import Customer Data...")
+vtFormula:=Get localized string("Import Customers Formula")
+//vtFormula:="This will import data from a TEXT (Tab Delimited) or SYLK file"+" into the Customer file.  These files can "
+//vtFormula:=vtFormula+"be created by Excel and other spreadsheet programs.  Use the Save as "
+//vtFormula:=vtFormula+"option to create the file."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"The columns need to be in the following order: (A=Alpha + Max chars)"+Char(13)
+//vtFormula:=vtFormula+"CustCode (A10 Caps), CustName (A50), UserName (A40), Firstname (A20), "
+//vtFormula:=vtFormula+"MailAddr1 (A40), MailAddr2 (A30), MailCity (A30), State (A3), "
+//vtFormula:=vtFormula+"PostCode (A10), HomePhone (A25), MobilePhone (A15), EmailAddr (A40), "
+//vtFormula:=vtFormula+"StreetAddr (A40), StreetCity (A20), StreetState (A3), StreetPCode (A10), "
+//vtFormula:=vtFormula+"AlternateName (A40), AlternateAddr (A40), AlternateCity (A20), "
+//vtFormula:=vtFormula+"AlternateState (A3), AlternatePCode (A10), AlternatePhone (A20), "
+//vtFormula:=vtFormula+"Employer (A40), WorkPhone (A25), AltContact (A80), AccessList (A80), "
+//vtFormula:=vtFormula+"CarRego (A14), LicenceNo (A30), CreditCard (A10), CardNo (A30), CardExpiry (A4),"
+//vtFormula:=vtFormula+"GatePIN (A10), GateTimeZone (N 1-8), AlwaysAllow (True/False), Notes (Text), Mark"+"etSource (A15), "
+//vtFormula:=vtFormula+"CustType (A15), BusType (A15), MarketWhy (A15), FaxNo (A25), AltFax (A25), AltBus"+"Phone (A25), AltEmail (A80), Title(A15), BankAcct(A20),BSB/Sort(A6)"+Char(13)
+//vtFormula:=vtFormula+" - Don't include a header row and ensure no duplicates for CustCode!"
+//vtFormula:=vtFormula+" - otherwise importing will stop at duplicate code record."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"To continue select the TEXT or SYLK formatted file at the following open dialog."
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Customers"))
+vImportDialog:=True
+vShowCancel:=True
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+If (OK=1)
+LogAction (False;"Import Customers commenced")
+If (<>tLogging=False)
+ALL RECORDS([Customer])
+If (Records in selection([Customer])>0)
+BEEP
+ConfirmTwo (Get localized string("Delete")+" "+Get localized string("The")+" "+String(Records in selection([Customer]))+" "+Get localized string("existing customers before importing?"))
+If (OK=1)
+BEEP
+BEEP
+BEEP
+ConfirmTwo (Get localized string("WARNING - Delete")+" "+String(Records in selection([Customer]))+" "+Get localized string("existing customers. Are you absolutely certain?"))
+If (OK=1)
+DELETE SELECTION([Customer])
+End if 
+End if 
+End if 
+FORM SET INPUT([Customer];"Import")
+ON ERR CALL("ErrorImport")
+If (rRefund1=1)
+IMPORT TEXT("")
+Else 
+IMPORT SYLK("")
+End if 
+ON ERR CALL("ErrorLog")
+QUERY([Customer];[Customer]CustomerCode="";*)
+QUERY([Customer]; | ;[Customer]CustomerName="")
+DELETE SELECTION([Customer])
+QUERY([Customer];[Customer]CustomerName="@  @")
+If (Records in selection([Customer])>0)
+ConfirmTwo (Get localized string("There are customers with double spaces in name. Convert to ','?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+APPLY TO SELECTION([Customer];[Customer]CustomerName:=Replace string([Customer]CustomerName;"  ";", "))
+End if 
+End if 
+ALL RECORDS([Customer])
+ConfirmTwo (Get localized string("Clear Marketing Lists and Generate New?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([MarketingTypes])
+DISTINCT VALUES([Customer]MarketSrce;asList1)
+DISTINCT VALUES([Customer]CustType;asList2)
+DISTINCT VALUES([Customer]BusType;asList3)
+DISTINCT VALUES([Customer]ReasonRenting;asList4)
+If (Size of array(asList1)>1)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MS")
+DELETE SELECTION([MarketingTypes])
+For ($i;1;Size of array(asList1))
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MS";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=asList1{$i})
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]ListCode:="MS"
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=asList1{$i}
+SAVE RECORD([MarketingTypes])
+End if 
+End for 
+End if 
+If (Size of array(asList2)>1)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT")
+DELETE SELECTION([MarketingTypes])
+For ($i;1;Size of array(asList2))
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=asList2{$i})
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]ListCode:="CT"
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=asList2{$i}
+SAVE RECORD([MarketingTypes])
+End if 
+End for 
+End if 
+If (Size of array(asList3)>1)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="BT")
+DELETE SELECTION([MarketingTypes])
+For ($i;1;Size of array(asList3))
+QUERY([MarketingTypes];[MarketingTypes]ListCode="BT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=asList3{$i})
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]ListCode:="BT"
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=asList3{$i}
+SAVE RECORD([MarketingTypes])
+End if 
+End for 
+End if 
+If (Size of array(asList4)>1)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MW")
+DELETE SELECTION([MarketingTypes])
+For ($i;1;Size of array(asList4))
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MW";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=asList4{$i})
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]ListCode:="MW"
+[MarketingTypes]SortOrder:=$i
+[MarketingTypes]Description:=asList4{$i}
+SAVE RECORD([MarketingTypes])
+End if 
+End for 
+End if 
+READ ONLY([MarketingTypes])
+UNLOAD RECORD([MarketingTypes])
+End if 
+FORM SET INPUT([Customer];"CustomerIn")
+ALL RECORDS([Customer])
+vtFormula:=Get localized string("There are now")+" "+String(Records in selection([Customer]))+" "+Get localized string("Customers on file.")+Char(13)
+vtFormula:=vtFormula+Get localized string("Import Customers Errors")
+//vtFormula:=vtFormula+"Please check to ensure last row of spreadsheet is in"
+//vtFormula:=vtFormula+" in the Customer file, otherwise an error has occurred and you will need to fix "
+//vtFormula:=vtFormula+"the error and import the spread sheet again."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"Errors are normally caused by either a duplicate CustomerCode or by having "
+//vtFormula:=vtFormula+"a datafield that is too long or in the wrong format.  The row after the last "
+//vtFormula:=vtFormula+"successfully imported record is generally the offending row."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"If you need to import the file again be sure to delete the existing customers"
+//vtFormula:=vtFormula+" when asked during the import process."
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Customers"))
+vImportDialog:=True
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+ORDER BY([Customer];[Customer]CustomerCode;>)
+LogAction (True;"Import Customers finished")
+Else 
+LogAction (True;"Import Customers finished")
+End if 
+End if 

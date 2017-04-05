@@ -1,0 +1,673 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($1;$Table)//TriggerLog
+C_TEXT($2;$Facility)
+C_BOOLEAN($3)//True to reorder SeqNo on Trx
+C_BOOLEAN($4;<>tSendWrite)//True to send 4D Write areas
+C_BOOLEAN($5)//If true create Text file else send via internet
+C_BOOLEAN($6)//if true Upload the resulting file to the FTP server
+C_BOOLEAN($7)//If true then signal the MV to import datafile
+C_BOOLEAN($8)//If True then it was called by LogMonitor or LogMonServer
+C_BOOLEAN($vbUploadContinue;$UploadToFTP;$ImportAtMV)//Upload to FTP but not Import at MV; Import at MV
+C_LONGINT($i)
+C_BOOLEAN(vbSyncingOn)
+
+//Set variables to values passed by 'SyncCreateAll'
+vbSyncingOn:=True
+$Table:=$1
+$Facility:=$2
+$vbUploadContinue:=False
+$UploadToFTP:=$6
+$ImportAtMV:=$7
+$CalledByLogMon:=$8
+//Determine values to refer to exported datafile both before archiving and after
+$FilenameTxt:=$Facility+String($Table;"00")+".txt"
+$FilenameZip:=$Facility+String($Table;"00")+".zip"
+$Pathname:=<>sBackupPath
+$Code:=""
+
+$MethodCalledOnError:=Method called on error
+ON ERR CALL("errorlog")
+
+QUERY([Facility];[Facility]FacilityCode=$Facility)//This needed for client / server
+
+//Disable Syncing at MV
+If ($UploadToFTP=True)
+$vtDeactivateSyncingResult:=WSC_ImportMVSite ($Facility;"DeactivateSyncing";0)
+Case of 
+: ($vtDeactivateSyncingResult="101")//More than 1 Facility record returned
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Deactivate Syncing - More than one Facility record with code")+" "+$Facility+" "+Get localized string("was found at MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - More than one Facility record with code")+" "+$Facility+" "+Get localized string("was found at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - More than one Facility record with code")+" "+$Facility+" "+Get localized string("was found at MV"))
+End if 
+: ($vtDeactivateSyncingResult="102")//Facility not found
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("not found at MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("not found at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("not found at MV"))
+End if 
+: ($vtDeactivateSyncingResult="103")//Facility record Read Only
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("is Read Only at MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("is Read Only at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("is Read Only at MV"))
+End if 
+: ($vtDeactivateSyncingResult="104")//Facility record Locked
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("is Locked at MV");0)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("is Locked at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing - Facility record")+" "+$Facility+" "+Get localized string("is Locked at MV"))
+End if 
+: ($vtDeactivateSyncingResult="")//Deactivating Syncing - No Response from MV
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Deactivate Syncing for Facility")+" "+$Facility+" - "+Get localized string("No Response from MV");0)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing for Facility")+" "+$Facility+" - "+Get localized string("No Response from MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Deactivate Syncing for Facility")+" "+$Facility+" - "+Get localized string("No Response from MV"))
+End if 
+Else // ($Result="100")  `No Error 
+$vbUploadContinue:=True
+End case 
+End if 
+
+If ($5)//Create Text file
+$Name:=SetSyncUser ("SyncAdd";-1)//SyncLog
+Else 
+$Name:=SetSyncUser ("SyncAdd";-2)//Write as ADD events  TriggerLog
+End if 
+
+If ($UploadToFTP=False) | (($UploadToFTP=True) & ($vbUploadContinue=True))
+$vbUploadContinue:=False
+If ([UserLogins]RecordStatus<0)
+<>tSendWrite:=$4
+If ($5)
+SET CHANNEL(10;$Pathname+$FilenameTxt)
+End if 
+Open window(20;50;450;150;0;Get localized string("Progress"))
+If ($Table>0)
+If ($Table#1)
+//25/06/13 DAM replaced <>aiPrimaryKeyField with <>aiFacilityField as it used from field number.
+LogEvent ("CLEAR TABLE "+Table name($Table);False;"CLT";$Table;String(<>aiFacilityField{$Table};"000");$Facility;"";Current date;0)
+End if 
+$Tickcount:=Tickcount+70
+While (Tickcount<$Tickcount)//Wait 1 sec so event is always first
+IDLE
+End while 
+End if 
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+If ($Table=1) | ($Table=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Facilities")+"...                ")
+TriggerLog (1;"145";"";!00-00-00!;0;"F";[Facility]FacilityCode;[Facility]FacilityCode)
+End if 
+If ($Table=7) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing AnalysisCodes")+"...                ")
+QUERY([Analysis];[Analysis]Code=$Facility+"@")
+For ($i;1;Records in selection([Analysis]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Analysis]))+"          ")
+TriggerLog (7;"031";"";!00-00-00!;0;"H";Substring([Analysis]Code;1;5);[Analysis]Code)
+NEXT RECORD([Analysis])
+End for 
+End if 
+If ($Table=8) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing BillingPlans")+"...                ")
+QUERY([BillPlan];[BillPlan]Code=$Facility+"@")
+For ($i;1;Records in selection([BillPlan]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([BillPlan]))+"          ")
+TriggerLog (8;"024";"";!00-00-00!;0;"B";Substring([BillPlan]Code;1;5);[BillPlan]Code)
+NEXT RECORD([BillPlan])
+End for 
+End if 
+If ($Table=9) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Notices")+"...                ")
+QUERY([Notices];[Notices]FacilityCode=$Facility)
+For ($i;1;Records in selection([Notices]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Notices]))+"          ")
+TriggerLog (9;"041";"";!00-00-00!;0;"S";[Notices]FacilityCode;[Notices]FacilityCode)
+NEXT RECORD([Notices])
+End for 
+End if 
+
+If ($Table=15) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing MarketTypes")+"...                ")
+QUERY([MarketingTypes];[MarketingTypes]Facility=$Facility)
+For ($i;1;Records in selection([MarketingTypes]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([MarketingTypes]))+"          ")
+TriggerLog (15;"008";"";!00-00-00!;0;"M";[MarketingTypes]Facility;[MarketingTypes]Facility)
+NEXT RECORD([MarketingTypes])
+End for 
+End if 
+If ($Table=2) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing UnitTypes")+"...                ")
+QUERY([UnitType];[UnitType]RUnitType=$Facility+"@")
+For ($i;1;Records in selection([UnitType]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitType]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (2;"027";"";!00-00-00!;0;"U";Substring([UnitType]RUnitType;1;5);[UnitType]RUnitType)
+NEXT RECORD([UnitType])
+End for 
+End if 
+If ($Table=3) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Units")+"...                ")
+QUERY([Unit];[Unit]RUnitNo=$Facility+"@")
+For ($i;1;Records in selection([Unit]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Unit]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (3;"056";"";!00-00-00!;0;"U";Substring([Unit]RUnitNo;1;5);[Unit]RUnitNo)
+NEXT RECORD([Unit])
+End for 
+End if 
+If ($Table=4) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreements")+"...                ")
+QUERY([Agreement];[Agreement]RAgreeNo=$Facility+"@")
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (4;"113";Old([Agreement]BillingPlanCode);Old([Agreement]MoveIn);Old([Agreement]RegularRent);$Code;Substring([Agreement]RAgreeNo;1;5);[Agreement]RAgreeNo)
+NEXT RECORD([Agreement])
+End for 
+End if 
+If ($Table=5) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Customers")+"...                ")
+QUERY([Customer];[Customer]CustomerCode=$Facility+"@")
+For ($i;1;Records in selection([Customer]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Customer]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (5;"114";"";!00-00-00!;0;$Code;Substring([Customer]CustomerCode;1;5);[Customer]CustomerCode)
+NEXT RECORD([Customer])
+End for 
+End if 
+If ($Table=6) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Transactions")+"...                ")
+If ($3)
+READ WRITE([Trxs])
+End if 
+QUERY([Trxs];[Trxs]CustomerCode=$Facility+"@")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>)
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs])))
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+If ($3)
+[Trxs]SeqNo:=$i
+SAVE RECORD([Trxs])
+Else 
+TriggerLog (6;"037";$BillP;$TrxDate;$TrxAmt;$Code;Substring([Trxs]AgreeNo;1;5);[Trxs]AgreeNo)
+End if 
+NEXT RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+If ($Table=11) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Letters")+"...                ")
+QUERY([Letters];[Letters]AgreeNo=$Facility+"@";*)
+QUERY([Letters]; | ;[Letters]ContactNo=$Facility+"@")
+For ($i;1;Records in selection([Letters]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Letters]))+"            ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+If ([Letters]ContactNo#"")
+TriggerLog (11;"019";"";!00-00-00!;0;$Code;Substring([Letters]ContactNo;1;5);[Letters]ContactNo)
+Else 
+TriggerLog (11;"019";"";!00-00-00!;0;$Code;Substring([Letters]AgreeNo;1;5);[Letters]AgreeNo)
+End if 
+NEXT RECORD([Letters])
+End for 
+End if 
+If ($Table=12) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Contacts")+"...                ")
+QUERY([Contacts];[Contacts]Facility=$Facility)
+For ($i;1;Records in selection([Contacts]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Contacts]))+"           ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (12;"048";"";!00-00-00!;0;"";[Contacts]Facility;[Contacts]ContactNo)
+NEXT RECORD([Contacts])
+End for 
+End if 
+If ($Table=14) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing PhotoCards")+"...                ")
+QUERY([PhotosCards];[PhotosCards]Code=$Facility+"@")
+For ($i;1;Records in selection([PhotosCards]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([PhotosCards]))+"         ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (14;"013";"";!00-00-00!;0;"";Substring([PhotosCards]Code;1;5);[PhotosCards]Code)
+NEXT RECORD([PhotosCards])
+End for 
+End if 
+If ($Table=17) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Reservations")+"...                ")
+QUERY([Reservation];[Reservation]RReserveNo=$Facility+"@")
+For ($i;1;Records in selection([Reservation]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Reservation]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (17;"020";"";!00-00-00!;0;$Code;Substring([Reservation]RReserveNo;1;5);[Reservation]RReserveNo)
+NEXT RECORD([Reservation])
+End for 
+End if 
+If ($Table=20) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Unit History")+"...                ")
+QUERY([UnitHistory];[UnitHistory]UnitNo=$Facility+"@")
+For ($i;1;Records in selection([UnitHistory]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (20;"007";"";!00-00-00!;0;"";Substring([UnitHistory]UnitNo;1;5);[UnitHistory]AgreeNo)
+NEXT RECORD([UnitHistory])
+End for 
+End if 
+If ($Table=29) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Pictures")+"...                ")
+QUERY([Pictures];[Pictures]Facility=$Facility)
+For ($i;1;Records in selection([Pictures]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Pictures]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (29;"007";"";!00-00-00!;0;"";[Pictures]Facility;[Pictures]Facility)
+NEXT RECORD([Pictures])
+End for 
+End if 
+If ($Table=28) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Notes History")+"...                ")
+QUERY([NotesHistory];[NotesHistory]CustomerCode=$Facility+"@")
+For ($i;1;Records in selection([NotesHistory]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([NotesHistory]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+If ([NotesHistory]ContactNo#"")
+TriggerLog (28;"009";"";!00-00-00!;0;$Code;Substring([NotesHistory]ContactNo;1;5);[NotesHistory]ContactNo)
+Else 
+TriggerLog (28;"009";"";!00-00-00!;0;$Code;Substring([NotesHistory]CustomerCode;1;5);[NotesHistory]CustomerCode)//Maybe should use a sequence number
+End if 
+NEXT RECORD([NotesHistory])
+End for 
+End if 
+If ($Table=32) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Unit Status Trx")+"...                ")
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=$Facility+"@")
+For ($i;1;Records in selection([UnitStatusTrx]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitStatusTrx]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (32;"008";"";!00-00-00!;0;"";Substring([UnitStatusTrx]UnitNo;1;5);[UnitStatusTrx]UnitNo)
+NEXT RECORD([UnitStatusTrx])
+End for 
+End if 
+If ($Table=33) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Quote")+"...                ")
+QUERY([Quote];[Quote]ContactNo=$Facility+"@")
+For ($i;1;Records in selection([Quote]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Quote]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (33;"010";"";!00-00-00!;0;"";Substring([Quote]ContactNo;1;5);[Quote]ContactNo)
+NEXT RECORD([Quote])
+End for 
+End if 
+If ($Table=34) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Insurance Rates")+"...                ")
+QUERY([InsuranceRates];[InsuranceRates]Facility=$Facility+"@")
+For ($i;1;Records in selection([InsuranceRates]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([InsuranceRates]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (34;"006";"";!00-00-00!;0;"IR";[InsuranceRates]Facility;[InsuranceRates]Facility)
+NEXT RECORD([InsuranceRates])
+End for 
+End if 
+If ($Table=35) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Merchandise Discount Plans")+"...                ")
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=$Facility+"@")
+For ($i;1;Records in selection([MerchPlan]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([MerchPlan]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (35;"013";"";!00-00-00!;0;"B";Substring([MerchPlan]MerchPlanID;1;5);[MerchPlan]MerchPlanID)
+NEXT RECORD([MerchPlan])
+End for 
+End if 
+If ($Table=46) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Promotions")+"...                ")
+QUERY([Promotions];[Promotions]PromoCode=$Facility+"@")
+For ($i;1;Records in selection([Promotions]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Promotions]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (46;"001";"";!00-00-00!;0;"B";Substring([Promotions]PromoCode;1;5);[Promotions]PromoCode)
+NEXT RECORD([Promotions])
+End for 
+End if 
+If ($Table=47) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Promotions History")+"...                ")
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=$Facility+"@")
+For ($i;1;Records in selection([PromotionHistory]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([PromotionHistory]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (47;"001";"";!00-00-00!;0;"B";Substring([PromotionHistory]AgreeNo;1;5);[PromotionHistory]AgreeNo)
+NEXT RECORD([PromotionHistory])
+End for 
+End if 
+
+If ($Table=42) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE("Processing Other Charges"+"...                ")
+QUERY([OtherChgs];[OtherChgs]AgreeNo=$Facility+"@")
+For ($i;1;Records in selection([OtherChgs]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([OtherChgs]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (42;"009";"";!00-00-00!;0;"B";Substring([OtherChgs]AgreeNo;1;5);[OtherChgs]AgreeNo)
+NEXT RECORD([OtherChgs])
+End for 
+End if 
+
+If ($Table=41) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE("Processing Rent Control History"+"...                ")
+QUERY([RCHistory];[RCHistory]UnitType=$Facility+"@")
+For ($i;1;Records in selection([RCHistory]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([RCHistory]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (41;"007";"";!00-00-00!;0;"B";Substring([RCHistory]UnitType;1;5);[RCHistory]UnitType)
+NEXT RECORD([RCHistory])
+End for 
+End if 
+
+If ($Table=37) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE("Processing Staff PINs"+"...                ")
+QUERY([StaffPINS];[StaffPINS]FacilityCode=$Facility)
+For ($i;1;Records in selection([StaffPINS]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([StaffPINS]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (37;"008";"";!00-00-00!;0;"B";[StaffPINS]FacilityCode;[StaffPINS]FacilityCode)
+NEXT RECORD([StaffPINS])
+End for 
+End if 
+
+If ($Table=10) | ($Table<=0)//Activity table not normally replicated - Can only be done on it's own
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Activity")+"...                ")
+QUERY([Activity];[Activity]FacilityCode=$Facility)
+For ($i;1;Records in selection([Activity]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Activity]))+"          ")
+TriggerLog (10;"011001";"";[Activity]ActivityDate;0;"SEND";[Activity]FacilityCode;[Activity]FacilityCode)
+NEXT RECORD([Activity])
+End for 
+End if 
+
+
+If ($5)
+SET CHANNEL(11)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Compressing file to send - please wait")+"...              ")
+
+//Create an archive of the exported datafile to be sent to MV for importing
+$DownloadFilename:=$FilenameZip
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Compressing")+" "+$Pathname+$FilenameTxt+" into "+$Pathname+$DownloadFilename)
+If (Test path name($Pathname+$DownloadFilename)=Is a document)
+DELETE DOCUMENT($Pathname+$DownloadFilename)//Remove previous archived export datafile file before creating a new one
+End if 
+If (OK=1)
+If (<>iPlatform=3)//Windows
+If (Application type=4D Local mode) | (Application type=4D Volume desktop)
+$Command:=Char(Double quote)+<>sResourcesPath+"7za.exe"+Char(Double quote)+" a "+Char(Double quote)+$Pathname+$DownloadFilename+Char(Double quote)+" "+Char(Double quote)+$Pathname+$FilenameTxt+Char(Double quote)
+Else 
+$Command:=Char(Double quote)+<>sResourcesPath+"7za.exe"+Char(Double quote)+" a "+Char(Double quote)+$Pathname+$DownloadFilename+Char(Double quote)+" "+Char(Double quote)+$Pathname+$FilenameTxt+Char(Double quote)
+End if 
+SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+$InputStream:=""
+$OutputStream:=""
+$ErrorStream:=""
+LAUNCH EXTERNAL PROCESS($Command;$InputStream;$OutputStream;$ErrorStream)
+Else 
+$UPathname:=Substring($Pathname;Position(":";$Pathname))
+$UPathname:=Replace string($UPathname;":";"/")
+$UPathname:=Replace string($UPathname;" ";"\\ ")
+$Command:="zip -j "+$UPathname+$DownloadFilename+" "+$UPathname+$FilenameTxt
+$InputStream:=""
+$OutputStream:=""
+$ErrorStream:=""
+LAUNCH EXTERNAL PROCESS($Command;$InputStream;$OutputStream;$ErrorStream)
+End if 
+End if 
+If (OK=1) & (Test path name($Pathname+$DownloadFilename)=Is a document)
+$vbUploadContinue:=True
+Else 
+If (($UploadToFTP=True) | ($ImportAtMV=True)) & ($CalledByLogMon=True)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Archiving of datafile for Facility")+" "+$Facility+" "+Get localized string("failed! - Command")+": "+$Command+", "+Get localized string("Output Stream:")+" "+$OutputStream+", "+Get localized string("Error Stream:")+" "+$ErrorStream;0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Archiving of datafile for Facility")+" "+$Facility+" "+Get localized string("failed! - Command")+": "+$Command+", "+Get localized string("Output Stream:")+" "+$OutputStream+", "+Get localized string("Error Stream:")+" "+$ErrorStream)
+Else 
+AlertMessage (Get localized string("Archiving of datafile failed!"))
+End if 
+End if 
+End if 
+CLOSE WINDOW
+End if 
+End if 
+
+//Get FTP Details from MV via Web Service and upload exported datafile to the FTP server
+If ($vbUploadContinue) & ($UploadToFTP=True)
+$vbUploadContinue:=False
+
+$vtGetFTPDetailsResult:=WSC_ImportMVSite ($Facility;"GetFTPDetails";0)
+$vtGetFTPDetailsReturnCode:=GetSeparatedText ($vtGetFTPDetailsResult;",";1)
+Case of 
+: ($vtGetFTPDetailsReturnCode="201")//FTP Host is not supplied
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Host not supplied");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Host not supplied"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Host not supplied"))
+End if 
+: ($vtGetFTPDetailsReturnCode="202")//FTP User is not supplied
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP User not supplied");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP User not supplied"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP User not supplied"))
+End if 
+: ($vtGetFTPDetailsReturnCode="203")//FTP Password is not supplied
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Password not supplied");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Password not supplied"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Password not supplied"))
+End if 
+: ($vtGetFTPDetailsReturnCode="204")//FTP Path is not supplied
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Path not supplied");0)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Path not supplied"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("FTP Path not supplied"))
+End if 
+: ($vtGetFTPDetailsReturnCode="")
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("No FTP information available");0)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("No FTP information available"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Get FTP Details for Facility")+" "+$Facility+" - "+Get localized string("No FTP information available"))
+End if 
+Else 
+//FTP details received successfully
+$vtFTPHost:=GetSeparatedText ($vtGetFTPDetailsResult;",";2)
+$vtFTPUser:=GetSeparatedText ($vtGetFTPDetailsResult;",";3)
+$vtFTPPass:=GetSeparatedText ($vtGetFTPDetailsResult;",";4)
+$vtFTPPath:=GetSeparatedText ($vtGetFTPDetailsResult;",";5)
+If ($vtFTPHost#"") & ($vtFTPUser#"") & ($vtFTPPass#"") & ($vtFTPPath#"")
+$vbUploadContinue:=True
+End if 
+End case 
+End if 
+If ($vbUploadContinue=True) & ($UploadToFTP=True)
+$vbUploadContinue:=False
+$Abort:=False
+
+
+//Upload datafile to FTP server (as specified by MV)
+$viFTPError:=IT_SetTimeOut (60)
+
+Repeat 
+Case of 
+: (IntegerToBoolean (FTP_Login ($vtFTPHost;$vtFTPUser;$vtFTPPass;$FTPID;$FTPWelcome)))
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Login failed");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Login failed"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Login failed"))
+End if 
+: (IntegerToBoolean (FTP_ChangeDir ($FTPID;$vtFTPPath)))
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Change Directory failed");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Change Directory failed"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Change Directory failed"))
+End if 
+: (IntegerToBoolean (FTP_Send ($FTPID;$Pathname+$DownloadFilename;$DownloadFilename;1)))
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Send failed");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Send failed"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Datafile Upload for Facility")+" "+$Facility+" - "+Get localized string("FTP Server Send failed"))
+End if 
+: (Not(IntegerToBoolean (FTP_VerifyID ($FTPID))))
+$viFTPError:=FTP_Logout ($FTPID)
+$vbUploadContinue:=True
+End case 
+
+If ($vbUploadContinue=False)
+ConfirmTwo (Get localized string("The upload failed, would you like to retry?");Get localized string("Retry");Get localized string("Cancel"))
+If (OK=0)
+$Abort:=True
+End if 
+End if 
+Until ($vbUploadContinue=True) | ($Abort=True)
+End if 
+
+//Instruct MV via Web Service that the datafile has uploaded successfully to the FTP server and that it can proceed to download and import
+If ($vbUploadContinue=True) & ($ImportAtMV=True)
+$vbUploadContinue:=False
+
+$vtDownloadImportResult:=WSC_ImportMVSite ($Facility;"DownloadImport";$Table)
+Case of 
+: ($vtDownloadImportResult="301")//More than one Facility found with that code
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Initiate Import - More than one Facility record with code")+" "+$Facility+" "+Get localized string("was found at MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Initiate Import - More than one Facility record with code")+" "+$Facility+" "+Get localized string("was found at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Initiate Import - More than one Facility record with code")+" "+$Facility+" "+Get localized string("was found at MV"))
+End if 
+: ($vtDownloadImportResult="302")//Facility Not found
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("not found at MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("not found at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("not found at MV"))
+End if 
+: ($vtDownloadImportResult="303")//Read Only
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("is Read Only at MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("is Read Only at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("is Read Only at MV"))
+End if 
+: ($vtDownloadImportResult="304")//Locked
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("is Locked at MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("is Locked at MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Initiate Import - Facility record")+" "+$Facility+" "+Get localized string("is Locked at MV"))
+End if 
+: ($vtDownloadImportResult="")//No Response from Server
+If ($CalledByLogMon)
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Initiate Import for Facility")+" "+$Facility+" - "+Get localized string("No response from MV");0)
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Initiate Import for Facility")+" "+$Facility+" - "+Get localized string("No response from MV"))
+Else 
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Initiate Import for Facility")+" "+$Facility+" - "+Get localized string("No response from MV"))
+End if 
+Else //All Good
+$vbUploadContinue:=True
+End case 
+End if 
+
+
+If ($5)//Only alert if creating a text file
+//Error reporting
+Case of 
+: ($ImportAtMV=True) & ($UploadToFTP=True) & ($vbUploadContinue=True) & ($CalledByLogMon=True)//Successfully imported into MV
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile was imported into MV successfully!"))
+UpdateSystem (60;->vbSyncingOn;Get localized string("Unable to automatically re-enable syncing as Facility record is locked."))//Turn Syncing On
+
+: ($ImportAtMV=True) & ($UploadToFTP=True) & ($vbUploadContinue=True) & ($CalledByLogMon=False)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Datafile was imported into MV successfully!"))
+UpdateSystem (60;->vbSyncingOn;Get localized string("Unable to automatically re-enable syncing as Facility record is locked."))//Turn Syncing On
+
+: ($ImportAtMV=True) & ($UploadToFTP=True) & ($vbUploadContinue=False) & ($CalledByLogMon=True)//Failed to import into MV
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile import into MV failed!"))
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile Import for Facility")+" "+$Facility+" "+Get localized string("failed!");0)
+: ($ImportAtMV=True) & ($UploadToFTP=True) & ($vbUploadContinue=False) & ($CalledByLogMon=False)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Datafile import into MV failed!"))
+
+: ($ImportAtMV=False) & ($UploadToFTP=True) & ($vbUploadContinue=True) & ($CalledByLogMon=True)//Successfully uploaded to FTP Server, No Import into MV
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile was uploaded to FTP server successfully!"))
+: ($ImportAtMV=False) & ($UploadToFTP=True) & ($vbUploadContinue=True) & ($CalledByLogMon=False)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Datafile was uploaded to FTP server successfully!"))
+
+: ($ImportAtMV=False) & ($UploadToFTP=True) & ($vbUploadContinue=False) & ($CalledByLogMon=True)//Failed to upload to FTP server, no Import into MV attempted
+SyncRecordLog (Get localized string("MV Site Datafile Export/Import - Datafile upload to FTP server failed!"))
+$Error:=SMTP_QuickSend (GetDNS ("SMTP");"support@storman.com";"urgent@storman.com";Get localized string("URGENT - MV Site Datafile Export/Import");Get localized string("Datafile upload to FTP server for Facility")+" "+$Facility+" "+Get localized string("failed!");0)
+: ($ImportAtMV=False) & ($UploadToFTP=True) & ($vbUploadContinue=False) & ($CalledByLogMon=False)
+AlertMessage (Get localized string("MV Site Datafile Export/Import - Datafile upload to FTP server failed!"))
+
+: ($ImportAtMV=False) & ($UploadToFTP=False) & ($vbUploadContinue=True) & ($CalledByLogMon=False)//Successful Export
+AlertMessage (Get localized string("Datafile Exported successfully!"))
+: ($ImportAtMV=False) & ($UploadToFTP=False) & ($vbUploadContinue=False) & ($CalledByLogMon=False)//Unsuccessful Export
+AlertMessage (Get localized string("Datafile Export failed!"))
+End case 
+End if 
+
+<>tSendWrite:=True
+SetSyncUser ($Name)
+
+ON ERR CALL($MethodCalledOnError)

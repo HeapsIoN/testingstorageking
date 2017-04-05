@@ -1,0 +1,2996 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+//SDD 27/11/13
+// ----------------------------------------------------
+// User name (OS): SDD
+// Date and time: 27/11/13
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_GetReportData
+// Description
+// Receives a request from Online Reporting and calculates the arrays and send them back
+//
+// Parameters  Compiler_Web
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_RequestType;Is string var;SOAP input)//ReportName e.g. KeyStats
+SOAP DECLARATION(WS_ReportDate;Is date;SOAP input)
+SOAP DECLARATION(WS_ReportSettings;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is string var;SOAP input)
+
+SOAP DECLARATION(WS_SuccessMsg;Is string var;SOAP output)
+SOAP DECLARATION(aCustName;Text array;SOAP output)
+SOAP DECLARATION(asData1;Text array;SOAP output)
+SOAP DECLARATION(asData2;Text array;SOAP output)
+SOAP DECLARATION(asData3;Text array;SOAP output)
+SOAP DECLARATION(asData4;Text array;SOAP output)
+SOAP DECLARATION(asData5;Text array;SOAP output)
+SOAP DECLARATION(asData6;Text array;SOAP output)
+SOAP DECLARATION(asData7;Text array;SOAP output)
+SOAP DECLARATION(asData8;Text array;SOAP output)
+SOAP DECLARATION(asData8;Text array;SOAP output)
+SOAP DECLARATION(asData9;Text array;SOAP output)
+SOAP DECLARATION(asData10;Text array;SOAP output)
+SOAP DECLARATION(asData11;Text array;SOAP output)
+SOAP DECLARATION(asData12;Text array;SOAP output)
+SOAP DECLARATION(asData13;Text array;SOAP output)
+SOAP DECLARATION(asData14;Text array;SOAP output)
+SOAP DECLARATION(asData15;Text array;SOAP output)
+SOAP DECLARATION(asData16;Text array;SOAP output)
+SOAP DECLARATION(asData17;Text array;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+
+
+$String:="Start WS_GetReportData"+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+Char(13)
+$String:=$String+"WS_RequestType: "+WS_RequestType+Char(13)
+$String:=$String+"WS_ReportDate: "+String(WS_ReportDate)+Char(13)
+$String:=$String+"WS_ReportSettings: "+WS_ReportSettings+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+C_LONGINT($i;$Sort)
+C_REAL($Total;$ResTotal;$AccTotal)
+C_DATE($EndDate)
+
+ARRAY TEXT(aCustName;0)
+ARRAY TEXT(asData;0;0)
+ARRAY TEXT(asData1;0)
+ARRAY TEXT(asData2;0)
+ARRAY TEXT(asData3;0)
+ARRAY TEXT(asData4;0)
+ARRAY TEXT(asData5;0)
+ARRAY TEXT(asData6;0)
+ARRAY TEXT(asData7;0)
+ARRAY TEXT(asData8;0)
+ARRAY TEXT(asData9;0)
+ARRAY TEXT(asData10;0)
+ARRAY TEXT(asData11;0)
+ARRAY TEXT(asData12;0)
+ARRAY TEXT(asData13;0)
+ARRAY TEXT(asData14;0)
+ARRAY TEXT(asData15;0)
+ARRAY TEXT(asData16;0)
+ARRAY TEXT(asData17;0)
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+vReportSettings:=WS_ReportSettings
+
+Case of 
+: (WS_RequestType="KeyStats")
+
+If ([Facility]FacilityCode="SK@") & ([Facility]UTExcludeKeyStat)
+KeyStatsCalcSK (WS_ReportDate)
+Else 
+KeyStatsCalc (WS_ReportDate)
+End if 
+
+For ($i;1;Size of array(asData{1}))
+APPEND TO ARRAY(asData1;asData{1}{$i})
+APPEND TO ARRAY(asData2;asData{2}{$i})
+APPEND TO ARRAY(asData3;asData{3}{$i})
+APPEND TO ARRAY(asData4;asData{4}{$i})
+End for 
+WS_SuccessMsg:="Key Stats Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="CustomerBalances")
+//CalcBalance (True;False;False;True)  //Suppress dialogs  Not enought time in method for this
+<>tBatch:=True
+CalcCustBals (False;WS_ReportDate;[Facility]FacilityCode)
+For ($i;1;Size of array(aCustName))
+APPEND TO ARRAY(asData1;aCustCode{$i})
+//aCustName already filled in CalcCustBals
+APPEND TO ARRAY(asData2;String(aOBal{$i};"###,###.00"))
+APPEND TO ARRAY(asData3;String(aChgs{$i};"###,###.00"))
+APPEND TO ARRAY(asData4;String(aRecs{$i};"###,###.00"))
+APPEND TO ARRAY(asData5;String(aCBal{$i};"###,###.00"))
+End for 
+
+WS_SuccessMsg:="Customer Balances Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="RentinAdvance")
+
+<>tBatch:=True
+bAdd:=1
+DEFAULT TABLE([Agreement])
+RentinAdvanceCalc ([Facility]FacilityCode;WS_ReportDate;[Facility]RentAdvFlag;True)
+WS_SuccessMsg:="Rent in Advance Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="DepositHeld")
+$Sort:=0
+$Sort:=Num(WS_ReportSettings)
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_FacilityCode+"@")
+$Total:=0
+$ResTotal:=0
+$AccTotal:=0
+APPEND TO ARRAY(aCustName;"Ref No")
+APPEND TO ARRAY(asData1;"Unit No")
+APPEND TO ARRAY(asData2;"Move In")
+APPEND TO ARRAY(asData3;"Customer")
+APPEND TO ARRAY(asData4;"Deposit Held")
+
+If ($Sort=1)
+ORDER BY([Agreement];[Agreement]MoveIn;>)
+Else 
+ORDER BY([Agreement];[Agreement]UnitsOccup;>)
+End if 
+
+For ($i;1;Records in selection([Agreement]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Deposit")
+If (Sum([Trxs]TotAmt)#0)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+APPEND TO ARRAY(aCustName;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData1;[Agreement]UnitsOccup)
+APPEND TO ARRAY(asData2;String([Agreement]MoveIn))
+APPEND TO ARRAY(asData3;[Customer]CustomerName)
+APPEND TO ARRAY(asData4;String(Sum([Trxs]TotAmt)))
+$Total:=$Total+Sum([Trxs]TotAmt)
+End if 
+NEXT RECORD([Agreement])
+End for 
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@")
+APPEND TO ARRAY(aCustName;"Total for Agreements:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;String($Total))
+
+If ($Sort=1)
+ORDER BY([Reservation];[Reservation]ReservedDate;>)
+Else 
+ORDER BY([Reservation];[Reservation]UnitsReserved;>)
+End if 
+
+For ($i;1;Records in selection([Reservation]))
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Deposit")
+If (Sum([Trxs]TotAmt)#0)
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+APPEND TO ARRAY(aCustName;[Reservation]ReserveNo)
+APPEND TO ARRAY(asData1;[Reservation]UnitsReserved)
+APPEND TO ARRAY(asData2;String([Reservation]ReservedDate))
+APPEND TO ARRAY(asData3;[Customer]CustomerName)
+APPEND TO ARRAY(asData4;String(Sum([Trxs]TotAmt)))
+$ResTotal:=$ResTotal+Sum([Trxs]TotAmt)
+End if 
+NEXT RECORD([Reservation])
+End for 
+
+
+APPEND TO ARRAY(aCustName;"Total for Reservations:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;String($ResTotal))
+
+QUERY([PhotosCards];[PhotosCards]Code=WS_FacilityCode+"@";*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Deposit#0)
+
+APPEND TO ARRAY(aCustName;"Access Card User")
+APPEND TO ARRAY(asData1;"TimeZone")
+APPEND TO ARRAY(asData2;"Customer")
+APPEND TO ARRAY(asData3;"Deposit")
+APPEND TO ARRAY(asData4;"")
+
+If ($Sort=1)
+ORDER BY([PhotosCards];[PhotosCards]Name;>)
+Else 
+ORDER BY([PhotosCards];[PhotosCards]Code;>)
+End if 
+
+For ($i;1;Records in selection([PhotosCards]))
+QUERY([Customer];[Customer]CustomerCode=[PhotosCards]Code)
+APPEND TO ARRAY(aCustName;[PhotosCards]Name)
+APPEND TO ARRAY(asData1;String([PhotosCards]TimeZone))
+APPEND TO ARRAY(asData2;[Customer]CustomerName)
+APPEND TO ARRAY(asData3;String([PhotosCards]Deposit))
+APPEND TO ARRAY(asData4;"")
+$AccTotal:=$AccTotal+[PhotosCards]Deposit
+NEXT RECORD([PhotosCards])
+End for 
+
+APPEND TO ARRAY(aCustName;"Total for Access Cards:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;String($AccTotal))
+
+APPEND TO ARRAY(aCustName;"Total:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;String($ResTotal+$Total+$AccTotal))
+
+WS_SuccessMsg:="Deposit Held Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="StaffConversion")
+//Type, Disp
+vDateFor:=WS_ReportDate
+Case of 
+: (WS_ReportSettings="1,1")
+//Title
+SaleEnqTitleReport 
+aCustName{2}:="User"
+ALL RECORDS([UserLogins])
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallDate>=<>dYearStart)
+DISTINCT VALUES([Contacts]CallTakenBy;asUser)
+ORDER BY([UserLogins];[UserLogins]Name;>)
+CREATE EMPTY SET([UserLogins];"User")
+For ($i;1;Size of array(asUser))
+QUERY([UserLogins];[UserLogins]Name=asUser{$i})
+If (Records in selection([UserLogins])>0)
+ADD TO SET([UserLogins];"User")
+End if 
+End for 
+USE SET("User")
+
+For ($i;1;Records in selection([UserLogins]))
+SalesEnqRptOpsUser 
+APPEND TO ARRAY(aCustName;[UserLogins]Name)
+APPEND TO ARRAY(asData1;String(vToday)+","+String(vWTD)+","+String(vMTD)+","+String(vYTD))
+APPEND TO ARRAY(asData2;String(vTDeclined)+","+String(vWDeclined)+","+String(vMDeclined)+","+String(vYDeclined))
+APPEND TO ARRAY(asData3;String(vTPending)+","+String(vWPending)+","+String(vMPending)+","+String(vYPending))
+APPEND TO ARRAY(asData4;String(vTRes)+","+String(vTAg)+","+String(vWRes)+","+String(vWAg)+","+String(vMRes)+","+String(vMAg)+","+String(vYRes)+","+String(vYAg))
+NEXT RECORD([UserLogins])
+End for 
+
+: (WS_ReportSettings="1,2")
+SaleEnqTitleReport 
+aCustName{2}:="Group"
+DEFAULT TABLE([Groups])
+ALL RECORDS([Groups])
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallDate>=<>dYearStart)
+ORDER BY([Groups];[Groups]Name;>)
+For ($i;1;Records in selection([Groups]))
+SalesEnqRptOpsGrp 
+APPEND TO ARRAY(aCustName;[Groups]Name)
+APPEND TO ARRAY(asData1;String(vToday)+","+String(vWTD)+","+String(vMTD)+","+String(vYTD))
+APPEND TO ARRAY(asData2;String(vTDeclined)+","+String(vWDeclined)+","+String(vMDeclined)+","+String(vYDeclined))
+APPEND TO ARRAY(asData3;String(vTPending)+","+String(vWPending)+","+String(vMPending)+","+String(vYPending))
+APPEND TO ARRAY(asData4;String(vTRes)+","+String(vTAg)+","+String(vWRes)+","+String(vWAg)+","+String(vMRes)+","+String(vMAg)+","+String(vYRes)+","+String(vYAg))
+NEXT RECORD([Groups])
+End for 
+: (WS_ReportSettings="1,3")
+SaleEnqTitleReport 
+aCustName{2}:="Facility"
+DEFAULT TABLE([Facility])
+QUERY([Facility];[Facility]SortOrder>=0)
+QUERY([Contacts];[Contacts]CallDate>=<>dYearStart)
+ORDER BY([Facility];[Facility]FacilityName;>)
+For ($i;1;Records in selection([Facility]))
+SalesEnqRptOpsFac 
+APPEND TO ARRAY(aCustName;[Facility]FacilityName)
+APPEND TO ARRAY(asData1;String(vToday)+","+String(vWTD)+","+String(vMTD)+","+String(vYTD))
+APPEND TO ARRAY(asData2;String(vTDeclined)+","+String(vWDeclined)+","+String(vMDeclined)+","+String(vYDeclined))
+APPEND TO ARRAY(asData3;String(vTPending)+","+String(vWPending)+","+String(vMPending)+","+String(vYPending))
+APPEND TO ARRAY(asData4;String(vTRes)+","+String(vTAg)+","+String(vWRes)+","+String(vWAg)+","+String(vMRes)+","+String(vMAg)+","+String(vYRes)+","+String(vYAg))
+NEXT RECORD([Facility])
+End for 
+
+: (WS_ReportSettings="2,1")
+SaleEnqTitleReport 
+aCustName{2}:="User"
+asData3{1}:="Enq Converted (Self)"
+asData4{1}:="Enq Converted (Other)"
+asData3{3}:="R"+","+"A"+","+"R"+","+"A"+","+"R"+","+"A"+","+"R"+","+"A"
+
+ALL RECORDS([UserLogins])
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]CallDate>=<>dYearStart)
+DISTINCT VALUES([Contacts]CallTakenBy;asUser)
+ORDER BY([UserLogins];[UserLogins]Name;>)
+CREATE EMPTY SET([UserLogins];"User")
+For ($i;1;Size of array(asUser))
+QUERY([UserLogins];[UserLogins]Name=asUser{$i})
+If (Records in selection([UserLogins])>0)
+ADD TO SET([UserLogins];"User")
+End if 
+End for 
+USE SET("User")
+For ($i;1;Records in selection([UserLogins]))
+SalesEnqRptAnlsUser 
+APPEND TO ARRAY(aCustName;[UserLogins]Name)
+APPEND TO ARRAY(asData1;String(vToday)+","+String(vWTD)+","+String(vMTD)+","+String(vYTD))
+APPEND TO ARRAY(asData2;String(vTDeclined)+","+String(vWDeclined)+","+String(vMDeclined)+","+String(vYDeclined))
+APPEND TO ARRAY(asData3;String(vTSelfRes)+","+String(vTSelfAgree)+","+String(vWTDSelfRes)+","+String(vWTDSelfAgree)+","+String(vMTDSelfRes)+","+String(vMTDSelfAgree)+","+String(vYTDSelfRes)+","+String(vYTDSelfAgree))
+APPEND TO ARRAY(asData4;String(vTOtherRes)+","+String(vTOtherAgree)+","+String(vWTDOtherRes)+","+String(vWTDOtherAgree)+","+String(vMTDOtherRes)+","+String(vMTDOtherAgree)+","+String(vYTDOtherRes)+","+String(vYTDOtherAgree))
+NEXT RECORD([UserLogins])
+End for 
+
+End case 
+
+WS_SuccessMsg:="Staff Conversion Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="AverageLength")
+
+vRptDate:=WS_ReportDate
+If (vRptDate>Current date)
+vRptDate:=Current date
+End if 
+
+vStDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+sAll:=Num(GetTextNo (WS_ReportSettings;2;","))
+viSplit:=Num(GetTextNo (WS_ReportSettings;3;","))
+viMovedIn:=Num(GetTextNo (WS_ReportSettings;4;","))
+viSplitDays:=Num(GetTextNo (WS_ReportSettings;5;","))
+
+vTotMvOuts:=0
+vTotNoOcc:=0
+vRTAvgIn:=0
+vRTAvgOut:=0
+vRTAvg:=0
+vRTDaysIn:=0
+vRTDaysOut:=0
+vRTq:=0
+
+If (sAll=1)
+//Headers
+APPEND TO ARRAY(aCustName;"")
+APPEND TO ARRAY(asData1;"Currently Occupied Units")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"Moved Out This Period")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"Total Average")
+
+APPEND TO ARRAY(aCustName;"Unit Size")
+APPEND TO ARRAY(asData1;"Unit")
+APPEND TO ARRAY(asData2;"Average Stay")
+APPEND TO ARRAY(asData3;"Unit")
+APPEND TO ARRAY(asData4;"Average Stay")
+APPEND TO ARRAY(asData5;"Length of Stay")
+
+If (viSplit=1)
+vRTRun:=1
+QUERY([UnitType];[UnitType]RUnitType=WS_FacilityCode+"@")
+ORDER BY([UnitType];[UnitType]SortOrder;>)
+
+//Data
+For ($i;1;Records in selection([UnitType]))
+AvgLgthStay 
+APPEND TO ARRAY(aCustName;[UnitType]Description)
+APPEND TO ARRAY(asData1;String(vOccUnit))
+APPEND TO ARRAY(asData2;String(vAvgStyIn))
+APPEND TO ARRAY(asData3;String(vNoMvOuts))
+APPEND TO ARRAY(asData4;String(vAvgStyOut))
+APPEND TO ARRAY(asData5;String(vTotAvgSty))
+NEXT RECORD([UnitType])
+End for 
+
+//Total
+vRTAvgIn:=Round(vRTDaysIn/vRTq/30;2)
+vRTAvgOut:=Round(vRTDaysOut/vTotMvOuts/30;2)
+vRTAvg:=Round((vRTDaysIn+vRTDaysOut)/(vRTq+vTotMvOuts)/30;2)
+
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;String(vTotNoOcc))
+APPEND TO ARRAY(asData2;String(vRTAvgIn))
+APPEND TO ARRAY(asData3;String(vTotMvOuts))
+APPEND TO ARRAY(asData4;String(vRTAvgOut))
+APPEND TO ARRAY(asData5;String(vRTAvg))
+
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]DaysStayed:=0
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+
+End if 
+
+//Data
+vRTRun:=2
+vTotNoOcc:=0
+vRTAvgIn:=0
+vTotMvOuts:=0
+vRTAvg:=0
+vRTDaysIn:=0
+vRTq:=0
+vRTDaysOut:=0
+vTotMvOuts:=0
+vRTDaysIn:=0
+vRTDaysOut:=0
+QUERY([UnitType];[UnitType]RUnitType=WS_FacilityCode+"@")
+ORDER BY([UnitType];[UnitType]SortOrder;>)
+For ($i;1;Records in selection([UnitType]))
+AvgLgthStay 
+APPEND TO ARRAY(aCustName;[UnitType]Description)
+APPEND TO ARRAY(asData1;String(vOccUnit))
+APPEND TO ARRAY(asData2;String(vAvgStyIn))
+APPEND TO ARRAY(asData3;String(vNoMvOuts))
+APPEND TO ARRAY(asData4;String(vAvgStyOut))
+APPEND TO ARRAY(asData5;String(vTotAvgSty))
+NEXT RECORD([UnitType])
+End for 
+
+//Total
+vRTAvgIn:=Round(vRTDaysIn/vRTq/30;2)
+vRTAvgOut:=Round(vRTDaysOut/vTotMvOuts/30;2)
+vRTAvg:=Round((vRTDaysIn+vRTDaysOut)/(vRTq+vTotMvOuts)/30;2)
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;String(vTotNoOcc))
+APPEND TO ARRAY(asData2;String(vRTAvgIn))
+APPEND TO ARRAY(asData3;String(vTotMvOuts))
+APPEND TO ARRAY(asData4;String(vRTAvgOut))
+APPEND TO ARRAY(asData5;String(vRTAvg))
+
+Else 
+vRTRun:=0
+QUERY([UnitType];[UnitType]RUnitType=WS_FacilityCode+"@")
+ORDER BY([UnitType];[UnitType]SortOrder;>)
+//Data
+For ($i;1;Records in selection([UnitType]))
+AvgLgthStay 
+APPEND TO ARRAY(aCustName;[UnitType]Description)
+APPEND TO ARRAY(asData1;String(vOccUnit))
+APPEND TO ARRAY(asData2;String(vAvgStyIn))
+APPEND TO ARRAY(asData3;String(vNoMvOuts))
+APPEND TO ARRAY(asData4;String(vAvgStyOut))
+APPEND TO ARRAY(asData5;String(vTotAvgSty))
+NEXT RECORD([UnitType])
+End for 
+
+//Total
+vRTAvgIn:=Round(vRTDaysIn/vRTq/30;2)
+vRTAvgOut:=Round(vRTDaysOut/vTotMvOuts/30;2)
+vRTAvg:=Round((vRTDaysIn+vRTDaysOut)/(vRTq+vTotMvOuts)/30;2)
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;String(vTotNoOcc))
+APPEND TO ARRAY(asData2;String(vRTAvgIn))
+APPEND TO ARRAY(asData3;String(vTotMvOuts))
+APPEND TO ARRAY(asData4;String(vRTAvgOut))
+APPEND TO ARRAY(asData5;String(vRTAvg))
+
+If (viMovedIn=1)
+READ WRITE([UnitHistory])
+LOAD RECORD([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]MoveOut>=vStDate)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vRptDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+
+For ($k;1;Records in selection([UnitHistory]))
+If ([UnitHistory]MoveOut>vRptDate)
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+SAVE RECORD([UnitHistory])
+End if 
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]DaysStayed:=0
+SAVE RECORD([UnitHistory])
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+
+End if 
+End if 
+Else 
+
+//Headers
+APPEND TO ARRAY(aCustName;"Customer Name")
+APPEND TO ARRAY(asData1;"Number")
+APPEND TO ARRAY(asData2;"Average (Days)")
+APPEND TO ARRAY(asData3;"Average (Mths)")
+
+StayLengthMarketing (True)
+
+End if 
+
+WS_SuccessMsg:="Average Length of Stay Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="PromotionsReport")
+
+vDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+bCode:=Num(GetTextNo (WS_ReportSettings;2;","))
+vShowDates:=Num(GetTextNo (WS_ReportSettings;3;","))
+vMthDate:=WS_ReportDate
+If (vDate=!00-00-00!)
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+End if 
+
+If (WS_FacilityCode="")
+ALL RECORDS([Promotions])
+DISTINCT VALUES([Promotions]VoucherCode;atPromotionsCode)
+ARRAY TEXT(atPromotions;0)
+For ($j;1;Size of array(atPromotionsCode))
+QUERY([Promotions];[Promotions]VoucherCode=atPromotionsCode{$j})
+APPEND TO ARRAY(atPromotions;[Promotions]Description)
+End for 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT")
+Else 
+QUERY([Promotions];[Promotions]PromoCode=WS_FacilityCode+"@")
+SELECTION TO ARRAY([Promotions]VoucherCode;atPromotionsCode;[Promotions]Description;atPromotions)
+QUERY([MarketingTypes];[MarketingTypes]Facility=WS_FacilityCode;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT")
+End if 
+SELECTION TO ARRAY([MarketingTypes]Description;atCustomerTypes)
+INSERT IN ARRAY(atCustomerTypes;1;5)
+
+atCustomerTypes{1}:=Get localized string("All Customers")
+atCustomerTypes{2}:=Get localized string("Active Customers")
+atCustomerTypes{3}:=Get localized string("Customer Referals")
+atCustomerTypes{4}:=Get localized string("Repeat Customers")
+atCustomerTypes{5}:=Get localized string("Longterm Customers")
+
+APPEND TO ARRAY(aCustName;"Voucher Number")
+APPEND TO ARRAY(asData1;"Description")
+APPEND TO ARRAY(asData2;"Used")
+APPEND TO ARRAY(asData3;"Issued")
+
+If (bCode=1)
+For ($i;1;Size of array(atPromotionsCode))
+QUERY([Promotions];[Promotions]VoucherCode=atPromotionsCode{$i})
+FIRST RECORD([Promotions])
+APPEND TO ARRAY(aCustName;[Promotions]VoucherCode)
+APPEND TO ARRAY(asData1;[Promotions]Description)
+
+QUERY([PromotionHistory];[PromotionHistory]VoucherNo=[Promotions]VoucherCode;*)
+If (vShowDates=1)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RedeemedDate>=vDate;*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RedeemedDate<=vMthDate;*)
+End if 
+If (WS_FacilityCode#"")
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo=WS_FacilityCode+"@")
+Else 
+QUERY([PromotionHistory])
+End if 
+
+APPEND TO ARRAY(asData2;String(Records in selection([PromotionHistory])))
+APPEND TO ARRAY(asData3;String([Promotions]Number))
+End for 
+
+Else 
+
+For ($i;1;Size of array(atCustomerTypes))
+QUERY([Promotions];[Promotions]CustomerType=atCustomerTypes{$i})
+DISTINCT VALUES([Promotions]VoucherCode;atPromotionsCode)
+For ($j;1;Size of array(atPromotionsCode))
+QUERY([Promotions];[Promotions]VoucherCode=atPromotionsCode{$j})
+FIRST RECORD([Promotions])
+
+APPEND TO ARRAY(aCustName;[Promotions]VoucherCode)
+APPEND TO ARRAY(asData1;[Promotions]Description)
+QUERY([PromotionHistory];[PromotionHistory]VoucherNo=[Promotions]VoucherCode;*)
+If (vShowDates=1)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RedeemedDate>=vDate;*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RedeemedDate<=vMthDate;*)
+End if 
+If (WS_FacilityCode#"")
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo=WS_FacilityCode+"@")
+Else 
+QUERY([PromotionHistory])
+End if 
+APPEND TO ARRAY(asData2;String(Records in selection([PromotionHistory])))
+APPEND TO ARRAY(asData3;String([Promotions]Number))
+End for 
+End for 
+End if 
+
+WS_SuccessMsg:="Promotions Report Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="GraphOccSum")
+
+ARRAY LONGINT($aWeeks;0)
+C_REAL($Moveins;$MoveOuts;$AverageStay)
+$Moveins:=0
+$MoveOuts:=0
+$AverageStay:=0
+
+vDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+sAll:=Num(GetTextNo (WS_ReportSettings;2;","))
+
+QUERY([Activity];[Activity]ActivityDate>WS_ReportDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=WS_FacilityCode)
+vNumber:=Sum([Activity]MoveIns)
+vNoTotal:=Sum([Activity]MoveOuts)
+
+QUERY([Activity];[Activity]FacilityCode=WS_FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=vDate;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=WS_ReportDate)
+
+Repeat 
+If ([Activity]Updated=False) | ([Activity]ActivityDate>(Current date-14))
+QUERY([UnitHistory];[UnitHistory]MoveIn<=[Activity]ActivityDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut<=[Activity]ActivityDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut#!00-00-00!)
+
+[Activity]AvgStay:=Average([UnitHistory]DaysStayed)
+[Activity]Updated:=True
+End if 
+SAVE RECORD([Activity])
+NEXT RECORD([Activity])
+Until (End selection([Activity]))
+
+APPEND TO ARRAY(aCustName;"Date")
+APPEND TO ARRAY(asData1;"Move-Ins")
+APPEND TO ARRAY(asData2;"Move-Outs")
+APPEND TO ARRAY(asData3;"Occupancy")
+APPEND TO ARRAY(asData4;"Avg Length Stay")
+
+Case of 
+: (sAll=1)// for Date
+ORDER BY([Activity];[Activity]ActivityDate;>)
+
+For ($i;1;Records in selection([Activity]))
+APPEND TO ARRAY(aCustName;String([Activity]ActivityDate;6))
+APPEND TO ARRAY(asData1;String([Activity]MoveIns))
+APPEND TO ARRAY(asData2;String([Activity]MoveOuts))
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo))
+APPEND TO ARRAY(asData4;String([Activity]AvgStay))
+NEXT RECORD([Activity])
+End for 
+
+: (sAll=2)// for week
+ORDER BY([Activity];[Activity]ActivityWeek;>;[Activity]ActivityDate;>)
+
+For ($i;1;Records in selection([Activity]))
+If (Day number([Activity]ActivityDate)=[Facility]WeekEndDay)
+APPEND TO ARRAY(aCustName;String([Activity]ActivityDate))
+APPEND TO ARRAY(asData1;String([Activity]MoveIns+$Moveins))
+APPEND TO ARRAY(asData2;String([Activity]MoveOuts+$MoveOuts))
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo))
+APPEND TO ARRAY(asData4;String([Activity]AvgStay+$AverageStay))
+$Moveins:=0
+$MoveOuts:=0
+$AverageStay:=0
+Else 
+$Moveins:=$Moveins+[Activity]MoveIns
+$MoveOuts:=$MoveOuts+[Activity]MoveOuts
+$AverageStay:=$AverageStay+[Activity]AvgStay
+End if 
+
+If (Records in selection([Activity])=$i)
+
+If ($Moveins#0) | ($MoveOuts#0) | ($AverageStay#0)
+APPEND TO ARRAY(aCustName;String([Activity]ActivityDate))
+APPEND TO ARRAY(asData1;String($Moveins))
+APPEND TO ARRAY(asData2;String($MoveOuts))
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo))
+APPEND TO ARRAY(asData4;String($AverageStay))
+End if 
+
+APPEND TO ARRAY(aCustName;"Future Dates")
+APPEND TO ARRAY(asData1;String(vNumber))
+APPEND TO ARRAY(asData2;String(vNoTotal))
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo+vNumber-vNoTotal))
+APPEND TO ARRAY(asData4;"0")
+End if 
+NEXT RECORD([Activity])
+End for 
+
+: (sAll=3)// Month
+
+ORDER BY([Activity];[Activity]ActivityMonth;>;[Activity]ActivityDate;>)
+DISTINCT VALUES([Activity]ActivityMonth;$aWeeks)
+$Months:=Size of array($aWeeks)
+$Month:=[Activity]ActivityMonth
+
+For ($i;1;Records in selection([Activity]))
+
+If ($Month=[Activity]ActivityMonth)
+$Moveins:=$Moveins+[Activity]MoveIns
+$MoveOuts:=$MoveOuts+[Activity]MoveOuts
+$AverageStay:=$AverageStay+[Activity]AvgStay
+Else 
+
+APPEND TO ARRAY(aCustName;String(Add to date([Activity]ActivityDate;0;0;-1)))
+APPEND TO ARRAY(asData1;String([Activity]MoveIns+$Moveins))
+APPEND TO ARRAY(asData2;String([Activity]MoveOuts+$MoveOuts))
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo))
+APPEND TO ARRAY(asData4;String([Activity]AvgStay+$AverageStay))
+
+$Moveins:=0
+$MoveOuts:=0
+$AverageStay:=0
+$Month:=[Activity]ActivityMonth
+End if 
+
+If (Records in selection([Activity])=$i)
+
+If ($Moveins#0) | ($MoveOuts#0) | ($AverageStay#0)
+APPEND TO ARRAY(aCustName;String([Activity]ActivityDate))
+APPEND TO ARRAY(asData1;String($Moveins))
+APPEND TO ARRAY(asData2;String($MoveOuts))
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo))
+APPEND TO ARRAY(asData4;String($AverageStay))
+$Moveins:=0
+$MoveOuts:=0
+$AverageStay:=0
+End if 
+
+APPEND TO ARRAY(aCustName;"Future Dates")
+APPEND TO ARRAY(asData1;String(vNumber))
+APPEND TO ARRAY(asData2;String(vNoTotal))
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo+vNumber-vNoTotal))
+APPEND TO ARRAY(asData4;"0")
+End if 
+
+NEXT RECORD([Activity])
+
+End for 
+End case 
+
+WS_SuccessMsg:="Graph of Occupancy Summary Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="CashAnalysis")
+
+vMthDate:=WS_ReportDate
+vDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+sAll:=Num(GetTextNo (WS_ReportSettings;2;","))
+
+$Total1:=0
+$Total2:=0
+$Total3:=0
+$Total4:=0
+$Total5:=0
+$Total6:=0
+$Total7:=0
+$Total8:=0
+$Total9:=0
+$Total10:=0
+
+vStmtDate:=GetMonthName (Month of(vMthDate))+" "+String(Year of(vMthDate))
+QUERY([Trxs];[Trxs]AgreeNo=WS_FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+Case of 
+: (sAll=1)
+vLegend:=Get localized string("Cash Received Only")
+QUERY([Trxs]; & ;[Trxs]TotAmt>0;*)
+: (sAll=2)
+vLegend:=Get localized string("Refunds and Returns Only")
+QUERY([Trxs]; & ;[Trxs]TotAmt<0;*)
+: (sAll=3)
+vLegend:=Get localized string("Both Cash Received and Refunds")
+Else 
+//Do Nothing
+End case 
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate)
+
+For ($i;1;7)
+QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=$i)
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+$p:=Get pointer("vHdr"+String($i))
+$p->:=Substring([Analysis]Description;1;12)
+End for 
+QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>7;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<50)
+vHdr8:=""
+If (Records in selection([Analysis])>1)
+vHdr8:=Get localized string("Other")
+Else 
+vHdr8:=Substring([Analysis]Description;1;12)
+End if 
+
+If (WS_FacilityCode="SSSSS")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>;[Trxs]AgreeNo;>;[Trxs]CustomerCode;>;[Trxs]TotAmt)
+Else 
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]AgreeNo;>;[Trxs]CustomerCode;>;[Trxs]TotAmt)
+End if 
+
+//Menu
+APPEND TO ARRAY(aCustName;"Agree't")
+APPEND TO ARRAY(asData1;"Customer")
+APPEND TO ARRAY(asData2;"Date")
+APPEND TO ARRAY(asData3;"Collected")
+APPEND TO ARRAY(asData4;"Tax")
+APPEND TO ARRAY(asData5;vHdr1)
+APPEND TO ARRAY(asData6;vHdr2)
+APPEND TO ARRAY(asData7;vHdr3)
+APPEND TO ARRAY(asData8;vHdr4)
+APPEND TO ARRAY(asData9;vHdr5)
+APPEND TO ARRAY(asData10;vHdr6)
+APPEND TO ARRAY(asData11;vHdr7)
+APPEND TO ARRAY(asData12;vHdr8)
+
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+For ($q;1;8)
+$p:=Get pointer("vTot"+String($q))//("vTot"+String($i))
+$p->:=0
+End for 
+vTax:=0
+ARRAY TEXT(aAnalysisCode;0)
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+ARRAY INTEGER($aType;4)
+$aType{1}:=8
+$aType{2}:=-3
+$aType{3}:=-3
+$aType{4}:=-2
+$Total:=0
+TextToArrays (->[Trxs]MiscDetls;->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+For ($j;1;Size of array(aAnalysisCode))
+QUERY([Analysis];[Analysis]Code=aAnalysisCode{$j})
+If (Records in selection([Analysis])>0)
+$x:=[Analysis]SortOrder
+If ($x>7) | ($x<1)
+$x:=8
+End if 
+$p:=Get pointer("vTot"+String($x))
+vTax:=Round(vTax+aTaxAmt{$j};2)
+$p->:=Round($p->+aTotAmt{$j}-aTaxAmt{$j};2)
+$Total:=Round($Total+aTotAmt{$j};2)
+End if 
+End for 
+If ([Trxs]TotAmt#$Total)
+vTot8:=Round(vTot8+[Trxs]TotAmt-$Total;2)//Put any remainder to other
+End if 
+
+If ([Trxs]CustomerCode="@MISCL")
+$Pos:=Position(Char(17);[Trxs]Narration;*)
+If ($Pos>0)
+[Customer]CustomerName:=Substring([Trxs]Narration;1;$Pos-1)
+Else 
+[Customer]CustomerName:="Cash Sale"
+End if 
+End if 
+
+APPEND TO ARRAY(aCustName;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData1;[Customer]CustomerName)
+APPEND TO ARRAY(asData2;String([Trxs]TrxDate))
+APPEND TO ARRAY(asData3;String([Trxs]TotAmt))
+APPEND TO ARRAY(asData4;String(vTax))
+APPEND TO ARRAY(asData5;String(vTot1))
+APPEND TO ARRAY(asData6;String(vTot2))
+APPEND TO ARRAY(asData7;String(vTot3))
+APPEND TO ARRAY(asData8;String(vTot4))
+APPEND TO ARRAY(asData9;String(vTot5))
+APPEND TO ARRAY(asData10;String(vTot6))
+APPEND TO ARRAY(asData11;String(vTot7))
+APPEND TO ARRAY(asData12;String(vTot8))
+
+$Total1:=$Total1+[Trxs]TotAmt
+$Total2:=$Total2+vTax
+$Total3:=$Total3+vTot1
+$Total4:=$Total4+vTot2
+$Total5:=$Total5+vTot3
+$Total6:=$Total6+vTot4
+$Total7:=$Total7+vTot5
+$Total8:=$Total8+vTot6
+$Total9:=$Total9+vTot7
+$Total10:=$Total10+vTot8
+
+NEXT RECORD([Trxs])
+End for 
+
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String($Total1))
+APPEND TO ARRAY(asData4;String($Total2))
+APPEND TO ARRAY(asData5;String($Total3))
+APPEND TO ARRAY(asData6;String($Total4))
+APPEND TO ARRAY(asData7;String($Total5))
+APPEND TO ARRAY(asData8;String($Total6))
+APPEND TO ARRAY(asData9;String($Total7))
+APPEND TO ARRAY(asData10;String($Total8))
+APPEND TO ARRAY(asData11;String($Total9))
+APPEND TO ARRAY(asData12;String($Total10))
+
+For ($i;1;8)
+QUERY([Analysis];[Analysis]SortOrder=$i)
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+$p:=Get pointer("vHdr"+String($i))
+$p->:=[Analysis]GLCode
+End for 
+
+APPEND TO ARRAY(aCustName;"GL Analysis")
+APPEND TO ARRAY(asData1;"")//Customer
+APPEND TO ARRAY(asData2;"")//Date
+APPEND TO ARRAY(asData3;"")//Collected
+APPEND TO ARRAY(asData4;"")//Tax
+If (Records in selection([Trxs])>0)
+APPEND TO ARRAY(asData5;vHdr1)
+APPEND TO ARRAY(asData6;vHdr2)
+APPEND TO ARRAY(asData7;vHdr3)
+APPEND TO ARRAY(asData8;vHdr4)
+APPEND TO ARRAY(asData9;vHdr5)
+APPEND TO ARRAY(asData10;vHdr6)
+Else 
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"")
+APPEND TO ARRAY(asData7;"")
+APPEND TO ARRAY(asData8;"")
+APPEND TO ARRAY(asData9;"")
+APPEND TO ARRAY(asData10;"")
+End if 
+APPEND TO ARRAY(asData11;vHdr7)
+APPEND TO ARRAY(asData12;vHdr8)
+
+WS_SuccessMsg:="Cash Analysis sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="IncomeReceived")
+
+vMthDate:=WS_ReportDate
+vDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+bCheckMatch:=Num(GetTextNo (WS_ReportSettings;2;","))
+
+APPEND TO ARRAY(aCustName;"Code")
+APPEND TO ARRAY(asData1;"Description")
+APPEND TO ARRAY(asData2;"Taxable")
+APPEND TO ARRAY(asData3;"Tax")
+APPEND TO ARRAY(asData4;"Net")
+APPEND TO ARRAY(asData5;"Inc Tax")
+
+IncomeReceived (True;WS_FacilityCode)
+
+WS_SuccessMsg:="Income Received Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="InventoryValuation")
+
+vMthDate:=WS_ReportDate
+vSDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+
+If (WS_ReportSettings="1")
+tExTax:=0
+tInclTax:=1
+Else 
+tExTax:=1
+tInclTax:=0
+End if 
+
+//Column Title
+//APPEND TO ARRAY(aCustName;"")
+//APPEND TO ARRAY(asData1;"")
+//APPEND TO ARRAY(asData2;"")
+//APPEND TO ARRAY(asData3;"")
+//APPEND TO ARRAY(asData4;"Opening")
+//APPEND TO ARRAY(asData5;"")
+//APPEND TO ARRAY(asData6;"Purchases")
+//APPEND TO ARRAY(asData7;"")
+//APPEND TO ARRAY(asData8;"Sales")
+//APPEND TO ARRAY(asData9;"")
+//APPEND TO ARRAY(asData10;"Closing")
+//APPEND TO ARRAY(asData11;"")
+//APPEND TO ARRAY(asData12;"")
+
+APPEND TO ARRAY(aCustName;"Code")
+APPEND TO ARRAY(asData1;"Inventory Item")
+APPEND TO ARRAY(asData2;"Cost Price")
+APPEND TO ARRAY(asData3;"Alert Qty")
+APPEND TO ARRAY(asData4;"Opening Qty")
+APPEND TO ARRAY(asData5;"Opening Value")
+APPEND TO ARRAY(asData6;"Purchases Qty")
+APPEND TO ARRAY(asData7;"Purchases Value")
+APPEND TO ARRAY(asData8;"Sales Qty")
+APPEND TO ARRAY(asData9;"Sales Value")
+APPEND TO ARRAY(asData10;"Closing Qty")
+APPEND TO ARRAY(asData11;"Closing Value")
+APPEND TO ARRAY(asData12;"Profit")
+
+$Total1:=0
+$Total2:=0
+$Total3:=0
+$Total4:=0
+$Total5:=0
+$Total6:=0
+$Total7:=0
+$Total8:=0
+$Total9:=0
+$Total10:=0
+
+QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]InvItem=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+
+For ($i;1;Records in selection([Analysis]))
+
+StockValueReport 
+
+APPEND TO ARRAY(aCustName;[Analysis]Code)
+APPEND TO ARRAY(asData1;[Analysis]Description)
+APPEND TO ARRAY(asData2;String([Analysis]CostPrice))
+APPEND TO ARRAY(asData3;String([Analysis]InvAlertQty))
+APPEND TO ARRAY(asData4;String(vTot1))
+APPEND TO ARRAY(asData5;String(vTot2))
+APPEND TO ARRAY(asData6;String(vTot3))
+APPEND TO ARRAY(asData7;String(vTot4))
+APPEND TO ARRAY(asData8;String(vTot5))
+APPEND TO ARRAY(asData9;String(vTot6))
+APPEND TO ARRAY(asData10;String(vTot7))
+APPEND TO ARRAY(asData11;String(vTot8))
+APPEND TO ARRAY(asData12;String(vProf))
+
+//Total Amounts
+$Total1:=$Total1+vTot1
+$Total2:=$Total2+vTot2
+$Total3:=$Total3+vTot3
+$Total4:=$Total4+vTot4
+$Total5:=$Total5+vTot5
+$Total6:=$Total6+vTot6
+$Total7:=$Total7+vTot7
+$Total8:=$Total8+vTot8
+$Total9:=$Total9+vProf
+$Total10:=$Total10+[Analysis]InvAlertQty
+NEXT RECORD([Analysis])
+End for 
+
+APPEND TO ARRAY(aCustName;"Total:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String($Total10))
+APPEND TO ARRAY(asData4;String($Total1))
+APPEND TO ARRAY(asData5;String($Total2))
+APPEND TO ARRAY(asData6;String($Total3))
+APPEND TO ARRAY(asData7;String($Total4))
+APPEND TO ARRAY(asData8;String($Total5))
+APPEND TO ARRAY(asData9;String($Total6))
+APPEND TO ARRAY(asData10;String($Total7))
+APPEND TO ARRAY(asData11;String($Total8))
+APPEND TO ARRAY(asData12;String($Total9))
+
+WS_SuccessMsg:="Inventory Valuation Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="AgedReceivables")
+
+vMthDate:=WS_ReportDate
+//Column titles
+If ([Facility]UnitNoRpts=True)
+APPEND TO ARRAY(aCustName;" "+Get localized string("Unit"))
+Else 
+APPEND TO ARRAY(aCustName;" "+Get localized string("Agree't"))
+End if 
+C_TEXT(vAgreeUnit)
+APPEND TO ARRAY(asData1;"Customer Name")
+APPEND TO ARRAY(asData2;"Last Pmt")
+APPEND TO ARRAY(asData3;"Bal owing")
+APPEND TO ARRAY(asData4;GetKeyNo ([Facility]AgedDebtorBreaks;1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;2)+" "+Get localized string("Days"))
+APPEND TO ARRAY(asData5;String(Num(GetKeyNo ([Facility]AgedDebtorBreaks;2))+1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;3)+" "+Get localized string("Days"))
+APPEND TO ARRAY(asData6;String(Num(GetKeyNo ([Facility]AgedDebtorBreaks;3))+1)+"-"+GetKeyNo ([Facility]AgedDebtorBreaks;4)+" "+Get localized string("Days"))
+APPEND TO ARRAY(asData7;"> "+GetKeyNo ([Facility]AgedDebtorBreaks;4)+" "+Get localized string("Days"))
+APPEND TO ARRAY(asData8;"In Credit")
+APPEND TO ARRAY(asData9;"RIA")
+APPEND TO ARRAY(asData10;"PIA")
+
+$Total1:=0
+$Total2:=0
+$Total3:=0
+$Total4:=0
+$Total5:=0
+$Total6:=0
+$Total7:=0
+$Total8:=0
+
+DEFAULT TABLE([Customer])
+QUERY([Customer];[Customer]LatestTrxDate>(vMthDate-92);*)//Don't calculate for old customers whose balance is zero.
+QUERY([Customer]; | ;[Customer]LatestTrxDate=!00-00-00!;*)
+QUERY([Customer]; | ;[Customer]Balance#0;*)
+QUERY([Customer]; | ;[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; & ;[Customer]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode#WS_FacilityCode+"PETTY")
+CalcAgedDebtors (vMthDate;->[Customer];True)
+If ([Facility]UnitNoRpts)
+SortbyUnits 
+Else 
+ORDER BY([Customer]CustomerCode;>)
+End if 
+
+For ($i;1;Records in selection([Customer]))
+OnLoadAgedReceivables (True)
+APPEND TO ARRAY(aCustName;vAgreeUnit)
+APPEND TO ARRAY(asData1;[Customer]CustomerName)
+APPEND TO ARRAY(asData2;String([Agreement]LastPmtDate))
+APPEND TO ARRAY(asData3;String(vAmt1))
+APPEND TO ARRAY(asData4;String(vAmt2))
+APPEND TO ARRAY(asData5;String(vAmt3))
+APPEND TO ARRAY(asData6;String(vAmt4))
+APPEND TO ARRAY(asData7;String(vAmt5))
+APPEND TO ARRAY(asData8;String(vAmt6))
+APPEND TO ARRAY(asData9;String(vAmt7))
+APPEND TO ARRAY(asData10;String(vAmt8))
+
+$Total1:=$Total1+vAmt1
+$Total2:=$Total2+vAmt2
+$Total3:=$Total3+vAmt3
+$Total4:=$Total4+vAmt4
+$Total5:=$Total5+vAmt5
+$Total6:=$Total6+vAmt6
+$Total7:=$Total7+vAmt7
+$Total8:=$Total8+vAmt8
+
+NEXT RECORD([Customer])
+End for 
+
+APPEND TO ARRAY(aCustName;"Total:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String($Total1))
+APPEND TO ARRAY(asData4;String($Total2))
+APPEND TO ARRAY(asData5;String($Total3))
+APPEND TO ARRAY(asData6;String($Total4))
+APPEND TO ARRAY(asData7;String($Total5))
+APPEND TO ARRAY(asData8;String($Total6))
+APPEND TO ARRAY(asData9;String($Total7))
+APPEND TO ARRAY(asData10;String($Total8))
+
+WS_SuccessMsg:="Aged Receivables Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="Arrears")
+
+vMthDate:=WS_ReportDate
+sAll:=Num(GetTextNo (WS_ReportSettings;1;","))
+
+If (sAll=1)
+sCust:=0
+Else 
+sCust:=1
+End if 
+vMax:=0
+vMax:=Num(GetTextNo (WS_ReportSettings;2;","))
+bCalc:=Num(GetTextNo (WS_ReportSettings;3;","))
+bAll:=Num(GetTextNo (WS_ReportSettings;4;","))
+bInactive:=Num(GetTextNo (WS_ReportSettings;5;","))
+rRefund1:=Num(GetTextNo (WS_ReportSettings;6;","))
+
+Case of 
+: (rRefund1=1)
+rRefund1:=1
+rRefund2:=0
+rRefund3:=0
+: (rRefund1=2)
+rRefund1:=0
+rRefund2:=1
+rRefund3:=0
+: (rRefund1=3)
+rRefund1:=0
+rRefund2:=0
+rRefund3:=1
+End case 
+If (bAll=1)
+APPEND TO ARRAY(aCustName;"Agree't")
+APPEND TO ARRAY(asData1;"Customer Name")
+APPEND TO ARRAY(asData2;"Contact")
+APPEND TO ARRAY(asData3;"Units")
+APPEND TO ARRAY(asData4;"Last Bill Date")
+APPEND TO ARRAY(asData5;"Amount")
+APPEND TO ARRAY(asData6;"Phone")
+APPEND TO ARRAY(asData7;"Days")
+APPEND TO ARRAY(asData8;"Balance")
+APPEND TO ARRAY(asData9;"Comment")
+Else 
+APPEND TO ARRAY(aCustName;"Agree't")
+APPEND TO ARRAY(asData1;"Customer Name")
+APPEND TO ARRAY(asData2;"Contact")
+APPEND TO ARRAY(asData3;"Last Bill Date")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"")
+APPEND TO ARRAY(asData7;"Balance")
+End if 
+
+$Total:=0
+vDate:=vMthDate
+Arrears (True;WS_FacilityCode)
+
+FIRST RECORD([Customer])
+For ($i;1;Records in selection([Customer]))
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+If (bAll=1)
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+APPEND TO ARRAY(aCustName;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData1;[Customer]CustomerName)
+APPEND TO ARRAY(asData2;[Customer]UserName)
+APPEND TO ARRAY(asData3;[Agreement]UnitsOccup)
+APPEND TO ARRAY(asData4;String([Agreement]LastBillDate))
+APPEND TO ARRAY(asData5;String([Agreement]LastBillAmt))
+Case of 
+: ([Customer]PrimaryPhone=2)
+APPEND TO ARRAY(asData6;[Customer]PhoneBus)
+: ([Customer]PrimaryPhone=3)
+APPEND TO ARRAY(asData6;[Customer]MobilePhone)
+: ([Customer]PrimaryPhone=4)
+APPEND TO ARRAY(asData6;[Customer]MilCPhone)
+Else 
+APPEND TO ARRAY(asData6;[Customer]PhonePrivate)
+End case 
+APPEND TO ARRAY(asData7;String([Customer]One))
+APPEND TO ARRAY(asData8;String([Customer]BalFwd))
+APPEND TO ARRAY(asData9;[Customer]ArrearsComment)
+
+Else 
+
+APPEND TO ARRAY(aCustName;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData1;[Customer]CustomerName)
+APPEND TO ARRAY(asData2;[Customer]UserName)
+APPEND TO ARRAY(asData3;String([Agreement]LastBillDate))
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"")
+APPEND TO ARRAY(asData7;String([Customer]BalFwd))
+
+APPEND TO ARRAY(aCustName;"Phone numbers:")
+APPEND TO ARRAY(asData1;[Customer]PhonePrivate)
+APPEND TO ARRAY(asData2;[Customer]PhoneBus)
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"Units occupied:")
+APPEND TO ARRAY(asData7;[Agreement]UnitsOccup)
+
+RELATE MANY([Customer]CustomerCode)
+If (sAll=1)
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=vDate;*)
+Else 
+QUERY SELECTION([Trxs];[Trxs]TrxDate<=(vDate-vMax);*)
+End if 
+QUERY SELECTION([Trxs]; | ;[Trxs]TotAmt<0;*)
+QUERY SELECTION([Trxs]; | ;[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Match=0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+
+APPEND TO ARRAY(aCustName;"Date")
+APPEND TO ARRAY(asData1;"Description")
+APPEND TO ARRAY(asData2;"Code")
+APPEND TO ARRAY(asData3;"Net")
+APPEND TO ARRAY(asData4;"Tax")
+APPEND TO ARRAY(asData5;"Total")
+APPEND TO ARRAY(asData6;"Payments")
+APPEND TO ARRAY(asData7;"Balance")
+
+For ($z;1;Records in selection([Trxs]))
+APPEND TO ARRAY(aCustName;String([Trxs]TrxDate))
+APPEND TO ARRAY(asData1;[Trxs]Description)
+APPEND TO ARRAY(asData2;[Analysis]Code)
+
+If ([Trxs]Charge=True)
+APPEND TO ARRAY(asData3;String([Trxs]TotAmt-[Trxs]TaxAmt))
+APPEND TO ARRAY(asData4;String([Trxs]TaxAmt))
+APPEND TO ARRAY(asData5;String([Trxs]TotAmt))
+APPEND TO ARRAY(asData6;"0")
+APPEND TO ARRAY(asData7;String([Trxs]Balance))
+Else 
+APPEND TO ARRAY(asData3;"0")
+APPEND TO ARRAY(asData4;"0")
+APPEND TO ARRAY(asData5;"0")
+APPEND TO ARRAY(asData6;String([Trxs]TotAmt))
+APPEND TO ARRAY(asData7;String([Trxs]Balance))
+
+If ([Trxs]Confirmed=False)
+[Trxs]Description:=[Trxs]Description+" •"
+End if 
+End if 
+
+NEXT RECORD([Trxs])
+End for 
+
+End if 
+
+$Total:=$Total+[Customer]BalFwd
+
+NEXT RECORD([Customer])
+End for 
+
+//Total
+APPEND TO ARRAY(aCustName;"Total:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"")
+
+If (bAll=1)
+APPEND TO ARRAY(asData7;"")
+APPEND TO ARRAY(asData8;String($Total))
+APPEND TO ARRAY(asData9;"")
+Else 
+APPEND TO ARRAY(asData7;String($Total))
+End if 
+
+WS_SuccessMsg:="Arrears Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="IORecReport")
+
+vMthDate:=WS_ReportDate
+vOldDate:=(GetDate (1;Month of(vMthDate);Year of(vMthDate)))
+vRentAdvMethod:=(WS_ReportSettings="0")
+
+$Total1:=0
+$Total2:=0
+$Total3:=0
+$Total4:=0
+$Total5:=0
+$Total6:=0
+$Total7:=0
+$Total8:=0
+
+If (CalcRentedValues (WS_FacilityCode;vMthDate;False;False;True))
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; | ;[Agreement]MoveOut>=vMthDate;*)//vOldDate;*)
+QUERY([Agreement]; | ;[Agreement]BalanceOwing<0;*)
+QUERY([Agreement]; | ;[Customer]LatestTrxDate>(vMthDate-32);*)//vOldDate;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=vMthDate;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#WS_FacilityCode+"PETTY")
+If ([Facility]UnitNoRpts)
+ORDER BY([Agreement]UnitsOccup;>;[Agreement]AgreeNo;>)
+Else 
+ORDER BY([Agreement]CustomerCode;>;[Agreement]AgreeNo;>)
+End if 
+
+//Column titles
+APPEND TO ARRAY(aCustName;"Agreement")
+APPEND TO ARRAY(asData1;"Unit")
+APPEND TO ARRAY(asData2;"Customer Name")
+APPEND TO ARRAY(asData3;"Billed")
+APPEND TO ARRAY(asData4;"Last Prepaid")
+APPEND TO ARRAY(asData5;"This Prepaid")
+APPEND TO ARRAY(asData6;"ARI")
+APPEND TO ARRAY(asData7;"Actual OV")
+APPEND TO ARRAY(asData8;"Variance")
+
+CREATE EMPTY SET([Trxs];"billing")
+
+For ($z;1;Records in selection([Agreement]))
+RELATE ONE([Agreement]CustomerCode)
+vRentChg:=0
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vOldDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AnalysisCode)
+If ([Analysis]KeyStatsCategory="Rent")
+ADD TO SET([Trxs];"billing")
+vRentChg:=vRentChg+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+vMthRent:=CalcRentAdvance (vMthDate;vRentAdvMethod;False)
+vOldRent:=CalcRentAdvance (vOldDate-1;vRentAdvMethod;False)
+If (vMthRent=-1) | (vMthRent=-2) | (vMthRent=-3)
+vMthRent:=0
+End if 
+If (vOldRent=-1) | (vOldRent=-2) | (vOldRent=-3)
+vOldRent:=0
+End if 
+vActualRent:=vRentChg+vOldRent-vMthRent
+vOccVal:=0
+QUERY([UnitHistory];[UnitHistory]MoveOut>vMthDate;*)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vMthDate)
+For ($i;1;Records in selection([UnitHistory]))
+If ([UnitHistory]RentedValue#-999)
+vOccVal:=vOccVal+[UnitHistory]RentedValue
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+vVariance:=vActualRent-vOccVal
+
+APPEND TO ARRAY(aCustName;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData1;[Agreement]UnitsOccup)
+APPEND TO ARRAY(asData2;[Customer]CustomerName)
+APPEND TO ARRAY(asData3;String(vRentChg))
+APPEND TO ARRAY(asData4;String(vOldRent))
+APPEND TO ARRAY(asData5;String(vMthRent))
+APPEND TO ARRAY(asData6;String(vActualRent))
+APPEND TO ARRAY(asData7;String(vOccVal))
+APPEND TO ARRAY(asData8;String(vVariance))
+
+$Total1:=$Total1+vRentChg
+$Total2:=$Total2+vOldRent
+$Total3:=$Total3+vMthRent
+$Total4:=$Total4+vActualRent
+$Total5:=$Total5+vOccVal
+$Total6:=$Total6+vVariance
+
+NEXT RECORD([Agreement])
+End for 
+
+//Total Amounts
+APPEND TO ARRAY(aCustName;"Total:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String($Total1))
+APPEND TO ARRAY(asData4;String($Total2))
+APPEND TO ARRAY(asData5;String($Total3))
+APPEND TO ARRAY(asData6;String($Total4))
+APPEND TO ARRAY(asData7;String($Total5))
+APPEND TO ARRAY(asData8;String($Total6))
+
+USE SET("billing")
+CLEAR SET("billing")
+UNLOAD RECORD([Agreement])
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+
+WS_SuccessMsg:="IO Report Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+End if 
+
+: (WS_RequestType="RentalRateVariation")
+
+vMthDate:=WS_ReportDate
+bAdd:=Num(GetTextNo (WS_ReportSettings;1;","))
+bMod:=Num(GetTextNo (WS_ReportSettings;2;","))
+bExcl:=Num(GetTextNo (WS_ReportSettings;3;","))
+bDelete:=Num(GetTextNo (WS_ReportSettings;4;","))
+bAll:=Num(GetTextNo (WS_ReportSettings;5;","))
+rRefund1:=Num(GetTextNo (WS_ReportSettings;6;","))
+bCalc:=Num(GetTextNo (WS_ReportSettings;7;","))
+
+Case of 
+: (rRefund1=1)
+rRefund1:=1
+rRefund2:=0
+rRefund3:=0
+: (rRefund1=2)
+rRefund1:=0
+rRefund2:=1
+rRefund3:=0
+: (rRefund1=3)
+rRefund1:=0
+rRefund2:=0
+rRefund3:=1
+End case 
+
+//Title Column
+APPEND TO ARRAY(aCustName;"Unit")
+APPEND TO ARRAY(asData1;"Type")
+APPEND TO ARRAY(asData2;"Size")
+APPEND TO ARRAY(asData3;"FMR")
+APPEND TO ARRAY(asData4;"ARV")
+APPEND TO ARRAY(asData5;"BPD")
+APPEND TO ARRAY(asData6;"ED")
+APPEND TO ARRAY(asData7;"Move In")
+APPEND TO ARRAY(asData8;"LRID")
+APPEND TO ARRAY(asData9;"PRA")
+APPEND TO ARRAY(asData10;"Customer")
+
+$Total1:=0
+$Total2:=0
+$Total3:=0
+$Total4:=0
+$Total5:=0
+$Total1Final:=0
+$Total2Final:=0
+$Total3Final:=0
+$Total4Final:=0
+$Total5Final:=0
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]RAgreeNo=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]LastRentIncrDate=!00-00-00!)
+APPLY TO SELECTION([Agreement];[Agreement]LastRentIncrDate:=[Agreement]MoveIn)
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+
+If (bCalc=1)
+CalcRentedValues (WS_FacilityCode;!00-00-00!;False;False;True)
+End if 
+
+Case of 
+: (bAll=1)
+QUERY([Unit];[Unit]AgreeNo#"";*)
+: (bAdd=1) & (bMod=1)
+QUERY([Unit];[Unit]BillPlanDisc#0;*)
+QUERY([Unit]; | ;[Unit]ExtraDisc#0;*)
+: (bAdd=1)
+QUERY([Unit];[Unit]ExtraDisc#0;*)
+: (bMod=0)
+QUERY([Unit];[Unit]ExtraDisc>0;*)
+Else 
+QUERY([Unit];[Unit]BillPlanDisc>0;*)
+QUERY([Unit]; | ;[Unit]ExtraDisc>0;*)
+End case 
+If (bExcl=1)
+QUERY([Unit]; & ;[Unit]IncreaseFrom=!00-00-00!;*)
+End if 
+QUERY([Unit]; & ;[Unit]RUnitNo=[Facility]FacilityCode+"@")
+If (bDelete=1)
+SET AUTOMATIC RELATIONS(True;False)
+QUERY SELECTION([Unit];[Agreement]LastRentIncrDate<=vMthDate)
+SET AUTOMATIC RELATIONS(False;False)
+End if 
+
+If (Records in selection([Unit])>0)
+Case of 
+: (rRefund1=1)
+ORDER BY([Unit];[Unit]UnitTypeCode;>;[Unit]UnitNo;>)
+: (rRefund2=1)
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Unit];[Agreement]CustomerCode;>;[Unit]UnitNo;>)
+SET AUTOMATIC RELATIONS(False;False)
+: (rRefund3=1)
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Unit];[Agreement]LastRentIncrDate;>;[Unit]UnitNo;>)
+SET AUTOMATIC RELATIONS(False;False)
+Else 
+ORDER BY([Unit];[Unit]UnitTypeCode;>;[Unit]UnitNo;>)
+End case 
+tBoolean:=Not(bMod=1)
+vLegend:=""
+
+FIRST RECORD([Unit])
+$UnitTypeCode:=Substring([Unit]UnitTypeCode;6)
+
+For ($i;1;Records in selection([Unit]))
+vUnitBaseRate:=CalculateBaseRate (2;0)
+If ([BillPlan]PlanPeriod="Week")
+vUnitBaseRate:=Round(vUnitBaseRate/0.2308;2)
+[Unit]ExtraDisc:=Round([Unit]ExtraDisc/0.2308;2)
+End if 
+
+QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+
+APPEND TO ARRAY(aCustName;[Unit]UnitNo)
+APPEND TO ARRAY(asData1;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData2;[Unit]UnitSize)
+APPEND TO ARRAY(asData3;String(vUnitBaseRate))
+APPEND TO ARRAY(asData4;String([Unit]RentedValue))
+APPEND TO ARRAY(asData5;String([Unit]BillPlanDisc))
+APPEND TO ARRAY(asData6;String([Unit]ExtraDisc))
+APPEND TO ARRAY(asData7;String([Unit]MoveIn))
+APPEND TO ARRAY(asData8;String([Agreement]LastRentIncrDate))
+APPEND TO ARRAY(asData9;String([Agreement]LastDiscAmt))
+APPEND TO ARRAY(asData10;[Customer]CustomerName)
+
+$Total1:=$Total1+1
+$Total2:=$Total2+vUnitBaseRate
+$Total3:=$Total3+[Unit]RentedValue
+$Total4:=$Total4+[Unit]BillPlanDisc
+$Total5:=$Total5+[Unit]ExtraDisc
+
+$Total1Final:=$Total1Final+1
+$Total2Final:=$Total2Final+vUnitBaseRate
+$Total3Final:=$Total3Final+[Unit]RentedValue
+$Total4Final:=$Total4Final+[Unit]BillPlanDisc
+$Total5Final:=$Total5Final+[Unit]ExtraDisc
+
+NEXT RECORD([Unit])
+
+If (rRefund1=1)
+If ($UnitTypeCode#Substring([Unit]UnitTypeCode;6))
+$UnitTypeCode:=Substring([Unit]UnitTypeCode;6)
+APPEND TO ARRAY(aCustName;"Total for this unit type:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;String($Total1))
+APPEND TO ARRAY(asData3;String($Total2))
+APPEND TO ARRAY(asData4;String($Total3))
+APPEND TO ARRAY(asData5;String($Total4))
+APPEND TO ARRAY(asData6;String($Total5))
+APPEND TO ARRAY(asData7;"")
+APPEND TO ARRAY(asData8;"")
+APPEND TO ARRAY(asData9;"")
+APPEND TO ARRAY(asData10;"")
+$Total1:=0
+$Total2:=0
+$Total3:=0
+$Total4:=0
+$Total5:=0
+End if 
+End if 
+
+End for 
+
+APPEND TO ARRAY(aCustName;"Total for all unit types:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;String($Total1Final))
+APPEND TO ARRAY(asData3;String($Total2Final))
+APPEND TO ARRAY(asData4;String($Total3Final))
+APPEND TO ARRAY(asData5;String($Total4Final))
+APPEND TO ARRAY(asData6;String($Total5Final))
+APPEND TO ARRAY(asData7;"")
+APPEND TO ARRAY(asData8;"")
+APPEND TO ARRAY(asData9;"")
+APPEND TO ARRAY(asData10;"")
+
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+
+WS_SuccessMsg:="Rental Rate Variation Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+End if 
+
+: (WS_RequestType="Occupancy")
+
+vMthDate:=WS_ReportDate
+vReportSettings:=[Facility]ReportSettings
+vReportSettings[[3]]:=GetTextNo (WS_ReportSettings;1;",")
+vReportSettings[[5]]:=GetTextNo (WS_ReportSettings;2;",")
+vReportSettings[[4]]:=GetTextNo (WS_ReportSettings;3;",")
+bNext:=Num(GetTextNo (WS_ReportSettings;4;","))
+bPrev:=Num(GetTextNo (WS_ReportSettings;5;","))
+
+Occupancy_WS 
+
+WS_SuccessMsg:="Occupancy Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="UnitActivity")
+
+vMthDate:=WS_ReportDate
+vRptDate:=vMthDate
+vDate:=Date(WS_ReportSettings)
+
+CalcRentedValues (WS_FacilityCode;!00-00-00!;False;False;True)
+
+APPEND TO ARRAY(aCustName;"Unit No")
+APPEND TO ARRAY(asData1;"Type")
+APPEND TO ARRAY(asData2;"Agree't No")
+APPEND TO ARRAY(asData3;"Customer")
+APPEND TO ARRAY(asData4;"Days Stayed")
+APPEND TO ARRAY(asData5;"Monthly Rent")
+$Total:=0
+
+Repeat 
+QUERY([UnitHistory];[UnitHistory]UnitNo=WS_FacilityCode+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn=vDate)
+CREATE SET([UnitHistory];"Moveins")
+QUERY([UnitHistory];[UnitHistory]UnitNo=WS_FacilityCode+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut=vDate)
+CREATE SET([UnitHistory];"Moveouts")
+UNION("Moveins";"Moveouts";"All")
+USE SET("All")
+$Total1:=0
+
+If (Records in selection([UnitHistory])>0)
+
+APPEND TO ARRAY(aCustName;String(vDate;3))
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;" ")
+APPEND TO ARRAY(asData5;"")
+
+APPEND TO ARRAY(aCustName;"Move-Ins")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+
+USE SET("Moveins")
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>)
+For ($i;1;Records in selection([UnitHistory]))
+
+RELATE ONE([UnitHistory]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+QUERY([Agreement];[Agreement]RAgreeNo=[UnitHistory]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+If (Records in selection([Customer])>0)
+vName:=[Customer]CustomerName
+Else 
+vName:="Customer not known"
+End if 
+
+APPEND TO ARRAY(aCustName;[Unit]UnitNo)
+APPEND TO ARRAY(asData1;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData2;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData3;vName)
+If ([UnitHistory]DaysStayed#0)
+APPEND TO ARRAY(asData4;String([UnitHistory]DaysStayed))
+Else 
+APPEND TO ARRAY(asData4;"")
+End if 
+APPEND TO ARRAY(asData5;String([UnitHistory]RentedValue))
+
+$Total1:=$Total1+[UnitHistory]RentedValue
+
+NEXT RECORD([UnitHistory])
+End for 
+
+APPEND TO ARRAY(aCustName;"Move-Outs")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+
+USE SET("Moveouts")
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>)
+For ($i;1;Records in selection([UnitHistory]))
+[UnitHistory]RentedValue:=[UnitHistory]RentedValue*(-1)
+
+RELATE ONE([UnitHistory]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+QUERY([Agreement];[Agreement]RAgreeNo=[UnitHistory]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+If (Records in selection([Customer])>0)
+vName:=[Customer]CustomerName
+Else 
+vName:="Customer not known"
+End if 
+
+APPEND TO ARRAY(aCustName;[Unit]UnitNo)
+APPEND TO ARRAY(asData1;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData2;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData3;vName)
+If ([UnitHistory]DaysStayed#0)
+APPEND TO ARRAY(asData4;String([UnitHistory]DaysStayed))
+Else 
+APPEND TO ARRAY(asData4;"")
+End if 
+APPEND TO ARRAY(asData5;String([UnitHistory]RentedValue))
+
+$Total1:=$Total1+[UnitHistory]RentedValue
+NEXT RECORD([UnitHistory])
+End for 
+
+APPEND TO ARRAY(aCustName;"Net Gains/Losses")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;String($Total1))
+$Total:=$Total+$Total1
+$Total1:=0
+
+End if 
+vDate:=vDate+1
+Until (vDate>vRptDate)
+
+APPEND TO ARRAY(aCustName;"Total Net Gains/Losses")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;String($Total))
+
+WS_SuccessMsg:="Unit Activity Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="ProjectedCharges")
+
+vStartDte:=WS_ReportDate
+
+ProjectedChargesRpt (True)
+
+WS_SuccessMsg:="Projected Charges Data sent successfully!"
+
+: (WS_RequestType="Eventlog")//Eventlog Exception Report
+
+EventlogException_WS 
+
+WS_SuccessMsg:="Eventlog Exception Data sent successfully!"
+
+: (WS_RequestType="returnTotalData")
+$EndDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+WS_ReportDate:=GetDate (1;Month of($EndDate);Year of($EndDate))
+QUERY([Trxs];[Trxs]AnalysisCode=WS_FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=WS_ReportDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]Match>=0)
+
+
+For ($j;1;Records in selection([Trxs]))
+APPEND TO ARRAY(asData1;[Trxs]AnalysisCode)
+APPEND TO ARRAY(asData2;String([Trxs]DateBanked))
+APPEND TO ARRAY(asData3;String([Trxs]TotAmt))
+NEXT RECORD([Trxs])
+End for 
+WS_SuccessMsg:="Return Total Data report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+: (WS_RequestType="returnPrevData")
+$EndDate:=Date(WS_ReportSettings)
+WS_ReportDate:=GetDate (1;Month of($EndDate);Year of($EndDate))
+//QUERY([Trxs];[Trxs]AnalysisCode=WS_FacilityCode+"@";*)
+//QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+//QUERY([Trxs]; & ;[Trxs]DateBanked<WS_ReportDate;*)
+//QUERY([Trxs]; | ;[Trxs]DateBanked>=$EndDate;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate<$EndDate;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+//QUERY([Trxs]; & ;[Trxs]Match>=0)
+QUERY([Trxs];[Trxs]DateBanked=!00-00-00!;*)
+QUERY([Trxs]; | ;[Trxs]DateBanked>=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=WS_FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]Match>=0)
+
+For ($j;1;Records in selection([Trxs]))
+APPEND TO ARRAY(asData1;[Trxs]AnalysisCode)
+APPEND TO ARRAY(asData2;String([Trxs]DateBanked))
+APPEND TO ARRAY(asData3;String([Trxs]TotAmt))
+NEXT RECORD([Trxs])
+End for 
+WS_SuccessMsg:="returnPrevData report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+: (WS_RequestType="returnNextData")
+$Date:=Date(GetTextNo (WS_ReportSettings;1;","))
+$EndDate:=Date(GetTextNo (WS_ReportSettings;2;","))
+QUERY([Trxs];[Trxs]DateBanked=!00-00-00!;*)
+QUERY([Trxs]; | ;[Trxs]DateBanked>$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$Date;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=WS_FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]Match>=0)
+
+For ($j;1;Records in selection([Trxs]))
+APPEND TO ARRAY(asData1;[Trxs]AnalysisCode)
+APPEND TO ARRAY(asData2;String([Trxs]DateBanked))
+APPEND TO ARRAY(asData3;String([Trxs]TotAmt))
+NEXT RECORD([Trxs])
+End for 
+WS_SuccessMsg:="returnNextData report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+: (WS_RequestType="IncomeCharged")//Income Charged Report
+//$analysisCodeType:=""
+//$analysisDescription:=""
+//$negativeTransactions:=""
+//$analysisCodeType:=(GetTextNo (WS_ReportSettings;1;","))//Analysis codeType
+//$analysisDescription:=(GetTextNo (WS_ReportSettings;2;","))//Analysis description
+//$negativeTransactions:=(GetTextNo (WS_ReportSettings;3;","))//NegativeTransaction
+//vStDate:=Date(GetTextNo (WS_ReportSettings;4;","))  //start date
+//vEDate:=Date(GetTextNo (WS_ReportSettings;5;","))  //End Date
+//Case of 
+//: ($analysisCodeType="ALL")  //all analyis code
+//QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+//: ($analysisCodeType="INARRAY")  //one of defined in array
+//QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+//QUERY([Analysis]; & ;[Analysis]KeyStatsCategory=$analysisDescription;*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+//: ($analysisCodeType="CUSTOM")  //custom analyis code
+//QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+//QUERY([Analysis]; & ;[Analysis]Description=$analysisDescription;*)
+//QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+//End case 
+//ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]PrimaryKey;>)
+//For ($b1;1;Records in selection([Analysis]))
+//APPEND TO ARRAY(asData1;String([Analysis]Code))
+//APPEND TO ARRAY(asData2;String([Analysis]Description))
+//APPEND TO ARRAY(asData3;String([Analysis]KeyStatsCategory))
+//APPEND TO ARRAY(asData4;String([Analysis]Taxable))
+//End for 
+
+////QUERY([Analysis];[Analysis]Code=WS_Code)
+////QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code)
+
+//  Case of 
+//  : ($analysisCodeType="ALL")  //all analyis code
+//  QUERY([Trxs];[Trxs]TrxDate>=vStDate;*)
+//  QUERY([Trxs]; & ;[Trxs]TrxDate<=vEDate;*)
+//  QUERY([Trxs]; & ;[Trxs]charge=true;*)
+//  QUERY([Trxs]; & ;[Trxs]AgreeNo=WS_FacilityCode+"@";*)
+//  QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+//  QUERY([Trxs]; & ;[Trxs]Match#-999;*)
+//  QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code)
+//  : ($analysisCodeType="INARRAY")  //one of defined in array
+//  QUERY([Trxs];[Trxs]TrxDate>=vStDate;*)
+//  QUERY([Trxs]; & ;[Trxs]TrxDate<=vEDate;*)
+//  QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//  QUERY([Trxs]; & ;[Trxs]AgreeNo=WS_FacilityCode+"@";*)
+//  QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+//  QUERY([Trxs]; & ;[Trxs]Match#-999;*)
+//  QUERY([Analysis]; & ;[Analysis]KeyStatsCategory=$analysisDescription;*)
+//  QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code)
+//  : ($analysisCodeType="CUSTOM")  //custom analyis code
+//  QUERY([Trxs];[Trxs]TrxDate>=vStDate;*)
+//  QUERY([Trxs]; & ;[Trxs]TrxDate<=vEDate;*)
+//  QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//  QUERY([Trxs]; & ;[Trxs]AgreeNo=WS_FacilityCode+"@";*)
+//  QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+//  QUERY([Trxs]; & ;[Trxs]Match#-999;*)
+//  QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code)
+//  End case 
+//  For ($b1;1;Records in selection([Trxs]))
+//  APPEND TO ARRAY(asData5;String([Trxs]TaxAmt))
+//  APPEND TO ARRAY(asData6;String([Trxs]TotAmt))
+//  APPEND TO ARRAY(asData7;String([Trxs]AnalysisCode))
+//  APPEND TO ARRAY(asData8;String([Trxs]TrxDate))
+//  End for 
+//vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+//vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+//vDatePick:=vDate
+//vDatePick1:=vMthDate
+//bAdjIncomePre:=False
+//bPrevious
+//bNext
+//IncomeCharged (True;WS_FacilityCode)
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="Prepaid")//Prepaid Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="SumOfCharges")//Sum Of Charges Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="Revenue")//Revenue Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="UnitTypeListing")//Unit Type Listing Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="VacantUnits")//Vacant Units Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="WaivedLateFees")//List of Waived Late Fees
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="PettyCash")//Petty Cash Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="Eventlog")//Eventlog Exception Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="SumOfDiscounts")//Summary of Discounts Report
+
+C_BOOLEAN($KE)
+vMthDate:=Date(WS_ReportSettings)
+SumDiscounts (True)
+vTotTax:=0
+vTotal:=0
+APPEND TO ARRAY(asData1;"Agreement")
+APPEND TO ARRAY(asData2;"Customer")
+APPEND TO ARRAY(asData3;"Date")
+APPEND TO ARRAY(asData4;"Description")
+APPEND TO ARRAY(asData5;"Trx Amount")
+APPEND TO ARRAY(asData6;"Disc Amt")
+APPEND TO ARRAY(asData7;"Reason")
+APPEND TO ARRAY(asData10;"AnalysisCode")
+
+If (Size of array(asData8)>0)
+ARRAY TEXT(asData11;Size of array(asData8))
+ARRAY TEXT(asData12;Size of array(asData8))
+For ($j;1;Size of array(asData8))
+asData11{$j}:="0"
+asData12{$j}:="0"
+End for 
+$KE:=True
+Else 
+$KE:=False
+End if 
+
+
+$posin:=0
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+If ([Trxs]CustomerCode="@MISCL")
+//ALL SUBRECORDS([Transaction]MiscDetls)
+[Customer]CustomerName:=[Trxs]Narration//[Transaction]MiscDetls'CustName
+End if 
+If ([Trxs]DiscAmt=0) & ([Trxs]AgreeNo="KE@")//Related to Kennards Merchandise Discounts
+[Trxs]DiscAmt:=[Trxs]TotAmt*(-1)
+End if 
+vTotTax:=vTotTax+[Trxs]TotAmt
+vTotal:=vTotal+[Trxs]DiscAmt
+APPEND TO ARRAY(asData1;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData2;[Customer]CustomerName)
+APPEND TO ARRAY(asData3;String([Trxs]TrxDate))
+APPEND TO ARRAY(asData4;[Trxs]Description)
+APPEND TO ARRAY(asData5;String([Trxs]TotAmt))
+APPEND TO ARRAY(asData6;String([Trxs]DiscAmt))
+APPEND TO ARRAY(asData7;[Trxs]Narration)
+APPEND TO ARRAY(asData10;[Trxs]AnalysisCode)
+
+If ($KE=False)
+$posin:=Find in array(asData8;[Trxs]AnalysisCode)
+If ($posin<=0)
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+APPEND TO ARRAY(asData8;[Analysis]Code)
+APPEND TO ARRAY(asData9;[Analysis]Description)
+APPEND TO ARRAY(asData11;"0")
+APPEND TO ARRAY(asData12;"0")
+End if 
+End if 
+$posin:=Find in array(asData8;[Trxs]AnalysisCode)
+If ($posin>0)
+asData11{$posin}:=String(Num(asData11{$posin})+[Trxs]TotAmt)
+asData12{$posin}:=String(Num(asData12{$posin})+[Trxs]DiscAmt)
+End if 
+
+NEXT RECORD([Trxs])
+End for 
+APPEND TO ARRAY(asData13;"Total")
+APPEND TO ARRAY(asData13;String(vTotTax))
+APPEND TO ARRAY(asData13;String(vTotal))
+WS_SuccessMsg:="Summary of Discounts Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="InsuranceOwing")//Insurance Owing Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="InsuranceSummary")//Insurance Summary Report
+C_LONGINT($Count)
+vReportSettings:=[Facility]ReportSettings
+sAll:=Num(GetTextNo (WS_ReportSettings;1;","))
+rRefund1:=Num(GetTextNo (WS_ReportSettings;2;","))
+bAdd:=Num(GetTextNo (WS_ReportSettings;3;","))
+vMthDate:=Date(GetTextNo (WS_ReportSettings;4;","))//WS_ReportDate
+If (sAll=1)
+vReportSettings[[13]]:="A"
+Else 
+vReportSettings[[13]]:="M"
+End if 
+If (rRefund1=1)
+vReportSettings[[14]]:="C"
+Else 
+vReportSettings[[14]]:="A"
+End if 
+If (bAdd=1)
+vReportSettings[[15]]:="P"
+Else 
+vReportSettings[[15]]:="C"
+End if 
+vTotal:=0
+vTotBal:=0
+InsuranceRpt (True)
+APPEND TO ARRAY(asData1;"Customer")
+APPEND TO ARRAY(asData2;"Agreement")
+APPEND TO ARRAY(asData3;"Policy")
+APPEND TO ARRAY(asData4;"Units")
+APPEND TO ARRAY(asData5;"New")
+APPEND TO ARRAY(asData6;"Insurance Value")
+APPEND TO ARRAY(asData7;"Commence")
+APPEND TO ARRAY(asData8;"Next Due")
+APPEND TO ARRAY(asData9;"Premium")
+APPEND TO ARRAY(asData10;"Paid")
+For ($k;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+APPEND TO ARRAY(asData1;[Customer]CustomerName)
+APPEND TO ARRAY(asData2;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData3;String([Agreement]InsureCertNo))
+APPEND TO ARRAY(asData4;String([Agreement]UnitsOccup))
+$Count:=1
+If (Is in set("ToPrint"))
+[Agreement]InsureValue:=0
+//[Trxs]Balance:=0  //Only 1 amount of payment per agreement, this doesn't work correctly a customer might have multiple paid transactions
+$Count:=0
+Else 
+ADD TO SET([Agreement];"ToPrint")
+End if 
+Case of //If ([Agreement]InsureNewP) Prior 3.2.2
+: ([Agreement]InsureCommence>=vStDate) & ([Agreement]InsureCommence<=vMthDate)
+vLastNo:=Get localized string("Yes")
+: ([Agreement]InsureCommence=!00-00-00!) & ([Agreement]MoveIn>=vStDate) & ([Agreement]MoveIn<=vMthDate)
+vLastNo:=Get localized string("Yes")
+Else 
+vLastNo:=Get localized string("No")
+End case 
+APPEND TO ARRAY(asData5;vLastNo)
+If ([Trxs]TrxDate<vStDate)
+[Trxs]TotAmt:=0
+APPEND TO ARRAY(asData9;"N/A")
+
+Else 
+APPEND TO ARRAY(asData9;String([Trxs]TotAmt))
+End if 
+If (vLastNo=Get localized string("Yes"))
+vAmt1:=vAmt1+$Count
+vAmt2:=vAmt2+[Agreement]InsureValue
+vAmt5:=vAmt5+[Trxs]TotAmt
+vAmt6:=vAmt6+[Trxs]Balance
+End if 
+vAmt3:=vAmt3+$Count
+APPEND TO ARRAY(asData6;String([Agreement]InsureValue))
+APPEND TO ARRAY(asData7;String([Agreement]InsureCommence))
+APPEND TO ARRAY(asData8;String([Agreement]InsureExpire))
+APPEND TO ARRAY(asData10;String([Trxs]Balance))
+vAmt4:=vAmt4+[Agreement]InsureValue
+vTotal:=vTotal+[Trxs]TotAmt
+vTotBal:=vTotBal+[Trxs]Balance
+NEXT RECORD([Trxs])
+End for 
+APPEND TO ARRAY(asData11;"Total for new policies")
+APPEND TO ARRAY(asData11;String(vAmt1))
+APPEND TO ARRAY(asData11;String(vAmt2))
+APPEND TO ARRAY(asData11;String(vAmt5))
+APPEND TO ARRAY(asData11;String(vAmt6))
+APPEND TO ARRAY(asData12;"Total for all policies")
+APPEND TO ARRAY(asData12;String(vAmt3))
+APPEND TO ARRAY(asData12;String(vAmt4))
+APPEND TO ARRAY(asData12;String(vTotal))
+APPEND TO ARRAY(asData12;String(vTotBal))
+
+
+WS_SuccessMsg:="Insurance Summary Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="InventoryCount")//Inventory Count Form
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="InventoryPricing")//Inventory Pricing Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+
+
+: (WS_RequestType="90DayCash")//90 Day Cash Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="Autopay")//Autopay Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="IncomeOccupancy")//Income Occupancy Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="LienStatus")//Lien Status Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="MonthlyComparison")//Monthly Comparison Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="Overdues")//Overdues Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="PaidToDate")//Paid To Date Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="NoticeToVacate")//Notice To Vacate Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="RentRoll")//Rent Roll Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="RentalIncrease")//Rental Increase Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="ReservationSummary")//Reservation Summary Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="StampDuty")//Stamp Duty Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="CustomerAnalysis")//Customer Analysis Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="SalesPromotion")//Sales Promotion Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="SalesEnquiry")//Sales Enquiry Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="AnticipatedMoveOut")//Anticipated MoveOuts Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="GraphOcc")//Graph of Occupancy Report
+
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+: (WS_RequestType="RentIncrease")//Rent Increase Report
+vStDate:=Date(GetTextNo (WS_ReportSettings;1;","))//Start Date
+vEDate:=Date(GetTextNo (WS_ReportSettings;2;","))//End Date
+sAll:=Num(GetTextNo (WS_ReportSettings;3;","))
+APPEND TO ARRAY(aCustName;"AgreeNo")
+APPEND TO ARRAY(asData1;"UnitNo")
+APPEND TO ARRAY(asData2;"CustomerName")
+APPEND TO ARRAY(asData3;"MoveIn")
+APPEND TO ARRAY(asData4;"LastInc")
+APPEND TO ARRAY(asData5;"IncreaseFrom")
+APPEND TO ARRAY(asData6;"RentedValue")
+APPEND TO ARRAY(asData7;"NewRentAmt")
+APPEND TO ARRAY(asData8;"UnitLength")
+APPEND TO ARRAY(asData9;"DailyRate")
+APPEND TO ARRAY(asData10;"WeeklyRate")
+APPEND TO ARRAY(asData11;"MonthlyRate")
+APPEND TO ARRAY(asData12;"CasualBilling")
+APPEND TO ARRAY(asData13;"PlanPeriod")
+APPEND TO ARRAY(asData14;"VariableMinimum")
+APPEND TO ARRAY(asData15;"VariableLength")
+If (sAll=1)// Last Increases
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail";*)
+QUERY([Unit]; & ;[Unit]LastInc>=vStDate;*)
+QUERY([Unit]; & ;[Unit]LastInc<=vEDate)
+QUERY SELECTION BY FORMULA([Unit];[Unit]MoveIn<[Unit]LastInc)
+ORDER BY([Unit];[Unit]LastInc;>;[Unit]RentedValue;>;[Unit]NewRentAmt;>)
+Else //Future Increases
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail";*)
+QUERY([Unit]; & ;[Unit]IncreaseFrom>=vStDate)
+ORDER BY([Unit];[Unit]IncreaseFrom;>;[Unit]RentedValue;>;[Unit]NewRentAmt;>)
+End if 
+For ($j;1;Records in selection([Unit]))
+QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+If (Records in selection([Agreement])>0)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+RELATE ONE([Unit]UnitTypeCode)
+RELATE ONE([Agreement]BillingPlanCode)
+APPEND TO ARRAY(aCustName;[Unit]AgreeNo)
+APPEND TO ARRAY(asData1;[Unit]UnitNo)
+APPEND TO ARRAY(asData2;[Customer]CustomerName)
+APPEND TO ARRAY(asData3;String([Unit]MoveIn))
+APPEND TO ARRAY(asData4;String([Unit]LastInc))
+APPEND TO ARRAY(asData5;String([Unit]IncreaseFrom))
+APPEND TO ARRAY(asData6;String([Unit]RentedValue))
+APPEND TO ARRAY(asData7;String([Unit]NewRentAmt))
+APPEND TO ARRAY(asData8;String([Unit]UnitLength))
+APPEND TO ARRAY(asData9;String([UnitType]DailyRate))
+APPEND TO ARRAY(asData10;String([UnitType]WeeklyRate))
+APPEND TO ARRAY(asData11;String([UnitType]MonthlyRate))
+APPEND TO ARRAY(asData12;String([BillPlan]CasualBilling))
+APPEND TO ARRAY(asData13;String([BillPlan]PlanPeriod))
+APPEND TO ARRAY(asData14;String([UnitType]VariableMinimum))
+APPEND TO ARRAY(asData15;String([UnitType]VariableLength))
+End if 
+NEXT RECORD([Unit])
+End for 
+WS_SuccessMsg:="Rent Increase report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+: (WS_RequestType="SummaryOfCharges")//Summary Of Charges Report
+
+vStDate:=Date(GetTextNo (WS_ReportSettings;1;","))//Start Date
+vEDate:=Date(GetTextNo (WS_ReportSettings;2;","))//End Date
+sAll:=Num(GetTextNo (WS_ReportSettings;3;","))//ORDER BY 
+QUERY([Trxs];[Trxs]AgreeNo=WS_FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vEDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+For ($h;1;Records in selection([Trxs]))
+QUERY([Agreement];[Agreement]RAgreeNo=[Trxs]AgreeNo)
+For ($l;1;Records in selection([Agreement]))
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+QUERY([Customer];[Customer]CustomerCode=[Trxs]CustomerCode)
+If (sAll=1)
+SortbyUnits 
+Else 
+ORDER BY([Customer];[Customer]CustomerCode;>)
+End if 
+APPEND TO ARRAY(aCustName;[Customer]CustomerCode)
+APPEND TO ARRAY(asData1;[Customer]CustomerName)
+APPEND TO ARRAY(asData2;[Customer]UnitSort)
+APPEND TO ARRAY(asData3;String([Agreement]AgreeNo))
+APPEND TO ARRAY(asData4;String([Trxs]TotAmt))
+APPEND TO ARRAY(asData5;String([Trxs]TaxAmt))
+APPEND TO ARRAY(asData6;String([Analysis]SortOrder))
+NEXT RECORD([Agreement])
+End for 
+NEXT RECORD([Trxs])
+End for 
+WS_SuccessMsg:="Summary Of Charges report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+
+: (WS_RequestType="UnitStatus")//Unit Status Report
+WS_SuccessMsg:="Unit Status report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+bAdd:=0
+bCode:=0
+bAll:=0
+$ParamsString:=GetTextNo (WS_ReportSettings;1;",")
+
+Case of 
+: ($ParamsString="showall")
+bAll:=1
+: ($ParamsString="showchangedunits")
+bCode:=1
+Else 
+bAdd:=1
+ARRAY TEXT(SerchOptions;0)
+ARRAY TEXT(SerchOtherOptions;0)
+For ($i;1;13)
+$SearchString:=GetTextNo ($ParamsString;$i;"-")
+If ($SearchString#"") & ($SearchString#"SelectedItems")
+
+Case of 
+: (($SearchString="overlocked") | ($SearchString="lockreplaced") | ($SearchString="removelock"))
+APPEND TO ARRAY(SerchOtherOptions;$SearchString)
+Else 
+APPEND TO ARRAY(SerchOptions;$SearchString)
+End case 
+End if 
+End for 
+//$firstLockStatus:=True
+//For ($q;1;Size of array($SerchOptions))
+//If ($firstLockStatus)
+//$firstLockStatus:=False
+//QUERY([Unit];[Unit]Status=$SerchOptions{$q};*)
+//If ($SerchOptions{$q}="Reserved")
+//QUERY([Unit]; | ;[Unit]ReservedTo#"";*)
+//End if 
+//Else 
+//QUERY([Unit]; | ;[Unit]Status=$SerchOptions{$q};*)
+//End if 
+//End for 
+//QUERY([Unit]; & ;[Unit]RUnitNo=WS_FacilityCode+"@")
+//$firstLockStatus:=True
+//For ($i;1;Size of array($SerchOtherOptions))
+//If ($firstLockStatus)
+//$firstLockStatus:=False
+//Case of 
+//: ($SerchOtherOptions{$i}="overlocked")
+//QUERY SELECTION([Unit];[Unit]LockStatus=2;*)
+//QUERY SELECTION([Unit]; | ;[Unit]LockStatus=3;*)
+//: ($SerchOtherOptions{$i}="lockreplaced")
+//QUERY SELECTION([Unit];[Unit]LockStatus=4;*)
+//QUERY SELECTION([Unit]; | ;[Unit]LockStatus=5;*)
+//: ($SerchOtherOptions{$i}="removelock")
+//QUERY SELECTION([Unit];[Unit]LockStatus=6;*)
+//Else 
+//  //Do Nothing
+//End case 
+//Else 
+//Case of 
+//: ($SerchOtherOptions{$i}="overlocked")
+//QUERY SELECTION([Unit]; | ;[Unit]LockStatus=2;*)
+//QUERY SELECTION([Unit]; | ;[Unit]LockStatus=3;*)
+//: ($SerchOtherOptions{$i}="lockreplaced")
+//QUERY SELECTION([Unit]; | ;[Unit]LockStatus=4;*)
+//QUERY SELECTION([Unit]; | ;[Unit]LockStatus=5;*)
+//: ($SerchOtherOptions{$i}="removelock")
+//QUERY SELECTION([Unit]; | ;[Unit]LockStatus=6;*)
+//Else 
+//  //Do Nothing
+//End case 
+//End if 
+//End for 
+//QUERY SELECTION([Unit]; & ;[Unit]RUnitNo=WS_FacilityCode+"@")
+End case 
+$ParamsString:=GetTextNo (WS_ReportSettings;2;",")
+bDelete:=0
+rRefund1:=0
+rRefund2:=0
+rRefund3:=0//To change Rented to Unlocked
+rRefund4:=0
+Case of 
+: (Num($ParamsString)=1)
+rRefund1:=1
+: (Num($ParamsString)=2)
+rRefund2:=1
+: (Num($ParamsString)=4)
+rRefund4:=1
+End case 
+UnitStatus (False;True)
+
+For ($r;1;Records in selection([Unit]))
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+QUERY([Reservation];[Reservation]RReserveNo=[Unit]ReservedTo)
+QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+
+APPEND TO ARRAY(aCustName;String([Unit]UnitNo))
+APPEND TO ARRAY(asData1;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData2;String([UnitType]MonthlyRate))
+APPEND TO ARRAY(asData3;[UnitType]Description)
+APPEND TO ARRAY(asData4;String([UnitType]SortOrder))
+APPEND TO ARRAY(asData5;String([Unit]UnitSize))
+APPEND TO ARRAY(asData6;String([Unit]DoorSize))
+APPEND TO ARRAY(asData7;String([Unit]Status))
+APPEND TO ARRAY(asData8;[Unit]Comments)
+APPEND TO ARRAY(asData9;String([Unit]LockStatus))
+APPEND TO ARRAY(asData10;String([Unit]Vacant))
+APPEND TO ARRAY(asData11;String([Unit]MoveIn))
+APPEND TO ARRAY(asData12;String([Unit]MoveOut))
+APPEND TO ARRAY(asData13;String([Unit]ReservedTo))
+APPEND TO ARRAY(asData14;String([Unit]WalkOrder))
+APPEND TO ARRAY(asData15;[Customer]CustomerName)
+APPEND TO ARRAY(asData16;String([Customer]Overdue))
+APPEND TO ARRAY(asData17;String([Reservation]ExpMoveIn))
+NEXT RECORD([Unit])
+End for 
+: (WS_RequestType="WaivedLFRpt")
+WS_SuccessMsg:="Waived Late Fee report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+vEdDate:=Date(WS_ReportSettings)
+WaivedLFRpt (True)
+
+For ($i;1;Records in selection([EventLog]))
+QUERY([Agreement];[Agreement]RAgreeNo=[EventLog]AgreeNo)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+
+APPEND TO ARRAY(aCustName;String([EventLog]EventRecNo))
+APPEND TO ARRAY(asData1;String([EventLog]TrxDate))
+APPEND TO ARRAY(asData2;String([EventLog]BillPAnlys))
+APPEND TO ARRAY(asData3;String([EventLog]TrxAmount))
+APPEND TO ARRAY(asData4;String([Agreement]AgreeNo))
+APPEND TO ARRAY(asData5;String([Customer]CustomerName))
+NEXT RECORD([EventLog])
+End for 
+: (WS_RequestType="returnAnalysisArray")
+WS_SuccessMsg:="Analysis report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>=51;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=59)
+ORDER BY([Analysis];[Analysis]Code;<)
+For ($i;1;Records in selection([Analysis]))
+APPEND TO ARRAY(asData1;String([Analysis]Code))
+APPEND TO ARRAY(asData2;String([Analysis]Description))
+APPEND TO ARRAY(asData3;String([Analysis]SortOrder))
+NEXT RECORD([Analysis])
+End for 
+: (WS_RequestType="returnAnalysisOtherArray")
+WS_SuccessMsg:="Analysis Other Array report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>=60;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=94)
+ORDER BY([Analysis];[Analysis]Code;<)
+For ($i;1;Records in selection([Analysis]))
+APPEND TO ARRAY(asData1;String([Analysis]Code))
+APPEND TO ARRAY(asData2;String([Analysis]Description))
+APPEND TO ARRAY(asData3;String([Analysis]SortOrder))
+NEXT RECORD([Analysis])
+End for 
+
+: (WS_RequestType="SumCash")
+WS_SuccessMsg:="Summary of Cash report created successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+vMthDate:=Date(GetTextNo (WS_ReportSettings;1;","))
+SumCash (True)
+
+For ($j;1;Records in selection([Trxs]))
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+APPEND TO ARRAY(asData2;String([Trxs]DateBanked))
+//Amt1-10
+APPEND TO ARRAY(asData6;"0")
+APPEND TO ARRAY(asData7;"0")
+APPEND TO ARRAY(asData8;"0")
+APPEND TO ARRAY(asData9;"0")
+APPEND TO ARRAY(asData10;"0")
+APPEND TO ARRAY(asData11;"0")
+APPEND TO ARRAY(asData12;"0")
+APPEND TO ARRAY(asData13;"0")
+APPEND TO ARRAY(asData14;"0")
+APPEND TO ARRAY(asData15;"0")
+
+APPEND TO ARRAY(asData16;"0")//vTotAmt
+$sizeofarray:=Size of array(asData6)
+$i:=[Analysis]SortOrder-50
+If ($i<1) | ($i>9)
+$i:=10
+End if 
+
+$ArrayValue:=0
+$ArrayValue:=$ArrayValue+[Trxs]TotAmt
+Case of 
+: ($i=1)
+asData6{$sizeofarray}:=String($ArrayValue)
+: ($i=2)
+asData7{$sizeofarray}:=String($ArrayValue)
+: ($i=3)
+asData8{$sizeofarray}:=String($ArrayValue)
+: ($i=4)
+asData9{$sizeofarray}:=String($ArrayValue)
+: ($i=5)
+asData10{$sizeofarray}:=String($ArrayValue)
+: ($i=6)
+asData11{$sizeofarray}:=String($ArrayValue)
+: ($i=7)
+asData12{$sizeofarray}:=String($ArrayValue)
+: ($i=8)
+asData13{$sizeofarray}:=String($ArrayValue)
+: ($i=9)
+asData14{$sizeofarray}:=String($ArrayValue)
+Else 
+asData15{$sizeofarray}:=String($ArrayValue)
+End case 
+NEXT RECORD([Trxs])
+End for 
+$sizeofarray:=Size of array(asData6)
+If ($sizeofarray>0)
+
+For ($j;1;$sizeofarray)
+asData4{1}:=String(Num(asData6{$j})+Num(asData4{1}))
+asData4{2}:=String(Num(asData7{$j})+Num(asData4{2}))
+asData4{3}:=String(Num(asData8{$j})+Num(asData4{3}))
+asData4{4}:=String(Num(asData9{$j})+Num(asData4{4}))
+asData4{5}:=String(Num(asData10{$j})+Num(asData4{5}))
+asData4{6}:=String(Num(asData11{$j})+Num(asData4{6}))
+asData4{7}:=String(Num(asData12{$j})+Num(asData4{7}))
+asData4{8}:=String(Num(asData13{$j})+Num(asData4{8}))
+asData4{9}:=String(Num(asData14{$j})+Num(asData4{9}))
+asData4{10}:=String(Num(asData15{$j})+Num(asData4{10}))
+asData16{$j}:=String(Num(asData6{$j})+Num(asData7{$j})+Num(asData8{$j})+Num(asData9{$j})+Num(asData10{$j})+Num(asData11{$j})+Num(asData12{$j})+Num(asData13{$j})+Num(asData14{$j})+Num(asData15{$j}))
+End for 
+
+//Else 
+//For ($i;1;10)
+//$p:=Get pointer("vPrev"+String($i))
+//$q:=Get pointer("vNew"+String($i))
+//$r:=Get pointer("vTot"+String($i))
+//$r->:=Round($r->+$p->+$q->;2)
+//End for 
+//vTotPrev
+$ArrayValue:=0
+$ArrayValue:=Num(asData3{1})+Num(asData3{2})+Num(asData3{3})+Num(asData3{4})+Num(asData3{5})
+$ArrayValue:=$ArrayValue+Num(asData3{6})+Num(asData3{7})+Num(asData3{8})+Num(asData3{9})+Num(asData3{10})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+//vTotNew
+$ArrayValue:=0
+$ArrayValue:=Num(asData5{1})+Num(asData5{2})+Num(asData5{3})+Num(asData5{4})+Num(asData5{5})
+$ArrayValue:=$ArrayValue+Num(asData5{6})+Num(asData5{7})+Num(asData5{8})+Num(asData5{9})+Num(asData5{10})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+//vTotTot
+$ArrayValue:=0
+$ArrayValue:=Num(asData4{1})+Num(asData4{2})+Num(asData4{3})+Num(asData4{4})+Num(asData4{5})
+$ArrayValue:=$ArrayValue+Num(asData4{6})+Num(asData4{7})+Num(asData4{8})+Num(asData4{9})+Num(asData4{10})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+
+//vTotTot+vTotNew+vTotPrev
+$ArrayValue:=0
+$ArrayValue:=Num(asData17{1})+Num(asData17{2})+Num(asData17{3})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+//Each elements of vTotTot
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData6
+$ArrayValue:=$ArrayValue+Num(asData6{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{1})
+$ArrayValue:=$ArrayValue+Num(asData5{1})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData7
+$ArrayValue:=$ArrayValue+Num(asData7{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{2})
+$ArrayValue:=$ArrayValue+Num(asData5{2})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData8
+$ArrayValue:=$ArrayValue+Num(asData8{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{3})
+$ArrayValue:=$ArrayValue+Num(asData5{3})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData9
+$ArrayValue:=$ArrayValue+Num(asData9{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{4})
+$ArrayValue:=$ArrayValue+Num(asData5{4})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData10
+$ArrayValue:=$ArrayValue+Num(asData10{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{5})
+$ArrayValue:=$ArrayValue+Num(asData5{5})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData11
+$ArrayValue:=$ArrayValue+Num(asData11{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{6})
+$ArrayValue:=$ArrayValue+Num(asData5{6})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData12
+$ArrayValue:=$ArrayValue+Num(asData12{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{7})
+$ArrayValue:=$ArrayValue+Num(asData5{7})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData13
+$ArrayValue:=$ArrayValue+Num(asData13{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{8})
+$ArrayValue:=$ArrayValue+Num(asData5{8})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData14
+$ArrayValue:=$ArrayValue+Num(asData14{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{9})
+$ArrayValue:=$ArrayValue+Num(asData5{9})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+
+$ArrayValue:=0
+For ($j;1;$sizeofarray)//asData15
+$ArrayValue:=$ArrayValue+Num(asData15{$j})
+End for 
+$ArrayValue:=$ArrayValue+Num(asData3{10})
+$ArrayValue:=$ArrayValue+Num(asData5{10})
+$ArrayValue:=Round($ArrayValue;2)
+APPEND TO ARRAY(asData17;String($ArrayValue))
+End if 
+
+//RNE1 Added a new report
+: (WS_RequestType="AdvertisementTracking")
+
+$marketingType:=""
+vStDate:=Date(GetTextNo (WS_ReportSettings;1;","))//start date
+vEDate:=Date(GetTextNo (WS_ReportSettings;2;","))//End Date
+$marketingType:=GetTextNo (WS_ReportSettings;3;",")//marketingType
+
+C_LONGINT($recs;$b1;$c1;$d1;$DaysStayed)
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=WS_FacilityCode;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode=$marketingType)
+
+For ($recs;1;Records in selection([MarketingTypes]))
+
+
+Case of 
+: ($marketingType="MS")
+// MArketing
+QUERY([Customer];[Customer]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]MarketSrce=[MarketingTypes]Description)
+ORDER BY([Customer]MarketSrce)
+: ($marketingType="CT")
+//Customer type
+QUERY([Customer];[Customer]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]CustType=[MarketingTypes]Description)
+: ($marketingType="BT")
+//Business
+QUERY([Customer];[Customer]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]BusType=[MarketingTypes]Description)
+: ($marketingType="MW")
+//Reason for MO
+QUERY([Customer];[Customer]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]ReasonMoveout=[MarketingTypes]Description)
+End case 
+
+C_REAL($Total)
+$Total:=0
+
+For ($b1;1;Records in selection([Customer]))
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn>=vStDate;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut<=vEDate)
+
+For ($c1;1;Records in selection([Agreement]))
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+
+$DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+
+//If ($DaysStayed<0)
+//$DaysStayed:=current date-[UnitHistory]MoveIn
+//End if 
+
+QUERY([Unit];[Unit]RUnitNo=[UnitHistory]UnitNo)
+
+APPEND TO ARRAY(aCustName;String([Unit]UnitNo))
+APPEND TO ARRAY(asData1;String([Unit]UnitTypeCode))
+APPEND TO ARRAY(asData2;String([Customer]CustomerName))
+APPEND TO ARRAY(asData3;String([UnitHistory]MoveIn))
+If ($DaysStayed>0)//customer left unit
+APPEND TO ARRAY(asData4;String([UnitHistory]MoveOut))
+APPEND TO ARRAY(asData5;String($DaysStayed))
+Else 
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+End if 
+APPEND TO ARRAY(asData6;String([Customer]CustType))
+APPEND TO ARRAY(asData7;String([Customer]MarketSrce))
+$Total:=$Total+1
+
+NEXT RECORD([Agreement])
+End for 
+NEXT RECORD([Customer])
+End for 
+If ($Total>0)
+APPEND TO ARRAY(aCustName;"Total:")
+APPEND TO ARRAY(asData1;[MarketingTypes]Description)
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"")
+APPEND TO ARRAY(asData7;String($Total))
+End if 
+
+NEXT RECORD([MarketingTypes])
+
+End for 
+
+WS_SuccessMsg:="Advertisement Tracking Data sent successfully!"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=9999
+WS_ORErrorDescription:="Invalid Report Requested."
+End case 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+
+$String:="End WS_GetReportData"+Char(13)
+$String:=$String+"WS_SuccessMsg: "+WS_SuccessMsg+Char(13)
+
+
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

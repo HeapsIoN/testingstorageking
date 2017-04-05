@@ -1,0 +1,66 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Reads from Lock.dat and locates I commands and updates unit details
+//Format of I command
+//e.g. I,102,1,456345,A,1,0
+
+//1=I
+//2=Unit number
+//3=Controller      [Unit]MuxController
+//4=Input No         [Unit]ChannelInput
+//5=Channel A | B  [Unit]InputPort
+//6=Relay 1          [Unit]UnitSection
+//7=Relay 2          [Unit]UnitLetter
+
+AlertMessage (Get localized string("Reads from Lock.dat and locates I commands. Data needs to be in the following format: I,Unit Number,Controller,Input No,Channel A | B, Relay 1, Relay 2"))
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]MuxController>0;*)
+QUERY([Unit]; & ;[Unit]ChannelInput>0)
+OK:=1
+If (Records in selection([Unit])>0)
+ConfirmTwo (Get localized string("There are")+" "+String(Records in selection([Unit]))+" "+Get localized string("units with Controller & Input numbers. Continue?");Get localized string("Yes");Get localized string("No"))
+End if 
+
+If (OK=1)
+ConfirmTwo (Get localized string("Please open the Lock.dat file containing the Initialization commands at the following Open dialog.");Get localized string("Continue");Get localized string("Cancel"))
+If (OK=1)
+$Doc:=Open document("")
+If (OK=1)
+READ WRITE([Unit])
+vtFormula:=""
+RECEIVE PACKET($Doc;$Data;Char(13))
+While (Length($Data)>5)
+If ($Data="I@")
+$Data:=Substring($Data;3)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+GetTextNo ($Data;1;","))
+If (Records in selection([Unit])=1)
+[Unit]MuxController:=GetPrefNo ($Data;2)
+[Unit]ChannelInput:=GetPrefNo ($Data;3)
+[Unit]InputPort:=(GetTextNo ($Data;4;",")="A")
+[Unit]UnitSection:=GetPrefNo ($Data;5)
+[Unit]UnitLetter:=GetPrefNo ($Data;6)
+SAVE RECORD([Unit])
+Else 
+vtFormula:=vtFormula+Get localized string("Unit not found")+":"+<>sFacility+GetTextNo ($Data;1;",")+Char(13)
+End if 
+End if 
+RECEIVE PACKET($Doc;$Data;Char(13))
+While (Substring($Data;1;1)#"I") & ($Data>"")//In case there is a CR/LF pair
+$Data:=Substring($Data;2)
+End while 
+End while 
+CLOSE DOCUMENT($Doc)
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+If (vtFormula>"")
+vTitle:=Get localized string("Import Errors...")
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Errors..."))
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+Else 
+AlertMessage (Get localized string("All units updated sucessfully!"))
+End if 
+End if 
+End if 
+End if 

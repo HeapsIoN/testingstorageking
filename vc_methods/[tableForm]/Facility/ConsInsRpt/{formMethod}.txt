@@ -1,0 +1,71 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header)
+vLegend:=Get localized string("Consolidated Insurance Report")+" - "+String(Current date)
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+$TotMthlyPrem:=0
+$NoAgreemts:=0
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vj:=vj+1
+QUERY([Unit];[Unit]AgreeNo=<>asSiteCodes{vj}+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail@";*)
+QUERY([Unit]; & ;[Unit]Status#"Comp@";*)
+QUERY([Unit]; & ;[Unit]Vacant=False)
+$TotUnits:=Records in selection([Unit])
+If (<>asSiteCodes{vj}>"")
+QUERY([Agreement];[Agreement]RAgreeNo=<>asSiteCodes{vj}+"@";*)
+QUERY([Agreement]; & ;[Agreement]InsureValue>0;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]InsureCommence<=vMthDate;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=vMthDate)
+QUERY SELECTION([Agreement];[Agreement]InsureExpire=!00-00-00!;*)
+QUERY SELECTION([Agreement]; | ;[Agreement]InsureExpire>=vStDate)
+CREATE EMPTY SET([Unit];"UnitsToPrint")
+End if 
+If (Records in selection([Agreement])>0)
+$InsCode:=<>asSiteCodes{vj}+"IN"
+For ($i;1;Records in selection([Agreement]))
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode=$InsCode)
+If (Records in selection([OtherChgs])>0)
+$TotMthlyPrem:=$TotMthlyPrem+Sum([OtherChgs]Amount)
+$NoAgreemts:=$NoAgreemts+1
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Unit]; & ;[Unit]InsureValue>0;*)
+QUERY([Unit]; & ;[Unit]Vacant=False)
+If (Records in selection>0)
+CREATE SET([Unit];"Include")
+End if 
+NEXT RECORD([Agreement])
+UNION("UnitsToPrint";"Include";"UnitsToPrint")
+End if 
+End for 
+vAmt2:=$TotMthlyPrem/$NoAgreemts
+End if 
+If (Records in set("UnitsToPrint")>0)
+USE SET("UnitsToPrint")
+vAmt1:=Records in selection([Unit])
+vAmt3:=Records in selection([Unit])/$TotUnits
+For ($x;1;Records in selection([Unit]))
+vAmt4:=vAmt4+[Unit]InsureValue
+NEXT RECORD([Unit])
+End for 
+End if 
+End if 
+If (Form event=On Printing Break)
+vAmt1:=Subtotal(vAmt1)
+vAmt2:=Subtotal(vAmt2)
+vAmt3:=Subtotal(vAmt3)
+vAmt4:=Subtotal(vAmt4)
+End if 
+If (Form event=On Printing Footer)
+vLeg1:=Get localized string("To appear on this report units must have an insurance value assigned to them.  They must also be attached to an active agreement with an insurance date that has not expired and must have an insurance premium set up under other regular charges.")
+SetFooter 
+End if 

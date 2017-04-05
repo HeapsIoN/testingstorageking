@@ -1,0 +1,878 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+C_LONGINT($i;vInvNo;$NoElem;vPage)
+C_PICTURE(PicInvHeader)
+C_DATE($Date)
+C_REAL(vRentAmtInv;vTaxSum;vNetSum;vFutureTrxs;vTaxRate)
+C_TEXT(vLeg6)
+C_TEXT(vLeg7;vLeg8;vLeg9;vLeg10)
+C_TEXT($vRef;$vXML)
+C_PICTURE(PicInvHeader;PicInvFooter)//piinvFooterFooter was named Variable1 prev 536x180 at 1,436,537,616 on InvReceipt
+//vpFooter was named Variable1 prev 536x180 at 11,436,547,616 on InvReceiptUS
+If (Form event=On Load)
+If (Test path name(<>sPreferencesPath+"SKBilling.xml")=Is a document) & (<>sFacility="SK@")
+$SKBilling:=True
+Else 
+$SKBilling:=False
+End if 
+If (Application type#4D Server)
+$j:=Find in array(<>aButton;"Invoice")
+If ($j>0)
+CANCEL
+End if 
+End if 
+If (Undefined(vBalFwdStart))
+vBalFwdStart:=!00-00-00!
+End if 
+If (Undefined(vBalFwdAmt))
+vBalFwdAmt:=0
+End if 
+End if 
+If (Form event=On Header)
+OBJECT SET VISIBLE(*;"copy_watermark@";vReprintCopy)
+//08/10/13 DM added to fix runtime error
+If (Test path name(<>sPreferencesPath+"SKBilling.xml")=Is a document) & (<>sFacility="SK@")
+$SKBilling:=True
+Else 
+$SKBilling:=False
+End if 
+vFutureTrxs:=0
+vLast:=0
+vLastDate:=!00-00-00!
+vBalInvDate:=!00-00-00!
+OBJECT SET VISIBLE(*;"Field91";[Facility]GraphiconInv)
+OBJECT SET VISIBLE(*;"HeaderField2@";Not([Facility]GraphiconInv))
+If (([Facility]HeaderEmail=1) & (<>tPrintPDF=False)) | (([Facility]HeaderEmail=2) & (<>tPrintPDF=True))
+OBJECT SET VISIBLE(*;"Field91";False)
+OBJECT SET VISIBLE(*;"HeaderField2@";False)
+End if 
+If ([Facility]PhoneFormat>"")
+OBJECT SET FORMAT([Facility]Phone;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Facility]Fax;[Facility]PhoneFormat)
+End if 
+If ([Facility]CompanyName#"")
+vtCompanyName:=[Facility]CompanyName+" "+Get localized string("trading as")
+Else 
+vtCompanyName:=""
+End if 
+If (Length([Agreement]PurchaseOrder)>12)
+OBJECT SET FONT SIZE([Agreement]PurchaseOrder;10)
+End if 
+If (Length([Reservation]PurchaseOrder)>12)
+OBJECT SET FONT SIZE([Reservation]PurchaseOrder;10)
+End if 
+If ([Reservation]PurchaseOrder>"")
+OBJECT SET VISIBLE([Agreement]PurchaseOrder;False)
+OBJECT SET VISIBLE([Reservation]PurchaseOrder;True)
+End if 
+If (tNewInv=True)//This criteria added 28/10/94 to stop vBal being reset to zero on 2nd page
+vTaxSum:=0// Sum of taxes = 0 for new inv
+vNetSum:=0
+vTaxRate:=0
+If ([Trxs]AgreeNo="")
+FIRST RECORD([Trxs])
+End if 
+If (Records in selection([Customer])=0) | ([Trxs]CustomerCode#[Customer]CustomerCode)
+RELATE ONE([Trxs]CustomerCode)
+End if 
+//The second condition of the next line was previously commented out but caused the Agreement number in the header & the footer to be different
+// Modified by: nicholas.wykes (13/08/2010) Added "&" due to printing by Customer in Daily Processing causing other Agreements to be lost from selection
+If ([Trxs]CustomerCode#[Agreement]CustomerCode) | (([Trxs]AgreeNo#[Agreement]RAgreeNo) & [Facility]InvUseAgrBalFwd)// (Records in selection([Agreement])=0)
+If (Length([Trxs]AgreeNo)<14)//Prev was =4
+If ([Reservation]RReserveNo#[Trxs]AgreeNo)
+QUERY([Reservation];[Reservation]ReserveNo=[Trxs]AgreeNo)
+End if 
+Else 
+REDUCE SELECTION([Reservation];0)
+RELATE ONE([Trxs]AgreeNo)
+End if 
+End if 
+If (Records in selection([Unit])=0) | ([Trxs]AgreeNo#[Unit]AgreeNo)
+If (Records in selection([Reservation])>0)
+If ([Unit]ReservedTo#[Reservation]RReserveNo)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+Else 
+If ([Agreement]ActiveAgreemt)//Don't find unit for inactive agreement        
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+Else 
+REDUCE SELECTION([Unit];0)
+End if 
+End if 
+End if 
+Case of 
+: ([Facility]InvDetailsOpt=3)
+vLine1:=""
+vLine4:=""
+: ([Facility]FacilityCode="ST@")
+vLine1:="User Code :"
+vLine4:=[Agreement]AgreeNo
+: (Records in selection([Agreement])=0) & ([Reservation]ReserveNo>"")
+vLine1:=Get localized string("Reservation Number")+" :"
+vLine4:=[Reservation]ReserveNo
+Else 
+vLine1:=Get localized string("Agreement Number")+" :"
+vLine4:=[Agreement]AgreeNo
+End case 
+If ([Facility]ShowABNInv) & (Length([Customer]ABNNo)>8)
+Case of 
+: (Length([Customer]ABNNo)=9)
+vLine2:="Customer ACN :"
+vLine3:=String(Num([Customer]ABNNo);"###-###-###")
+Else 
+vLine2:=Get localized string("Customer ABN")+" :"
+vLine3:=String(Num([Customer]ABNNo);"##-###-###-###")
+End case 
+Else 
+If (([Facility]InvDetailsOpt>0) & ([Facility]InvDetailsOpt<3))// | ([Facility]FacilityCode="ST@")
+vLine2:=""
+vLine3:=""
+Else 
+vLine2:=Get localized string("Customer Code")+" :"
+vLine3:=[Customer]CustomerCode//Substring([Customer]CustomerCode;3) - Changed to show full code
+End if 
+End if 
+If ([Facility]InvDetailsOpt=2)
+vLine4:=Substring([Facility]FacilityCode;3;1)+vLine4
+End if 
+If (vLine2="") & (vLine3="")
+vLine2:=vLine1
+vLine3:=vLine4
+vLine1:=""
+vLine4:=""
+End if 
+ARRAY TEXT(aCustCode;1)
+aCustCode{1}:=[Agreement]RAgreeNo
+If ([Agreement]ActiveAgreemt=True)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+ARRAY REAL(aTotal;1)
+//22/08/14 DAM/RWFR Removed ORC from below as it is calulated and added at line 702
+If ([Agreement]NextBillDate>=[Agreement]NewRentFrom) & ([Agreement]NewRentFrom#!00-00-00!) & ([Agreement]NewRentAmt>0)
+aTotal{1}:=[Agreement]NewRentAmt
+Else 
+aTotal{1}:=[Agreement]RentAmt
+End if 
+ARRAY DATE(aDates;1)
+ARRAY DATE(aFutureDate;1)
+aDates{1}:=[Agreement]NextBillDate
+RELATE ONE([Agreement]BillingPlanCode)
+aFutureDate{1}:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+ARRAY REAL(aTotal;0)
+ARRAY DATE(aDates;0)
+ARRAY DATE(aFutureDate;0)
+End if 
+If (Level=1) | ((BLOB size([Facility]InvHeader_)#0) & ([Facility]GraphiconInv))
+If ([Trxs]AgreeNo#"@MISCL")
+vAddr1:=Reverse ([Customer]UserName)
+vAddr2:=Reverse ([Customer]CustomerName)
+If ([Customer]MailSuburb>"")
+vAddr3:=[Customer]MailAddress+Char(13)+[Customer]MailSuburb
+Else 
+vAddr3:=[Customer]MailAddress
+End if 
+vAddr4:=[Customer]MailCity
+vAddr5:=[Customer]MailState
+vAddr6:=[Customer]MailPostZIPCode
+vAddr7:=""
+If ([Customer]MailCountryCode#[Facility]Country) & ([Customer]MailCountryCode#"")
+vAddr7:=[Customer]MailCountry
+End if 
+End if 
+If (([Facility]Country="GB") & ([Customer]MailCountryCode="")) | ([Customer]MailCountryCode="GB")
+//Do Nothing
+Else 
+If (vAddr5>"")
+If (vAddr4>"")
+vAddr4:=vAddr4+"   "+vAddr5
+Else 
+vAddr4:=vAddr5
+End if 
+vAddr5:=""
+End if 
+If (vAddr6>"")
+If (([Facility]Country="DE") & ([Customer]MailCountryCode="")) | ([Customer]MailCountryCode="DE")
+vAddr4:=vAddr6+"   "+vAddr4
+Else 
+vAddr4:=vAddr4+"   "+vAddr6
+End if 
+vAddr6:=""
+End if 
+If (vAddr7>"")
+vAddr5:=vAddr7
+vAddr7:=""
+End if 
+End if 
+OBJECT SET FONT STYLE(*;"Address@";0)
+$i:=Position(Char(13);vAddr3;0;*)
+If ($i>0)
+vAddr7:=vAddr6
+vAddr6:=vAddr5
+vAddr5:=vAddr4
+vAddr4:=Substring(vAddr3;$i+1)
+vAddr3:=Substring(vAddr3;1;$i-1)
+$i:=Position(Char(13);vAddr4;0;*)
+If ($i>0)
+vAddr7:=vAddr6
+vAddr6:=vAddr5
+vAddr5:=Substring(vAddr4;$i+1)
+vAddr4:=Substring(vAddr4;1;$i-1)
+OBJECT SET FONT STYLE(vAddr6;[Facility]AddressStyle)
+OBJECT SET FONT STYLE(vAddr7;[Facility]AddressStyle)
+Else 
+OBJECT SET FONT STYLE(vAddr5;[Facility]AddressStyle)
+OBJECT SET FONT STYLE(vAddr6;[Facility]AddressStyle)
+End if 
+Else 
+OBJECT SET FONT STYLE(vAddr4;[Facility]AddressStyle)
+OBJECT SET FONT STYLE(vAddr5;[Facility]AddressStyle)
+End if 
+//If (tBoolean)
+//GET OBJECT RECT(*;"Address@";left;top;right;bottom)
+If (([Customer]CustomerCode#"") & (vtMoveAddress=True)) | (([Reservation]RReserveNo>"") & (vtMoveAddress=True))//vtInvAgree#[Agreement]RAgreeNo)
+OBJECT MOVE(*;"Address@";[Facility]AddressXPos;[Facility]AddressYPos)
+vtMoveAddress:=False
+//vtInvAgree:=[Agreement]RAgreeNo
+End if 
+//tBoolean:=False
+//End if 
+End if 
+If (False)
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="InvoiceHead@")
+If (Records in selection([Notices])>0)
+$i:=WR New offscreen area 
+EXPAND BLOB([Notices]Letter)
+WR BLOB TO AREA ($i;[Notices]Letter)
+vpHeader:=WR Area to picture ($i;1;1)
+WR DELETE OFFSCREEN AREA ($i)
+Else 
+AlertMessage (Get localized string("The Notice called 'InvoiceHeader' is missing from Notices Details so the customers name and address will not be printed."))
+End if 
+End if 
+If ([Facility]InvStatement>0)
+vInvDate:=[Trxs]InvDate
+vInvNo:=[Trxs]InvNo
+If (vInvDate=!00-00-00!)
+vInvDate:=Current date
+End if 
+Else 
+If ([Facility]BalFwdDateOpt) & ([Agreement]LastBillDate>Current date) & ([Facility]InvCurrentDate=False) & ($SKBilling=False)//New option in 3.1.3
+vInvDate:=[Agreement]LastBillDate
+Else 
+vInvDate:=Current date
+End if 
+End if 
+vLeg3:=<>tInvPrefix+Get localized string("INVOICE / RECEIPT")
+vLeg4:=[Facility]TaxNumber
+
+If (<>tTaxFormat="")
+vLeg4:=<>tTaxFull+" : "+vLeg4
+Else 
+OBJECT SET FORMAT(vLeg4;<>tTaxFull+" : "+<>tTaxFormat)
+End if 
+
+vCol2:=<>tTaxName
+
+If ([Facility]InvStatement>0) & (bPrtRec#1) & (bEmailReceipt#1)
+$Pos:=Position(" / ";vLeg3)
+vLeg3:=Substring(vLeg3;1;$Pos)
+End if 
+
+If ((bPrtRec=1) | (bEmailReceipt=1)) & ([Facility]UseReceiptPrinter=False)
+$Pos:=Position(" / ";vLeg3)
+vLeg3:=Substring(vLeg3;$Pos+3)
+End if 
+bConfirm:=False
+If ([Customer]CustomerCode=(<>sFacility+"MISCL"))
+vBal:=0
+REDUCE SELECTION([Unit];0)
+Else 
+If ([Facility]InvUseAgrBalFwd)
+vBal:=Round([Agreement]BalFwd;2)
+vDate:=[Agreement]BalFwdDate
+Else 
+vBal:=Round([Customer]BalFwd;2)
+vDate:=[Customer]BalFwdDate
+End if 
+End if 
+End if 
+If ([Agreement]PurchaseOrder>"") | ([Reservation]PurchaseOrder>"")
+vLeg7:=Get localized string("Purchase Order")+" :"
+Else 
+vLeg7:=""
+End if 
+$i:=Length([Unit]UnitSize)+Length([Unit]UnitNo)
+Case of 
+: ([Facility]ShowSizeonInv) & ($i<18)
+Case of 
+: ([Facility]ProductCode="@R")
+vLeg8:=Get localized string("Appl Size and No")+" :"
+: ([Facility]ProductCode="@B")
+vLeg8:=Get localized string("Berth Size and No")+" :"
+: ([Facility]ProductCode="@C")
+vLeg8:=Get localized string("Space Size and No")+" :"
+: ([Facility]FacilityCode="ST@")
+vLeg8:="Support Plan No :"
+Else 
+vLeg8:=Get localized string("Unit Size and No")+" :"
+End case 
+vLeg9:=[Unit]UnitSize+(" "*(18-$i))+[Unit]UnitNo
+Else 
+Case of 
+: ([Facility]ProductCode="@R")
+vLeg8:=Get localized string("Appl No")+" :"
+: ([Facility]ProductCode="@B")
+vLeg8:=Get localized string("Berth No")+" :"
+: ([Facility]ProductCode="@C")
+vLeg8:=Get localized string("Space No")+" :"
+: ([Facility]FacilityCode="ST@")
+vLeg8:="Support Plan No :"
+Else 
+vLeg8:=Get localized string("Unit No")+" :"
+End case 
+If (Records in selection([Agreement])=0) & ([Reservation]ReserveNo>"")
+vLeg9:=[Unit]UnitNo
+Else 
+vLeg9:=[Agreement]UnitsOccup
+End if 
+End case 
+If ([Agreement]AgreeNo="#@")//Other Credit Sale
+vLeg8:=vLine2
+vLeg9:=vLine3
+vLine2:=vLine1
+vLine3:=vLine4
+vLine1:=""
+vLine4:=""
+End if 
+If ([Facility]HeaderonInv=True) | ([Facility]GraphiconInv=True)
+If (([Facility]HeaderEmail=1) & (<>tPrintPDF=False)) | (([Facility]HeaderEmail=2) & (<>tPrintPDF=True))
+OBJECT SET VISIBLE(*;"Header@";False)
+vLeg1:=""
+vLeg2:=""
+vSCity:=""
+Else 
+vLeg1:=Get localized string("Phone")+" :"
+vLeg2:=Get localized string("Fax")+" :"
+If ([Facility]Country="DE")
+vSCity:=[Facility]PostZIPCode+"  "+[Facility]City+"  "+[Facility]State
+Else 
+vSCity:=[Facility]City+"  "+[Facility]State+"  "+[Facility]PostZIPCode
+End if 
+End if 
+Else 
+
+OBJECT SET VISIBLE(*;"Header@";False)
+vLeg1:=""
+vLeg2:=""
+vSCity:=""
+End if 
+
+If (BLOB size([Facility]InvHeader_)#0) & ([Facility]GraphiconInv)
+LoadReferences (1)
+End if 
+
+//17/11/14 DAM Added vPage to be ale to print page no on Inv
+vPage:=Printing page
+
+End if 
+If (Form event=On Printing Detail)
+SetFormats 
+OBJECT SET VISIBLE(vTot;True)//SDD 5/7/11 This because footer can set it to False, and then it doesn't display on second page.
+//SDD 18/5/08 Added following 3 lines to display negative SeqNo as positive invoice numbers.  This will also need to be changed in every place where SeqNo are displayed.
+If ([Trxs]SeqNo<0)
+[Trxs]SeqNo:=Abs([Trxs]SeqNo)+1000000
+End if 
+If ([Trxs]Charge=True)
+
+If (vBalInvDate=!00-00-00!) & ([Trxs]AnalysisCode#"@LF")
+vBalInvDate:=[Trxs]TrxDate
+End if 
+
+If ([Trxs]TrxDate<vBalInvDate) & ([Trxs]AnalysisCode#"@LF")
+vBalInvDate:=[Trxs]TrxDate
+End if 
+
+If ([Trxs]TrxDate>=vInvDate) & ([Trxs]AnalysisCode#"@LF")//Added in 4.1.0 to stop late fees not being included in overdue amount
+vFutureTrxs:=vFutureTrxs+[Trxs]TotAmt
+If ([Trxs]TrxDate>vLastDate)
+vLastDate:=[Trxs]TrxDate
+vLast:=[Trxs]TotAmt
+Else 
+If ([Trxs]TrxDate=vLastDate)
+vLast:=vLast+[Trxs]TotAmt
+End if 
+End if 
+End if 
+vTot:=[Trxs]TotAmt
+vTax:=[Trxs]TaxAmt
+
+vTaxSum:=vTaxSum+vTax
+vNet:=vTot-vTax
+//19/11/14 DAM Added for tax rate and exluded trx with 0 tax amount from net calculation.
+If ([Trxs]TaxAmt=0)
+vTaxRate:=0
+vNetSum:=vNetSum+0
+Else 
+vTaxRate:=[Facility]TaxRate
+vNetSum:=vNetSum+vNet
+End if 
+
+vPay:=0
+vBal:=Round(vBal+vTot;2)
+OBJECT SET FORMAT(vTot;<>sFormatNeg)
+OBJECT SET FORMAT(vNet;<>sFormatNeg)
+Else 
+OBJECT SET FORMAT(vTot;<>sFormatZero)
+OBJECT SET FORMAT(vNet;<>sFormatZero)
+vPay:=[Trxs]TotAmt
+vTot:=0
+vTax:=0
+vNet:=0
+vBal:=Round(vBal-vPay;2)
+If ([Trxs]Confirmed=False)
+[Trxs]Description:=[Trxs]Description+" •"
+bConfirm:=True
+End if 
+[Trxs]SeqNo:=0//3.2.8
+End if 
+If (Length([Trxs]Description)>25)
+OBJECT SET FONT SIZE([Trxs]Description;9)
+//MOVE OBJECT([Transaction]Description;0;1)
+End if 
+If ([Facility]InvStatement>0)
+[Trxs]SeqNo:=[Trxs]InvNo
+End if 
+tNewInv:=False
+$i:=Find in array(aCustCode;[Trxs]AgreeNo)
+If ($i<1)
+CUT NAMED SELECTION([Agreement];"Restore")
+RELATE ONE([Trxs]AgreeNo)
+INSERT IN ARRAY(aCustCode;1)
+aCustCode{1}:=[Agreement]RAgreeNo
+If ([Agreement]ActiveAgreemt=True)
+INSERT IN ARRAY(aTotal;1)
+INSERT IN ARRAY(aDates;1)
+INSERT IN ARRAY(aFutureDate;1)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]NextBillDate>=[Agreement]NewRentFrom) & ([Agreement]NewRentFrom#!00-00-00!) & ([Agreement]NewRentAmt>0)
+aTotal{1}:=[Agreement]NewRentAmt+Sum([OtherChgs]Amount)
+Else 
+aTotal{1}:=[Agreement]RentAmt+Sum([OtherChgs]Amount)
+End if 
+aDates{1}:=[Agreement]NextBillDate
+RELATE ONE([Agreement]BillingPlanCode)
+aFutureDate{1}:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End if 
+USE NAMED SELECTION("Restore")
+End if 
+//26/08/13 DAM Added code for Fiscal Printer for Panama
+If ([Facility]Country="PA")
+$t:=","
+$New:=True
+$cr:=Char(13)
+$File:=<>sExportPath+"CreditInvoice.csv"
+If (Test path name($File)=Is a document)
+$Doc:=Append document(<>sExportPath+"CreditInvoice.csv")
+$New:=False
+Else 
+$Doc:=Create document(<>sExportPath+"CreditInvoice.csv")
+SEND PACKET($Doc;"Codigo"+$t+"Descripcion"+$t+"Unidades"+$t+"Precio_Unitario"+$t+"Total"+$t+"Discount"+$t+"Impuesto"+$cr)
+$New:=True
+End if 
+If ([Trxs]TotAmt>0)
+$Mult:=1
+Else 
+$Mult:=-1
+End if 
+$NetAmt:=String(Abs(([Trxs]TotAmt-[Trxs]TaxAmt)*$Mult))
+$TaxAmt:=String(Abs([Trxs]TaxAmt))
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+$TaxCode:="E"
+Case of 
+: ([Analysis]TaxRate=0)
+$TaxCode:="E"
+: ([Analysis]TaxRate=7)
+$TaxCode:="G"
+: ([Analysis]TaxRate=10)
+$TaxCode:="G2"
+: ([Analysis]TaxRate=15)
+$TaxCode:="G3"
+End case 
+$Qty:=1
+If ([Trxs]Qty#0)
+$Qty:=[Trxs]Qty
+End if 
+$Total:=[Trxs]TotAmt
+$Priceperone:=[Analysis]DfltSellAmt
+//Rental Fee + ORC based on agreement MthAdv
+If ([Agreement]MthsAdv#1)
+$RentalFee:=<>sFacility+"RF"
+If ([Trxs]AnalysisCode=$RentalFee)
+$Priceperone:=[Agreement]RegularRent
+$Qty:=[Agreement]MthsAdv
+Else 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Trxs]AgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode=[Trxs]AnalysisCode)
+If (Records in selection([OtherChgs])=1)
+$Qty:=[Agreement]MthsAdv
+$Priceperone:=[OtherChgs]Amount/$Qty
+End if 
+End if 
+End if 
+
+If ($New=False) & ([Trxs]Charge=True)
+SEND PACKET($Doc;$cr)
+End if 
+
+If ([Trxs]Charge=True)
+SEND PACKET($Doc;String([Trxs]SeqNo)+$t+[Trxs]Description+$t+String($Qty)+$t+String($Priceperone)+$t+String([Trxs]TotAmt)+$t+String([Trxs]DiscAmt)+$t+$TaxCode+$cr)
+End if 
+CLOSE DOCUMENT($Doc)
+
+$File:=<>sExportPath+"CreditDetail.csv"
+If (Test path name($File)=Is a document)
+$Doc:=Append document(<>sExportPath+"CreditDetail.csv")
+Else 
+$Doc:=Create document(<>sExportPath+"CreditDetail.csv")
+SEND PACKET($Doc;"Codigo_sys"+$t+"Fiscal_Number"+$t+"Impreso_Fecha"+$t+"Fiscalizado"+$t+"Printer_Serial"+$t+"Type"+$t+"Ruc"+$t+"Cliente"+$t+"WareHouse"+$t+"Date"+$t+"Credit_Term"+$t+"Comentario"+$t+"SubTotal"+$t+"Discount"+$t+"Taxes"+$t+"Total"+$t+"Vendor"+$t+"Pago_Efectivo"+$t+"Pago_Cheque"+$t+"Pago_Tarjeta"+$t+"Pago_Otros"+$t+"Pago_ACH"+$cr)
+End if 
+
+$Charge:="BILL"
+If ([Trxs]TotAmt>0)
+$Charge:="BILL"
+$Credit:="C.O.D."
+Else 
+$Charge:="NC"
+$Credit:="CREDIT"
+End if 
+
+$Pago_Efectivo:=0
+$Pago_Cheque:=0
+$Pago_Tarjeta:=0
+$Pago_Otros:=0
+$Pago_ACH:=0
+
+If ([Trxs]Charge=True)
+If ([Trxs]Match=0)
+$Credit:="CREDIT"
+Else 
+//Search by match number -> detect the transaction analysis code
+
+// This while loop for case when Charge amt > receipt amt
+$Pos:=Find in array(arMatchNo;[Trxs]Match)
+While ($Pos>0)
+Case of 
+: (arAnalysisCode{$Pos}=(<>sFacility+"CA"))
+$Pago_Efectivo:=$Pago_Efectivo+arTotalAmt{$Pos}
+: (arAnalysisCode{$Pos}=(<>sFacility+"CH"))
+$Pago_Cheque:=$Pago_Cheque+arTotalAmt{$Pos}
+: (arAnalysisCode{$Pos}=(<>sFacility+"TR"))
+$Pago_Tarjeta:=$Pago_Tarjeta+arTotalAmt{$Pos}
+: (arAnalysisCode{$Pos}=(<>sFacility+"OT"))
+$Pago_Otros:=$Pago_Otros+arTotalAmt{$Pos}
+: (arAnalysisCode{$Pos}=(<>sFacility+"AC"))
+$Pago_ACH:=$Pago_ACH+arTotalAmt{$Pos}
+End case 
+$Start:=$Pos
+$Pos:=Find in array(arMatchNo;[Trxs]Match;$Start+1)
+End while 
+
+//For MISCL and if the Receipt Amt > Charge Amt
+Case of 
+: ($Pago_Efectivo>[Trxs]TotAmt)
+$Pago_Efectivo:=[Trxs]TotAmt
+: ($Pago_Cheque>[Trxs]TotAmt)
+$Pago_Cheque:=[Trxs]TotAmt
+: ($Pago_Tarjeta>[Trxs]TotAmt)
+$Pago_Tarjeta:=[Trxs]TotAmt
+: ($Pago_Otros>[Trxs]TotAmt)
+$Pago_Otros:=[Trxs]TotAmt
+: ($Pago_ACH>[Trxs]TotAmt)
+$Pago_ACH:=[Trxs]TotAmt
+End case 
+End if 
+[Customer]CustomerName:=Replace string([Customer]CustomerName;",";"")
+[Trxs]Narration:=Replace string([Trxs]Narration;",";"")
+[Trxs]Narration:=Replace string([Trxs]Narration;$cr;"")
+
+If ([Trxs]AgreeNo="@MISCL")
+SEND PACKET($Doc;String([Trxs]SeqNo)+$t+"1"+$t+$t+"NO"+$t+"AS-23423"+$t+$Charge+$t+"8-33-334"+$t+vAddr2+$t+[Facility]BusinessName+$t+String([Trxs]TrxDate)+$t+$Credit+$t+[Trxs]Narration+$t+String([Trxs]TotAmt-[Trxs]TaxAmt)+$t+String([Trxs]DiscAmt)+$t+String([Trxs]TaxAmt)+$t+String([Trxs]TotAmt)+$t+[Trxs]UserLogin+$t+String($Pago_Efectivo)+$t+String($Pago_Cheque)+$t+String($Pago_Tarjeta)+$t+String($Pago_Otros)+$t+String($Pago_ACH)+$cr)
+Else 
+SEND PACKET($Doc;String([Trxs]SeqNo)+$t+"1"+$t+$t+"NO"+$t+"AS-23423"+$t+$Charge+$t+"8-33-334"+$t+[Customer]CustomerName+$t+[Facility]BusinessName+$t+String([Trxs]TrxDate)+$t+$Credit+$t+[Trxs]Narration+$t+String([Trxs]TotAmt-[Trxs]TaxAmt)+$t+String([Trxs]DiscAmt)+$t+String([Trxs]TaxAmt)+$t+String([Trxs]TotAmt)+$t+[Trxs]UserLogin+$t+String($Pago_Efectivo)+$t+String($Pago_Cheque)+$t+String($Pago_Tarjeta)+$t+String($Pago_Otros)+$t+String($Pago_ACH)+$cr)
+End if 
+
+End if 
+CLOSE DOCUMENT($Doc)
+
+End if 
+End if 
+If (Form event=On Printing Break)
+If (vInvDate>vBalInvDate)
+vBalInvDate:=vInvDate
+End if 
+OBJECT SET VISIBLE(*;"copy_watermark@";vReprintCopy)
+OBJECT SET VISIBLE(*;"@Buyback";[Agreement]BB)
+If (vBal>=10000)//3.2.8
+OBJECT SET FONT SIZE(*;"Field2";10)
+End if 
+//SetFacility Removed 25/11/04 
+If (bConfirm=True)
+vConfirm:=Get localized string("N.B. Unconfirmed Payments")
+Else 
+vConfirm:=""
+End if 
+If ([Facility]InvStatement=2)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]BalanceOwing#([Agreement]LastBillAmt-[Agreement]LastDiscAmt+Sum([OtherChgs]Amount))) & ([Agreement]BalanceOwing#0) & (([Notices]AttachStatement=1) | ([Letters]SentWithStatement)) & (vBalFwdAmt#0)
+vConfirm:="* for a breakdown of the ‘balance brought forward please refer to the attached statement"
+Else 
+vConfirm:=""
+End if 
+
+If (bPrtRec=1) | (bEmailReceipt=1)
+vConfirm:=""
+End if 
+
+If (Records in selection([Notices])=1)
+If ([Notices]AttachStatement=0)
+vConfirm:=""
+End if 
+End if 
+
+End if 
+bConfirm:=False
+ARRAY TEXT(aCustCode;0)
+vLeg5:=""
+vLeg6:=""
+vTot:=0
+QUERY([Analysis];[Analysis]SortOrder=1)
+If (Size of array(aTotal)>0)
+SORT ARRAY(aDates;aFutureDate;aTotal;>)
+vRentAmtInv:=aTotal{1}+CalcTaxAmt (aTotal{1};[Analysis]Code;aDates{1};aFutureDate{1};1;[Agreement]TaxExempt)//Added last field 4/9/2000
+For ($i;2;Size of array(aDates))
+If (Abs(aDates{$i}-aDates{1})<=[Facility]CombineNxtDueDays)
+vRentAmtInv:=vRentAmtInv+aTotal{$i}+CalcTaxAmt (aTotal{$i};[Analysis]Code;aDates{$i};aFutureDate{$i};1;[Agreement]TaxExempt)
+End if 
+End for 
+$Date:=aDates{1}
+Else 
+$Date:=[Agreement]NextBillDate
+End if 
+If (vBal<=0) & (Records in selection([Agreement])=0) & ([Reservation]ReserveNo>"")
+Case of 
+: ([Facility]ProductCode="@R")
+vLeg5:=Get localized string("This receipt is for your reservation for the above appliance")+".                "
+: ([Facility]ProductCode="@B")
+vLeg5:=Get localized string("This receipt is for your reservation for the above berth")+".                    "
+: ([Facility]ProductCode="@C")
+vLeg5:=Get localized string("This receipt is for your reservation for the above space")+".                    "
+Else 
+vLeg5:=Get localized string("This receipt is for your reservation for the above unit")+".                     "
+End case 
+
+Else 
+If ([Facility]HideNxtChgInv=False) & ([Customer]CustomerCode#(<>sFacility+"MISCL")) & ([Agreement]ActiveAgreemt) & ((vInvDate>[Agreement]LastBillDate) | (vBal<[Facility]MinBalArrears) | ([Facility]ShowNxtChgsInv))
+
+
+If ([Facility]PaidtoDateonInv) & ([Agreement]AgreeNo#"#@")
+vLeg5:=Get localized string("As at the date of this invoice Rent is Paid up until")+" "+String([Agreement]PaidToDate;6)+(" "*32)
+Else 
+If ([Facility]FacilityCode="ST@")
+vLeg5:=Get localized string("Next Support/Rental Due")+" : "+String($Date;6)
+Else 
+//If (<>sFacility="RM@")
+$ORCTotal:=0
+//08/10/14 DAM Added user check to fix inv are nor attached during daily
+If (Current user#"Daily")
+For ($s;1;Records in selection([Agreement]))
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+FIRST RECORD([OtherChgs])
+For ($q;1;Records in selection([OtherChgs]))
+If ([OtherChgs]IncreaseFrom<=$Date) & ([OtherChgs]IncreaseFrom#!00-00-00!)
+$ORCTotal:=$ORCTotal+[OtherChgs]NewAmount
+Else 
+$ORCTotal:=$ORCTotal+[OtherChgs]Amount
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+NEXT RECORD([Agreement])
+End for 
+FIRST RECORD([Agreement])
+Else 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+FIRST RECORD([OtherChgs])
+For ($q;1;Records in selection([OtherChgs]))
+If ([OtherChgs]IncreaseFrom<=$Date) & ([OtherChgs]IncreaseFrom#!00-00-00!)
+$ORCTotal:=$ORCTotal+[OtherChgs]NewAmount
+Else 
+$ORCTotal:=$ORCTotal+[OtherChgs]Amount
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+End if 
+If ([Facility]HideNextAmounts=True)
+vLeg5:=Get localized string("Next Rent Due")+" : "+String($Date;6)
+Else 
+vLeg5:=Get localized string("Next Rent Due")+" : "+String($Date;6)+"        "+Get localized string("Amount Due")+" : "+String(vRentAmtInv+$ORCTotal;<>sFormat)
+End if 
+//Else 
+//vLeg5:=Get localized string("Next Rent Due")+" : "+String($Date;6)+"        "+Get localized string("Amount Due")+" : "+String(vRentAmtInv;<>sFormat)
+//End if 
+End if 
+If ([Facility]InvShowTotal=True)
+vTot:=vRentAmtInv+vBal+$ORCTotal
+vLeg5:=vLeg5+"        "+Get localized string("Total Due")+" : "+String(vTot;<>sFormat)
+vLeg6:=Get localized string("Total")
+Else 
+vLeg5:=vLeg5+(" "*32)
+End if 
+End if 
+Else 
+//  vRentAmtInv:=0
+vLeg5:=""
+End if 
+End if 
+Case of 
+: ((bPrtRec=1) | (bEmailReceipt=1))
+vLeg10:=""
+: ([Facility]InvStatement>0) & (bPrtRec#1) & (bEmailReceipt#1)
+vLeg10:=Get localized string("Balance of this invoice")
+If ([Facility]ShowBalDueDateInv) & (vMisc=False)
+vLeg10:=Get localized string("Balance Due by")+" "+String(vLastDate+[Facility]BalDueinDays;1)
+End if 
+: (vBal<0)
+vLeg10:="  "+Get localized string("Account in Credit")
+: ([Facility]ShowBalDueDateInv) & (vBal>0.005)
+
+If (vMisc=False)
+$Overdue:=vBal-vFutureTrxs
+If ($Overdue>vBal)//SDD 5/12/12 Added this code to ensure Overdue balance is not more than Bal Owing
+$Overdue:=vBal
+End if 
+If ($Overdue>0.005)
+//If ([Facility]Country=3)
+//$Currency:="£"
+//Else 
+//$Currency:="$"
+//End if 
+vLeg10:=Get localized string("Balance Due   -   OVERDUE Amount")+" "+<>sCurrency+String($Overdue;"###,###.00")
+Else 
+If (vFutureTrxs#vLast)
+vLeg10:="  "+Get localized string("Balance Due")
+Else 
+vLeg10:=Get localized string("Balance Due by")+" "+String(vLastDate+[Facility]BalDueinDays;1)
+End if 
+End if 
+End if 
+Else 
+vLeg10:="  "+Get localized string("Balance Due")
+End case 
+ARRAY REAL(aTotal;0)
+ARRAY DATE(aDates;0)
+tNewInv:=True
+If ([Facility]InvUseAgrBalFwd)
+vBalFwdAmt:=[Agreement]BalFwd
+vBalFwdStart:=[Agreement]BalFwdDate
+Else 
+vBalFwdAmt:=[Customer]BalFwd
+vBalFwdStart:=[Customer]BalFwdDate
+End if 
+If (vBalFwdAmt<=0)
+OBJECT SET VISIBLE(vBalFwdStart;False)
+Else 
+OBJECT SET VISIBLE(vBalFwdStart;True)
+End if 
+vBalInvAmt:=vBal-vBalFwdAmt
+
+End if 
+If (Form event=On Printing Footer)
+If ([Facility]InvUseAgrBalFwd=True)
+vFooterBal:=[Agreement]FooterBalance
+Else 
+vFooterBal:=[Customer]FooterBalance
+End if 
+OBJECT SET VISIBLE(*;"copy_watermark@";vReprintCopy)
+//$Position:=Position("trading as";[Facility]CompanyName)
+//If ($Position>0)
+//[Facility]CompanyName:=Substring([Facility]CompanyName;1;($Position-1))
+//End if 
+If (vLeg5#"Next@")
+vRentAmtInv:=0
+End if 
+//If ([Facility]FacilityCode="ST@")
+//vLine2:=vleg8
+//vLine3:=vleg9
+//vleg8:=""
+//vleg9:=""
+//End if 
+If ([Facility]CompanyName>"") & ([Facility]ChqsPayableOption=False)
+vCheques:=Get localized string("Cheques should be made payable to '")+[Facility]CompanyName+"'"
+Else 
+vCheques:=Get localized string("Cheques should be made payable to '")+[Facility]BusinessName+"'"
+End if 
+If ([Facility]Country="DE")
+vSCity:=[Facility]PostZIPCode+"  "+[Facility]City+"  "+[Facility]State
+Else 
+vSCity:=[Facility]City+"  "+[Facility]State+"  "+[Facility]PostZIPCode
+End if 
+If (([Facility]Country="DE") & ([Customer]MailCountryCode="")) | ([Customer]MailCountryCode="DE")
+vCity:=[Customer]MailPostZIPCode+"  "+[Customer]MailCity+"  "+[Customer]MailState
+Else 
+vCity:=[Customer]MailCity+"  "+[Customer]MailState+"  "+[Customer]MailPostZIPCode
+End if 
+OBJECT SET FORMAT([Facility]Phone;[Facility]PhoneFormat)
+If (<>bEnglishSpelling=False)
+vCheques:=Replace string(vCheques;"que";"ck";1)
+End if 
+If ([Agreement]AgreeNo="MISCL")
+OBJECT SET VISIBLE(*;"Variable1";False)
+OBJECT SET VISIBLE(*;"Footer@";False)
+Else 
+OBJECT SET VISIBLE(*;"Variable1";[Facility]CustomInvFooter)
+OBJECT SET VISIBLE(*;"Footer@";Not([Facility]CustomInvFooter))
+If (vRentAmtInv<=0)
+OBJECT SET VISIBLE(*;"FooterField11";False)//Added 3.5.0
+End if 
+If ([Facility]CustomInvFooter) & (BLOB size([Facility]InvFooter_)#0)
+
+//If (False)
+//QUERY([Notices];[Notices]Description="InvoiceFooter";*)  //4D Write doesn't work on Windows either!!
+//QUERY([Notices]; & ;[Notices]RuleNotice=False)
+//If (Records in selection([Notices])=1)  //Draw items appeared at top of page - bug in 4D Write or 4D!!
+//$i:=WR New offscreen area 
+//EXPAND BLOB([Notices]Letter)
+//WR BLOB TO AREA ($i;[Notices]Letter)
+//vpFooter:=WR Area to picture ($i;1;1)
+//WR DELETE OFFSCREEN AREA ($i)
+//End if 
+//End if 
+//$i:=DR New offscreen area 
+//DR PICTURE TO AREA ($i;[Facility]InvFooter_)
+//vpFooter:=DR Area to picture ($i;-1)
+//DR DELETE OFFSCREEN AREA ($i)
+Else 
+If ([Facility]StandardInvFooter)
+OBJECT SET VISIBLE(*;"Footer2@";False)
+If (([Customer]CustomerCode#"") & (vtMoveFooter=True)) | ([Reservation]RReserveNo>"")
+OBJECT MOVE(*;"Footer1@";0;40)
+vtMoveFooter:=False
+End if 
+End if 
+End if 
+End if 
+If ([Facility]FacilityCode="ST@")
+OBJECT SET VISIBLE(*;"FooterField11";False)
+OBJECT SET VISIBLE(*;"FooterVariable16";False)
+End if 
+If (vLeg6>"")
+OBJECT SET VISIBLE(vTot;True)
+Else 
+OBJECT SET VISIBLE(vTot;False)
+End if 
+
+If ([Facility]CustomInvFooter) & (BLOB size([Facility]InvFooter_)#0)
+LoadReferences (2)
+End if 
+End if 

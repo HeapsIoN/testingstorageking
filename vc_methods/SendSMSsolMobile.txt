@@ -1,0 +1,82 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//$1 - Originator
+//$2 - UserName
+//$3 - Password
+//$4 - Recipient Phone Numbers separated by comma ','
+//$5 - Message that you wish to send - Max 160 Characters
+//$6 - Reference text - Max 20 Characters
+C_TEXT($1;$2;$3;$4)
+C_TEXT($5;$6;$7;$0;$vtRequest;$vtResponse)
+ARRAY TEXT(vtaPhoneNumber;0)
+ARRAY TEXT(vtaMessageID;0)
+ARRAY TEXT(vtaMessageStatus;0)
+
+$0:="0"
+
+SetFacility 
+
+$vtRequest:=""
+$vtResponse:=""
+$vtRequest:=$vtRequest+"USER_NAME="+$3
+$vtRequest:=$vtRequest+"&PASSWORD="+$4
+$vtRequest:=$vtRequest+"&RECIPIENT="+$5
+$vtRequest:=$vtRequest+"&ORIGINATOR="+$2
+$vtRequest:=$vtRequest+"&MESSAGE_TEXT="+Substring($6;1;160)
+If (Count parameters=3)
+If ($6#"")//There is a reference being passed in
+$vtRequest:=$vtRequest+"&REFERENCE="+Substring($7;1;20)
+End if 
+End if 
+//Make the request and receive the response
+$vtResponse:=SendReceiveHTTP ("smsgw1.solmobile.com";"80";"/HttpSMSv3";$vtRequest)
+
+$crlf:=GetCRLF ($vtResponse)
+
+//Remove the TCP header info
+$vtResponse:=Substring($vtResponse;Position($crlf+$crlf;$vtResponse)+(2*Length($crlf)))
+$vtResponse:=Substring($vtResponse;Position($crlf;$vtResponse)+Length($crlf))
+
+//The Detail is the interesting part of the Response
+$vtDetail:=Substring($vtResponse;1;Position($crlf+$crlf;$vtResponse)-1)
+
+//Parse the response and create three arrays containing the Phone number that the message was sent to, the ID of the message, and the Status - whether it was successful, or whether there was an error
+While ($vtDetail#"")
+If (Position($crlf;$vtDetail)=0)
+$vtDetail:=$vtDetail+$crlf
+End if 
+$vtLine:=Substring($vtDetail;1;Position($crlf;$vtDetail)-1)//The Line is relating to one phone number in the request
+$vtDetail:=Substring($vtDetail;Position($crlf;$vtDetail)+Length($crlf))
+$vtPhoneNumber:=Substring($vtLine;1;Position(" ";$vtLine)-1)
+$vtMessageID:=Substring($vtLine;Position(Char(40);$vtLine;0;*))
+$vtMessageID:=Substring($vtMessageID;1;Position(Char(41);$vtMessageID)+1)
+$vtMessageID:=Replace string($vtMessageID;Char(40);"";*)
+$vtMessageID:=Replace string($vtMessageID;Char(41);"";*)
+$vtMessageID:=Replace string($vtMessageID;"ID=";"")
+$vtMessageID:=Replace string($vtMessageID;" ";"")
+$vtMessageStatus:=Substring($vtLine;Position(Char(41);$vtLine;0;*)+1)
+$vtMessageStatus:=Replace string($vtMessageStatus;"-";"")
+$vtMessageStatus:=Replace string($vtMessageStatus;" ";"")
+
+INSERT IN ARRAY(vtaPhoneNumber;Size of array(vtaPhoneNumber)+1;1)
+INSERT IN ARRAY(vtaMessageID;Size of array(vtaMessageID)+1;1)
+INSERT IN ARRAY(vtaMessageStatus;Size of array(vtaMessageStatus)+1;1)
+
+vtaPhoneNumber{Size of array(vtaPhoneNumber)}:=$vtPhoneNumber
+vtaMessageID{Size of array(vtaMessageID)}:=$vtMessageID
+vtaMessageStatus{Size of array(vtaMessageStatus)}:=$vtMessageStatus
+
+If ($vtMessageStatus#"OK")
+$0:="1"
+End if 
+
+//$LogDetail:=""
+//$LogDetail:=$LogDetail+"SMS Message:"+Char(13)+Char(13)
+//For ($Counter;1;Size of array(vtaPhoneNumber))
+//$LogDetail:=$LogDetail+"Phone Number: "+vtaPhoneNumber{$Counter}+Char(13)
+//$LogDetail:=$LogDetail+"Message ID: "+vtaMessageID{$Counter}+Char(13)
+//$LogDetail:=$LogDetail+"Message Status: "+vtaMessageStatus{$Counter}+Char(13)
+//$LogDetail:=$LogDetail+Char(13)
+//End for 
+//$LogDetail:=$LogDetail+"Message: "+$2
+//AddEvent($LogDetail;"I";"SendSMS")
+End while 

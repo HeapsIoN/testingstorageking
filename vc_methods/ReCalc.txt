@@ -1,0 +1,332 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+
+//SDD 21/1/11 ReCalc - This is a new method to speed it up uses arrays instead of looping through transactions - calcs indicate it is 5 times faster on average
+C_BOOLEAN($1;$Match)
+C_LONGINT($i;$j)
+C_BOOLEAN(tRentTrx;$InclLastMatch;$FirstTest)
+C_REAL($AgreeBal)
+C_REAL($vBalBrFwd)
+C_DATE($vdBalBoughtFwdDate)
+C_TEXT(vtBalBoughtFwdDate)
+C_TEXT($TimeMsg)
+$TimeMsg:="Start:"+String(Tickcount)
+$vdBalBoughtFwdDate:=!00-00-00!
+$Match:=False
+If (Count parameters>=1)
+$Match:=$1
+End if 
+$vBalBrFwd:=0
+Repeat 
+$OK:=True
+vBal:=0
+tRentTrx:=False
+If (bAll=1)
+If ([Reservation]RReserveNo>"")
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+End if 
+Else 
+If ([Reservation]RReserveNo>"")
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+End if 
+End if 
+If (Records in selection([Trxs])>0)
+
+CREATE SET([Trxs];"RecalcSet")
+
+READ WRITE([Trxs])
+
+QUERY SELECTION([Trxs];[Trxs]Match#0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+$ChargeAmt:=Sum([Trxs]TotAmt)
+
+USE SET("RecalcSet")
+
+QUERY SELECTION([Trxs];[Trxs]Match#0;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=False)
+$ReceiptAmt:=Sum([Trxs]TotAmt)
+
+USE SET("RecalcSet")
+
+If ($ChargeAmt#$ReceiptAmt)
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+End if 
+
+USE SET("RecalcSet")
+CLEAR SET("RecalcSet")
+
+READ ONLY([Trxs])
+
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+GetAnalysis 
+ARRAY DATE($aDate;0)
+ARRAY BOOLEAN($aCharge;0)
+ARRAY TEXT($aAnalysis;0)
+ARRAY REAL($aAmount;0)
+ARRAY REAL($aBal;0)
+ARRAY LONGINT($aMatch;0)
+SELECTION TO ARRAY([Trxs]TrxDate;$aDate;[Trxs]Charge;$aCharge;[Trxs]AnalysisCode;$aAnalysis;[Trxs]TotAmt;$aAmount;[Trxs]Balance;$aBal;[Trxs]Match;$aMatch)
+ARRAY LONGINT($aTemp;0)
+COPY ARRAY($aMatch;$aTemp)
+SORT ARRAY($aTemp;<)
+$agreematch:=$aTemp{1}//Highest value
+ARRAY LONGINT($aTemp;0)
+$InclLastMatch:=True
+$FirstTest:=True
+$TimeMsg:=$TimeMsg+"StLoop:"+String(Tickcount)
+If (asShowHistory=2)
+$vdBalBoughtFwdDate:=Add to date(Current date;0;-1;0)
+End if 
+If (asShowHistory=3)
+$vdBalBoughtFwdDate:=Add to date(Current date;0;-6;0)
+End if 
+For ($i;1;Size of array($aDate))
+If ($aAnalysis{$i}=[Analysis]Code)
+tRentTrx:=True
+End if 
+If ($aMatch{$i}=[Customer]NextMatch) & ($FirstTest)
+$FirstTest:=False
+End if 
+If (asShowHistory#1) | ($aMatch{$i}=0) | (($aMatch{$i}=$agreematch) & ($InclLastMatch))//Get last match `[Customer]NextMatch
+//Calculate Balance Brought Forward value, store record in set 'BalBrFwd'.   This will be later subtracted from Display set leaving only not BalBrFwd transactions
+//Calculate total Balance and save set of records to display
+If ($aCharge{$i}=True)
+vBal:=vBal+$aAmount{$i}
+Else 
+vBal:=vBal-$aAmount{$i}
+End if 
+$aBal{$i}:=Round(vBal;2)
+If ($aDate{$i}<$vdBalBoughtFwdDate)
+$vBalBrFwd:=Round(vBal;2)
+End if 
+End if 
+End for 
+READ WRITE([Trxs])
+FIRST RECORD([Trxs])
+ARRAY TO SELECTION($aBal;[Trxs]Balance)
+CREATE SET([Trxs];"All")
+Case of 
+: (asShowHistory=1)
+QUERY SELECTION([Trxs];[Trxs]Match=0;*)
+QUERY SELECTION([Trxs]; | ;[Trxs]Match=$agreematch)
+: (asShowHistory=2) | (asShowHistory=3)
+QUERY SELECTION([Trxs];[Trxs]TrxDate>$vdBalBoughtFwdDate)
+End case 
+CREATE SET([Trxs];"Display")
+Else 
+//12/12/13 DAM Added to fix the runtime error for sets not being defined for agreements with no transactions
+CREATE SET([Trxs];"All")
+CREATE SET([Trxs];"Display")
+End if 
+If ($vdBalBoughtFwdDate#!00-00-00!)
+vtBalBoughtFwdDate:=String($vdBalBoughtFwdDate;Internal date short)
+OBJECT SET VISIBLE(*;"vBalBrFwd@";True)
+Else 
+OBJECT SET VISIBLE(*;"vBalBrFwd@";False)
+End if 
+$TimeMsg:=$TimeMsg+"EdLoop:"+String(Tickcount)
+
+vBal:=Round(vBal;2)
+vBalBrFwd:=Round($vBalBrFwd;2)
+If ((vBal>=0.01) & (vBal<=0.04)) | ((vBal>=-0.04) & (vBal<=-0.01)) & (([Facility]Country="AU") | ([Facility]Country="NZ"))
+//USE SET("Display")
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+If ([Trxs]AnalysisCode=(<>sFacility+"CA"))
+$Date:=[Trxs]TrxDate
+QUERY([Analysis];[Analysis]SortOrder=1)
+CREATE RECORD([Trxs])
+If ([Reservation]RReserveNo>"")
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+Else 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+[Trxs]TrxDate:=$Date
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=Get localized string("Rounding")
+[Trxs]TaxAmt:=0
+[Trxs]TotAmt:=Round(vBal*(-1);2)
+[Trxs]Confirmed:=True
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+SAVE RECORD([Trxs])
+[Customer]Balance:=Round([Customer]Balance-vBal;2)//What about [agreement]bal?
+$OK:=False
+CLEAR SET("Display")
+End if 
+End if 
+Until ($OK)
+If (Records in selection([Trxs])>0)
+If (viMatch#0)
+If (viMatch=-1)
+viMatch:=0
+End if 
+If ([Reservation]RReserveNo>"")
+MatchTrx ([Reservation]RReserveNo;viMatch;True)
+Else 
+MatchTrx ([Agreement]RAgreeNo;viMatch;True)
+End if 
+viMatch:=0
+End if 
+$TimeMsg:=$TimeMsg+"StMatch:"+String(Tickcount)
+If ($Match=False)
+If (asShowHistory=1)
+USE SET("Display")
+Else 
+USE SET("All")
+End if 
+QUERY SELECTION([Trxs];[Trxs]Match=0)
+If (Records in selection([Trxs])>1)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+ARRAY LONGINT($aMatch;0)
+SELECTION TO ARRAY([Trxs]Match;$aMatch)
+FIRST RECORD([Trxs])
+$Total:=0
+$Match:=False
+$Charge:=False
+$Receipt:=False
+For ($i;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+$Total:=$Total+[Trxs]TotAmt
+$Charge:=True
+Else 
+$Total:=$Total-[Trxs]TotAmt
+$Receipt:=True
+End if 
+If (Round($Total;2)=0) & ($Charge) & ($Receipt)
+[Customer]NextMatch:=[Customer]NextMatch+1
+For ($j;$i;1;-1)
+If ($aMatch{$j}=0)
+$aMatch{$j}:=[Customer]NextMatch
+End if 
+End for 
+$Total:=0
+$Match:=True
+$Charge:=False
+$Receipt:=False
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ($Match)
+ARRAY TO SELECTION($aMatch;[Trxs]Match)
+$j:=$aMatch{1}
+While (Size of array($aMatch)>=2)// ($j>0)
+If ([Reservation]RReserveNo>"")
+MatchTrx ([Reservation]RReserveNo;$j;True)
+Else 
+MatchTrx ([Agreement]RAgreeNo;$j;True)
+End if 
+While ($aMatch{1}=$j) & (Size of array($aMatch)>1)
+DELETE FROM ARRAY($aMatch;1)
+End while 
+$j:=$aMatch{1}
+If (Size of array($aMatch)<2)
+$j:=0
+End if 
+End while 
+End if 
+QUERY SELECTION([Trxs];[Trxs]Match=0)
+If (Records in selection([Trxs])>1)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+ARRAY LONGINT($aMatch;0)
+ARRAY BOOLEAN($aCharge;0)
+ARRAY REAL($aAmount;0)
+SELECTION TO ARRAY([Trxs]Match;$aMatch;[Trxs]Charge;$aCharge;[Trxs]TotAmt;$aAmount)
+$Match:=False
+For ($i;1;Size of array($aMatch))
+If ($aCharge{$i}=False)
+For ($j;1;Size of array($aMatch))
+If ($aCharge{$j}) & ($aAmount{$j}=$aAmount{$i}) & ($aMatch{$j}=0)
+[Customer]NextMatch:=[Customer]NextMatch+1
+$aMatch{$i}:=[Customer]NextMatch
+$aMatch{$j}:=[Customer]NextMatch
+$Match:=True
+$j:=Size of array($aMatch)+1
+End if 
+End for 
+End if 
+End for 
+If ($Match)
+ARRAY TO SELECTION($aMatch;[Trxs]Match)
+$j:=$aMatch{1}
+While (Size of array($aMatch)>=2)// ($j>0)
+If ([Reservation]RReserveNo>"")
+MatchTrx ([Reservation]RReserveNo;$j;True)
+Else 
+MatchTrx ([Agreement]RAgreeNo;$j;True)
+End if 
+While ($aMatch{1}=$j) & (Size of array($aMatch)>1)
+DELETE FROM ARRAY($aMatch;1)
+End while 
+$j:=$aMatch{1}
+If (Size of array($aMatch)<2)
+$j:=0
+End if 
+End while 
+End if 
+End if 
+End if 
+End if 
+READ ONLY([Trxs])
+$TimeMsg:=$TimeMsg+"EdMatch:"+String(Tickcount)
+If (asShowHistory=1)
+USE SET("Display")
+Else 
+USE SET("All")
+End if 
+QUERY SELECTION([Trxs];[Trxs]Match=0;*)//This line added to only calc on remaining transactions
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=Round(vBal;2)
+Else 
+[Agreement]BalanceOwing:=Round(vBal;2)
+ReCalcUnpaid (bAll)
+End if 
+//13/10/15 DAM Fixed customer balance issue with multiple agreements - FB9820
+//[Customer]Balance:=Round(vBal;2)
+If ([Reservation]RReserveNo>"")
+Else 
+viOverdue:=Current date-[Agreement]PaidToDate
+If (viOverdue<0) | ([Agreement]BalanceOwing<=0)
+viOverdue:=0
+End if 
+[Agreement]DaysOverdue:=viOverdue//10715
+End if 
+USE SET("Display")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+Else 
+If (asShowHistory=1)
+USE SET("Display")
+Else 
+USE SET("All")
+End if 
+QUERY SELECTION([Trxs];[Trxs]Match=0;*)//This line added to only calc on remaining transactions
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=Round(vBal;2)
+Else 
+[Agreement]BalanceOwing:=Round(vBal;2)
+ReCalcUnpaid (bAll)
+End if 
+//13/10/15 DAM Fixed customer balance issue with multiple agreements - FB9820
+//[Customer]Balance:=Round(vBal;2)
+If ([Reservation]RReserveNo>"")
+Else 
+viOverdue:=Current date-[Agreement]PaidToDate
+If (viOverdue<0) | ([Agreement]BalanceOwing<=0)
+viOverdue:=0
+End if 
+[Agreement]DaysOverdue:=viOverdue//10715
+End if 
+USE SET("Display")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+End if 
+$TimeMsg:=$TimeMsg+"EdRecalc:"+String(Tickcount)
+//AlertMessage ($TimeMsg)

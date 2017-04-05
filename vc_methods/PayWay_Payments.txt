@@ -1,0 +1,80 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Buffer;$Field)
+C_BOOLEAN($Decline)
+C_LONGINT($i;$j)
+$Beep:=False
+$Doc:=Open document("")
+If (OK=1)
+SET AUTOMATIC RELATIONS(True;False)
+READ WRITE([Trxs])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+//Select the Appliance type
+Open window((Screen width/2)-200;(Screen height/2)-176;(Screen width/2)+200;(Screen height/2)+176;5;"Select Analysis Code for Transaction")
+DIALOG([Trxs];"Payway_payment")
+CLOSE WINDOW
+While (Length($Buffer)>=10)//Otherwise EOF
+CREATE RECORD([Trxs])
+$Decline:=False
+For ($i;1;37)//37 fields
+$j:=0
+$j:=Position(",";$Buffer)
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+[Trxs]AnalysisCode:=NAB_Code
+QUERY([Analysis];[Analysis]Code=NAB_Code)
+[Trxs]Description:=[Analysis]Description
+[Trxs]UserLogin:=<>sCurrentUser
+Case of 
+: ($i=13)
+[Trxs]TotAmt:=Num($Field)
+: ($i=16)
+Case of 
+: (Length($Field)=10)
+QUERY([Agreement];[Agreement]CustomerCode=$Field)
+If (Records in selection([Agreement])>0)
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=True)
+If (Records in selection([Agreement])>0)
+[Trxs]CustomerCode:=$Field
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+Else 
+QUERY([Agreement];[Agreement]CustomerCode=$Field)
+[Trxs]CustomerCode:=$Field
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+End if 
+End if 
+QUERY([Agreement];[Agreement]RAgreeNo=$Field)
+If (Records in selection([Agreement])>0)//Agreemnet Number
+[Trxs]AgreeNo:=$Field
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+End if 
+Else 
+$Decline:=True
+End case 
+: ($i=30)
+[Trxs]TrxDate:=Date($Field)
+[Trxs]TrxTime:=Time(Substring($Field;Position(" ";$Field)))
+If ([Trxs]TrxTime=Time("00:00:00"))
+[Trxs]TrxTime:=Time("00:00:01")
+End if 
+: ($i=31)
+If ($Field="Declined")
+$Decline:=True
+End if 
+Else 
+//do nothing
+End case 
+End if 
+End for 
+
+If ($Decline=False) & ([Trxs]AgreeNo#"")
+SAVE RECORD([Trxs])
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+SET AUTOMATIC RELATIONS(False;False)
+CLOSE DOCUMENT($Doc)
+UNLOAD RECORD([Agreement])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+End if 

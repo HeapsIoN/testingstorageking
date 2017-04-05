@@ -1,0 +1,57 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($Subtotal)
+C_LONGINT($UnitHistory)
+
+$StartDate:=Add to date(!2014-04-30!;-5;0;0)
+$StartDate:=Date("1/"+String(Month of($StartDate))+"/"+String(Year of($StartDate)))
+$EndDate:=Add to date(!2014-03-31!;0;1;0)
+$EndDate:=Date("1/"+String(Month of($EndDate))+"/"+String(Year of($EndDate)))
+$EndDate:=Add to date($EndDate;0;0;-1)
+
+$Export:=""
+ALL RECORDS([Unit])
+ORDER BY([Unit]UnitNo;>)
+For ($i;1;Records in selection([Unit]))
+
+
+$Export:=$Export+[Unit]RUnitNo+","
+$SDate:=$StartDate
+$EDate:=Add to date($SDate;0;1;-1)
+For ($j;1;60)
+$Total:=0
+QUERY([UnitHistory];[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut>=$SDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=$EDate)
+SET QUERY DESTINATION(Into variable;$UnitHistory)
+QUERY([UnitHistory];[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut>=$SDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=$EDate)
+SET QUERY DESTINATION(Into current selection)
+For ($k;1;Records in selection([UnitHistory]))
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Trxs];[Analysis]KeyStatsCategory="Rent";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$SDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EDate)
+SET AUTOMATIC RELATIONS(False;False)
+$Subtotal:=(Sum([Trxs]TotAmt)-Sum([Trxs]TaxAmt))/$UnitHistory
+$Total:=$Total+$Subtotal
+NEXT RECORD([UnitHistory])
+End for 
+$Export:=$Export+String($Total)+","
+$SDate:=Add to date($SDate;0;1;0)
+$EDate:=Add to date($EDate;0;1;0)
+End for 
+$Export:=$Export+Char(Carriage return)+Char(Line feed)
+NEXT RECORD([Unit])
+End for 
+
+TEXT TO BLOB($Export;$Blob;Mac text without length)
+
+$vhDocRef:=Create document("")
+If (OK=1)
+CLOSE DOCUMENT($vhDocRef)
+BLOB TO DOCUMENT(Document;$Blob)
+End if 

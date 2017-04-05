@@ -1,0 +1,50 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//See PermDescription for a list of permissions and also InitArrays
+C_BOOLEAN($0;$2;$Alert;$Override)//True or False gives access
+C_LONGINT($1)//Posistion in Array
+$Alert:=True
+$Override:=False
+$Access:=""
+If (Count parameters>1)
+$Alert:=$2
+End if 
+If (Current user="Designer") | (Application type=4D Server) | (<>sCurrentUser="AdminSupport") | (<>sCurrentUser="Daily") | (<>sCurrentUser="Sync")//To allow for CalcBalance
+$0:=True
+Else 
+//SetFacility   `This should not be here but could cause major probs since this method is called extensively
+If ([UserLogins]Name#"Sync") & ([UserLogins]Name#<>sCurrentUser)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+End if 
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+For ($i;1;Records in selection([UserGroup]))
+QUERY([Groups];[Groups]GroupID=[UserGroup]GroupID)
+If ([Groups]Override=True) | ($Access#"Y")
+Case of 
+: ($Override=True) & ([Groups]Override=True)
+If ($Access#"Y")
+$Access:=Substring([Groups]Permissions;$1;1)
+End if 
+: ($Override=True) & ([Groups]Override=False)
+Else 
+$Access:=Substring([Groups]Permissions;$1;1)
+End case 
+If ([Groups]Override=True)
+$Override:=True
+End if 
+End if 
+NEXT RECORD([UserGroup])
+End for 
+If ($Override=False) & ($Access#"Y")
+$Access:=Substring([UserLogins]Permissions;$1;1)
+End if 
+If ($Access="Y")
+$0:=True
+Else 
+$0:=False
+If ($Alert)
+AlertMessage (Get localized string("Your current user-login")+" - "+String($1);Get localized string("OK");"http://my.storman.com/support/knowledgebase/errors/insufficientpermission.php?src=lm")
+End if 
+End if 
+End if 
+UNLOAD RECORD([Groups])
+UNLOAD RECORD([UserGroup])

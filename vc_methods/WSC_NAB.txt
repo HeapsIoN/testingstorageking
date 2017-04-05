@@ -1,0 +1,330 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 07/04/11, 11:22:23
+// ----------------------------------------------------
+// Method: WSC_Thinc
+// Description
+// Is used for uploading and editing Thinc customer's profile on NAB server and for processing CC transactions
+//
+// Parameters
+// $1 - Merchant ID
+// $2 - Merchant Password
+// $3 - Timeout
+// $4 - Action Type: addcrn, editcrn, deletecrn, trigger
+// $5 - Periodic type: Upload - 5, Proccess CC - 8, Proccess DD - 9
+// $6 - Customer Code
+// $7 - Credit Card Number
+// $8 - Credit Card Expyry Date
+// $9 - BSB
+// $10 - Bank Account
+// $11 - Bank Account Name
+// $12 - Transaction Amount 
+// $13 - Currency: 1 - ZND ; 2 - AUD
+// $14 - Transaction ID
+// ----------------------------------------------------
+C_TEXT($0;$1;$2;$3;$4;$5;$6;$7;$8;$9;$10;$11;$13;$14;$Message;$ServerAddress;$cr;$Header;$TransactionResponse;$Amount;$TrxReference)
+//C_LONGINT($3;$5)
+C_LONGINT($Status)
+C_REAL($12)
+C_TIME($GMTTime)
+C_DATE($GMTDate)
+C_TEXT($HTTPResponseCode)//FB11172
+$HTTPResponseCode:=""//FB11172
+
+Case of 
+: ($13="1")
+$Currency:="NZD"
+Else 
+$Currency:="AUD"
+End case 
+
+$Amount:=String($12*100)
+
+$GMT:=String(Current date;ISO date GMT)
+
+$GMTTime:=Time(Substring($GMT;12;8))
+
+$GMTDate:=Date(Substring($GMT;9;2)+"/"+Substring($GMT;6;2)+"/"+Substring($GMT;1;4))
+
+Case of 
+: ($GMTDate<Current date)
+$GMTOffset:=$GMTTime-86400
+: ($GMTDate>Current date)
+$GMTOffset:=$GMTTime+86400
+Else 
+$GMTOffset:=$GMTTime+0
+End case 
+
+$GMTOffset:=$GMTOffset/60
+
+//If (<>iPlatform=3)
+//$Error:=sys_GetUTCOffset ($GMTOffset)
+$GMTOffset:=$GMTOffset*-1//Change sign around
+If ($GMTOffset>0)
+$Timezone:="+"+String($GMTOffset)
+Else 
+$Timezone:=String($GMTOffset)
+End if 
+//Else 
+//$Error:=Time_GetUTCoffset ($GMTOffset)
+//$GMTOffset:=$GMTOffset/60  //Is returned in seconds rather than minutes
+//If ($GMTOffset>0)
+//$Timezone:="+"+String($GMTOffset)
+//Else 
+//$Timezone:=String($GMTOffset)
+//End if 
+//End if 
+
+$Date:=String(Current date;8)
+$Time:=String(Current time;6)
+$Timestamp:=Substring($Date;1;4)+Substring($Date;9;2)+Substring($Date;6;2)+Substring($Time;12;2)+Substring($Time;15;2)+Substring($Time;18;2)+"000000"+$Timezone
+
+Case of 
+: (Num($3)=0)
+$Timeout:=60
+Else 
+$Timeout:=Num($3)
+End case 
+
+$TrxReference:=$6+"-"+Substring($Timestamp;4;12)
+$MesID:=Substring(GetMD5 ($PurchaseOrder);1;30)
+
+$root:=DOM Create XML Ref("NABTransactMessage")
+
+$submane:="MessageInfo"
+$subelem:=DOM Create XML element($root;$submane)
+
+$subname1:="messageID"
+$subelem1:=DOM Create XML element($subelem;$subname1)
+//$MesID:=[Customer]CustomerCode+Substring(String(Year of(Current date));2)+String(Month of(Current date))+String(Day of(Current date))+Substring(Replace string(String(Current time);":";"");1;5)
+DOM SET XML ELEMENT VALUE($subelem1;$MesID)
+
+$subname1:="messageTimestamp"
+$subelem1:=DOM Create XML element($subelem;$subname1)
+DOM SET XML ELEMENT VALUE($subelem1;$Timestamp)
+
+$subname1:="timeoutValue"
+$subelem1:=DOM Create XML element($subelem;$subname1)
+DOM SET XML ELEMENT VALUE($subelem1;$Timeout)
+
+$subname1:="apiVersion"
+$subelem1:=DOM Create XML element($subelem;$subname1)
+DOM SET XML ELEMENT VALUE($subelem1;"spxml-4.2")
+
+$submane:="MerchantInfo"
+$subelem:=DOM Create XML element($root;$submane)
+
+$subname1:="merchantID"
+$subelem1:=DOM Create XML element($subelem;$subname1)
+DOM SET XML ELEMENT VALUE($subelem1;$1)
+
+$subname1:="password"
+$subelem1:=DOM Create XML element($subelem;$subname1)
+DOM SET XML ELEMENT VALUE($subelem1;$2)
+
+$submane:="RequestType"
+$subelem:=DOM Create XML element($root;$submane)
+DOM SET XML ELEMENT VALUE($subelem;"Periodic")
+
+$submane:="Periodic"
+$subelem:=DOM Create XML element($root;$submane)
+
+$submane1:="PeriodicList"
+$subelem1:=DOM Create XML element($subelem;$submane1)
+DOM SET XML ATTRIBUTE($subelem1;"count";"1")
+
+$submane2:="PeriodicItem"
+$subelem2:=DOM Create XML element($subelem1;$submane2)
+DOM SET XML ATTRIBUTE($subelem2;"ID";"1")
+
+$submane3:="actionType"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+DOM SET XML ELEMENT VALUE($subelem3;$4)
+
+$submane3:="periodicType"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+DOM SET XML ELEMENT VALUE($subelem3;$5)
+
+$submane3:="crn"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+DOM SET XML ELEMENT VALUE($subelem3;$6)
+
+If ($5="8") | ($5="9")
+$submane3:="transactionReference"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+DOM SET XML ELEMENT VALUE($subelem3;$TrxReference)
+
+$submane3:="amount"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+DOM SET XML ELEMENT VALUE($subelem3;$Amount)
+
+$submane3:="currency"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+DOM SET XML ELEMENT VALUE($subelem3;$Currency)
+End if 
+
+If ($5="5")
+$submane3:="allocatedVariable"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+DOM SET XML ELEMENT VALUE($subelem3;"")
+End if 
+
+If ($5#"9")
+$submane3:="CreditCardInfo"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+End if 
+
+If ($5="5")
+$submane4:="cardNumber"
+$subelem4:=DOM Create XML element($subelem3;$submane4)
+DOM SET XML ELEMENT VALUE($subelem4;$7)
+
+$submane4:="expiryDate"
+$subelem4:=DOM Create XML element($subelem3;$submane4)
+DOM SET XML ELEMENT VALUE($subelem4;$8)
+
+$submane3:="DirectEntryInfo"
+$subelem3:=DOM Create XML element($subelem2;$submane3)
+
+$submane4:="bsbNumber"
+$subelem4:=DOM Create XML element($subelem3;$submane4)
+DOM SET XML ELEMENT VALUE($subelem4;$9)
+
+$submane4:="accountNumber"
+$subelem4:=DOM Create XML element($subelem3;$submane4)
+DOM SET XML ELEMENT VALUE($subelem4;$10)
+
+$submane4:="accountName"
+$subelem4:=DOM Create XML element($subelem3;$submane4)
+DOM SET XML ELEMENT VALUE($subelem4;$11)
+End if 
+
+If ($5="8")
+$submane4:="recurringFlag"
+$subelem4:=DOM Create XML element($subelem3;$submane4)
+DOM SET XML ELEMENT VALUE($subelem4;"no")
+End if 
+
+//DOM EXPORT TO FILE($root;"")
+DOM EXPORT TO VAR($root;$Message)
+DOM CLOSE XML($root)
+
+
+
+If ([Facility]TestAccount)
+$ServerAddress:="transact.nab.com.au"
+$Folder:="/test/xmlapi/periodic"//Test
+Else 
+$ServerAddress:="transact.nab.com.au"
+$Folder:="/xmlapi/periodic"//Live
+End if 
+$cr:=Char(13)+Char(10)
+
+$Header:=$Header+"POST "+$Folder+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr
+$Header:=$Header+"Content-type: text/xml"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr
+
+
+$Error:=TCP_Open ($ServerAddress;443;$TCPID;2)
+
+
+If ($Error=0)
+MaskCCLog ($Message;"WSC_NAB")
+$Error:=TCP_Send ($TCPID;$Header+$cr+$Message+$cr+$cr)
+$Reply:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 15 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10))
+$Error:=TCP_Close ($TCPID)
+
+Case of 
+: ($Error>1)
+$0:="ERRTCP"
+AlertMessage ("TCP Sending Error # "+String($Error))
+: ($Error=1)
+$0:="ERR4TO"
+AlertMessage ("TCP Timeout Error")
+Else 
+Repeat //While a complete HTTP request and response is being received
+$HTTPResponse:=Substring($Reply;1;Position($cr+$cr;$Reply)-1)
+If ($HTTPResponse="")
+$HTTPResponse:="404"
+End if 
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Reply:=Substring($Reply;Position($cr+$cr;$Reply)+Length($cr+$cr))
+Else //If not an HTTPResponse Header then must be the Verisign Payment Response message content
+Case of 
+: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$TransactionResponse:=$Reply
+Else 
+$TransactionResponse:=" "//To Break out of the Until loop
+$Error:=Num($HTTPResponseCode)
+End case 
+End if 
+Until ($TransactionResponse#"")
+End case 
+
+If ($Reply#"")
+
+$response:=DOM Parse XML variable($Reply)
+
+//Check whether store was successful
+$resultRef:=DOM Find XML element($response;"NABTransactMessage/Status/statusCode")//Gateway Status
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value#"000") & ($value#"00") & ($value#"0") & ($value#"008") & ($value#"08") & ($value#"8")
+$Zero:=$value
+$resultRef:=DOM Find XML element($response;"NABTransactMessage/Status/statusDescription")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+AlertMessage ("Failed - Error code "+$Zero+$cr+$value)
+$0:="ERR"+$Zero
+Else 
+
+If ($5#"8") & ($5#"9")
+$resultRef:=DOM Find XML element($response;"NABTransactMessage/Status/statusDescription")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+$0:=$value
+Else 
+$resultRef:=DOM Find XML element($response;"NABTransactMessage/Periodic/PeriodicList/PeriodicItem/responseCode")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+
+If ($value#"000") & ($value#"00") & ($value#"0") & ($value#"008") & ($value#"08") & ($value#"8")
+$resultRef:=DOM Find XML element($response;"NABTransactMessage/Periodic/PeriodicList/PeriodicItem/responseText")
+DOM GET XML ELEMENT VALUE($resultRef;$Zero)
+AlertMessage ("Failed - Error code "+$value+$cr+$Zero)
+$0:="ERR"+$value
+Else 
+$resultRef:=DOM Find XML element($response;"NABTransactMessage/Periodic/PeriodicList/PeriodicItem/txnID")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Trxs]CCTransID:=$value
+[Trxs]OriginalReceipt:=$TrxReference
+$0:=$value
+$resultRef:=DOM Find XML element($response;"NABTransactMessage/Periodic/PeriodicList/PeriodicItem/settlementDate")
+DOM GET XML ELEMENT VALUE($resultRef;$settlementDate_t)
+If ([Analysis]SetBankedDate=False)//The Date Banked value is set to 'Off' in the Analysis Code
+[Trxs]DateBanked:=Date(Substring($settlementDate_t;7;2)+"/"+Substring($settlementDate_t;5;2)+"/"+Substring($settlementDate_t;1;4))
+End if 
+End if 
+End if 
+End if 
+
+//Close off XML we used to read response
+DOM CLOSE XML($response)
+Else 
+$0:="ERR"+"ERR4IC"
+AlertMessage ("Customer Upload Failed - No response received from NAB")
+End if 
+Else 
+AlertMessage ("The TCP connection could not be opened.  Error #"+String($Error))
+$0:="ERR4IC"
+End if 

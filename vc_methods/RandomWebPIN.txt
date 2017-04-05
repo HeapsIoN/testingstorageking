@@ -1,0 +1,51 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($err;$Rand)
+C_TEXT($Random;$0)
+$Rand:=0
+$Random:=""
+//If ([Facility]GatePINRandomLen<4) | ([Facility]GatePINRandomLen>10)
+//AlertMessage ("Random GatePIN Length is set to "+String([Facility]GatePINRandomLen)+". It must be between 4 and 10. Please change in Access Control Setup")
+//Else 
+Repeat 
+If ([Facility]GateSysType=5) & ([Facility]SerialPortNo>0)
+$Rand:=((Random*2)-10)+((Random%7)+1)
+If ($Rand<10000)
+$Rand:=$Rand+Num(String(((Random%7)+1))+"0000")
+End if 
+$Random:=Substring(String($Rand);6-[Facility]GatePINRandomLen;[Facility]GatePINRandomLen)
+Else 
+$Rand:=(Random*305175)
+If ($Rand<1000000000)
+$Rand:=$Rand+Num(String(((Random%7)+1))+"000000000")
+End if 
+$Random:=Substring(String($Rand);11-[Facility]GatePINRandomLen;[Facility]GatePINRandomLen)
+End if 
+If (Substring($Random;1;1)="0")
+$Random:=String((Random%7)+1)+Substring($Random;2)
+End if 
+If (Substring($Random;1;1)="-")
+$Random:=String((Random%7)+1)+Substring($Random;2)
+End if 
+If ([Facility]PrefixPIN)
+$Random:=Change string($Random;String([Unit]UnitNumeric);1)
+End if 
+If ([Facility]GateSysType=5) & ([Facility]SerialPortNo>0) & (Num($Random)>65534)
+$err:=1
+End if 
+$err:=Find in field([Customer]GatePIN;$Random)
+If ($err<0)
+$err:=Find in field([PhotosCards]PINCardNo;$Random)
+End if 
+If ($err<0)
+$err:=Find in field([UserLogins]PinCode;$Random)
+End if 
+If ($err<0)
+$err:=Find in field([StaffPINS]PINNumber;$Random)
+End if 
+If (Length($Random)#[Facility]GatePINRandomLen)
+$err:=1
+End if 
+Until ($err<0)
+$0:=$Random
+CheckGatePIN (->$0;True)
+//End if 

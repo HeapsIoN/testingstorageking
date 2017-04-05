@@ -1,0 +1,76 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+If (Size of array(selectedSVG)>0)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+End if 
+$bottom:=0
+For ($i;1;Size of array(selectedSVG))
+SVG_GET_ATTRIBUTES (selectedSVG{$i};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+Case of 
+: (vals{$loc}="rect")
+$ypos:=Find in array(vars;"y")
+$heightpos:=Find in array(vars;"height")
+$y:=Num(vals{$ypos})+Num(vals{$heightpos})
+: (vals{$loc}="circle")
+$ypos:=Find in array(vars;"cy")
+$radiuspos:=Find in array(vars;"r")
+$y:=Num(vals{$ypos})+Num(vals{$radiuspos})
+: (vals{$loc}="ellipse")
+$ypos:=Find in array(vars;"cy")
+$radiuspos:=Find in array(vars;"ry")
+$y:=Num(vals{$ypos})+Num(vals{$radiuspos})
+Else 
+$ypos:=Find in array(vars;"y")
+$y:=Num(vals{$ypos})
+End case 
+
+If ($y>$bottom)
+$bottom:=$y
+End if 
+End for 
+For ($i;1;Size of array(selectedSVG))
+$Parent:=DOM Get parent XML element(selectedSVG{$i})
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc=1)
+DOM GET XML CHILD NODES($Parent;parentvars;parentvals)
+For ($q;1;Size of array(parentvals))
+SVG_GET_ATTRIBUTES (parentvals{$q};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+Case of 
+: (vals{$loc}="rect")
+$original:=parentvals{$q}
+$heightpos:=Find in array(vars;"height")
+$height:=Num(vals{$heightpos})
+SVG_SET_ATTRIBUTES (parentvals{$q};"y";String($bottom-$height))
+: (vals{$loc}="text")
+SVG_SET_ATTRIBUTES (parentvals{$q};"y";String($bottom-$height+10))
+End case 
+End for 
+Else 
+SVG_GET_ATTRIBUTES (selectedSVG{$i};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+Case of 
+: (vals{$loc}="rect")
+$widthpos:=Find in array(vars;"$height")
+SVG_SET_ATTRIBUTES (selectedSVG{$i};"y";String($bottom-Num(vals{$heightpos})))
+: (vals{$loc}="text") | (vals{$loc}="ref")
+SVG_SET_ATTRIBUTES (selectedSVG{$i};"y";String($bottom))
+: (vals{$loc}="circle")
+$radiuspos:=Find in array(vars;"r")
+SVG_SET_ATTRIBUTES (selectedSVG{$i};"cy";String($bottom-Num(vals{$radiuspos})))
+: (vals{$loc}="ellipse")
+$radiuspos:=Find in array(vars;"ry")
+SVG_SET_ATTRIBUTES (selectedSVG{$i};"cy";String($bottom-Num(vals{$radiuspos})))
+End case 
+End if 
+End for 
+
+SVGTest:=SVG_Export_to_picture (svgRef)
+
+End if 

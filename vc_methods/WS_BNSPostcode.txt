@@ -1,0 +1,47 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_PostCode;Is longint;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+SOAP DECLARATION(WS_StreetSuburb;Is string var;SOAP input)
+
+$String:="Start WS_BnSPostcode"+Char(13)
+$String:=$String+"WS_PostCode: "+String(WS_PostCode)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_StreetSuburb: "+WS_StreetSuburb+Char(13)
+
+WSRECORDLOG ($String)
+
+QUERY([Shipping];[Shipping]PostCode=WS_PostCode;*)
+QUERY([Shipping]; & ;[Shipping]Suburb=WS_StreetSuburb)
+
+If (Records in selection([Shipping])#0)
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True
+Else 
+WS_ORErrorCode:=99
+WS_ORErrorDescription:="Incorrect password"
+WS_ORSuccess:=False
+End if 
+Else 
+WS_ORErrorCode:=13
+WS_ORErrorDescription:="Please check entered post code"
+WS_ORSuccess:=False
+End if 
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="End WS_BnSPostcode"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+
+WSRECORDLOG ($String)
+
+ReadOnlyAll 
+UnloadAll //?

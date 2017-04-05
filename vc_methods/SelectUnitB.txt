@@ -1,0 +1,205 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1;$Found;$Abort;$2;$Silent)
+C_LONGINT($i)
+$Found:=$1
+$Silent:=False
+
+If (Count parameters>1)
+$Silent:=$2
+End if 
+
+$Abort:=False
+If ($Found=True)
+If ([Unit]ReservedTo>"")
+
+If ($Silent=False)
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("This berth has already been reserved on reservation no")+" "+[Unit]ReservedTo+". "+Get localized string("Ignore reservation and Reserve this berth anyway?");Get localized string("No");Get localized string("Yes"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("This appliance has already been reserved on reservation no")+" "+[Unit]ReservedTo+". "+Get localized string("Ignore reservation and Reserve this appliance anyway?");Get localized string("No");Get localized string("Yes"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("This space has already been reserved on reservation no")+" "+[Unit]ReservedTo+". "+Get localized string("Ignore reservation and Reserve this space anyway?");Get localized string("No");Get localized string("Yes"))
+Else 
+ConfirmTwo (Get localized string("This unit has already been reserved on reservation no")+" "+[Unit]ReservedTo+". "+Get localized string("Ignore reservation and Reserve this unit anyway?");Get localized string("No");Get localized string("Yes"))
+End case 
+End if 
+
+If (OK=1)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+$Abort:=True
+End if 
+Else 
+If ([Unit]Status#"Vacant")
+If ($Silent=False)
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("This berth status is showing")+" "+[Unit]Status+".  "+Get localized string("Ignore status and Reserve this berth anyway?");Get localized string("No");Get localized string("Yes"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("This appliance status is showing")+" "+[Unit]Status+".  "+Get localized string("Ignore status and Reserve this appliance anyway?");Get localized string("No");Get localized string("Yes"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("This space status is showing")+" "+[Unit]Status+".  "+Get localized string("Ignore status and Reserve this space anyway?");Get localized string("No");Get localized string("Yes"))
+Else 
+ConfirmTwo (Get localized string("This unit status is showing")+" "+[Unit]Status+".  "+Get localized string("Ignore status and Reserve this unit anyway?");Get localized string("No");Get localized string("Yes"))
+End case 
+End if 
+If (OK=1)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+$Abort:=True
+End if 
+End if 
+End if 
+If ($Abort=False)
+If (Locked([Unit]))
+If ($Silent=False)
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("This berth is locked by another process. Unable to add to this reservation."))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("This appliance is locked by another process. Unable to add to this reservation."))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("This space is locked by another process. Unable to add to this reservation."))
+Else 
+AlertMessage (Get localized string("This unit is locked by another process. Unable to add to this reservation."))
+End case 
+End if 
+Else 
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]ReservedTo:=[Reservation]RReserveNo
+If ([Unit]Status#<>asUnitStatus{1}) & ([Unit]Status#<>asUnitStatus{7}) & ([Unit]Status#<>asUnitStatus{8})//not rented, locked or onsite
+[Unit]Status:=<>asUnitStatus{3}
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+
+[Unit]ReservedLength:=[UnitType]UnitTypeLength
+
+If ([UnitType]VariableLength)
+$Continue:=False
+Repeat 
+If ($Silent=False)
+$Length:=Num(RequestMessage (Get localized string("Please enter the length used. Do not exceed maximum length of")+" "+String([UnitType]UnitTypeLength);String([UnitType]UnitTypeLength)))
+End if 
+If ($Length<=[UnitType]UnitTypeLength)
+$Continue:=True
+End if 
+Until ($Continue)
+If ($Length<[UnitType]VariableMinimum)
+$MonthlyRate:=Round($MonthlyRate*[UnitType]VariableMinimum;2)
+Else 
+$MonthlyRate:=Round($MonthlyRate*$Length;2)
+End if 
+[Unit]ReservedLength:=$Length
+End if 
+
+If ([Reservation]Weekly=True)
+[Unit]QuotedRate:=CalculateBaseRate (1;1;[Unit]ReservedLength)
+Else 
+[Unit]QuotedRate:=CalculateBaseRate (0;1;[Unit]ReservedLength)
+End if 
+
+If (<>sFacility="KE@") & ([Customer]CustType="National Account")//KSS Set National Account Discount
+ARRAY REAL(asSQLDisc;0)
+KSSKosmoKustomers ("SelectDisc";[Customer]CustomerName)
+
+If (Size of array(asSQLDisc)>0)
+[Unit]QuotedRate:=[Unit]QuotedRate*(1-(asSQLDisc{1}/100))
+End if 
+End if 
+
+[Unit]ReservedDate:=Current date
+[Unit]ReserveDeposit:=[UnitType]DepositAmt
+If ([Facility]AgreeOnlyDeposit=True)
+[Unit]ReserveDeposit:=0
+End if 
+SAVE RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+If ([UnitType]DepositAmt>0)
+
+If ([Facility]AgreeOnlyDeposit=True)
+OK:=0
+Else 
+If ($Silent=False)
+Case of 
+: (<>sProduct="@B")
+$Deposit:=Num(RequestMessage (Get localized string("Do you wish to charge a deposit for this Berth?");String([UnitType]DepositAmt);Get localized string("Yes");Get localized string("No")))
+: (<>sProduct="@R")
+$Deposit:=Num(RequestMessage (Get localized string("Do you wish to charge a deposit for this Appliance?");String([UnitType]DepositAmt);Get localized string("Yes");Get localized string("No")))
+: (<>sProduct="@C")
+$Deposit:=Num(RequestMessage (Get localized string("Do you wish to charge a deposit for this Space?");String([UnitType]DepositAmt);Get localized string("Yes");Get localized string("No")))
+Else 
+$Deposit:=Num(RequestMessage (Get localized string("Do you wish to charge a deposit for this Unit?");String([UnitType]DepositAmt);Get localized string("Yes");Get localized string("No")))
+End case 
+End if 
+End if 
+//$Deposit:=Num(RequestMessage ("Do you wish to charge a deposit for this "+<>vtUnitsCap+"?";String([UnitType]DepositAmt);"Yes";"No"))
+If (OK=1)
+QUERY([Analysis];[Analysis]SortOrder=2)
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+" "+<>vtUnitsCap+" "+[Unit]UnitNo
+[Trxs]TrxDate:=GetValidDate ([Unit]ReservedDate)
+[Trxs]DateFrom:=[Unit]ReservedDate
+[Trxs]DateTo:=[Unit]ReservedDate
+[Trxs]TotAmt:=RoundAmt ($Deposit)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Unit]ReserveDeposit:=[Unit]ReserveDeposit+$Deposit
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+[Unit]ReserveDeposit:=$Deposit
+If ([Facility]AgreeOnlyDeposit=True)
+[Unit]ReserveDeposit:=0
+End if 
+SAVE RECORD([Unit])
+vRecalc:=True
+Else 
+[Unit]ReserveDeposit:=0
+SAVE RECORD([Unit])
+End if 
+End if 
+End if 
+End if 
+End if 
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+FIRST RECORD([Unit])
+vTotal:=0
+vQuote:=0
+[Reservation]DepositAmt:=vOthDeposit
+[Reservation]UnitsReserved:=""
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+[Unit]QuotedRate
+[Reservation]DepositAmt:=[Reservation]DepositAmt+[Unit]ReserveDeposit
+[Reservation]UnitsReserved:=[Reservation]UnitsReserved+[Unit]UnitNo+", "
+NEXT RECORD([Unit])
+End for 
+If (Length([Reservation]UnitsReserved)>2)
+[Reservation]UnitsReserved:=Substring([Reservation]UnitsReserved;1;Length([Reservation]UnitsReserved)-2)
+End if 
+If (([Facility]UnitPerAgreement=True) | ([BillPlan]CasualBilling)) & (Records in selection([Unit])>0)
+OBJECT SET VISIBLE(bSelect;False)
+OBJECT SET VISIBLE(*;"Picture33";False)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use this icon to delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use  this icon to delete appliances")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use  this icon to delete support plans")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use  this icon to delete spaces")
+Else 
+varm15:=Get localized string("Use  this icon to delete units")
+End case 
+End if 

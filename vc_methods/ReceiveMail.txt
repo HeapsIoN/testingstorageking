@@ -1,0 +1,81 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($OK;$1)
+C_LONGINT($pop3_id;$MsgCount;$vlBoxSize)
+C_TEXT($Password)
+$pop3_id:=0
+$MsgCount:=0
+$vlBoxSize:=0
+vbShowAlert:=False
+If (Count parameters=1)
+vbShowAlert:=$1
+End if 
+SetFacility 
+If ([Facility]POPPassword="")
+$Password:=RequestMessage (Get localized string("Please enter mail password:"))
+Else 
+$Password:=[Facility]POPPassword
+End if 
+If ([Facility]POPMailBox>"") & ([Facility]POPHostName>"")
+$PortPos:=Position(":";[Facility]POPHostName)
+If ($PortPos>0)
+$PortString:=Substring([Facility]POPHostName;$PortPos+1)
+$Address:=Substring([Facility]POPHostName;1;$PortPos-1)
+Else 
+$PortString:="110"
+$Address:=[Facility]POPHostName
+End if 
+$POP3SSL:=[Facility]POP3SSL
+$Port:=Num($PortString)
+If ($POP3SSL=1)
+$err:=IT_SetPort (13;$Port)
+Else 
+$err:=IT_SetPort (3;$Port)
+End if 
+$OK:=ErrorMail ("POP3_Login";POP3_Login ($Address;[Facility]POPMailBox;$Password;0;$pop3_id;$POP3SSL))
+If ($OK)
+$OK:=ErrorMail ("POP3_BoxInfo";POP3_BoxInfo ($pop3_id;$MsgCount;$vlBoxSize))
+//If (Shift down) & ($MsgCount>0)
+//ConfirmTwo (Get localized string("There are")+" "+String($MsgCount)+" "+Get localized string("messages waiting to be received!");Get localized string("View Only");Get localized string("Receive Mail"))
+//If (OK=1)
+//ARRAY TEXT(aPageID;3)
+//aPageID{1}:=Get localized string("Date")+":"
+//aPageID{2}:=Get localized string("From1")+":"
+//aPageID{3}:=Get localized string("Subject")+":"
+//ARRAY LONGINT(aLongint;0)
+//ARRAY TEXT(asAgreemt;0)
+//ARRAY TEXT(atHeader;3;0)
+//Open window(20;50;650;430;0;Get localized string("View Mail"))
+//GOTO XY(3;3)
+//MESSAGE(Get localized string("Receiving Message List from Mail Server..."))
+//If (ErrorMail ("POP3_MsgLst";POP3_MsgLst ($pop3_id;1;$MsgCount;aPageID;aLongint;asAgreemt;atHeader)))
+//ARRAY TEXT(aText;$MsgCount)
+//ARRAY TEXT(atFiles;$MsgCount)
+//ARRAY TEXT(atFolders;$MsgCount)
+//For ($i;1;Size of array(aText))
+//aText{$i}:=atHeader{1}{$i}
+//atFiles{$i}:=atHeader{2}{$i}
+//atFolders{$i}:=atHeader{3}{$i}
+//End for 
+//ERASE WINDOW
+//DIALOG([Message];"ViewMail")
+//CLOSE WINDOW
+//Else 
+//CLOSE WINDOW
+//AlertMessage (Get localized string("ListOfMails"))
+//End if 
+//$OK:=False
+//Else 
+//$OK:=True
+//End if 
+//End if 
+If ($OK)
+$OK:=DownloadMail ($pop3_id;$MsgCount)
+End if 
+End if 
+If ($pop3_id#0)//if there is still an open session
+$OK:=ErrorMail ("POP3_Logout";POP3_Logout ($pop3_id))
+End if 
+Else 
+AlertMessage (Get localized string("Unable to retrieve mail as the POP MailBox or POPHostName have not been entered!"))
+End if 
+CALL PROCESS(1)

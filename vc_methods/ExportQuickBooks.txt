@@ -1,0 +1,496 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//moved the "Sum Receipts for Receivables Account?" to the top of the loop so only asks once whether you want to sum - 14/3/06 NLT
+C_TEXT($0)//Contains the resulting journal
+C_TEXT($1;$strTaxAmt)
+C_LONGINT($i;$j;$Neg;$n;$o)
+C_TIME($DocRef)
+C_TEXT($t;$cr;$Ext)
+C_TEXT($ChartDesc)
+C_BOOLEAN($Sum;$Accrual;$Original)
+C_REAL($TaxCalcr;$Amt)
+C_DATE($2;$3)
+$Original:=True
+$0:=""
+$sp:="  "
+$t:=Char(9)
+$cr:=Char(13)
+$Sum:=False
+$Accrual:=False
+
+//18/07/13 DAM fixed export problem for Mac 
+//If (<>iPlatform<3)
+//$Ext:="TEXT"
+//Else 
+//$Ext:="IIF"
+//End if 
+$Ext:="IIF"
+
+If (Count parameters>0)
+$DocRef:=Create document(<>sTutPath+"Mail"+<>sSeparator+$1;$Ext)
+Else 
+$DocRef:=Create document("";$Ext)
+End if 
+If (OK=1)
+CREATE SET([Journal];"Jnls")
+$Jnls:=Records in set("Jnls")
+
+//12/07/13 DAM Added $Original to delete "CLASS" column for StoreITnow
+ConfirmTwo ("Which export you would like to use?";"Original";"Modified")
+If (OK=1)
+$Original:=True
+Else 
+$Original:=False
+End if 
+
+For ($i;1;$Jnls)
+USE SET("Jnls")
+ORDER BY([Journal];[Journal]JrnlType;<)
+FIRST RECORD([Journal])
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+CREATE SET([CashBookTrxs];"CashTrxs")
+Case of 
+: ([Journal]JrnlType="REV") & (Records in selection([CashBookTrxs])>0)
+If (Records in selection([CashBookTrxs])>0)
+If ([Facility]Country="GB")
+$TaxCode:="VATCODE"
+$TaxAmount:="VATAMOUNT"
+Else 
+$TaxCode:="TAXCODE"
+$TaxAmount:="TAXAMOUNT"
+End if 
+
+If ($Original)
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$cr)
+SEND PACKET($DocRef;"!ENDTRNS"+$cr)
+Else 
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$cr)
+SEND PACKET($DocRef;"!ENDTRNS"+$cr)
+End if 
+
+End if 
+For ($n;1;Size of array(<>asSiteCodes))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+USE SET("CashTrxs")
+QUERY SELECTION BY FORMULA([CashBookTrxs];Substring([CashBookTrxs]Description;((Position(",";[CashBookTrxs]Description))+1);5)=<>asSiteCodes{$n})
+If (Records in selection([CashBookTrxs])>0)
+FIRST RECORD([CashBookTrxs])
+$ShortName:=Position(",";[CashBookTrxs]Description)
+$Neg:=1//Was -1 for REC jrnls are now same as all others
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+$Customer:=""
+$ChartDesc:=""
+If ([ChartAccts]AcctType="D")
+$Customer:="Storage Customers"
+End if 
+$TaxAmt:=[CashBookTrxs]GrossAmt-[CashBookTrxs]Amount
+If ($TaxAmt=0)
+$TaxCode:="E"//tax exempt
+Else 
+$TaxCode:="S"//standard tax rate
+End if 
+If (vNewQB=True)
+$TaxCode:=""
+$strTaxAmt:=""
+If ([ChartAccts]AcctType="T")
+$Pos:=Position("*";[ChartAccts]Description)
+If ($Pos>0)
+$ChartDesc:=Substring([ChartAccts]Description;1;($Pos-2))
+$Customer:=Substring([ChartAccts]Description;($Pos+2))
+End if 
+End if 
+If ($ChartDesc="")
+$ChartDesc:=[ChartAccts]Description
+End if 
+Else 
+$strTaxAmt:=String($TaxAmt)
+$ChartDesc:=[ChartAccts]Description
+End if 
+
+If ($Original)
+SEND PACKET($DocRef;"TRNS"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$ChartDesc+$t+String([CashBookTrxs]Amount)+$t+$strTaxAmt+$t+$TaxCode+$t+$Customer+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;$ShortName-1)+$cr)
+Else 
+SEND PACKET($DocRef;"TRNS"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$ChartDesc+$t+String([CashBookTrxs]Amount)+$t+$strTaxAmt+$t+$TaxCode+$t+$Customer+$cr)
+End if 
+
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;2)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+$ChartDesc+$cr
+NEXT RECORD([CashBookTrxs])
+For ($j;2;Records in selection([CashBookTrxs]))
+[CashBookTrxs]Amount:=[CashBookTrxs]Amount*$Neg
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+$Customer:=""
+$ChartDesc:=""
+If ([ChartAccts]AcctType="D")
+$Customer:="Storage Customers"
+End if 
+$TaxAmt:=[CashBookTrxs]GrossAmt-[CashBookTrxs]Amount
+If ($TaxAmt=0)
+$TaxCode:="E"//tax exempt
+Else 
+$TaxCode:="S"//standard tax rate
+End if 
+If (vNewQB=True)
+$TaxCode:=""
+$strTaxAmt:=""
+If ([ChartAccts]AcctType="T")
+$Pos:=Position("*";[ChartAccts]Description)
+If ($Pos>0)
+$ChartDesc:=Substring([ChartAccts]Description;1;($Pos-2))
+$Customer:=Substring([ChartAccts]Description;($Pos+2))
+End if 
+End if 
+If ($ChartDesc="")
+$ChartDesc:=[ChartAccts]Description
+End if 
+Else 
+$strTaxAmt:=String($TaxAmt)
+$ChartDesc:=[ChartAccts]Description
+End if 
+$ShortName:=Position(",";[CashBookTrxs]Description)
+
+If ($Original)
+SEND PACKET($DocRef;"SPL"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$ChartDesc+$t+String([CashBookTrxs]Amount)+$t+$strTaxAmt+$t+$TaxCode+$t+$Customer+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;$ShortName-1)+$cr)
+Else 
+SEND PACKET($DocRef;"SPL"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$ChartDesc+$t+String([CashBookTrxs]Amount)+$t+$strTaxAmt+$t+$TaxCode+$t+$Customer+$cr)
+End if 
+
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;2)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+$ChartDesc+$cr
+NEXT RECORD([CashBookTrxs])
+End for 
+SEND PACKET($DocRef;"ENDTRNS"+$cr+$cr)
+$0:=$0+$cr+$cr
+End if 
+End if 
+End for 
+: ([Journal]JrnlType="REC") & (Records in selection([CashBookTrxs])>0)
+//ORDER BY([Facility];[Facility]SortOrder;>)
+//& ($Sum=True)  `& (OK=1)  `Sum=True
+ALL RECORDS([Facility])
+FIRST RECORD([Facility])
+If ([Facility]CashAccrual=False)//if accrual accounting
+For ($o;1;Size of array(<>asFacilities))
+If (<>asSiteCodes{$o}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position((<>asFacilities{$o}+",");[CashBookTrxs]Description)>0)
+If (Records in selection([CashBookTrxs])>0)
+If ([Facility]Country="GB")
+$TaxCode:="VATCODE"
+$TaxAmount:="VATAMOUNT"
+Else 
+$TaxCode:="TAXCODE"
+$TaxAmount:="TAXAMOUNT"
+End if 
+
+If ($Original)
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$t+"ADDR1"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$t+"INVITEM"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!ACCNT"+$t+"NAME"+$t+"REFNUM"+$t+"DATE"+$t+"ACCNTTYPE"+$t+"ACCNUM"+$t+$TaxAmount+$t+$TaxCode+$t+"OBAMOUNT"+$t+"DESC"+$t+"USEID"+$t+"PRICE"+$t+"MEMO"+$cr)
+Else 
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"ADDR1"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"INVITEM"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!ACCNT"+$t+"NAME"+$t+"REFNUM"+$t+"DATE"+$t+"ACCNTTYPE"+$t+"ACCNUM"+$t+$TaxAmount+$t+$TaxCode+$t+"OBAMOUNT"+$t+"USEID"+$t+"PRICE"+$t+"MEMO"+$cr)
+End if 
+SEND PACKET($DocRef;"!ENDTRNS"+$cr)
+
+$Amt:=0
+CREATE SET([CashBookTrxs];"CashTrxs")
+For ($p;1;Records in selection([CashBookTrxs]))
+
+//If ([CashBookTrxs]Amount<0)
+//$Amt:=$Amt+([CashBookTrxs]Amount*(-1))
+//Else 
+$Amt:=$Amt+[CashBookTrxs]Amount
+//End if 
+NEXT RECORD([CashBookTrxs])
+End for 
+FIRST RECORD([CashBookTrxs])
+$Neg:=1//Was -1 for REC jrnls are now same as all others
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+$ShortName:=Position(",";[CashBookTrxs]Description)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1";*)//need to know name of primary bank account
+QUERY([ChartAccts]; & ;[ChartAccts]ReportName=<>asSiteCodes{$o})//[Facility]FacilityCode  `◊asSiteCodes{$o})
+$BankAcc:=[ChartAccts]Description
+QUERY([ChartAccts];[ChartAccts]AcctType="D";*)
+QUERY([ChartAccts]; & ;[ChartAccts]ReportName=<>asSiteCodes{$o})//[Facility]FacilityCode  `◊asSiteCodes{$o})
+
+If ($Original)
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+$t+$t+$t+String($Amt)+$t+$t+$t+$t+$t+$cr)
+//SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+$t+$t+$t+String($Amt)+$t+$t+$t+$t+$t+$cr)  `commented out 29/5/08: appears to be an unneeded line?
+SEND PACKET($DocRef;"TRNS"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+"0"+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$t+$cr)
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+String($Amt*(-1))+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[ChartAccts]AcctNo+$t+$t+$t+$cr)
+Else 
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+$t+$t+$t+String($Amt)+$t+$t+$t+$t+$cr)
+//SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+$t+$t+$t+String($Amt)+$t+$t+$t+$t+$t+$cr)  `commented out 29/5/08: appears to be an unneeded line?
+SEND PACKET($DocRef;"TRNS"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+"0"+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$t+$cr)
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+String($Amt*(-1))+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$t+$t+$cr)
+End if 
+
+For ($q;1;Records in selection([CashBookTrxs]))
+$ShortName:=Position(",";[CashBookTrxs]Description)
+$Desc:=Substring([CashBookTrxs]Description;($ShortName+1))
+$Pos:=Position(",";$Desc)
+$GLCode:=Substring($Desc;1;($Pos-1))
+$Desc:=Substring($Desc;($Pos+1))
+QUERY([Supplier];[Supplier]SupplierCode=$GLCode)//supplier name to contain the Memo on the sales receipt; supplier Phone number to contain the relevant QB Item code
+If ([Supplier]Phone#"")
+$Item:=[Supplier]Phone
+Else 
+$Item:=[Supplier]SupplierCode
+End if 
+//If ([CashBookTrxs]Amount<0)
+//$Amt:=[CashBookTrxs]Amount*(-1)  `if is a refund, should be coded to refund code in QB; QB translates this to a negative on import
+//Else 
+$Amt:=[CashBookTrxs]Amount
+//End if 
+
+If ($Original)
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+String($Amt)+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$Item+$t+$t+[Supplier]SupplierName+$cr)
+Else 
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+String($Amt)+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$Item+$t+$t+[Supplier]SupplierName+$cr)
+End if 
+
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;2)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+NEXT RECORD([CashBookTrxs])
+End for 
+SEND PACKET($DocRef;"ENDTRNS"+$cr+$cr)
+End if 
+End if 
+End for 
+Else //cash accounting split by receipt type
+If (vIncomeReceipt=False)//the Steve Wile way
+ALL RECORDS([Facility])
+FIRST RECORD([Facility])
+$TaxCalcr:=<>rTaxCalc
+For ($o;1;Size of array(<>asFacilities))//Records in selection([Facility]))  `Size of array(◊asSiteCodes))
+If (<>asSiteCodes{$o}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position((<>asFacilities{$o}+",");[CashBookTrxs]Description)>0)
+If (Records in selection([CashBookTrxs])>0)
+
+If ($Original=True)
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$t+"ADDR1"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$t+"INVITEM"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!ACCNT"+$t+"NAME"+$t+"REFNUM"+$t+"DATE"+$t+"ACCNTTYPE"+$t+"ACCNUM"+$t+$TaxAmount+$t+$TaxCode+$t+"OBAMOUNT"+$t+"DESC"+$t+"USEID"+$t+"PRICE"+$t+"MEMO"+$cr)
+Else 
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"ADDR1"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"INVITEM"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!ACCNT"+$t+"NAME"+$t+"REFNUM"+$t+"DATE"+$t+"ACCNTTYPE"+$t+"ACCNUM"+$t+$TaxAmount+$t+$TaxCode+$t+"OBAMOUNT"+$t+"USEID"+$t+"PRICE"+$t+"MEMO"+$cr)
+End if 
+
+SEND PACKET($DocRef;"!ENDTRNS"+$cr)
+FIRST RECORD([CashBookTrxs])
+$Neg:=1//Was -1 for REC jrnls are now same as all others
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+//$Total:=Sum([CashBookTrxs]Amount)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1";*)//need to know name of primary bank account
+QUERY([ChartAccts]; & ;[ChartAccts]ReportName=<>asSiteCodes{$o})//[Facility]FacilityCode  `◊asSiteCodes{$o})
+$BankAcc:=[ChartAccts]Description
+QUERY([ChartAccts];[ChartAccts]AcctType="D";*)
+QUERY([ChartAccts]; & ;[ChartAccts]ReportName=<>asSiteCodes{$o})//[Facility]FacilityCode  `◊asSiteCodes{$o}) 
+$DebtorsAcc:=[ChartAccts]Description
+FIRST RECORD([CashBookTrxs])
+$ShortName:=Position(",";[CashBookTrxs]Description)
+
+If ($Original)
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+$t+$t+$t+String([CashBookTrxs]Amount)+$t+$t+$t+$t+$t+$cr)
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+$t+$t+$t+String([CashBookTrxs]Amount*(-1))+$t+$t+$t+$t+$t+$cr)
+Else 
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+$t+$t+$t+String([CashBookTrxs]Amount)+$t+$t+$t+$t+$cr)
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+$t+$t+$t+String([CashBookTrxs]Amount*(-1))+$t+$t+$t+$t+$cr)
+End if 
+
+For ($q;1;Records in selection([CashBookTrxs]))
+//QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+//$Customer:=""
+//If ([ChartAccts]AcctType="D")
+//$Customer:="Storage Customers"
+//End if 
+$ShortName:=Position(",";[CashBookTrxs]Description)
+$Desc:=Substring([CashBookTrxs]Description;($ShortName+1))
+$Pos:=Position(",";$Desc)
+$GLCode:=Substring($Desc;1;($Pos-1))
+$Desc:=Substring($Desc;($Pos+1))
+QUERY([Supplier];[Supplier]SupplierCode=$GLCode)//supplier name to contain the Memo on the sales receipt; supplier Phone number to contain the relevant QB Item code
+If ([Supplier]Phone#"")
+$Item:=[Supplier]Phone
+Else 
+$Item:=[Supplier]SupplierCode
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="T")
+If (Records in selection([ChartAccts])>0)
+$TaxCode:="GST"
+$TaxAmt:=Round(([CashBookTrxs]Amount/$TaxCalcr);2)*(-1)
+Else 
+$TaxAmt:=0
+$TaxCode:=""
+End if 
+
+If ($Original)
+SEND PACKET($DocRef;"TRNS"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+String([CashBookTrxs]Amount)+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$t+$cr)
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+String([CashBookTrxs]Amount*(-1)-$TaxAmt)+$t+String($TaxAmt)+$t+$TaxCode+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+$t+$Item+$t+String([CashBookTrxs]Amount-($TaxAmt*(-1)))+$t+[Supplier]SupplierName+$cr)
+Else 
+SEND PACKET($DocRef;"TRNS"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+String([CashBookTrxs]Amount)+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$t+$cr)
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+String([CashBookTrxs]Amount*(-1)-$TaxAmt)+$t+String($TaxAmt)+$t+$TaxCode+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$Item+$t+String([CashBookTrxs]Amount-($TaxAmt*(-1)))+$t+[Supplier]SupplierName+$cr)
+End if 
+
+SEND PACKET($DocRef;"ENDTRNS"+$cr)
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;2)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End if 
+//NEXT RECORD([Facility])
+End for 
+Else //cash accounting split by income
+For ($o;1;Size of array(<>asFacilities))//Records in selection([Facility]))  `Size of array(◊asSiteCodes))
+If (<>asSiteCodes{$o}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position((<>asFacilities{$o}+",");[CashBookTrxs]Description)>0)
+If (Records in selection([CashBookTrxs])>0)
+
+If ($Original)
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$t+"ADDR1"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$t+"INVITEM"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!ACCNT"+$t+"NAME"+$t+"REFNUM"+$t+"DATE"+$t+"ACCNTTYPE"+$t+"ACCNUM"+$t+$TaxAmount+$t+$TaxCode+$t+"OBAMOUNT"+$t+"DESC"+$t+"USEID"+$t+"PRICE"+$t+"MEMO"+$cr)
+Else 
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"ADDR1"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"INVITEM"+$t+"PRICE"+$t+"MEMO"+$cr)
+SEND PACKET($DocRef;"!ACCNT"+$t+"NAME"+$t+"REFNUM"+$t+"DATE"+$t+"ACCNTTYPE"+$t+"ACCNUM"+$t+$TaxAmount+$t+$TaxCode+$t+"OBAMOUNT"+$t+"USEID"+$t+"PRICE"+$t+"MEMO"+$cr)
+End if 
+
+SEND PACKET($DocRef;"!ENDTRNS"+$cr)
+FIRST RECORD([CashBookTrxs])
+$Neg:=1//Was -1 for REC jrnls are now same as all others
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+//$Total:=Sum([CashBookTrxs]Amount)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")//need to know name of primary bank account
+If (<>sProduct="MV")
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>asSiteCodes{$o})//[Facility]FacilityCode  `◊asSiteCodes{$o})
+End if 
+$BankAcc:=[ChartAccts]Description
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+If (<>sProduct="MV")
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>asSiteCodes{$o})//[Facility]FacilityCode  `◊asSiteCodes{$o}) 
+End if 
+$DebtorsAcc:=[ChartAccts]Description
+FIRST RECORD([CashBookTrxs])
+$ShortName:=Position(",";[CashBookTrxs]Description)
+$Total:=Sum([CashBookTrxs]GrossAmt)
+
+If ($Original)
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+$t+$t+$t+String($Total)+$t+$t+$t+$t+$t+$cr)
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+$t+$t+$t+String($Total*(-1))+$t+$t+$t+$t+$t+$cr)
+Else 
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+$t+$t+$t+String($Total)+$t+$t+$t+$t+$cr)
+SEND PACKET($DocRef;"ACCNT"+$t+$t+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+$t+$t+$t+String($Total*(-1))+$t+$t+$t+$t+$cr)
+End if 
+
+For ($q;1;Records in selection([CashBookTrxs]))
+//QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+//$Customer:=""
+//If ([ChartAccts]AcctType="D")
+//$Customer:="Storage Customers"
+//End if 
+$ShortName:=Position(",";[CashBookTrxs]Description)
+$Desc:=Substring([CashBookTrxs]Description;($ShortName+1))
+$Pos:=Position(",";$Desc)
+$GLCode:=Substring($Desc;1;($Pos-1))
+$Desc:=Substring($Desc;($Pos+1))
+QUERY([ChartAccts];[ChartAccts]AcctNo=$GLCode)
+QUERY([ChartAccts];[ChartAccts]AcctType="T")
+If (Records in selection([ChartAccts])>0)
+$TaxCode:="GST"
+$TaxAmt:=Round(([CashBookTrxs]Amount-[CashBookTrxs]GrossAmt);2)*(-1)
+Else 
+$TaxAmt:=0
+$TaxCode:=""
+End if 
+
+If ($Original)
+SEND PACKET($DocRef;"TRNS"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+String([CashBookTrxs]GrossAmt*(-1))+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$t+$cr)
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+String([CashBookTrxs]Amount)+$t+String($TaxAmt)+$t+$TaxCode+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+[CashBookTrxs]SiteID+$t+$Desc+$t+String([CashBookTrxs]Amount*(-1))+$t+$Desc+$cr)
+Else 
+SEND PACKET($DocRef;"TRNS"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$BankAcc+$t+String([CashBookTrxs]GrossAmt*(-1))+$t+$t+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$t+$cr)
+SEND PACKET($DocRef;"SPL"+$t+$t+"CASH SALE"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+$DebtorsAcc+$t+String([CashBookTrxs]Amount)+$t+String($TaxAmt)+$t+$TaxCode+$t+Substring([CashBookTrxs]Description;1;$ShortName-1)+$t+$Desc+$t+String([CashBookTrxs]Amount*(-1))+$t+$Desc+$cr)
+End if 
+
+SEND PACKET($DocRef;"ENDTRNS"+$cr)
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;2)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End if 
+//NEXT RECORD([Facility])
+End for 
+End if 
+End if 
+: ([Journal]JrnlType="PRE") & (Records in selection([CashBookTrxs])>0)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+If (Records in selection([CashBookTrxs])>0)
+
+If ($Original)
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$t+"CLASS"+$cr)
+Else 
+SEND PACKET($DocRef;"!TRNS"+$t+"TRNSID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$cr)
+SEND PACKET($DocRef;"!SPL"+$t+"SPLID"+$t+"TRNSTYPE"+$t+"DATE"+$t+"ACCNT"+$t+"AMOUNT"+$t+$TaxAmount+$t+$TaxCode+$t+"NAME"+$cr)
+End if 
+
+SEND PACKET($DocRef;"!ENDTRNS"+$cr)
+FIRST RECORD([CashBookTrxs])
+$Neg:=1//Was -1 for REC jrnls are now same as all others
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+$Customer:=""
+If ([ChartAccts]AcctType="D")
+$Customer:="Storage Customers"
+End if 
+$ShortName:=Position(",";[CashBookTrxs]Description)
+//$TaxAmt:=[CashBookTrxs]GrossAmt-[CashBookTrxs]Amount
+
+If ($Original)
+SEND PACKET($DocRef;"TRNS"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+String([CashBookTrxs]Amount)+$t+$Customer+$t+$t+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;($ShortName-1))+$cr)
+Else 
+SEND PACKET($DocRef;"TRNS"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+String([CashBookTrxs]Amount)+$t+$Customer+$t+$t+$cr)
+End if 
+
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;2)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+NEXT RECORD([CashBookTrxs])
+For ($j;2;Records in selection([CashBookTrxs]))
+[CashBookTrxs]Amount:=[CashBookTrxs]Amount*$Neg
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+$Customer:=""
+If ([ChartAccts]AcctType="D")
+$Customer:="Storage Customers"
+End if 
+//$TaxAmt:=[CashBookTrxs]GrossAmt-[CashBookTrxs]Amount
+$ShortName:=Position(",";[CashBookTrxs]Description)
+
+If ($Original)
+SEND PACKET($DocRef;"SPL"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+String([CashBookTrxs]Amount)+$t+$Customer+$t+$t+$t+[CashBookTrxs]SiteID+" "+Substring([CashBookTrxs]Description;1;($ShortName-1))+$cr)
+Else 
+SEND PACKET($DocRef;"SPL"+$t+$t+"GENERAL JOURNAL"+$t+GetDateString ([CashBookTrxs]TrxDate;2)+$t+[ChartAccts]Description+$t+String([CashBookTrxs]Amount)+$t+$Customer+$t+$t+$cr)
+End if 
+
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;2)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+NEXT RECORD([CashBookTrxs])
+End for 
+SEND PACKET($DocRef;"ENDTRNS"+$cr+$cr)
+$0:=$0+$cr+$cr
+End if 
+Else 
+//Do Nothing
+End case 
+REMOVE FROM SET([Journal];"Jnls")
+End for 
+CLOSE DOCUMENT($DocRef)
+CLEAR SET("Jnls")
+CLEAR SET("CashTrxs")
+ALL RECORDS([CashBookTrxs])
+DELETE SELECTION([CashBookTrxs])
+AlertMessage (Get localized string("Export Complete!"))
+End if 
+SetFacility 

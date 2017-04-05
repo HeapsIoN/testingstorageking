@@ -1,0 +1,64 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 25/01/16, 14:10:25
+// ----------------------------------------------------
+// Method: WSC_CheckAdminSPassW
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($0)
+C_TEXT($1)
+C_DATE(vDate;$FacilityDate)
+C_LONGINT($TCPID;$Error)
+
+
+$AdminSPassDate:=EncryptIt ([Facility]AdminSPassDate;False)
+vPassword:=""
+$TCPID:=0
+$FacilityDate:=Current date
+
+If (Count parameters>0)
+WEB SERVICE SET PARAMETER("WS_FacilityCode";$1)
+WEB SERVICE SET PARAMETER("WS_FacilityDate";$FacilityDate)
+WEB SERVICE SET PARAMETER("WS_FacilityVersion";[Facility]Version)
+End if 
+
+
+$Error:=IT_SetTimeOut (1)
+$Error:=TCP_Open (GetDNS ("SUV1");443;$TCPID;0)
+
+If ($Error=0)
+$Error:=TCP_Close ($TCPID)
+WEB SERVICE CALL("https://"+GetDNS ("SUV1")+":443/4DSOAP/";"StormanUsersV2#WS_CheckAdminSPassW";"WS_CheckAdminSPassW";"StormanUsersV2";Web Service dynamic)
+WEB SERVICE GET RESULT(vPassword;"WS_Password")
+WEB SERVICE GET RESULT(vDate;"WS_DateChanged";*)// Memory clean-up on the final return value.
+vPassword:=EncryptIt2 (vPassword;False)
+
+Else 
+
+vDate:=Date(GetTextNo ($AdminSPassDate;1;","))
+vPassword:=GetTextNo ($AdminSPassDate;2;",")
+If (vPassword="")
+vDate:=!2011-03-21!
+If ([Facility]FacilityCode="ST@")
+vPassword:=String(Random)
+Else 
+vPassword:="redgnom3"
+End if 
+End if 
+
+End if 
+$Error:=IT_SetTimeOut (30)
+$0:=vPassword
+
+If (vPassword#GetTextNo ($AdminSPassDate;2;","))
+vPassword:=String(vDate)+","+vPassword
+vPassword:=EncryptIt (vPassword;True)
+UpdateSystem (182;->vPassword;"";True)
+End if 
+

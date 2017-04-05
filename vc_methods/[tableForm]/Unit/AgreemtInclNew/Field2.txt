@@ -1,0 +1,65 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Data Change)
+If ([Facility]FacilityCode="KE@")
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Category:="Rent Increases"
+[NotesHistory]Note:="Rent Increase Date for unit "+[Unit]UnitNo+" changed from "+String(Old([Unit]IncreaseFrom))+" to "+String([Unit]IncreaseFrom)
+SAVE RECORD([NotesHistory])
+End if 
+
+bDateChange:=True
+If ([Unit]IncreaseFrom>!00-00-00!)
+If (([Unit]IncreaseFrom<[Agreement]NextBillDate) | (Day of([Unit]IncreaseFrom)#[Agreement]DaytoBill))
+If ([Unit]IncreaseFrom>=[Agreement]NextBillDate) & ([Agreement]DaytoBill>28)
+//do nothing
+Else 
+AlertMessage (Get localized string("Warning: Increase From Date should be greater than or equal to the Next Bill Date and on the Day to Bill!"))
+End if 
+
+End if 
+End if 
+
+//22/07/16 DAM Added the code to fix the bug for multipe units
+
+C_LONGINT(vTickCountStart)
+C_REAL(vrecNo;$selectedRecno)
+
+//FIRST RECORD DO NOT NEED TO DO ANYTHING
+$selectedRecno:=0
+$selectedRecno:=Selected record number([Unit])
+
+If ($selectedRecno#1)
+If (vTickCountStart=0)
+If (vrecNo=0)// First time
+vrecNo:=Record number([Unit])
+End if 
+vTickCountStart:=Tickcount
+Else 
+$vTickCountCurrent:=Tickcount
+$vrecNoNew:=Record number([Unit])
+If (vrecNo#$vrecNoNew)
+[Unit]IncreaseFrom:=Old([Unit]IncreaseFrom)
+End if 
+If ($vTickCountCurrent-vTickCountStart>=120)
+Else 
+[Unit]IncreaseFrom:=Old([Unit]IncreaseFrom)
+End if 
+vTickCountStart:=0
+vrecNo:=0
+End if 
+Else 
+
+$vTickCountCurrent:=Tickcount
+If ($vTickCountCurrent-vTickCountStart>=120)
+Else 
+[Unit]IncreaseFrom:=Old([Unit]IncreaseFrom)
+End if 
+vTickCountStart:=0
+End if 
+
+SAVE RECORD([Unit])
+End if 

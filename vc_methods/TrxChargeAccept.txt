@@ -1,0 +1,90 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($MinAmt;$MaxAmt)
+$OK:=True
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+If (Old([Trxs]TotAmt)#0) & ([Trxs]TotAmt=0) & (PermissionsControl (165;False)=False)
+AlertMessage (Get localized string("You cannot set the transaction to $0"))
+$OK:=False
+End if 
+
+If ([Customer]WaivedLateFees>=[Facility]MaximumWaived) & ([Trxs]AnalysisCode="@LF") & ([Facility]MaximumWaived#0) & ([Trxs]TotAmt<0) & (PermissionsControl (159;False)=False) & ([Facility]UnlimitedWaived=False)
+
+AlertMessage (Get localized string("You cannot waive any more late fees for this customer."))
+$OK:=False
+End if 
+
+If ([Trxs]AnalysisCode#Old([Trxs]AnalysisCode))
+$Qty:=[Trxs]Qty
+QUERY([Analysis];[Analysis]Code=Old([Trxs]AnalysisCode))
+If ([Analysis]InvItem) & ([Analysis]InvQtyonHand+Old([Trxs]Qty)<0) & (vtReverse=True)
+AlertMessage (Get localized string("You cannot change item")+" "+[Analysis]Description+" "+Get localized string("as there will be")+" "+String([Analysis]InvQtyonHand+Old([Trxs]Qty))+" "+Get localized string("units on hand.  Please re-enter!"))
+$OK:=False
+End if 
+RELATE ONE([Trxs]AnalysisCode)
+If ([Analysis]InvItem) & ([Analysis]InvQtyonHand<$Qty) & (vtReverse=False)
+AlertMessage (Get localized string("You cannot sell item")+" "+[Analysis]Description+" "+Get localized string("as there are only")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("units on hand.  Please re-enter!"))
+$OK:=False
+End if 
+Else 
+$Qty:=[Trxs]Qty-Old([Trxs]Qty)
+If ([Analysis]InvItem) & ([Analysis]InvQtyonHand<$Qty) & (vtReverse=False)
+AlertMessage (Get localized string("You cannot sell item")+" "+[Analysis]Description+" "+Get localized string("as there are only")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("units on hand.  Please re-enter!"))
+$OK:=False
+End if 
+End if 
+
+$Amount:=0
+//If ([Transaction]Qty>0)
+//$Amount:=Round([Transaction]TotAmt/[Transaction]Qty;2)
+//End if 
+If ([Analysis]MinAmt#0)
+If (vtReverse)
+If ([Trxs]TotAmt>([Analysis]MinAmt*[Trxs]Qty))
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of less than")+" "+String([Analysis]MinAmt*[Trxs]Qty)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+Else 
+If ([Trxs]TotAmt<([Analysis]MinAmt*[Trxs]Qty))
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of less than")+" "+String([Analysis]MinAmt*[Trxs]Qty)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+End if 
+If ([Analysis]MaxAmt#0)
+If (vtReverse)
+If ([Trxs]TotAmt<([Analysis]MaxAmt*[Trxs]Qty))
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of more than")+" "+String([Analysis]MaxAmt*[Trxs]Qty)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+Else 
+If ([Trxs]TotAmt>([Analysis]MaxAmt*[Trxs]Qty))
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of more than")+" "+String([Analysis]MaxAmt*[Trxs]Qty)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+End if 
+If (vtReverse) & ([Trxs]TotAmt=0)
+AlertMessage (Get localized string("You cannot create a Credit with no value"))
+$OK:=False
+End if 
+If (([Trxs]TotAmt<0) & (vtReverse=False)) | (vtReverse=True)
+If (Length([Trxs]Narration)<20) & ([Agreement]BB=False)
+AlertMessage (Get localized string("You must enter a reason (at least 20 characters) in the Invoice Narration field for any credit or negative transactions. Please enter a reason before continuing..."))
+$OK:=False
+End if 
+End if 
+If ($OK)
+If ([Trxs]AgreeNo="@MISCL")
+[Trxs]Match:=viCashMatch
+End if 
+If ([Trxs]SeqNo>1000000)
+[Trxs]SeqNo:=([Trxs]SeqNo-1000000)*-1
+End if 
+If ([Trxs]AnalysisCode="@LF") & ([Trxs]TotAmt<0) & (PermissionsControl (159;False)=False)
+[Customer]WaivedLateFees:=[Customer]WaivedLateFees+1
+[Customer]LateFeeDates:=[Customer]LateFeeDates+String(Current date)+";"
+End if 
+ACCEPT
+End if 

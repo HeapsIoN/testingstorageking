@@ -1,0 +1,98 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Vacant Units Report started.")// records the report being started in the eventlog
+If (PermissionsControl (78))
+C_LONGINT($i)
+SetFacility 
+ReCalcUnits 
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+QUERY([UnitType]; & ;[UnitType]NoVacant>0)
+ORDER BY([UnitType]SortOrder;>)
+If (Records in selection([UnitType])>0)
+OK:=1
+If (<>tBatch=False)
+SELECTION TO ARRAY([UnitType]Description;asFields)
+ARRAY TEXT(asSigns;Size of array(asFields))
+For ($i;1;Size of array(asSigns))
+asSigns{$i}:="•"
+End for 
+vTitle:=Get localized string("Select Types")
+$WinRef:=Open window((Screen width/2)-146;(Screen height/2)-150;(Screen width/2)+146;(Screen height/2)+150;5;Get localized string("Select Types"))
+DIALOG([Facility];"SelectSites")
+CLOSE WINDOW($WinRef)
+End if 
+If (OK=1)
+QUERY([UnitType];[UnitType]RUnitType="ERROR";*)
+If (<>tBatch=False)
+For ($i;1;Size of array(asSigns))
+If (asSigns{$i}="•")
+QUERY([UnitType]; | ;[UnitType]Description=asFields{$i};*)
+End if 
+End for 
+Else 
+QUERY([UnitType]; | ;[UnitType]Description>"")
+End if 
+QUERY([UnitType]; & ;[UnitType]RUnitType=<>sFacility+"@")
+CREATE EMPTY SET([UnitType];"ToPrint")
+For ($i;1;Records in selection([UnitType]))
+QUERY([Unit];[Unit]Status=<>asUnitStatus{6};*)//To Clean  
+QUERY([Unit]; | ;[Unit]Status=<>asUnitStatus{2};*)//Vacant
+QUERY([Unit]; & ;[Unit]UnitTypeCode=[UnitType]RUnitType)
+If (Records in selection([Unit])>0)
+ADD TO SET([UnitType];"ToPrint")
+End if 
+NEXT RECORD([UnitType])
+End for 
+USE SET("ToPrint")
+CLEAR SET("ToPrint")
+If (<>tBatch=False)
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("Sort by Berth price or the Berth Types sort order?");Get localized string("Berth Price");Get localized string("Berth Type"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("Sort by Appliance price or the Appliance Types sort order?");Get localized string("Price");Get localized string("Appl Type"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("Sort by Space price or the Space Types sort order?");Get localized string("Space Price");Get localized string("Space Type"))
+Else 
+ConfirmTwo (Get localized string("Sort by Unit price or the Unit Types sort order?");Get localized string("Unit Price");Get localized string("Unit Type"))
+End case 
+End if 
+
+If (OK=1) & (<>tBatch=False)
+ORDER BY([UnitType];[UnitType]MonthlyRate;>)
+Else 
+ORDER BY([UnitType];[UnitType]SortOrder;>)
+End if 
+BREAK LEVEL(0)
+ACCUMULATE([UnitType]MonthlyRate)
+FORM SET OUTPUT([UnitType];"VacancyRpt")
+If (<>iPrinttoFile=3)
+ARRAY TEXT(aFieldNames;4)
+aFieldNames{1}:="[UnitType]UnitTypeCode"
+aFieldNames{2}:="[UnitType]Description"
+aFieldNames{3}:="OnDetailUnits"//even though it occurs in the OnLoad form event, for our excel purposes it needs to be executed per record
+aFieldNames{4}:="[UnitType]MonthlyRate"
+vpTable:=->[UnitType]
+CreateExcelReport (4;Records in selection([UnitType]);"MethodListVacantUnits";[Facility]FacilityName;Get localized string("MenuReportvacantUnitsReport");"*"+Get localized string("Unit is to be cleaned"))//no of columns on report, no of rows, lines to execute, Header 1, Header 2
+Else 
+PrintSelection ("P";->[UnitType])
+End if 
+FORM SET OUTPUT([UnitType];"Output")
+End if 
+Else 
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("There are no berth types for this facility."))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("There are no appliance types for this facility."))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("There are no space types for this facility."))
+Else 
+AlertMessage (Get localized string("There are no unit types for this facility."))
+End case 
+
+End if 
+End if 
+LogAction (True;"Vacant Units Report ended.")

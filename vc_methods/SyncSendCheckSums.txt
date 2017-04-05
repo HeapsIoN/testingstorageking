@@ -1,0 +1,131 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Report)
+C_LONGINT($i;$j)
+C_BLOB(LogBlob)
+//Agreement Checksum
+$Report:=""
+$Total:=0
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+ORDER BY([Agreement];[Agreement]RAgreeNo;>)
+For ($i;1;Records in selection([Agreement]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+$Report:=$Report+[Agreement]AgreeNo+Char(9)+String(Round([Agreement]BalanceOwing;2))+Char(9)+GetISODate ([Agreement]NextBillDate)+Char(9)
+$Report:=$Report+GetISODate ([Agreement]LateCycleStDate)+Char(9)+String([Agreement]LastNotice)+Char(9)+String(Records in selection([Trxs]))+Char(13)
+$Total:=$Total+Round([Agreement]BalanceOwing;2)
+NEXT RECORD([Agreement])
+End for 
+SyncRecordLog (Get localized string("Sent Checksum of Agreements for")+" "+<>sFacility+" = "+String($Total;"##,###,###.00"))//SyncProcessCheckSum
+LogEvent ($Report;False;"CHK";0;"";<>sFacility;"";!00-00-00!;$Total;"";->LogBlob;"";<>sFacility;<>sFacility)
+
+//This section added for testing SDD
+//Activity Checksum
+$Report:=""
+READ WRITE([Activity])
+QUERY([Activity];[Activity]CheckSumFlag=True;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<Current date)//The current date may be different as not everything updated yet
+ORDER BY([Activity];[Activity]ActivityDate;>)
+For ($i;1;Records in selection([Activity]))
+$Report:=$Report+GetISODate ([Activity]ActivityDate)+Char(9)+[Activity]MD5CheckSum+Char(13)
+[Activity]CheckSumFlag:=False
+SAVE RECORD([Activity])
+NEXT RECORD([Activity])
+End for 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+SyncRecordLog (Get localized string("Sent Checksum of Activity for")+" "+<>sFacility)//SyncProcessCheckSumActivity
+LogEvent ($Report;False;"CHK";0;"";<>sFacility;"Activity";!00-00-00!;Records in selection([Activity]);"";->LogBlob;"";<>sFacility;<>sFacility)
+
+//The following loop for tables where we send all the records  SetupArrays
+ARRAY INTEGER($aTableNo;15)//<>aiPrimaryKeyField <>aiFacilityField
+$aTableNo{1}:=1//Facility
+$aTableNo{2}:=2//UnitType
+$aTableNo{3}:=3//Unit
+$aTableNo{4}:=4//Agreement
+$aTableNo{5}:=5//Customer
+$aTableNo{6}:=7//Analysis
+$aTableNo{7}:=8//BillPlan
+$aTableNo{8}:=9//Notices
+$aTableNo{9}:=12//Contacts
+$aTableNo{10}:=15//MarketingTypes
+$aTableNo{11}:=17//Reservation
+$aTableNo{12}:=34//InsuranceRates
+$aTableNo{13}:=35//MerchPlan
+$aTableNo{14}:=46//Promotions
+$aTableNo{15}:=47//PromotionHistory
+ARRAY INTEGER($aMD5FieldNo;15)//These values need to be entered
+$aMD5FieldNo{1}:=338//Facility
+$aMD5FieldNo{2}:=48//UnitType
+$aMD5FieldNo{3}:=74//Unit
+$aMD5FieldNo{4}:=46//Agreement
+$aMD5FieldNo{5}:=47//Customer
+$aMD5FieldNo{6}:=40//Analysis
+$aMD5FieldNo{7}:=33//BillPlan
+$aMD5FieldNo{8}:=28//Notices
+$aMD5FieldNo{9}:=75//Contacts
+$aMD5FieldNo{10}:=18//MarketingTypes
+$aMD5FieldNo{11}:=47//Reservation
+$aMD5FieldNo{12}:=8//InsuranceRates
+$aMD5FieldNo{13}:=16//MerchPlan
+$aMD5FieldNo{14}:=18//Promotions
+$aMD5FieldNo{15}:=6//PromotionHistory
+For ($i;1;Size of array($aTableNo))
+$Report:=""
+$TablePtr:=Table($aTableNo{$i})
+$FacilityFieldPtr:=Field($aTableNo{$i};<>aiFacilityField{$aTableNo{$i}})
+$PrimaryKeyFieldPtr:=Field($aTableNo{$i};<>aiPrimaryKeyField{$aTableNo{$i}})
+$MD5FieldPtr:=Field($aTableNo{$i};$aMD5FieldNo{$i})
+QUERY($TablePtr->;$FacilityFieldPtr->=<>sFacility+"@")
+ORDER BY($TablePtr->;$FacilityFieldPtr->;>)
+For ($j;1;Records in selection($TablePtr->))
+$Report:=$Report+$FacilityFieldPtr->+Char(9)+String($PrimaryKeyFieldPtr->)+Char(9)+$MD5FieldPtr->+Char(13)
+NEXT RECORD($TablePtr->)
+End for 
+SyncRecordLog ("Sent Checksum of "+Table name($TablePtr)+" for "+<>sFacility)
+LogEvent ($Report;False;"CHK";0;"";<>sFacility;Table name($TablePtr);!00-00-00!;Records in selection($TablePtr->);"";->LogBlob;"";<>sFacility;<>sFacility)
+End for 
+
+//The following loop for tables where we send only the recent records  SetupArrays
+ARRAY INTEGER($aTableNo;6)//<>aiPrimaryKeyField <>aiFacilityField
+$aTableNo{1}:=6//Transaction
+$aTableNo{2}:=11//Letters
+$aTableNo{3}:=14//PhotoCards
+$aTableNo{4}:=20//UnitHistory
+$aTableNo{5}:=28//NotesHistory
+$aTableNo{6}:=32//UnitStatusTrx
+ARRAY INTEGER($aDateFieldNo;6)
+$aDateFieldNo{1}:=3//TrxDate
+$aDateFieldNo{2}:=4//DateSent
+$aDateFieldNo{3}:=7//DateTaken
+$aDateFieldNo{4}:=3//MoveIn - This won't really work properly!!
+$aDateFieldNo{5}:=2//NoteDate
+$aDateFieldNo{6}:=2//DateUnitStatus
+ARRAY INTEGER($aMD5FieldNo;6)
+$aMD5FieldNo{1}:=41
+$aMD5FieldNo{2}:=2
+$aMD5FieldNo{3}:=15
+$aMD5FieldNo{4}:=8
+$aMD5FieldNo{5}:=10
+$aMD5FieldNo{6}:=9
+$CheckDate:=Current date-31
+For ($i;1;Size of array($aTableNo))
+$Report:=""
+$TablePtr:=Table($aTableNo{$i})
+$DateFieldPtr:=Field($aTableNo{$i};$aDateFieldNo{$i})
+$FacilityFieldPtr:=Field($aTableNo{$i};<>aiFacilityField{$aTableNo{$i}})
+$PrimaryKeyFieldPtr:=Field($aTableNo{$i};<>aiPrimaryKeyField{$aTableNo{$i}})
+$MD5FieldPtr:=Field($aTableNo{$i};$aMD5FieldNo{$i})
+QUERY($TablePtr->;$FacilityFieldPtr->=<>sFacility+"@";*)
+QUERY($TablePtr->; & ;$DateFieldPtr->>=$CheckDate)
+If ($i=4)//Additional search required for UnitHistory Table
+QUERY SELECTION([UnitHistory];[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY SELECTION([UnitHistory]; | ;[UnitHistory]MoveOut>=$CheckDate)
+End if 
+ORDER BY($TablePtr->;$FacilityFieldPtr->;>;$DateFieldPtr->;>;$PrimaryKeyFieldPtr->;>)
+For ($j;1;Records in selection($TablePtr->))
+$Report:=$Report+$FacilityFieldPtr->+Char(9)+String($PrimaryKeyFieldPtr->)+Char(9)+$MD5FieldPtr->+Char(13)
+NEXT RECORD($TablePtr->)
+End for 
+SyncRecordLog ("Sent Checksum of "+Table name($TablePtr)+" for "+<>sFacility)
+LogEvent ($Report;False;"CHK";0;"";<>sFacility;Table name($TablePtr);!00-00-00!;Records in selection($TablePtr->);"";->LogBlob;"";<>sFacility;<>sFacility)
+End for 

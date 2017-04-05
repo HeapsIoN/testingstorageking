@@ -1,0 +1,78 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1)//Movein or Old(NextBillDate)
+C_LONGINT($Month)
+FIRST RECORD([Unit])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ($1;Current date;True)
+[Trxs]Charge:=True
+GetAnalysis 
+If (Records in selection([Analysis])=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+Else 
+[Trxs]AnalysisCode:=Substring([Agreement]RAgreeNo;1;5)+"RF"
+End if 
+[Trxs]Confirmed:=True
+If ([BillPlan]Code#[Agreement]BillingPlanCode)
+RELATE ONE([Agreement]BillingPlanCode)
+End if 
+If ([BillPlan]PlanPeriod="Week")
+If ([Facility]FacilityCode="ST@")
+[Trxs]Description:=Get localized string("Prorata Part Week")+" "
+Else 
+[Trxs]Description:=Get localized string("Prorata Part Week")+" "+[Agreement]UnitsOccup
+End if 
+$Month:=7
+Else 
+If ([Facility]FacilityCode="ST@")
+[Trxs]Description:=Get localized string("Prorata Part Month")+" "
+Else 
+[Trxs]Description:=Get localized string("Prorata Part Month")+" "+[Agreement]UnitsOccup
+End if 
+$Month:=Month of($1)
+If ($Month>=1) & ($Month<=12)
+
+If ($Month=2)
+$TestDate:=Add to date(Date(String(<>aLastDay{$Month})+"/"+String($Month)+"/"+String(Year of($1)));0;0;1)
+$LeapYear:=Month of($TestDate)
+If ($Month=$LeapYear)
+$Month:=<>aLastDay{$Month}+1
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+
+
+Else 
+$Month:=30
+End if 
+//If ([Agreement]MthsAdv>1)
+//  $Month:=Round(30.4*[Agreement]MthsAdv;0)
+//End if This was used only when RentAmt was used instead of RegularRent below
+End if 
+[Trxs]TotAmt:=RoundAmt ([Agreement]RegularRent*([Agreement]NextBillDate-$1)/$Month)
+[Trxs]Narration:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String($1)+" = "+String([Agreement]NextBillDate-$1)+" "+Get localized string("Days")+Char(13)
+If ($Month=7)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days in current week")+" = 7 "+Get localized string("Days")+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days in current month")+" = "+String($Month)+" "+Get localized string("Days")+Char(13)
+End if 
+[Trxs]Narration:=[Trxs]Narration+Get localized string("M = Regular Rent for Agreement")+" = "+String([Agreement]RegularRent;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"M x X / Y = "+String([Trxs]TotAmt;<>sFormat)+Char(13)
+[Trxs]DateFrom:=$1
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Agreement]TotRentUnpaid:=Round([Agreement]TotRentUnpaid+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+If ([Trxs]TotAmt>0)
+SAVE RECORD([Trxs])
+End if 
+

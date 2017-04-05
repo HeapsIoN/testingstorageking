@@ -1,0 +1,51 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT(vAnalysisCode)
+C_REAL(vPerciville;vQtyPlus)
+If (asCharges<1)
+asCharges:=1
+asChargeDesc:=1
+End if 
+asCharges:=asChargeDesc
+//[Transaction]AnalysisCode:=asCharges{asCharges}
+//RELATE ONE([Transaction]AnalysisCode)
+vAnalysisCode:=asCharges{asCharges}
+QUERY([Analysis];[Analysis]Code=vAnalysisCode)
+If (Records in selection([Analysis])>0)
+vDescr:=[Analysis]Description
+Else 
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring(vAnalysisCode;1;8))
+vDescr:=asChargeDesc{asChargeDesc}
+End if 
+
+If (vAnalysisCode=([Facility]FacilityCode+"RF"))
+AlertMessage (Get localized string("Warning - You should normally add rental billings using the Bill Next Charges button - otherwise the Next Bill Date will not be updated."))
+End if 
+//If (vQtyPlus=0) | (vPerciville=0)
+//$OK:=True
+//vPerciville:=vQtyPlus
+//Else 
+//$OK:=False
+//If ([Analysis]DfltSellAmt#vPlus) & ([Analysis]DfltSellAmt#0)
+//ConfirmTwo ("Adjust Amount to default for "+[Analysis]Description+" of "+String([Analysis]DfltSellAmt;<>sFormat))
+//If (OK=1)
+$OK:=True
+//End if 
+//
+//End if 
+//End if 
+If ($OK)
+vQtyPlus:=1
+If (Records in selection([Analysis])>0)
+vPlus:=Round([Analysis]DfltSellAmt;2)
+Else 
+vPlus:=Round([MerchPlan]FixedDiscount;2)
+End if 
+vTax:=CalcTaxAmt (vPlus;vAnalysisCode;vDateFrom;vDateTo;4)
+End if 
+If (vAnalysisCode=([Facility]FacilityCode+"IN")) & ([Agreement]NextBillDate>vDateTo)
+vDateTo:=[Agreement]NextBillDate
+Else 
+vDateTo:=vDateFrom
+End if 
+
+//ResetChge 

@@ -1,0 +1,36 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (<>sProduct#"M@")
+ARRAY TEXT(asFacilities;0)
+SetFacility 
+WEB SERVICE SET PARAMETER("WS_FacilityCode";<>sFacility)
+$PortPos:=Position(":";[Facility]CentralAddress)
+If ($PortPos>0)
+$PortString:=Substring([Facility]CentralAddress;$PortPos+1)
+Else 
+$PortString:="19812"
+End if 
+$Port:=Num($PortString)
+WEB SERVICE CALL("https://"+GetDNS ("MV")+":"+$PortString+"/4DSOAP/";"Storman#WS_GetSiteNames";"WS_GetSiteNames";"http://www.storpay.com/webservices";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT(asFacilities;"asFacilities";*)// Memory clean-up on the final return value.
+If (asFacilities{1}#"INVALID SITE")
+asFacilities:=1
+Open window((Screen width/2)-200;(Screen height/2)-107;(Screen width/2)+200;(Screen height/2)+107;5;"Select Facility")
+DIALOG([Unit];"OtherSiteUnits")
+CLOSE WINDOW
+If (OK=1)
+WSC_GetUnitsAvail (asFacilities{asFacilities})
+SORT ARRAY(WS_MonthlyRate;WS_WeeklyRate;WS_NoVacant;WS_Types;WS_Desc;>)
+WS_Types:=1
+vLastPage:=0
+Open window((Screen width/2)-288;(Screen height/2)-328;(Screen width/2)+288;(Screen height/2)+328;5;"Units Available")
+DIALOG([Unit];"OtherSiteUnitList")
+CLOSE WINDOW
+End if 
+Else 
+AlertMessage (Get localized string("This facility does not exist at the Central Server you are connecting to!!"))
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("This procedure cannot be used at Head Office"))
+End if 

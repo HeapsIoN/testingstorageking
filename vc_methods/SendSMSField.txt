@@ -1,0 +1,96 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0;$1;$Phone)
+C_BOOLEAN($SMS;$2;$Resv)
+C_TEXT(vLeg3)
+C_LONGINT(bCustomSMS)
+C_REAL($PhoneNum)
+vLeg3:=""
+If (Count parameters>1)
+$Resv:=$2
+Else 
+$Resv:=False
+End if 
+$Phone:=Replace string(Replace string(Replace string(Replace string(Replace string($1;" ";"");"-";"");"(";"");")";"");"+";"")
+
+If ($Phone="0@")
+$Phone:=<>tMobilePrefix+Substring($Phone;2)
+End if 
+
+$PhoneNum:=Num($Phone)
+$Phone:=String($PhoneNum)
+
+bCustomSMS:=1
+
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+If ($Resv=True)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=0;*)//Added 4.1.0
+Else 
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)//Added 4.1.0
+End if 
+QUERY([Notices]; & ;[Notices]SMSMessage>"  ")
+$SMS:=False
+If (Records in selection([Notices])>0)
+bCustomSMS:=0
+ORDER BY([Notices];[Notices]RefDateField;>;[Notices]DaysAfter;>)//NextBillDate to come first
+ORDER BY([Notices];[Notices]Description;>)
+ARRAY TEXT(asNoticeDesc;0)
+SELECTION TO ARRAY([Notices]Description;asNoticeDesc)
+vTitle:=Get localized string("Select SMS")
+Open window((Screen width/2)-199;(Screen height/2)-180;(Screen width/2)+199;(Screen height/2)+180;5;Get localized string("Select SMS"))
+DIALOG([Notices];"SelectNotice")
+CLOSE WINDOW
+If (OK=1)
+If (asNoticeDesc>=1)
+QUERY SELECTION([Notices];[Notices]Description=asNoticeDesc{asNoticeDesc})
+$SMS:=True
+End if 
+End if 
+End if 
+If ($SMS=True)
+$SMSText:=[Notices]SMSMessage
+$SMSText:=Replace string($SMSText;"{balance}";String([Customer]Balance;"#######0.00"))
+$SMSText:=Replace string($SMSText;"{agreebalance}";String([Agreement]BalanceOwing;"#######0.00"))
+$SMSText:=Replace string($SMSText;"{rentamt}";String([Agreement]RentAmt;"#######0.00"))
+$SMSText:=Replace string($SMSText;"{nextbill}";String([Agreement]NextBillDate))
+$SMSText:=Replace string($SMSText;"{lastbill}";String([Agreement]LastBillDate))
+$SMSText:=Replace string($SMSText;"{firstname}";[Customer]FirstName)
+$SMSText:=Replace string($SMSText;"{facilityphone}";[Facility]Phone)
+$SMSText:=ProcessStormanHTMLTags ($SMSText)
+If (GetTextNo ([Facility]SMSAcctDetails;5;",")="Storman SMS")
+vLeg3:=RequestMore (Get localized string("Enter Text to Send by SMS:");450;$SMSText)
+Else 
+vLeg3:=RequestMore (Get localized string("Enter Text to Send by SMS:");160;$SMSText)
+End if 
+Else 
+If (bCustomSMS=1)
+If (GetTextNo ([Facility]SMSAcctDetails;5;",")="Storman SMS")
+vLeg3:=RequestMore (Get localized string("Enter Text to Send by SMS:");450)
+Else 
+vLeg3:=RequestMore (Get localized string("Enter Text to Send by SMS:");160)
+End if 
+vLeg3:=Replace string(vLeg3;"{balance}";String([Customer]Balance;"#######0.00"))
+vLeg3:=Replace string(vLeg3;"{agreebalance}";String([Agreement]BalanceOwing;"#######0.00"))
+vLeg3:=Replace string(vLeg3;"{rentamt}";String([Agreement]RentAmt;"#######0.00"))
+vLeg3:=Replace string(vLeg3;"{nextbill}";String([Agreement]NextBillDate))
+vLeg3:=Replace string(vLeg3;"{lastbill}";String([Agreement]LastBillDate))
+vLeg3:=Replace string(vLeg3;"{firstname}";[Customer]FirstName)
+vLeg3:=Replace string(vLeg3;"{facilityphone}";[Facility]Phone)
+vLeg3:=ProcessStormanHTMLTags (vLeg3)
+End if 
+End if 
+If (vLeg3>"")
+Case of 
+: (Records in selection([Contacts])>0)
+SendSMS ($Phone;vLeg3;[Contacts]ContactNo;True;False;True)
+: (Records in selection([Reservation])>0)
+SendSMS ($Phone;vLeg3;[Reservation]RReserveNo;True;False;True)
+: (Records in selection([Agreement])>0)
+SendSMS ($Phone;vLeg3;[Agreement]RAgreeNo;True;False;True)
+: (Records in selection([Customer])>0)
+SendSMS ($Phone;vLeg3;[Customer]CustomerCode;True;False;True)
+Else 
+SendSMS ($Phone;vLeg3;"";True;False;True)
+End case 
+End if 
+$0:=$Phone

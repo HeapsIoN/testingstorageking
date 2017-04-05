@@ -1,0 +1,159 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_TEXT(vtPathname;$Error;vtPathNameDisplay)
+C_LONGINT(viPathDepth)
+
+viPathDepth:=1
+vtPathName:=""
+vtPathNameDisplay:=""
+$Error:=""
+
+//Show / Hide Server view message depending on whether user is using 4D Client.
+If (Application type=4D Remote mode)
+OBJECT SET VISIBLE(*;"FileManagerServerViewText";True)
+OBJECT SET VISIBLE(*;"FileManagerServerViewText2";False)
+Else 
+OBJECT SET VISIBLE(*;"FileManagerServerViewText2";True)
+OBJECT SET VISIBLE(*;"FileManagerServerViewText";False)
+End if 
+
+
+
+//Show / Hide the File Manager Title text
+If (vtFileManagerSelectionType="document")
+OBJECT SET VISIBLE(*;"vtFMSelectDocumentText";True)
+OBJECT SET VISIBLE(*;"vtFMSelectFolderText";False)
+SET WINDOW TITLE("Select Document")
+Else 
+OBJECT SET VISIBLE(*;"vtFMSelectDocumentText";False)
+OBJECT SET VISIBLE(*;"vtFMSelectFolderText";True)
+SET WINDOW TITLE("Select Folder")
+End if 
+
+//If there was a Default Folder supplied, show it in the File Manager window
+If (vtFileManagerDefaultFolder#"")//A Default Folder was supplied
+vtPathName:=vtFileManagerDefaultFolder
+$ServerPlatform:=Num(GetSeparatedText (remote platform properties ;",";1))
+//Convert the platform-specific pathname into a intermediate pathname
+If ($ServerPlatform=3)//Windows
+vtPathName:=Replace string(vtPathName;Char(92);Char(47);*)
+vtPathName:=Insert string(vtPathName;Char(92);3)
+viPathDepth:=GetSeparatedTextCount (vtPathName;Char(47))+1
+Else 
+vtPathName:=Replace string(vtPathName;":";Char(47);*)
+viPathDepth:=GetSeparatedTextCount (vtPathName;Char(47))+1
+End if 
+
+Else //A Default Folder was supplied
+remote volume list (->vtaFileFolderName)
+ARRAY LONGINT(viaFileFolderType;Size of array(vtaFileFolderName))
+For ($Counter;1;Size of array(vtaFileFolderName))
+viaFileFolderType{$Counter}:=1
+End for 
+End if 
+End if 
+
+
+If (Form event=On Double Clicked)
+
+//vtbFileManagerLB - ListBox variable
+$SelectedItem:=Find in array(vtbFileManagerLB;True;1)//The item that was Double-clicked on
+
+If ($SelectedItem>0)
+Case of 
+: (vtaFileFolderName{$SelectedItem}="..")//Go Up a level
+If (viPathDepth>2)//If the next level up is not the volume names then remove 1 level from the path
+vtPathname:=Substring(vtPathname;1;Length(vtPathname)-1)//Remove the trailing "/"
+For ($Counter;Length(vtPathname);1;-1)
+If (vtPathname[[$Counter]]="/")
+vtPathname:=Substring(vtPathname;1;$Counter)
+$Counter:=0
+End if 
+End for 
+End if 
+viPathDepth:=viPathDepth-1
+
+: (viaFileFolderType{$SelectedItem}=2) | (viaFileFolderType{$SelectedItem}=1)//Go Down a level.   Add the selected item to the path.
+vtPathname:=vtPathname+vtaFileFolderName{$SelectedItem}+"/"
+viPathDepth:=viPathDepth+1
+
+: (viaFileFolderType{$SelectedItem}=3)// A Document
+
+End case 
+End if 
+
+
+End if 
+
+
+
+If (Form event=On Double Clicked) | (Form event=On Load)//Updating the file/folder list
+
+ARRAY TEXT(vtaTempFolderList;0)
+ARRAY LONGINT(viaTempFolderType;0)
+ARRAY TEXT(vtaTempDocumentList;0)
+ARRAY LONGINT(viaTempDocumentType;0)
+
+If (viPathDepth=1)//If the path is the top level, then just list the Volumes
+remote volume list (->vtaFileFolderName)
+ARRAY LONGINT(viaFileFolderType;Size of array(vtaFileFolderName))
+For ($Counter;1;Size of array(vtaFileFolderName))
+viaFileFolderType{$Counter}:=1
+End for 
+viPathDepth:=1
+vtPathName:=""
+
+Else //If the path above is not the Volume List  
+$Error:=remote folder list (vtPathname;->vtaTempFolderList)
+
+If ($Error#"1")
+remote volume list (->vtaFileFolderName)
+ARRAY LONGINT(viaFileFolderType;Size of array(vtaFileFolderName))
+For ($Counter;1;Size of array(vtaFileFolderName))
+viaFileFolderType{$Counter}:=1
+End for 
+viPathDepth:=1
+vtPathName:=""
+Else 
+
+ARRAY LONGINT(viaTempFolderType;Size of array(vtaTempFolderList))
+
+If (vtFileManagerSelectionType="document")
+remote document list (vtPathname;->vtaTempDocumentList)
+ARRAY LONGINT(viaTempDocumentType;Size of array(vtaTempDocumentList))
+End if 
+
+ARRAY TEXT(vtaFileFolderName;0)
+ARRAY LONGINT(viaFileFolderType;0)
+
+For ($Counter;1;Size of array(vtaTempFolderList))
+APPEND TO ARRAY(vtaFileFolderName;vtaTempFolderList{$Counter})
+APPEND TO ARRAY(viaFileFolderType;2)
+End for 
+
+If (vtFileManagerSelectionType="document")
+For ($Counter;1;Size of array(vtaTempDocumentList))
+APPEND TO ARRAY(vtaFileFolderName;vtaTempDocumentList{$Counter})
+APPEND TO ARRAY(viaFileFolderType;3)
+End for 
+End if 
+
+If (viPathDepth>1)
+INSERT IN ARRAY(vtaFileFolderName;1;1)
+vtaFileFolderName{1}:=".."
+INSERT IN ARRAY(viaFileFolderType;1;1)
+viaFileFolderType{1}:=2
+End if 
+End if 
+End if 
+
+
+$ServerPlatform:=Num(GetSeparatedText (remote platform properties ;",";1))
+If ($ServerPlatform=3)//Windows
+vtPathNameDisplay:=Replace string(vtPathName;Char(47);Char(92);*)
+vtPathNameDisplay:=Replace string(vtPathNameDisplay;Char(92)+Char(92);Char(92);*)
+Else 
+vtPathNameDisplay:=Replace string(vtPathName;Char(47);":";*)
+End if 
+
+End if 

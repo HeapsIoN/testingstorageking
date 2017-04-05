@@ -1,0 +1,103 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 02/03/11, 16:29:35
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_DoBilling
+// Description
+// Triggers billing of a customers next rent
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_AgreeNo2;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_DoBilling"+Char(13)
+$String:=$String+"WS_AgreeNo2: "+WS_AgreeNo2+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+tRentTrx:=False
+bAdd:=0
+bAll:=0
+asShowHistory:=0
+viMatch:=0
+WS_Edit:=False
+WS_AgreeID:=""
+
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Unit])
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_AgreeNo2)
+
+If (Records in selection([Agreement])=1)
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+BillNextCharges (6;0;True)
+
+//WS_OLD=If (WS_ORErrorCode=0)  //checkme
+//WS_OLD=WS_AgreeID:=[Agreement]RAgreeNo
+//WS_OLD=WS_Edit:=True
+//WS_OLD=End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Customer has been successfully billed."
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+READ ONLY([Unit])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Facility])
+
+$String:="Start WS_DoBilling"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

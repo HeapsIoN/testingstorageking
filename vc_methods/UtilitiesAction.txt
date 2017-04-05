@@ -1,0 +1,203 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// Status according PULS. 0 - Vacant. 1 - Rented. 2 - Locked. 3 - Unavailable  9 - Read meter.
+
+<>tUtilities:=False// to disable read from LogMonLookCode
+C_BOOLEAN($Save)
+C_TEXT($Packet;$Path;$DownloadALL;$2)
+C_LONGINT($Status;$Param;$1)// Parameter 9 - request reading. 8 - Download ALL  
+C_BLOB($bom_b)
+
+SET BLOB SIZE($bom_b;3)
+$bom_b{0}:=239// EF (UTF-8)
+$bom_b{1}:=187// BB (UTF-8)
+$bom_b{2}:=191// BF (UTF-8)
+
+$Save:=True
+// 19/06/15 DAM added if condition below for daily processing
+If (Records in selection([Facility])#1)
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+End if 
+$Path:=[Facility]UtilOutFile
+$File:=$Path+"StormanBerth"
+READ WRITE([Utilities])
+READ WRITE([Unit])
+FIRST RECORD([Unit])
+$Param:=0
+
+If (Count parameters>0)
+$Param:=$1
+If ($Param=8)
+$Save:=False
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@")// To donload all when executing on the server
+End if 
+
+If (Count parameters>1)
+QUERY([Unit];[Unit]AgreeNo=$2)
+End if 
+End if 
+
+For ($i;1;Records in selection([Unit]))
+If (Test path name($Path)=Is a folder)
+
+CREATE RECORD([Utilities])
+[Utilities]FacilityCode:=<>sFacility
+[Utilities]Date:=Current date
+[Utilities]Time:=Current time
+[Utilities]UnitNo:=[Unit]RUnitNo
+[Utilities]AgreeNo:=[Unit]AgreeNo
+[Utilities]EventCode:=0
+QUERY([Agreement];[Agreement]RAgreeNo=[Utilities]AgreeNo)
+
+If (Records in selection([Agreement])=0)
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo)
+//ORDER BY([UnitHistory];[UnitHistory]MoveOut;>)
+ORDER BY([UnitHistory];[UnitHistory]MoveOut;<)
+FIRST RECORD([UnitHistory])
+RELATE ONE([UnitHistory]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+Else 
+RELATE ONE([Agreement]CustomerCode)
+End if 
+
+Case of 
+: ([Unit]Status="Vacant")
+$Status:=0
+: ([Unit]Status="Rented")
+$Status:=1
+: ([Unit]Status="Locked")
+$Status:=2
+: ([Unit]Status="Unavail")
+$Status:=3
+End case 
+
+If ([Unit]ReadPULS=True) | ($Param=9)
+$Status:=9
+End if 
+
+[Unit]UpdatePULS:=False
+[Unit]ReadPULS:=False
+
+If (Length([Unit]UnitNo)#15)
+$Packet:=((15-Length([Unit]UnitNo))*" ")+[Unit]UnitNo
+Else 
+$Packet:=[Unit]UnitNo
+End if 
+
+If (Length([Customer]CustomerName)#50)
+$Packet:=$Packet+((50-Length([Customer]CustomerName))*" ")+[Customer]CustomerName
+Else 
+$Packet:=$Packet+[Customer]CustomerName
+End if 
+
+$Packet:=$Packet+String($Status)
+[Utilities]ActionText:=$Packet
+
+If ($Save)
+SAVE RECORD([Utilities])
+End if 
+
+If ($Param=8)
+$Param:=0
+$DownloadALL:=Length($Packet)*" "
+If (<>iPlatform=3)
+$Ext:=".txt"
+Else 
+$Ext:=".dat"
+End if 
+bConfirm:=False
+$Locked:=False
+If (Test path name($File+$Ext)=Is a document)
+$Ticks:=Tickcount
+$j:=0
+Repeat 
+$j:=$j+60
+GET DOCUMENT PROPERTIES($File+$Ext;$Locked;$Inv;$Date1;$Time1;$Date2;$Time2)
+While ($Locked) & (Tickcount<($Ticks+$j))//This loop added in 2.4.2 in case testing Document Props was too frequent
+IDLE
+End while 
+Until ($Locked=False) | (Tickcount>($Ticks+600))//Wait 10 secs
+If ($Locked=False)
+ON ERR CALL("ErrorPULS")
+$Ticks:=Tickcount
+Repeat 
+bConfirm:=False
+IDLE
+$Doc:=Append document($File+$Ext)
+Until (bConfirm=False) | (Tickcount>($Ticks+600))//Wait 10 secs
+ON ERR CALL("ErrorLog")
+End if 
+If ($Locked) | (bConfirm)
+AlertMessage ("The PULS software appears to be holding the file"+" "+$Path)
+$0:="Fail"
+End if 
+Else 
+If ($Path>" ")
+$Doc:=Create document($File+$Ext)
+SEND PACKET($Doc;$bom_b)
+Else 
+AlertMessage ("Unable to create PULS system file.  Please enter the Output text file name from the Utilities setup menu, via the Maintenance menu!")
+End if 
+End if 
+If ($Locked=False) & (bConfirm=False)
+SEND PACKET($Doc;$DownloadALL+Char(13)+Char(10))
+CLOSE DOCUMENT($Doc)
+End if 
+End if 
+
+
+If (<>iPlatform=3)
+$Ext:=".txt"
+Else 
+$Ext:=".dat"
+End if 
+bConfirm:=False
+$Locked:=False
+If (Test path name($File+$Ext)=Is a document)
+$Ticks:=Tickcount
+$j:=0
+Repeat 
+$j:=$j+60
+GET DOCUMENT PROPERTIES($File+$Ext;$Locked;$Inv;$Date1;$Time1;$Date2;$Time2)
+While ($Locked) & (Tickcount<($Ticks+$j))//This loop added in 2.4.2 in case testing Document Props was too frequent
+IDLE
+End while 
+Until ($Locked=False) | (Tickcount>($Ticks+600))//Wait 10 secs
+If ($Locked=False)
+ON ERR CALL("ErrorPULS")
+$Ticks:=Tickcount
+Repeat 
+bConfirm:=False
+IDLE
+$Doc:=Append document($File+$Ext)
+Until (bConfirm=False) | (Tickcount>($Ticks+600))//Wait 10 secs
+ON ERR CALL("ErrorLog")
+End if 
+If ($Locked) | (bConfirm)
+AlertMessage ("The PULS software appears to be holding the file"+" "+$Path)
+$0:="Fail"
+End if 
+Else 
+If ($Path>" ")
+$Doc:=Create document($File+$Ext)
+SEND PACKET($Doc;$bom_b)
+Else 
+AlertMessage ("Unable to create PULS system file.  Please enter the Output text file name from the Utilities setup menu, via the Maintenance menu!")
+End if 
+End if 
+If ($Locked=False) & (bConfirm=False)
+SEND PACKET($Doc;$Packet+Char(13)+Char(10))
+CLOSE DOCUMENT($Doc)
+End if 
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+
+If ($Param#9)// Added because the Unit Record is getting locked.
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+
+READ ONLY([Utilities])
+UNLOAD RECORD([Utilities])
+<>tUtilities:=True// to disable read from LogMonLoopCode

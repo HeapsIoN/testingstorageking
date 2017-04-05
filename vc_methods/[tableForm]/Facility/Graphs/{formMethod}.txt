@@ -1,0 +1,439 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$x;$TotIn;$TotOut)
+ARRAY LONGINT($aWeeks;0)
+ARRAY DATE($dateWeeks;0)
+
+C_PICTURE(vGraph1;vGraph2)
+C_PICTURE(SVGTest2)
+C_LONGINT(saveID;distanceAdd;$finish;$zoom;zoom;sc1;periods)
+
+C_TEXT(svgRef_print)
+
+
+//ARRAY LONGINT($aValues;$x*2)
+//ARRAY LONGINT($aValuesIn;$x)
+//ARRAY LONGINT($aValuesOut;$x)
+
+zoomLevel:=1
+///zoom7:=1
+
+If (Form event=On Load)
+ARRAY LONGINT(aLongint;2)
+aLongint{1}:=19
+aLongint{2}:=20
+
+//============
+
+$str1:="<g xmlns="+String(Char(34))+"http://www.w3.org/2000/svg"+String(Char(34))+" cursor="+String(Char(34))+"crosshair"+String(Char(34))+" type="+String(Char(34))+"custom"+String(Char(34))+">  </g>"
+$Doc:=Create document(<>sAttachPath+"empty2.chart")
+$str2:="alles"
+SEND PACKET($Doc;$str1)
+SEND PACKET($Doc;$str2)
+CLOSE DOCUMENT($Doc)
+
+///////////////////////////////////////////////////////
+
+
+Case of 
+: (sUnit=1)//Monthly
+DISTINCT VALUES([Activity]ActivityMonth;$aWeeks)
+$p:=->[Activity]ActivityMonth
+: (sCust=1)//Weekly
+DISTINCT VALUES([Activity]ActivityWeek;$aWeeks)
+$p:=->[Activity]ActivityWeek
+Else //Daily
+SELECTION TO ARRAY([Activity]MoveIns;$aValuesIn)
+SELECTION TO ARRAY([Activity]MoveOuts;$aValuesOut)
+DISTINCT VALUES([Activity]ActivityDate;$dateWeeks)
+//$p:=->[Activity]ActivityDate
+End case 
+Case of 
+: (<>sProduct="@B")
+vTitle:=Get localized string("GraphOfOccupancyTitleMarina")
+Else 
+vTitle:=Get localized string("GraphofOccupancyForm1")
+End case 
+If (sCust=1) | (sUnit=1)
+$x:=Size of array($aWeeks)
+ARRAY DATE($aDates;$x)
+ARRAY TEXT($aSeries;2)
+Case of 
+: (<>sProduct="@B")
+$aSeries{1}:=Get localized string("Arrivals")
+$aSeries{2}:=Get localized string("Departures")
+Else 
+$aSeries{1}:=Get localized string("Move-Ins")
+$aSeries{2}:=Get localized string("Move-Outs")
+End case 
+ARRAY LONGINT($aValues;$x*2)
+ARRAY LONGINT($aValuesIn;$x)
+ARRAY LONGINT($aValuesOut;$x)
+ARRAY LONGINT($aValuesOccup;$x)
+
+CREATE SET([Activity];"Graph")
+For ($i;1;$x)
+QUERY([Activity];[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;$p->=$aWeeks{$i})
+ORDER BY([Activity];[Activity]ActivityDate;<)
+$aDates{$i}:=[Activity]ActivityDate
+$TotIn:=0
+$TotOut:=0
+$TotOccup:=0
+//$aValuesOccup
+Repeat 
+$TotIn:=$TotIn+[Activity]MoveIns
+$TotOut:=$TotOut+[Activity]MoveOuts
+If ($TotOccup<[Activity]OccupUnitNo)
+$TotOccup:=[Activity]OccupUnitNo
+End if 
+
+NEXT RECORD([Activity])
+Until (End selection([Activity]))
+//$aValues{$i}:=$TotIn  //CustomSum([Activity]MoveIns)
+//$aValues{$i+$x}:=$TotOut  //CustomSum([Activity]MoveOuts)
+$aValuesIn{$i}:=$TotIn
+$aValuesOut{$i}:=$TotOut
+$aValuesOccup{$i}:=$TotOccup
+If ($TotIn>bSingle)
+bSingle:=$TotIn
+End if 
+If ($TotOut>bSingle)
+bSingle:=$TotOut
+End if 
+End for 
+
+//$zoom:=Trunc(Size of array($aWeeks)/9;0)+1
+//USE SET("Graph")
+//ORDER BY([Activity];[Activity]ActivityDate;>)
+//CLEAR SET("Graph")
+End if 
+///$zoom:=Round(bSingle/10;0)+1
+//$zoom:=Trunc(Size of array($aWeeks)/9;0)+1
+ARRAY TEXT($aLegend1;2)
+Case of 
+: (<>sProduct="@B")
+$aLegend1{1}:=Get localized string("Arrivals")
+$aLegend1{2}:=Get localized string("Departures")
+Else 
+$aLegend1{1}:=Get localized string("Move-Ins")
+$aLegend1{2}:=Get localized string("Move-Outs")
+End case 
+
+vType:=1
+
+vType2:=1
+
+sc1:=Size of array($aWeeks)
+If (sCust=1) | (sUnit=1)
+GRAPH(vGraph1;vType;$aWeeks;$aValuesIn;$aValuesOut)
+GRAPH SETTINGS(vGraph1;0;0;0;0;False;False;True;$aLegend1{1};$aLegend1{2})
+
+GRAPH(vGraph2;vType2;$aWeeks;$aValuesOccup)
+GRAPH SETTINGS(vGraph2;0;0;0;0;False;False;True;"Unit occupancy")
+
+zoom7:=Trunc(Size of array($aWeeks)/8;0)+1
+Else 
+SELECTION TO ARRAY([Activity]OccupUnitNo;tot_cnt)
+SELECTION TO ARRAY([Activity]ActivityDate;$dateWeeks)
+
+GRAPH(vGraph1;vType;$dateWeeks;$aValuesIn;$aValuesOut)
+GRAPH SETTINGS(vGraph1;0;0;0;0;False;False;True;$aLegend1{1};$aLegend1{2})
+
+GRAPH(vGraph2;vType2;$dateWeeks;tot_cnt)
+GRAPH SETTINGS(vGraph2;0;0;0;0;False;False;True;"Unit occupancy")
+
+zoom7:=Trunc(Size of array($dateWeeks)/8;0)+1
+End if 
+
+
+
+////////////////////
+$myDoc:=Open document((<>sAttachPath+"empty2.chart");"TEXT")
+RECEIVE PACKET($myDoc;CustomSVG2;"alles")
+CLOSE DOCUMENT($myDoc)
+
+
+////////////////////
+SVG_SET_OPTIONS (SVG_Get_options  ?+ 5)
+If (<>iPlatform=3)
+selectedFont:="Tahoma"
+selectedFontSize:=10
+Else 
+selectedFont:="Lucida Grande"
+selectedFontSize:=13
+End if 
+
+svgRef:=SVG_New 
+SVG_SET_VIEWBOX (svgRef;0;0;1900;1000)
+// SVG_SET_DIMENSIONS($SVG;4;8;"cm") 
+
+//$objectref:=SVG_New_rect (svgRef;0;0;10000;8000;0;0;"1";"white")  //background rectangle
+
+$objectref:=SVG_New_rect (svgRef;0;0;12;29;0;0;"1";"white";2)//background rectangle
+
+
+If (CustomSVG2#"")//(Length([Facility]SVG_Chart)>0)  //Need to insert custom objects here
+ARRAY LONGINT($variables;0)
+ARRAY TEXT($values;0)
+// CustomSVG2:=[Facility]SVG_Chart
+CustomSVG2:=Replace string(CustomSVG2;Char(Carriage return)+Char(Line feed);"";*)
+CustomSVG2:=Replace string(CustomSVG2;Char(Line feed);"";*)
+CustomSVG2:=Replace string(CustomSVG2;Char(Carriage return);"";*)
+If (Substring(CustomSVG2;1;1)#"<")
+CustomSVG2:="<"+CustomSVG2
+End if 
+If (Substring(CustomSVG2;1;2)="<<")
+CustomSVG2:=Substring(CustomSVG2;2)
+End if 
+$CustomRef:=DOM Parse XML variable(CustomSVG2)
+group:=DOM Append XML element(svgRef;$CustomRef)
+DOM GET XML CHILD NODES(group;$variables;$values)
+For ($q;1;Size of array($variables))
+If (Length($values{$q})>5) & ($values{$q}#"@  @")
+SVG_SET_ID ($values{$q};String(saveID))
+APPEND TO ARRAY(atObjects;String(saveID))
+APPEND TO ARRAY(atObjectRef;$values{$q})
+saveID:=saveID+1
+End if 
+End for 
+Else 
+group:=SVG_New_group (svgRef)
+SVG_SET_ATTRIBUTES (group;"cursor";"crosshair";"type";"custom")
+End if 
+
+$svgRef1:=SVG_Open_picture (vGraph1)
+//SVG_SET_TRANSFORM_SCALE (svgRef;zoomLevel;zoomLevel)
+
+If ($svgRef1#"")
+SVG EXPORT TO PICTURE($svgRef1;vGraph1)
+SVG_CLEAR ($svgRef1)
+
+$docPath:=<>sAttachPath+"ocrep1"+".png"
+WRITE PICTURE FILE($docPath;vGraph1)
+
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+////////////////////////////
+READ PICTURE FILE($docPath;$Picture)
+objectRef:=SVG_New_embedded_image (group;$Picture;0;0)//;$myx;$myy)
+SVG_SET_ATTRIBUTES (objectRef;"type";"image")
+SVG_SET_ATTRIBUTES (objectRef;"xmlns:xlink";"http://www.w3.org/1999/xlink")
+SVG_SET_ID (objectRef;String(saveID))
+APPEND TO ARRAY(atObjects;String(saveID))
+APPEND TO ARRAY(atObjectRef;objectRef)
+myid:=String(saveID)
+saveID:=saveID+1
+SVGTest2:=SVG_Export_to_picture (svgRef)
+
+//////////////////////
+
+////////// second graph////////////
+
+
+$svgRef2:=SVG_Open_picture (vGraph2)
+
+SVG EXPORT TO PICTURE($svgRef2;vGraph2)
+SVG_CLEAR ($svgRef2)
+$docPath2:=<>sAttachPath+"ocrep2"+".png"
+WRITE PICTURE FILE($docPath2;vGraph2)
+
+READ PICTURE FILE($docPath2;$Picture)
+objectRef:=SVG_New_embedded_image (group;$Picture;0;500)//;$myx;$myy)
+SVG_SET_ATTRIBUTES (objectRef;"type";"image")
+SVG_SET_ATTRIBUTES (objectRef;"xmlns:xlink";"http://www.w3.org/1999/xlink")
+SVG_SET_ID (objectRef;String(saveID))
+APPEND TO ARRAY(atObjects;String(saveID))
+APPEND TO ARRAY(atObjectRef;objectRef)
+myid:=String(saveID)
+saveID:=saveID+1
+SVGTest2:=SVG_Export_to_picture (svgRef)
+
+svgRef_print:=svgRef
+//zoomLevel:=zoomLevel/$zoom
+//SVG_SET_VIEWBOX (svgRef;0;0;10000*zoomLevel;10000*zoomLevel)
+SVG_SET_TRANSFORM_SCALE (svgRef;zoomLevel/zoom7;zoomLevel)
+SVGTest2:=SVG_Export_to_picture (svgRef)
+
+OBJECT SET VISIBLE(svgtest2;True)
+
+//==========================fb 10200 =================
+If ((<>tBatch=True) & (<>tPrintPDF=True))
+
+OBJECT SET VISIBLE(svgtest2;False)
+
+ARRAY TEXT($arrAfound;0)
+ARRAY TEXT($variables0;0)
+ARRAY TEXT($values0;0)
+ARRAY LONGINT($variables1;0)
+ARRAY TEXT($values1;0)
+ARRAY TEXT($variables2;0)
+ARRAY TEXT($values2;0)
+ARRAY LONGINT($variables3;0)
+ARRAY TEXT($values3;0)
+C_LONGINT($i;$loc;$q)
+C_POINTER($var0;$val0;$var2;$val2)
+$var0:=->$variables0
+$val0:=->$values0
+$var2:=->$variables2
+$val2:=->$values2
+
+svgRef:=svgRef_print
+
+SVGText:=SVG_Export_to_XML (svgRef)
+
+$TotalWidth:=0
+$TotalHeight:=0
+
+$Found:=DOM Find XML element(svgRef;"/svg/g";$arrAfound)
+
+For ($i;1;Size of array($arrAfound))
+SVG_GET_ATTRIBUTES ($arrAfound{$i};$var0;$val0)
+$loc:=Find in array($values0;"custom")
+If ($loc>0)
+DOM GET XML CHILD NODES($arrAfound{$i};$variables1;$values1)
+For ($q;1;Size of array($variables1))
+If (Length($values1{$q})>5)
+SVG_GET_ATTRIBUTES ($values1{$q};$var2;$val2)
+
+$loc:=Find in array($variables2;"type")
+Case of 
+: ($values2{$loc}="rect")
+$x:=Find in array($variables2;"x")
+$y:=Find in array($variables2;"y")
+$widthvar:=Find in array($variables2;"width")
+$heightvar:=Find in array($variables2;"height")
+: ($values2{$loc}="text")
+$x:=Find in array($variables2;"x")
+$y:=Find in array($variables2;"y")
+$widthvar:=Find in array($variables2;"x")
+$heightvar:=Find in array($variables2;"y")
+: ($values2{$loc}="circle")
+$x:=Find in array($variables2;"cx")
+$y:=Find in array($variables2;"cy")
+$widthvar:=Find in array($variables2;"r")
+$heightvar:=Find in array($variables2;"r")
+: ($values2{$loc}="ellipse")
+$x:=Find in array($variables2;"cx")
+$y:=Find in array($variables2;"cy")
+$widthvar:=Find in array($variables2;"rx")
+$heightvar:=Find in array($variables2;"ry")
+: ($values2{$loc}="image")
+$x:=Find in array($variables2;"x")
+$y:=Find in array($variables2;"y")
+$widthvar:=Find in array($variables2;"width")
+$heightvar:=Find in array($variables2;"height")
+: ($values2{$loc}="line")
+$x:=Find in array($variables2;"x1")
+$y:=Find in array($variables2;"y1")
+$widthvar:=Find in array($variables2;"x2")
+$heightvar:=Find in array($variables2;"y2")
+End case 
+
+If ($values2{$loc}#"border") & ($values2{$loc}#"resize@")
+$Width:=Num($values2{$x})+Num($values2{$widthvar})
+$Height:=Num($values2{$y})+Num($values2{$heightvar})
+Else 
+$Width:=0
+$Height:=0
+End if 
+
+If ($values2{$loc}="line")
+$x1:=Num($values2{$x})
+$x2:=Num($values2{$widthvar})
+
+If ($x1>$x2)
+$Width:=$x1
+Else 
+$Width:=$x2
+End if 
+
+$y1:=Num($values2{$y})
+$y2:=Num($values2{$heightvar})
+
+If ($y1>$y2)
+$Width:=$y1
+Else 
+$Width:=$y2
+End if 
+End if 
+
+
+If ($values2{$loc}="text")
+$Width:=Num($values2{$x})
+$Height:=Num($values2{$y})
+SVG_SET_ATTRIBUTES ($values1{$q};"fill";"black")
+End if 
+
+If ($Width>$TotalWidth)
+$TotalWidth:=$Width
+End if 
+
+If ($Height>$TotalHeight)
+$TotalHeight:=$Height
+End if 
+
+End if 
+End for 
+End if 
+End for 
+
+$Found:=DOM Find XML element(svgRef;"/svg";$arrAfound)
+For ($i;1;Size of array($arrAfound))
+DOM GET XML CHILD NODES($arrAfound{$i};$variables1;$values1)
+For ($q;1;Size of array($variables1))
+SVG_GET_ATTRIBUTES ($values1{$q};$var2;$val2)
+$loc:=Find in array($variables2;"fill")
+If ($loc>0)
+If ($values2{$loc}="burlywood")
+SVG_SET_ATTRIBUTES ($values1{$q};"width";String($TotalWidth+50);"height";String($TotalHeight+50))
+End if 
+End if 
+End for 
+End for 
+//Remove legend & background if black & white
+
+
+SVG_SET_VIEWBOX (svgRef;-150;-150;2000*zoomLevel;1500*zoomLevel)
+
+
+If (periods>7)
+zoom7:=periods/7
+End if 
+
+SVG_SET_TRANSFORM_SCALE (svgRef;zoomLevel/zoom7;1.1*zoomLevel)
+
+SVGTest:=SVG_Export_to_picture (svgRef)
+svgText:=SVG_Export_to_XML (svgRef)
+
+
+SetFacility 
+DEFAULT TABLE([Facility])
+FORM SET OUTPUT([Facility];"SVG_GraphPrint")
+PrintSelection ("L")
+//FORM SET OUTPUT([Facility];"Output")
+
+//Reset picture
+
+svgRef:=DOM Parse XML variable(svgText)
+SVGTest:=SVG_Export_to_picture (svgRef)
+
+//tMapTimer:=$MapTimer
+
+ACCEPT
+
+
+End if 
+//-------------------------------------
+
+Else 
+AlertMessage ("Selected period is too long or incorrect")
+CANCEL
+End if 
+
+
+
+End if 
+

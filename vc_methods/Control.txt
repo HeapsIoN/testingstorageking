@@ -1,0 +1,255 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT(<>sVersion;<>sUserCode)//ControlCode
+
+C_LONGINT($i;$Size;$Recs)
+Repeat 
+READ ONLY(*)
+SetCurrentUser 
+SetFacility 
+vsWindowTitle:=Substring([Facility]BusinessName+" - "+[Facility]FacilityName;1;80)
+SET WINDOW TITLE(vsWindowTitle)
+<>tCloseCalendar:=False
+cwSelectDate:=Current date//(Date(vDateString))
+ARRAY TEXT(asAgreemtNo;0)
+ARRAY TEXT(asCust;0)
+ARRAY TEXT(asUnit;0)
+ARRAY TEXT(asStat;0)
+ARRAY DATE(adDate;0)
+ARRAY REAL(arBal;0)
+ARRAY TEXT(asSort;0)
+ARRAY LONGINT(asSUFac;0)//11206
+
+ARRAY TEXT(asAgreeNo;0)
+ARRAY TEXT(asCustName;0)
+ARRAY TEXT(asUserName;0)
+ARRAY TEXT(asUnits;0)
+ARRAY TEXT(asStatus;0)
+ARRAY DATE(adPaidTo;0)
+ARRAY REAL(arBalOwing;0)
+ARRAY TEXT(asSortNo;0)
+ARRAY LONGINT(asSUFacID;0)//11206
+
+Open window(20;50;300;150;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Loading Search Window")+"..."+"    ")
+$CallCentre:=False
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+For ($i;1;Records in selection([UserGroup]))
+QUERY([Groups];[Groups]GroupID=[UserGroup]GroupID)
+If ([Groups]CallCentre=True)
+$CallCentre:=True
+End if 
+NEXT RECORD([UserGroup])
+End for 
+If ($CallCentre=False)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail")
+ORDER BY([Unit];[Unit]UnitNo;>)
+SET AUTOMATIC RELATIONS(True;False)
+//SELECTION TO ARRAY([Unit]UnitNo;asUnits;[Unit]Status;asStatus;[Agreement]AgreeNo;asAgreeNo;[Customer]CustomerName;asCustName;[Customer]UserName;asUserName;[Agreement]PaidToDate;adPaidTo;[Agreement]BalanceOwing;arBalOwing;[Unit]UnitNo;asSortNo)
+SELECTION TO ARRAY([Unit]UnitNo;asUnits;[Unit]Status;asStatus;[Agreement]AgreeNo;asAgreeNo;[Customer]CustomerName;asCustName;[Customer]UserName;asUserName;[Agreement]PaidToDate;adPaidTo;[Agreement]BalanceOwing;arBalOwing;[Unit]UnitNo;asSortNo;[Unit]SUFacilityID;asSUFacID)//11206
+
+SET AUTOMATIC RELATIONS(False;False)
+
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+"@";*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+ORDER BY([Reservation];[Reservation]ReserveNo;>)
+For ($i;1;Records in selection([Reservation]))
+RELATE ONE([Reservation]CustomerCode)
+RELATE MANY([Reservation]RReserveNo)
+If (Records in selection([Unit])>0)
+For ($k;1;Records in selection([Unit]))
+$x:=Find in array(asUnits;[Unit]UnitNo)
+If ($x>0)
+If (asAgreeNo{$x}="")
+asAgreeNo{$x}:=[Reservation]ReserveNo
+asCustName{$x}:=[Customer]CustomerName
+asUserName{$x}:=[Customer]UserName
+adPaidTo{$x}:=[Reservation]ExpMoveIn
+arBalOwing{$x}:=[Reservation]Balance
+$Insert:=False
+Else 
+$j:=Size of array(asAgreeNo)+1
+INSERT IN ARRAY(asAgreeNo;$j;1)
+asAgreeNo{$j}:=[Reservation]ReserveNo
+INSERT IN ARRAY(asCustName;$j;1)
+asCustName{$j}:=[Customer]CustomerName
+INSERT IN ARRAY(asUserName;$j;1)
+asUserName{$j}:=[Customer]UserName
+INSERT IN ARRAY(asUnits;$j;1)
+asUnits{$j}:=[Unit]UnitNo
+INSERT IN ARRAY(asSUFacID;$j;1)//11206
+asSUFacID{$j}:=[Unit]SUFacilityID
+INSERT IN ARRAY(asStatus;$j;1)
+asStatus{$j}:="Reserved"
+INSERT IN ARRAY(adPaidTo;$j;1)
+adPaidTo{$j}:=[Reservation]ExpMoveIn
+INSERT IN ARRAY(arBalOwing;$j;1)
+arBalOwing{$j}:=[Reservation]Balance
+INSERT IN ARRAY(asSortNo;$j;1)
+//Changed to lowercase char 122 (z) as higher no longer works for sorting in v11
+//asSortNo{$j}:=Substring([Unit]UnitNo;1;8)+"{"  `ascii 123
+asSortNo{$j}:=Substring([Unit]UnitNo;1;8)+"zzzzzzx"
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+Else 
+$j:=Size of array(asAgreeNo)+1
+INSERT IN ARRAY(asAgreeNo;$j;1)
+asAgreeNo{$j}:=[Reservation]ReserveNo
+INSERT IN ARRAY(asCustName;$j;1)
+asCustName{$j}:=[Customer]CustomerName
+INSERT IN ARRAY(asUserName;$j;1)
+asUserName{$j}:=[Customer]UserName
+INSERT IN ARRAY(asUnits;$j;1)
+asUnits{$j}:="None"
+INSERT IN ARRAY(asSUFacID;$j;1)//11206
+asSUFacID{$j}:=[Unit]SUFacilityID
+INSERT IN ARRAY(asStatus;$j;1)
+asStatus{$j}:="Reserved"
+INSERT IN ARRAY(adPaidTo;$j;1)
+adPaidTo{$j}:=[Reservation]ExpMoveIn
+INSERT IN ARRAY(arBalOwing;$j;1)
+arBalOwing{$j}:=[Reservation]DepositAmt
+INSERT IN ARRAY(asSortNo;$j;1)
+//asSortNo{$j}:="{"  `ascii 123
+asSortNo{$j}:="zzzzzzzzzzzzzzx"
+End if 
+NEXT RECORD([Reservation])
+End for 
+If ([Facility]ShowAdhoc)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"#@")
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"#@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+End if 
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+For ($i;1;Records in selection([Agreement]))
+RELATE ONE([Agreement]CustomerCode)
+$j:=Size of array(asAgreeNo)+1
+INSERT IN ARRAY(asAgreeNo;$j;1)
+asAgreeNo{$j}:=[Agreement]AgreeNo
+INSERT IN ARRAY(asCustName;$j;1)
+asCustName{$j}:=[Customer]CustomerName
+INSERT IN ARRAY(asUserName;$j;1)
+asUserName{$j}:=[Customer]UserName
+INSERT IN ARRAY(asUnits;$j;1)
+asUnits{$j}:=""
+INSERT IN ARRAY(asSUFacID;$j;1)//11206
+asSUFacID{$j}:=[Unit]SUFacilityID
+INSERT IN ARRAY(asStatus;$j;1)
+asStatus{$j}:="CrdSale"
+INSERT IN ARRAY(adPaidTo;$j;1)
+adPaidTo{$j}:=[Agreement]PaidToDate
+INSERT IN ARRAY(arBalOwing;$j;1)
+arBalOwing{$j}:=[Agreement]BalanceOwing
+INSERT IN ARRAY(asSortNo;$j;1)
+//asSortNo{$j}:="|"  `ascii 124 
+asSortNo{$j}:="zzzzzzzzzzzzzzy"
+NEXT RECORD([Agreement])
+End for 
+
+QUERY([UnitAgree];[UnitAgree]AgreeNo=<>sFacility+"@")
+
+ORDER BY([UnitAgree];[UnitAgree]AgreeNo;>)
+For ($i;1;Records in selection([UnitAgree]))
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([UnitAgree]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+
+If ([Agreement]ActiveAgreemt)
+$j:=Size of array(asAgreeNo)+1
+INSERT IN ARRAY(asAgreeNo;$j;1)
+asAgreeNo{$j}:=[Agreement]AgreeNo
+INSERT IN ARRAY(asCustName;$j;1)
+asCustName{$j}:=[Customer]CustomerName
+INSERT IN ARRAY(asUserName;$j;1)
+asUserName{$j}:=[Customer]UserName
+INSERT IN ARRAY(asUnits;$j;1)
+asUnits{$j}:=[Unit]UnitNo
+INSERT IN ARRAY(asSUFacID;$j;1)//11206
+asSUFacID{$j}:=[Unit]SUFacilityID
+INSERT IN ARRAY(asStatus;$j;1)
+asStatus{$j}:="Sublet"
+INSERT IN ARRAY(adPaidTo;$j;1)
+adPaidTo{$j}:=[Agreement]PaidToDate
+INSERT IN ARRAY(arBalOwing;$j;1)
+arBalOwing{$j}:=[Agreement]BalanceOwing
+INSERT IN ARRAY(asSortNo;$j;1)
+//asSortNo{$j}:="|"  `ascii 124 
+asSortNo{$j}:=Substring([Unit]UnitNo;1;8)+"zzzzzzy"
+End if 
+NEXT RECORD([UnitAgree])
+End for 
+QUERY([Contacts];[Contacts]Facility=<>sFacility;*)
+QUERY([Contacts]; & ;[Contacts]FollowUpDone=False;*)
+QUERY([Contacts]; & ;[Contacts]Outcome="";*)
+QUERY([Contacts]; & ;[Contacts]CallDate>Current date-92)//Last 3 months added 9/6/04
+ORDER BY([Contacts];[Contacts]CallDate;>)
+$Size:=Size of array(asAgreeNo)
+$Recs:=Records in selection([Contacts])
+INSERT IN ARRAY(asAgreeNo;$Size+1;$Recs)
+INSERT IN ARRAY(asCustName;$Size+1;$Recs)
+INSERT IN ARRAY(asUserName;$Size+1;$Recs)
+INSERT IN ARRAY(asUnits;$Size+1;$Recs)
+INSERT IN ARRAY(asStatus;$Size+1;$Recs)
+INSERT IN ARRAY(adPaidTo;$Size+1;$Recs)
+INSERT IN ARRAY(arBalOwing;$Size+1;$Recs)
+INSERT IN ARRAY(asSortNo;$Size+1;$Recs)
+INSERT IN ARRAY(asSUFacID;$Size+1;$Recs)//11206
+For ($i;1;$Recs)
+asAgreeNo{$Size+$i}:=Substring([Contacts]ContactNo;6)
+asCustName{$Size+$i}:=[Contacts]ContactName
+asUserName{$Size+$i}:=[Contacts]UserName
+asUnits{$Size+$i}:=""
+asSUFacID{$Size+$i}:=0//11206
+If (<>bEnglishSpelling=False)
+asStatus{$Size+$i}:="SalesInq"
+Else 
+asStatus{$Size+$i}:="SalesEnq"
+End if 
+adPaidTo{$Size+$i}:=[Contacts]CallDate
+arBalOwing{$Size+$i}:=0
+//asSortNo{$Size+$i}:="}"  `ascii 125
+asSortNo{$Size+$i}:="zzzzzzzzzzzzzzz"
+NEXT RECORD([Contacts])
+End for 
+COPY ARRAY(asAgreeNo;asAgreemtNo)
+COPY ARRAY(asCustName;asCust)
+COPY ARRAY(asUnits;asUnit)
+COPY ARRAY(adPaidTo;adDate)
+COPY ARRAY(asStatus;asStat)
+COPY ARRAY(arBalOwing;arBal)
+COPY ARRAY(asSortNo;asSort)
+COPY ARRAY(asSUFacID;asSUFac)//11206
+SORT ARRAY(asSort;asUnit;asStat;asAgreemtNo;asCust;arBal;adDate;>)
+vFind:=""
+vLastFind:=""
+bAdd:=0
+End if 
+CLOSE WINDOW
+//Open window(2;35;Screen width-85;Screen height-100;Palette window ;"";"CloseBox"
+Case of 
+: ($CallCentre=True)
+Case of 
+: ([Facility]FacilityCode="KE@") | (([Facility]Country#"AU") & ([Facility]Country#"NZ"))
+DIALOG([Facility];"ControlCallKSS")
+: ([Facility]CentralAddress>"") | (<>sProduct="M@")
+DIALOG([Facility];"ControlInheritSm")
+Else 
+DIALOG([Facility];"ControlCall")
+End case 
+: ([Facility]CentralAddress>"") | (<>sProduct="M@")
+DIALOG([Facility];"ControlInherit")
+Else 
+DIALOG([Facility];"ControlBig")//"ControlBig"
+End case 
+//CLOSE WINDOW
+If (OK=1)
+CalendarSave 
+vDateString:=String(cwSelectDate;7)
+End if 
+Until (Shift down) | (<>tLoggingOn=False)
+<>iCalendar:=0

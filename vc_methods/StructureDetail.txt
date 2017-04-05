@@ -1,0 +1,63 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//This is a special procedure to output the structure of the this application
+//to a text file
+//4 Arrays = ◊asFlagsFacility, $asNamesFacility, $asNosFacility, $asSortFacility
+C_LONGINT($i;$j;$Type;$Length)
+C_BOOLEAN($Indexed;$Unique;$Invis)
+If (False)
+For ($i;2;2)//1;Count tables)   StructureArray
+$Table:=Table name($i)
+ARRAY TEXT($aNames;Get last field number($i))
+ARRAY LONGINT($aNumbers;Get last field number($i))
+ARRAY LONGINT($aSort;Get last field number($i))
+For ($j;1;Get last field number($i))
+$aNames{$j}:=Field name($i;$j)
+$aNumbers{$j}:=$j
+$p:=Get pointer("◊asFlags"+$Table)
+$aSort{$j}:=Num(Substring($p->{$j};4))
+End for 
+SORT ARRAY($aSort;$aNames;$aNumbers;>)
+$j:=Size of array($aSort)
+While ($aSort{$j}=999)
+DELETE FROM ARRAY($aNames{$j};$j)
+DELETE FROM ARRAY($aNumbers{$j};$j)
+DELETE FROM ARRAY($aSort{$j};$j)
+$j:=Size of array($aSort)
+End while 
+SET FIELD TITLES(Table($i)->;$aNames;$aNumbers)
+End for 
+End if 
+If (Current user="Designer") & (True)
+$Doc:=Create document("Structure.txt";"TEXT")
+For ($i;1;Get last table number)
+$Table:=Table name($i)
+For ($j;1;Get last field number($i))
+$Field:=Field name($i;$j)
+GET FIELD PROPERTIES($i;$j;$Type;$Length;$Indexed;$Unique;$Invis)
+SEND PACKET($Doc;"◊asFlags"+$Table+"{"+String($j)+"}:="+Char(Double quote)+"LAR"+String($j;"000")+Char(Double quote)+"`["+$Table+"]"+$Field+"=Type:"+String($Type))
+If ($Length>0)
+SEND PACKET($Doc;":"+String($Length))
+End if 
+SEND PACKET($Doc;GetStringfromBoolean ($Indexed;"Index,";"")+GetStringfromBoolean ($Unique;"Unique,";"")+GetStringfromBoolean ($Invis;"Invis,";"")+Char(13))
+End for 
+SEND PACKET($Doc;Char(13))
+End for 
+CLOSE DOCUMENT($Doc)
+If (False)
+ConfirmTwo (Get localized string("Edit data?"))
+If (OK=1)
+FORM SET INPUT([QueueLog];"ViewStructure")
+MODIFY SELECTION([QueueLog])
+End if 
+READ ONLY([QueueLog])
+ALL RECORDS([QueueLog])
+ORDER BY([QueueLog];[QueueLog]GateSection;>;[QueueLog]GateLetter;>)
+BREAK LEVEL(1)
+ACCUMULATE([QueueLog]GateLetter)
+FORM SET OUTPUT([QueueLog];"ListStructure")
+PRINT SELECTION([QueueLog])
+FORM SET OUTPUT([QueueLog];"Output")
+End if 
+Else 
+AlertMessage (Get localized string("You are not authorised to use this procedure."))
+End if 

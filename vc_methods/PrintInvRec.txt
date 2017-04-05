@@ -1,0 +1,177 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL(vBal)
+C_LONGINT($i;$j)
+C_TEXT($UnitCode)
+//N.B. Changes made 12/11/97 so that all invoices would print regardless of vDate
+//In effect vDate is not now used but still shows on the Enter Parameters Dialog
+If (PermissionsControl (136))
+SetFacility 
+If ([Facility]InvStatement>0)
+vMisc:=True
+PrintInvRecNew 
+Else 
+Open window((Screen width/2)-213;(Screen height/2)-251;(Screen width/2)+213;(Screen height/2)+251;5;"Print Invoice / Receipts")
+DIALOG([Facility];"PrintInv")
+CLOSE WINDOW
+$SaveValue:=[Facility]InvUseAgrBalFwd
+vReprintCopy:=False
+bPrtRec:=0
+bEmailReceipt:=0
+vMisc:=False
+If (OK=1)
+READ WRITE(*)
+If (bNext=1)
+tBoolean:=True
+Else 
+tBoolean:=False
+End if 
+UpdateSystem (61;->tBoolean;Get localized string("Unable to save System Control as it is in use by another process!"))//[System]InvUseAgrBalFwd
+If ([Facility]InvUseAgrBalFwd)
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; | ;[Agreement]BalanceOwing>0;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@")
+If (bCust=1)
+QUERY SELECTION([Agreement];[Agreement]CustomerCode>=vExistingCC;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]CustomerCode<=vNewCode)
+End if 
+If (bAgree=1)
+QUERY SELECTION([Agreement];[Agreement]AgreeNo>=vExisting;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]AgreeNo<=vNewAgreem)
+End if 
+CREATE EMPTY SET([Trxs];"ToPrint")
+For ($i;1;Records in selection([Agreement]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+If ([Trxs]TrxDate>Current date)
+$Date:=Current date
+Else 
+$Date:=[Trxs]TrxDate
+End if 
+$Date:=GetDate (1;Month of($Date-30);Year of($Date-30))
+
+[Agreement]BalFwd:=[Agreement]BalanceOwing
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & [Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+[Agreement]BalFwd:=[Agreement]BalFwd-Sum([Trxs]TotAmt)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & [Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+[Agreement]BalFwd:=[Agreement]BalFwd+Sum([Trxs]TotAmt)
+//[Agreement]FooterBalance:=[Agreement]BalFwd      
+[Agreement]FooterBalance:=[Agreement]BalanceOwing////fb11229
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)//Was $Date prior to v2.6 but then you can't print an old one
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vDateTo)
+CREATE SET([Trxs];"ThisAgreemt")
+UNION("ToPrint";"ThisAgreemt";"ToPrint")
+[Agreement]BalFwdDate:=vDate//Also was $Date prior to v2.6
+If (sUnit=1)
+$UnitCode:=Substring([Agreement]UnitsOccup;1;5)+[Agreement]CustomerCode
+Else 
+$UnitCode:=[Agreement]CustomerCode+[Agreement]AgreeNo
+End if 
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TotAmt;<)
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+//If ([Transaction]Charge)
+//[Agreement]BalFwd:=[Agreement]BalFwd-[Transaction]TotAmt
+//Else 
+//[Agreement]BalFwd:=[Agreement]BalFwd+[Transaction]TotAmt
+//End if 
+If ($UnitCode#[Trxs]UnitNo)
+[Trxs]UnitNo:=$UnitCode
+SAVE RECORD([Trxs])
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([Facility]InvStatement=1)
+[Agreement]BalFwd:=0
+End if 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+Else 
+QUERY([Customer];[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; | ;[Customer]Balance>0)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+If (bCust=1)
+QUERY SELECTION([Customer];[Customer]CustomerCode>=vExistingCC;*)
+QUERY SELECTION([Customer]; & ;[Customer]CustomerCode<=vNewCode)
+End if 
+CREATE EMPTY SET([Trxs];"ToPrint")
+For ($i;1;Records in selection([Customer]))
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+If ([Trxs]TrxDate>Current date)
+$Date:=Current date
+Else 
+$Date:=[Trxs]TrxDate
+End if 
+$Date:=GetDate (1;Month of($Date-30);Year of($Date-30))
+[Customer]BalFwd:=[Customer]Balance
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & [Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+[Customer]BalFwd:=[Customer]BalFwd-Sum([Trxs]TotAmt)
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & [Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+[Customer]BalFwd:=[Customer]BalFwd+Sum([Trxs]TotAmt)
+[Customer]FooterBalance:=[Customer]BalFwd
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)//Was $Date prior v2.6
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vDateTo)
+CREATE SET([Trxs];"ThisAgreemt")
+UNION("ToPrint";"ThisAgreemt";"ToPrint")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TotAmt;<)
+RELATE ONE([Trxs]AgreeNo)
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+[Customer]BalFwdDate:=vDate//Was $Date prior v2.6
+If (sUnit=1)
+$UnitCode:=Substring([Agreement]UnitsOccup;1;5)+[Customer]CustomerCode
+Else 
+$UnitCode:=[Customer]CustomerCode
+End if 
+FIRST RECORD([Trxs])
+For ($j;1;Records in selection([Trxs]))
+//If ([Transaction]Charge)
+//[Customer]BalFwd:=[Customer]BalFwd-[Transaction]TotAmt
+//Else 
+//[Customer]BalFwd:=[Customer]BalFwd+[Transaction]TotAmt
+//End if 
+If ($UnitCode#[Trxs]UnitNo)
+[Trxs]UnitNo:=$UnitCode
+SAVE RECORD([Trxs])
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([Facility]InvStatement=1)
+[Customer]BalFwd:=0
+End if 
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+End if 
+USE SET("ToPrint")
+CLEAR SET("ToPrint")
+CLEAR SET("ThisAgreemt")
+If (Records in selection([Trxs])>0)
+If (sAll=1)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]TotAmt;<)
+Else 
+ORDER BY([Trxs];[Trxs]UnitNo;>;[Trxs]TrxDate;>;[Trxs]TotAmt;<)
+End if 
+PrintInvRecCode (2)
+Else 
+AlertMessage (Get localized string("There are no invoices to print for that selection."))
+End if 
+FORM SET OUTPUT([Trxs];"TransOut")
+End if 
+READ ONLY(*)
+UnloadAll 
+tBoolean:=$SaveValue
+UpdateSystem (61;->tBoolean;Get localized string("Unable to save System Control as it is in use by another process!"))//[System]InvUseAgrBalFwd
+End if 
+End if 

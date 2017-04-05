@@ -1,0 +1,308 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//True if abort
+C_LONGINT($1;$i;$j;$l;$LastDays)//Plan No to process
+C_DATE($FindDate)
+C_POINTER($p)
+C_TEXT($AgreeCustomer)
+$0:=False
+$AgreeCustomer:=""
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]DaysAfter#0;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=$1)
+ORDER BY([Notices];[Notices]DaysAfter;>)
+$LastDays:=0
+FIRST RECORD([Notices])
+For ($i;1;Records in selection([Notices]))
+
+GOTO XY(2;3)
+MESSAGE(Get localized string("Find agreements for notice")+" - "+[Notices]Description+"...                        ")
+ON ERR CALL("InvalidNotice")
+vOKtoPrint:=True
+//23/02 DM commented the code below to speed up Daily
+//veLetter:=WR New offscreen area 
+//DecompressBlob (->[Notices]Letter)  //EXPAND BLOB([Notices]Letter)
+//WR BLOB TO AREA (veLetter;[Notices]Letter)
+ON ERR CALL("ErrorLog")
+//WR DELETE OFFSCREEN AREA (veLetter)
+If (vOKtoPrint)
+If ([Notices]RefDateField#11) & ([Notices]RefDateField#44) & ([Notices]RefDateField#16) & ([Notices]RefDateField#3) & ([Notices]RefDateField#4) & ([Notices]RefDateField#41) & ([Notices]RefDateField#61) & ([Notices]RefDateField#48) & ([Notices]RefDateField#70) & ([Notices]RefDateField#20) & ([Notices]RefDateField#75)
+If ([Notices]DaysAfter<0)
+If ([Notices]Description="Insur@")
+[Notices]RefDateField:=16//InsureExpiry
+Else 
+[Notices]RefDateField:=11//NextBillDate
+End if 
+Else 
+[Notices]RefDateField:=44//LateCycleStDate
+End if 
+End if 
+Case of 
+: ([Notices]RefDateField=70)// CCExpiryDate - getting set on Customer Trigger
+$p:=Field(5;124)
+: ([Notices]RefDateField=75)// DOB
+$p:=Field(5;100)
+Else 
+$p:=Field(4;[Notices]RefDateField)
+End case 
+If ([Notices]UseAgrDaysPrior=True) & ([Notices]DaysAfter<0) & (([Notices]RefDateField=11) | ([Notices]RefDateField=16) | ([Notices]RefDateField=61))//Reminder type notice
+If ([Notices]BalanceZeroLess=True) & ([Notices]BillNextRent=True)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)//23/02/17 DM Added to speed up Daily
+APPLY TO SELECTION([Agreement];[Agreement]BalFwd:=[Agreement]BalanceOwing+[Agreement]RentAmt)
+End if 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+If ([Notices]BalanceZeroLess=True)
+If ([Notices]BillNextRent=True)
+QUERY([Agreement]; & ;[Agreement]BalFwd>0;*)
+Else 
+QUERY([Agreement]; & ;[Agreement]BalanceOwing>0;*)
+End if 
+End if 
+QUERY([Agreement]; & ;[Agreement]NoticePlanNo=$1;*)
+If ([Notices]SendToAll=False) & ([Notices]RefDateField#61)
+QUERY([Agreement]; & ;[Agreement]SendNotices=True;*)
+End if 
+If ([Notices]LetterBlank & [Notices]EmailBlank) & ([Notices]SMSMessage#"")//If no Letter or Email content on SMS notice, check whether customer has it set to send. Added 8116 28/03/11 NGBW
+QUERY([Agreement]; & ;[Agreement]SendNoticeSMS=True;*)
+End if 
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@")
+If ([Notices]OnePerCustomer=True)
+ORDER BY([Agreement]CustomerCode)
+$AgreeCustomer:=""
+End if 
+FIRST RECORD
+CREATE EMPTY SET([Agreement];"Temp")
+For ($j;1;Records in selection)
+If ([Agreement]NoticeDaysPrior>0) & ([Agreement]NoticeDaysPrior<=28)
+$FindDate:=[Facility]LastDaily+[Agreement]NoticeDaysPrior
+Else 
+$FindDate:=[Facility]LastDaily-[Notices]DaysAfter
+End if 
+If ($p->=$FindDate) & (([Notices]RefDateField=61) | ([Agreement]AutoPay=False) | ([Notices]ExcludeifAutoPay=False))//Dont get reminders if AutoPay
+If ([Notices]OnePerCustomer=True) & ([Agreement]CustomerCode=$AgreeCustomer)
+Else 
+ADD TO SET([Agreement];"Temp")
+End if 
+End if 
+$AgreeCustomer:=[Agreement]CustomerCode
+NEXT RECORD
+End for 
+Else //Late kind of notices that go after the date
+If ([Notices]BalanceZeroLess=True) & ([Notices]BillNextRent=True)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)//23/02/17 DM Added to speed up Daily
+APPLY TO SELECTION([Agreement];[Agreement]BalFwd:=[Agreement]BalanceOwing+[Agreement]RentAmt)
+End if 
+SET AUTOMATIC RELATIONS(True;False)
+$FindDate:=[Facility]LastDaily-[Notices]DaysAfter
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+If ([Notices]BalanceZeroLess=True)
+If ([Notices]BillNextRent=True)
+QUERY([Agreement]; & ;[Agreement]BalFwd>0;*)
+Else 
+QUERY([Agreement]; & ;[Agreement]BalanceOwing>0;*)
+End if 
+End if 
+If ([Notices]RefDateField#75) & ([Notices]RefDateField#70)//19/08/13 DAM Added second condition for CCExpiryDate
+QUERY([Agreement]; & ;$p->=$FindDate;*)
+End if 
+If ([Notices]DaysAfter>0) & (([Notices]RefDateField=44) | ([Notices]RefDateField=48))//2nd condition added 2.6.2 so MoveIn / MoveOut / RentIncrease letters will go
+If ([Notices]FeeonRentOnly)//3.1.4
+QUERY([Agreement]; & ;[Agreement]TotRentUnpaid>[Facility]MinBalArrears;*)
+End if 
+QUERY([Agreement]; & ;[Agreement]BalanceOwing>[Facility]MinBalArrears;*)
+End if 
+If ([Notices]ExcludeifAutoPay=True)//Prior to v3.1 this test was done after an Else statement in the condition above
+QUERY([Agreement]; & ;[Agreement]AutoPay=False;*)//Dont get reminders if AutoPay
+End if 
+If ([Notices]SendToAll=False)
+QUERY([Agreement]; & ;[Agreement]SendNotices=True;*)
+End if 
+If ([Notices]RefDateField=4) & ([Notices]DaysAfter>0)//Condition added 2.6.2 so that MoveOut will go
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+Else 
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+End if 
+//If ([Notices]RefDateField=41)  //if rent increase letter, don't send if NewRentFrom has been populated by customer due to come off a billing plan. Added 7.1.0.
+//QUERY([Agreement]; & ;[Agreement]NewBillingPlan="";*)
+//End if 
+If ([Notices]LetterBlank & [Notices]EmailBlank) & ([Notices]SMSMessage#"")//If no Letter or Email content on SMS notice, check whether customer has it set to send. Added 8116 28/03/11 NGBW
+QUERY([Agreement]; & ;[Agreement]SendNoticeSMS=True;*)
+End if 
+
+/////////////SMSDaily
+If (([Notices]LetterBlank & [Notices]EmailBlank) & ([Notices]SMSMessage#"") & ([Notices]SMSAuto=True))//If no Letter or Email content on SMS notice, check whether customer has it set to send. Added 8116 28/03/11 NGBW
+QUERY([Agreement]; & ;[Agreement]SendNoticeSMS=True;*)
+QUERY([Agreement]; & ;[Agreement]AutoPay=True;*)
+QUERY([Agreement]; & ;[Agreement]AuthCCSigned<=Current date;*)
+
+End if 
+
+QUERY([Agreement]; & ;[Agreement]NoticePlanNo=$1)
+If ([Notices]RefDateField=75)
+$BDay:=Day of([Facility]LastDaily)
+$BMonth:=Month of([Facility]LastDaily)
+QUERY SELECTION BY FORMULA([Agreement];(Day of([Customer]DateofBirth)=$BDay) & (Month of([Customer]DateofBirth)=$BMonth))
+End if 
+//19/08/13 DAM Added to find records for CCExpiry
+If ([Notices]RefDateField=70)
+QUERY SELECTION BY FORMULA([Agreement];[Customer]CCExpiryDate=$FindDate)
+End if 
+
+SET AUTOMATIC RELATIONS(False;False)
+If ([Notices]OnePerCustomer=True)
+ORDER BY([Agreement]CustomerCode)
+$AgreeCustomer:=""
+End if 
+If ([Notices]DaysAfter>0) & ([Notices]RefDateField>5) & ([Notices]RefDateField#41)//This condition added 2/4/98 to remove any who had arrears because the next rent 
+CREATE EMPTY SET([Agreement];"Temp")
+For ($j;1;Records in selection([Agreement]))
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Letters]; & ;[Letters]LetterDesc=[Notices]Description;*)//Main purpose is when DaysAfter is changed to stop notice going again
+QUERY([Letters]; & ;[Letters]DateSent>=([Facility]LastDaily-5);*)//Only works if [Notice]DaysAfter is changed within 5 days
+QUERY([Letters]; & ;[Letters]DateSent<=([Facility]LastDaily+5))
+If (Records in selection([Letters])=0)//This & above 3 lines added 3.1.3 to stop Lates ever going again on same date
+Case of 
+: ([Notices]FeeonRentOnly) & ([Agreement]BalanceOwing>[Agreement]TotRentUnpaid)//Added 3.1.4
+[Agreement]BalFwd:=[Agreement]TotRentUnpaid
+: ([Notices]FeeonMonthlyRent) & ([Agreement]TotRentUnpaid>0) & ([Agreement]BalanceOwing>0)
+[Agreement]BalFwd:=([Agreement]RentAmt/[Agreement]MthsAdv)
+Else 
+[Agreement]BalFwd:=[Agreement]BalanceOwing
+End case 
+If ([Agreement]LastBillDate>[Facility]LastDaily)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+If ([Notices]FeeonRentOnly)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@RF";*)//3.1.4 This could cause problem if payments made after [system]lastdaily
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>[Facility]LastDaily)
+If (Records in selection([Trxs])>0)
+FIRST RECORD([Trxs])
+Repeat 
+If ([Trxs]Charge)
+[Agreement]BalFwd:=[Agreement]BalFwd-[Trxs]TotAmt//3.1.4 Was BalOwing
+Else 
+[Agreement]BalFwd:=[Agreement]BalFwd+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+Until (End selection([Trxs]))
+End if 
+If ([Agreement]BalFwd>[Facility]MinBalArrears)//3.5.4 Changed BalOwing to BalFwd
+If ([Notices]OnePerCustomer=True) & ([Agreement]CustomerCode=$AgreeCustomer)
+Else 
+ADD TO SET([Agreement];"Temp")
+End if 
+End if 
+Else 
+If ([Notices]OnePerCustomer=True) & ([Agreement]CustomerCode=$AgreeCustomer)
+Else 
+ADD TO SET([Agreement];"Temp")
+End if 
+End if 
+SAVE RECORD([Agreement])//Added 3.1.4 - This to save [agreement]balfwd
+End if 
+$AgreeCustomer:=[Agreement]CustomerCode
+NEXT RECORD([Agreement])
+End for 
+Else 
+If ([Notices]OnePerCustomer=True)
+CREATE EMPTY SET([Agreement];"Temp")
+For ($k;1;Records in selection([Agreement]))
+If ([Agreement]CustomerCode=$AgreeCustomer)
+Else 
+ADD TO SET([Agreement];"Temp")
+End if 
+$AgreeCustomer:=[Agreement]CustomerCode
+NEXT RECORD([Agreement])
+End for 
+Else 
+CREATE SET([Agreement];"Temp")
+End if 
+End if //End of code added 2/4/98
+End if 
+USE SET("Temp")
+QUERY SELECTION([Agreement];[Agreement]NoticeBilled#"")
+If (Records in selection>0)
+Repeat 
+AlertMessage (Get localized string("WARNING - Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("was due to be processed for")+" "+Replace string([Agreement]NoticeBilled;"AA";"")+", "+Get localized string("but will now be processed for")+" "+[Notices]Description+".  "+Get localized string("You will need to manually process")+" "+[Agreement]NoticeBilled+".")
+[Agreement]NoticeAmtToBill:=0//SDD 18/1/13 This contains the rent amount to be billed which bills as late fee if not reset
+SAVE RECORD
+NEXT RECORD
+Until (End selection=True)
+End if 
+USE SET("Temp")
+APPLY TO SELECTION([Agreement];[Agreement]NoticeBilled:=[Notices]Description)
+If ([Notices]RefDateField>5)//Code below not relevant for Move-In / Move-Out letters
+If ([Notices]BillNextRent=True) & ([Notices]DaysAfter<0)//Added second condition 16/2/98
+If ([Facility]BillWithMoveOut=False)// Modified by: nicholas.wykes (14/04/2011) Added for KSS
+QUERY SELECTION([Agreement];[Agreement]MoveOut<([Facility]LastDaily+15);*)//Added all this to stop rent charge when Moveout advised
+QUERY SELECTION([Agreement]; & ;[Agreement]MoveOut#!00-00-00!)
+If (Records in selection>0)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeBilled:="No Rent-MoveOut Imminent")
+CREATE SET([Agreement];"Temp2")
+DIFFERENCE("Temp";"Temp2";"Temp")
+CLEAR SET("Temp2")
+End if 
+USE SET("Temp")
+End if 
+DailyPrepare ("")
+Else 
+APPLY TO SELECTION([Agreement];[Agreement]NoticeBillRent:=False)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeDate:=[Facility]LastDaily)
+// If ([Notices]MinimumCharge # 0) | ([Notices]MinimumPCent # 0)
+If ([Notices]AnalysisCode#"")// Modified by: nicholas.wykes (15/08/2011) Check to make sure late fees are not added without an analysis code
+If ([Notices]TieredLateFeeOn=False)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=RoundAmt ([Agreement]BalFwd*[Notices]MinimumPCent/100))//Prior to 3.1.4 was BalOwing
+CREATE SET("Temp")
+QUERY SELECTION([Agreement];[Agreement]NoticeAmtToBill<[Notices]MinimumCharge)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=[Notices]MinimumCharge)
+USE SET("Temp")
+Else 
+GenerateTieredLate 
+ChargeTieredLate 
+End if 
+If ([Notices]LateFeeUnit=True)
+FIRST RECORD([Agreement])//added 05/05 to add late fees for each unit if that option under [Notices] is ticked
+For ($l;1;Records in selection([Agreement]))
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([Unit])>1)
+[Agreement]NoticeAmtToBill:=[Agreement]NoticeAmtToBill*Records in selection([Unit])
+SAVE RECORD([Agreement])
+End if 
+NEXT RECORD([Agreement])
+End for 
+USE SET("Temp")
+End if 
+If ([Notices]MinimumCharge#0) | ([Notices]MinimumPCent#0)
+QUERY SELECTION([Agreement];[Agreement]LateFeeAmt>0)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=[Agreement]LateFeeAmt)
+End if 
+End if 
+USE SET("Temp")
+// End if REMOVED THIS SO THAT LATE FEE IS SET TO ZERO 17/2/99
+End if 
+CREATE SET("Temp")
+APPLY TO SELECTION([Agreement];[Agreement]NoticeSent:=False)
+//Filter out any who have not received previous notice
+//Notices must be received in order
+//LastNotice is reset to zero once payment is made to less than System MinBalance
+If ($LastDays>0)
+QUERY SELECTION([Agreement];[Agreement]LastNotice=$LastDays)
+End if 
+If ([Notices]LateCycleIgnore=False)
+$LastDays:=[Notices]DaysAfter
+End if 
+End if 
+Else 
+$0:=True
+End if 
+APPLY TO SELECTION([Agreement];[Agreement]NoticeSent:=True)
+USE SET("Temp")
+If ([Notices]OnlyBillifLtrSent=True)//I think this means it will only be sent if the previous notice was also sent
+QUERY SELECTION([Agreement];[Agreement]NoticeSent=False)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=0)
+End if 
+CLEAR SET("Temp")
+NEXT RECORD([Notices])
+End for //End of notices loop

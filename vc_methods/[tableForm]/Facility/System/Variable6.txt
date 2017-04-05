@@ -1,0 +1,504 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+//If (<>sCurrentUser="AdminSupport")
+C_TEXT($UUID)
+C_BOOLEAN($Upload)
+C_TEXT($date;$vCustomerOrg)
+C_TEXT($Month)
+C_TEXT($Year)
+C_TEXT($ContractDayString;$ContractMonthString;$ContractStartDate)
+C_LONGINT($vContractYear;$vContractMonth;$vContractDay)
+C_DATE($varDate)
+C_TEXT($varStrDate;$vCustomerFirstName)
+C_BLOB($blank)
+
+
+$Country:=[Facility]Country
+READ WRITE([Customer])
+//READ WRITE([Facility])
+LOAD RECORD([Customer])
+$Upload:=False
+
+
+
+$varStrDate:=""
+$varDate:=Current date
+$varStrDate:=String(Month of($varDate))
+If (Length($varStrDate)<2)
+$varStrDate:="0"+$varStrDate
+End if 
+If (Length(String(Year of($varDate)))>2)
+$varStrDate:=$varStrDate+Substring(String(Year of($varDate));3;2)
+Else 
+$varStrDate:=$varStrDate+String(Year of($varDate))
+End if 
+
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]CCExpiryDate#"";*)
+QUERY([Customer]; & ;[Customer]CCExpiry#"";*)
+QUERY([Customer]; & ;[Customer]CCNo#"";*)
+//QUERY([Customer]; & ;[Customer]CCExpiry >= $varStrDate)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts>0)
+
+APPLY TO SELECTION([Customer];[Customer]customerProfileID:="")
+
+$SetSize:=Records in selection([Customer])
+$Count:=0
+
+If (aDescriptions)#4
+
+Open window(20;50;600;150;0)
+[Facility]MerchantDetails:=aDescriptions{aDescriptions}+","+vLeg1+","+vLeg2+","+vLeg3+","+vLeg4+","+vLeg5+","+String(bSwipe)+","
+FIRST RECORD([Customer])
+
+
+For ($i;1;Records in selection([Customer]))
+
+//$CCno:=""  //FB11185
+//$CCno:=Tokenizer ([Customer]CCNo;False)//FB11185
+
+GOTO XY(2;2)
+MESSAGE("Processing Customer "+String($i)+" of "+String(Records in selection([Customer])))//Johnno
+
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+
+If (Records in selection([Agreement])#0)
+READ WRITE([Customer])
+$Year:="20"+Substring([Customer]CCExpiry;3;2)
+$Month:=Substring([Customer]CCExpiry;1;2)
+$date:=$Year+"-"+$Month
+
+
+If (aDescriptions{aDescriptions}="Advam StoredPAN") & (String(aDescriptions)#aDescriptions{0})// Advam StoredPAN
+If (vLeg2#"") & (vLeg3#"") & (vLeg1#"")
+$Upload:=True
+If ([Customer]customerProfileID="") & ([Customer]CCNo#"")
+//$error:=WSC_AdvamInsertStoredPAN (Tokenizer ([Customer]CCNo;False);[Customer]CCExpiry;[Customer]CustomerCode;[Customer]CCName;GetTextNo ([Facility]MerchantDetails;2;",");GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");Num(GetTextNo ([Facility]MerchantDetails;5;","));Num(GetTextNo ([Facility]MerchantDetails;6;","));False)
+$error:=WSC_AdvamInsertStoredPAN (Decode256 ;[Customer]CCExpiry;[Customer]CustomerCode;[Customer]CCName;GetTextNo ([Facility]MerchantDetails;2;",");GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");Num(GetTextNo ([Facility]MerchantDetails;5;","));Num(GetTextNo ([Facility]MerchantDetails;6;","));False)
+
+//$error:=WSC_AdvamInsertStoredPAN ($CCno;[Customer]CCExpiry;[Customer]CustomerCode;[Customer]CCName;GetTextNo ([Facility]MerchantDetails;2;",");GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");Num(GetTextNo ([Facility]MerchantDetails;5;","));Num(GetTextNo ([Facility]MerchantDetails;6;","));False)
+//FB11185
+If ($error#"ERR@")
+[Customer]CCInfo:=""
+[Customer]customerProfileID:=[Customer]CustomerCode
+Else 
+[Customer]CCInfo:=$error
+End if 
+Else 
+[Customer]CCInfo:="CCNo blank"
+End if 
+Else 
+AlertMessage (Get localized string("Please check the Password and Username"))
+End if 
+End if 
+
+
+If (aDescriptions{aDescriptions}="AuthorizeNet CIM") & (String(aDescriptions)#aDescriptions{0})// AuthorizeNet CIM
+If (vLeg2#"") & (vLeg3#"")
+$Upload:=True
+If ([Customer]CCNo#"")
+If ([Customer]Organization=False)
+$vCustomerOrg:="individual"
+Else 
+$vCustomerOrg:="business"
+End if 
+If ([Customer]customerProfileID="")
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+//$Error:=WSC_AuthnetCreateCustProfile (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");[Agreement]RAgreeNo;[Customer]CustomerName;$vCustomerOrg;[Customer]FirstName;[Customer]CustomerName;[Customer]CustomerName;[Customer]MailAddress;[Customer]MailCity;[Customer]MailState;[Customer]MailPostZIPCode;[Customer]Country;Tokenizer ([Customer]CCNo;False);$date;"testMode";False)
+$Error:=WSC_AuthnetCreateCustProfile (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");[Agreement]RAgreeNo;[Customer]CustomerName;$vCustomerOrg;[Customer]FirstName;[Customer]CustomerName;[Customer]CustomerName;[Customer]MailAddress;[Customer]MailCity;[Customer]MailState;[Customer]MailPostZIPCode;[Customer]Country;Decode256 ;$date;"testMode";False)
+
+
+//$Error:=WSC_AuthnetCreateCustProfile (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");[Agreement]RAgreeNo;[Customer]CustomerName;$vCustomerOrg;[Customer]FirstName;[Customer]CustomerName;[Customer]CustomerName;[Customer]MailAddress;[Customer]MailCity;[Customer]MailState;[Customer]MailPostZIPCode;[Customer]Country;$CCno;$date;"testMode";False)
+//FB11185
+If ($Error#"Error")
+[Customer]CCInfo:=""
+[Customer]customerProfileID:=AuthnetCCPResultProfileID
+[Customer]custPaymentProfID:=AuthnetCCPResultProfileIDList
+Else 
+[Customer]CCInfo:=AuthnetCCPCode+"-"+AuthnetCCPResultText
+End if 
+End if 
+Else 
+[Customer]CCInfo:="CCNo Blank"
+End if 
+Else 
+AlertMessage (Get localized string("Please check the Password and Username"))
+End if 
+End if 
+
+
+If (aDescriptions{aDescriptions}="NAB CM") & (String(aDescriptions)#aDescriptions{0})// Thinc CM
+If (vLeg2#"") & (vLeg3#"")
+$Upload:=True
+If ([Customer]customerProfileID="") & ([Customer]CCNo#"") & ([Customer]CCExpiry#"")
+//$Error:=WSC_NAB (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");GetTextNo ([Facility]MerchantDetails;6;",");"addcrn";"5";[Customer]customerProfileID;Tokenizer ([Customer]CCNo;False);Substring([Customer]CCExpiry;1;2)+"/"+Substring([Customer]CCExpiry;3;4);"";"";"";0;$Country;"")
+$Error:=WSC_NAB (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");GetTextNo ([Facility]MerchantDetails;6;",");"addcrn";"5";[Customer]customerProfileID;Decode256 ;Substring([Customer]CCExpiry;1;2)+"/"+Substring([Customer]CCExpiry;3;4);"";"";"";0;$Country;"")
+
+
+//$Error:=WSC_NAB (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");GetTextNo ([Facility]MerchantDetails;6;",");"addcrn";"5";[Customer]customerProfileID;$CCno;Substring([Customer]CCExpiry;1;2)+"/"+Substring([Customer]CCExpiry;3;4);"";"";"";0;$Country;"")
+//FB11185
+If ($Error#"ERR@")
+[Customer]CCInfo:=""
+[Customer]customerProfileID:=[Customer]CustomerCode
+Else 
+[Customer]CCInfo:=$Error
+End if 
+Else 
+[Customer]CCInfo:="CC details"
+End if 
+Else 
+AlertMessage (Get localized string("Please check the Password and Username"))
+End if 
+End if 
+
+
+If (aDescriptions{aDescriptions}="Transaction Express")//Added By Hamid 24/11/2014
+//vCCExpiry:=Substring(vCCExpiryYear;3;2)+vCCExpiryMonth
+If ([Customer]customerProfileID="")
+$error:=TrxEpressAddCustWallet (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");"5";"0";[Customer]CCName;[Customer]CCExpiry;"1")
+If ($error#"ERR@")
+[Customer]customerProfileID:=custID
+[Customer]custPaymentProfID:=PaymentID
+//:=vCCName
+//[Customer]CCNo:="000000000000"+Substring(vCCNo;Length(vCCNo)-3;4)
+//:=vCCExpiryMonth+Substring(vCCExpiryYear;3;2)
+//vCCNo:=""
+//vTrack:=""
+//vCCExpiry:=""
+//vCCExpiryMonth:=""
+//vCCExpiryYear:=""
+//vCCName:=""
+//SAVE RECORD([Customer])
+//ACCEPT
+//OBJECT SET VISIBLE(bAbort;False)
+//OBJECT SET ENABLED(bNew;False)
+//OBJECT SET ENABLED(bEdit;True)
+//OBJECT SET ENABLED(bDelCC;True)
+End if 
+End if 
+End if 
+
+
+If (aDescriptions{aDescriptions}="eMatters")//Added by Hamid - 09/09/2015 - 9750
+
+If ((vLeg2#"") & (vLeg3#"") & (vLeg4#""))
+$Upload:=True
+$readers:=Substring(GetTextNo ([Facility]MerchantDetails;3;",");1;20)
+$Name:=[Customer]CustomerName
+$Email:=""
+$CreditCardHolderName:=[Customer]CCName
+//$CreditCardNumber:=Tokenizer ([Customer]CCNo;False)
+$CreditCardNumber:=Decode256 
+$CreditCardExpiryMonth:=Substring([Customer]CCExpiry;1;2)
+$CreditCardExpiryYear:=Substring([Customer]CCExpiry;3;2)
+$CVV:=""
+$UID:=String(Generate UUID)
+
+If ([Customer]customerProfileID="")
+$error:=eMattersBillSmartAddEditDel ($readers;$Name;$Email;$CreditCardHolderName;$CreditCardNumber;$CreditCardExpiryMonth;$CreditCardExpiryYear;$CVV;$UID;"Add";True)
+If ($error="Ok")
+[Customer]customerProfileID:=$UID//[Customer]CustomerCode
+[Customer]custPaymentProfID:=$UID//[Customer]CustomerCode
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Please check the Username, Password and PIN Code."))
+End if 
+
+End if 
+
+
+If (aDescriptions{aDescriptions}="Realex")
+If ((vLeg2#"") & (vLeg3#"") & (vLeg5#""))
+$Upload:=True
+$Business:="Business"
+$CustCreate:=False
+$merchantid:=GetTextNo ([Facility]MerchantDetails;3;",")
+$SharedSecret:=GetTextNo ([Facility]MerchantDetails;4;",")
+
+
+$UUID:=Generate UUID//Ref
+$PayerType:="payer-new"
+
+$vCustomerFirstName:=[Customer]FirstName
+$Name:=[Customer]CustomerName
+
+$CreditCardHolderName:=[Customer]CCName
+//$CreditCardNumber:=Tokenizer ([Customer]CCNo;False)
+$CreditCardNumber:=Decode256 (True)
+
+//$CreditCardNumber:=$CCno  //FB11185
+$expdate:=[Customer]CCExpiry
+
+$Success:=RealVaultPayerSetUpEdit ($merchantid;$UUID;$Business;$vCustomerFirstName;$Name;$PayerType;$SharedSecret)
+
+If ($Success="S")
+$CustCreate:=True
+[Customer]customerProfileID:=$UUID
+End if 
+
+If ($CustCreate)
+$ref:=$UUID
+$type:="VISA"//SWITCH  and LASER are same as VISA
+[Customer]SpecialOption:=54
+If ($CreditCardNumber="51@") | ($CreditCardNumber="52@") | ($CreditCardNumber="53@") | ($CreditCardNumber="54@") | ($CreditCardNumber="55@")//MC
+$type:="MC"
+[Customer]SpecialOption:=62
+End if 
+
+If ($CreditCardNumber="37@") | ($CreditCardNumber="34@")//It is an Amex card
+$type:="AMEX"
+[Customer]SpecialOption:=55
+End if 
+If (($CreditCardNumber="300@") | ($CreditCardNumber="301@") | ($CreditCardNumber="309@") | ($CreditCardNumber="39@") | ($CreditCardNumber="38@") | ($CreditCardNumber="302@") | ($CreditCardNumber="303@") | ($CreditCardNumber="304@") | ($CreditCardNumber="305@") | ($CreditCardNumber="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$type:="DINERS"
+[Customer]SpecialOption:=56
+End if 
+
+$Success2:=RealexAddCCDetails ($merchantid;$ref;$UUID;$CreditCardNumber;$expdate;$CreditCardHolderName;$type;$SharedSecret)
+
+Else 
+AlertMessage (Get localized string("Please check the MerchantID, Shared Secret, Rebate Password and Refund Password."))
+End if 
+End if 
+End if 
+
+SAVE RECORD([Customer])
+
+End if 
+NEXT RECORD([Customer])
+//$Count:=$Count+1
+//<>ProgressInd:=($Count/$SetSize)*100
+End for 
+
+Else //Ezi
+
+Open window(20;50;600;150;0)
+If (vCCKey1#"") & (vCCKey2#"") & (vCCKey3#"") & (vCCKey4#"") & (vCCKey5#"")
+$Upload:=True
+[Facility]MerchantDetails:=aDescriptions{aDescriptions}+","+vCCKey1+","+vCCKey2+","+vCCKey3+","+vCCKey4+","+vCCKey5+","+vLeg4+","+vLeg5+","+String(bSwipe)+","
+If (aDescriptions{aDescriptions}="EziDebit") & (String(aDescriptions)#aDescriptions{0})
+
+FIRST RECORD([Customer])
+
+For ($i;1;Records in selection([Customer]))
+GOTO XY(2;2)
+MESSAGE("Processing Customer "+String($i)+" of "+String(Records in selection([Customer])))//Johnno
+
+
+$Year:="20"+Substring([Customer]CCExpiry;3;2)
+$Month:=Substring([Customer]CCExpiry;1;2)
+$DigKey:=String(GetTextNo ([Facility]MerchantDetails;2;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;3;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;4;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;5;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;6;","))
+If ([Customer]customerProfileID="")
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+If ([Agreement]AuthCCSigned#Date("00/00/00")) & ([Customer]CCNo#"")
+$vContractYear:=Year of([Agreement]AuthCCSigned)
+$vContractMonth:=Month of([Agreement]AuthCCSigned)
+$vContractDay:=Day of([Agreement]AuthCCSigned)
+If ($vContractMonth)<10
+$ContractMonthString:="0"+String($vContractMonth)
+Else 
+$ContractMonthString:=String($vContractMonth)
+End if 
+If ($vContractDay)<10
+$ContractDayString:="0"+String($vContractDay)
+Else 
+$ContractDayString:=String($vContractDay)
+End if 
+$ContractStartDate:=String($vContractYear)+"-"+$ContractMonthString+"-"+$ContractDayString
+ON ERR CALL("Err_CCUpload")
+$UUID:=Generate UUID
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;[Agreement]AgreeNo;[Customer]CustomerName;[Customer]FirstName;[Customer]StreetAddress;"";[Customer]StreetSuburb;[Customer]StreetState;[Customer]StreetZIPCode;"";"";$ContractStartDate;"No";"No";"No";"";False;True)
+$Upload:=True
+ON ERR CALL("ErrorLog")
+If ($Success="S") | ($Success="P")
+[Customer]CCInfo:=""
+[Customer]customerProfileID:=$UUID
+//$Success2:=WSC_EziEditCustomerCreditCard ($DigKey;"";[Customer]customerProfileID;[Customer]CCName;Tokenizer ([Customer]CCNo;False);$Year;$Month;"";"YES";"";False)
+$Success2:=WSC_EziEditCustomerCreditCard ($DigKey;"";[Customer]customerProfileID;[Customer]CCName;Decode256 ;$Year;$Month;"";"YES";"";False)
+//FB11185
+//$Success2:=WSC_EziEditCustomerCreditCard ($DigKey;"";[Customer]customerProfileID;[Customer]CCName;$CCno;$Year;$Month;"";"YES";"";False)
+
+
+If ($Success2="S") | ($Success2="P")
+//[Customer]SpecialOption:=54
+//If (Tokenizer ([Customer]CCNo;False)="51@") | (Tokenizer ([Customer]CCNo;False)="52@") | (Tokenizer ([Customer]CCNo;False)="53@") | (Tokenizer ([Customer]CCNo;False)="54@") | (Tokenizer ([Customer]CCNo;False)="55@")  //MC
+//[Customer]SpecialOption:=62
+//End if 
+//If (Tokenizer ([Customer]CCNo;False)="37@") | (Tokenizer ([Customer]CCNo;False)="34@")  //It is an Amex card
+//[Customer]SpecialOption:=55
+//End if 
+//If ((Tokenizer ([Customer]CCNo;False)="300@") | (Tokenizer ([Customer]CCNo;False)="301@") | (Tokenizer ([Customer]CCNo;False)="39@") | (Tokenizer ([Customer]CCNo;False)="38@") | (Tokenizer ([Customer]CCNo;False)="309@") | (Tokenizer ([Customer]CCNo;False)="302@") | (Tokenizer ([Customer]CCNo;False)="303@") | (Tokenizer ([Customer]CCNo;False)="304@") | (Tokenizer ([Customer]CCNo;False)="305@") | (Tokenizer ([Customer]CCNo;False)="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))  //10461 - adding new Diners CC number
+//[Customer]SpecialOption:=56
+//End if 
+
+[Customer]SpecialOption:=54
+If (Decode256 ="51@") | (Decode256 ="52@") | (Decode256 ="53@") | (Decode256 ="54@") | (Decode256 ="55@")//MC
+[Customer]SpecialOption:=62
+End if 
+If (Decode256 ="37@") | (Decode256 ="34@")//It is an Amex card
+[Customer]SpecialOption:=55
+End if 
+If ((Decode256 ="300@") | (Decode256 ="301@") | (Decode256 ="39@") | (Decode256 ="38@") | (Decode256 ="309@") | (Decode256 ="302@") | (Decode256 ="303@") | (Decode256 ="304@") | (Decode256 ="305@") | (Decode256 ="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+[Customer]SpecialOption:=56
+End if 
+
+ACCEPT
+
+Else 
+ERR_Ezi 
+If (gError="ERR4IC")
+[Customer]CCInfo:="CC details"
+Else 
+[Customer]CCInfo:=gError
+End if 
+End if 
+Else 
+ERR_Ezi 
+[Customer]CCInfo:=gError
+
+If (gError="")
+[Customer]CCInfo:=$Success
+End if 
+
+End if 
+Else 
+[Customer]CCInfo:="CC No|Date"
+End if 
+End if 
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+
+End for 
+
+End if 
+Else 
+AlertMessage (Get localized string("You must enter the Digital Key"))
+End if 
+
+End if 
+vDate:=Current date
+//SAVE RECORD([Facility])
+//READ ONLY([Facility])
+//UNLOAD RECORD([Facility])
+
+If ($Upload=True)
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; & ;[Customer]CCExpiryDate#"";*)
+QUERY([Customer]; & ;[Customer]CCExpiry#"";*)
+QUERY([Customer]; & ;[Customer]CCNo#"";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+ORDER BY([Customer];[Customer]CustomerName;>)
+
+If (Records in selection([Customer])#0)
+LogAction (<>tLogging;String(Records in selection([Customer]))+" customers successfully uploaded.")// records the report being started in the eventlog
+vTitle:="Successfully uploaded"
+UploadError:=""
+FORM SET OUTPUT([Customer];"CCUpload")
+PRINT SELECTION([Customer])
+Else 
+AlertMessage (Get localized string("There are no records Successfully uploaded"))
+LogAction (<>tLogging;"No records could be successfully uploaded.")
+End if 
+
+SET AUTOMATIC RELATIONS(True;True)
+//Unsuccessfully uploaded
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]CCExpiryDate#"";*)
+QUERY([Customer]; & ;[Customer]CCExpiry#"";*)
+QUERY([Customer]; & ;[Customer]CCNo#"";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts>0;*)
+
+If (aDescriptions)#4
+QUERY([Customer]; & ;[Customer]customerProfileID="")
+Else 
+QUERY([Customer]; & ;[Customer]customerProfileID="";*)
+QUERY([Customer]; & ;[Agreement]ActiveAgreemt=True)
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+
+ORDER BY([Customer];[Customer]CustomerName;>)
+If (Records in selection([Customer])#0)
+LogAction (<>tLogging;String(Records in selection([Customer]))+" customers could not be uploaded.")
+vTitle:="Unsuccessfully uploaded"
+UploadError:=Get localized string("Error")
+FORM SET OUTPUT([Customer];"CCUpload")
+PRINT SELECTION([Customer])
+Else 
+AlertMessage ("All Customer credit card details were successfully uploaded!")
+LogAction (<>tLogging;"All Customer credit card details were successfully uploaded!")
+End if 
+
+$i:=ConfirmThree (Get localized string("Do you want to delete all locally stored Credit Card Information after upload for?");Get localized string("All Clients");Get localized string("Successfully Uploaded");Get localized string("None"))
+
+Case of 
+: ($i=1)//All
+READ WRITE([Customer])
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@")
+
+If ([Facility]CCEncrypted)
+If (Records in selection([Customer])>0)
+For ($vlRecord;1;Records in selection([Customer]))
+SET BLOB SIZE([Customer]id_photo;0)
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+End if 
+End if 
+
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([Customer];[Customer]CCNo:="xxxxxxxxxxxx"+Substring([Customer]CCNo;13))
+
+AlertMessage ("Credit Card Information has been deleted")
+
+: ($i=2)//Successfully Uploaded
+READ WRITE([Customer])
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; & ;[Customer]CCExpiryDate#"";*)
+QUERY([Customer]; & ;[Customer]CCExpiry#"";*)
+QUERY([Customer]; & ;[Customer]CCNo#"";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+
+
+If ([Facility]CCEncrypted)
+If (Records in selection([Customer])>0)
+For ($vlRecord;1;Records in selection([Customer]))
+SET BLOB SIZE([Customer]id_photo;0)
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+End if 
+End if 
+
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; & ;[Customer]CCExpiryDate#"";*)
+QUERY([Customer]; & ;[Customer]CCExpiry#"";*)
+QUERY([Customer]; & ;[Customer]CCNo#"";*)
+QUERY([Customer]; & ;[Customer]AgreemtsOperating#"";*)
+QUERY([Customer]; & ;[Customer]customerProfileID#"")
+
+APPLY TO SELECTION([Customer];[Customer]CCNo:="xxxxxxxxxxxx"+Substring([Customer]CCNo;13))
+
+AlertMessage ("Credit Card Information has been deleted")
+Else 
+//  //Do Nothing
+End case 
+
+OBJECT SET ENABLED(bCancel;False)
+End if 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+
+//End if 
+
+//not adminsupport do nothing
+End if 

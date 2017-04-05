@@ -1,0 +1,528 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//  //SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+//  //SDD 10/5/11 Changed Query on Agreement table to not exclude inactive agreements in case of printing for prior date
+//C_LONGINT($i)
+//LogAction (False;"Insurance Summary Report started.")  // records the report being started in the eventlog
+//If (PermissionsControl (64))
+//DEFAULT TABLE([Trxs])
+//SetFacility 
+//vReportSettings:=[Facility]ReportSettings
+//OK:=1
+//If (<>tBatch=False)
+//vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+//Open window((Screen width/2)-200;(Screen height/2)-213;(Screen width/2)+200;(Screen height/2)+213;5;Get localized string("MenuReportinsuranceSummary"))
+//DIALOG([Trxs];"InsureDialog")
+//CLOSE WINDOW
+//End if 
+//If (OK=1)
+//vLegend:=Get localized string("For the Month Ended")+" "+String(vMthDate;6)
+//vStDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+//If (vReportSettings[[13]]="M")
+//QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+//QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+//If (vReportSettings[[14]]="C")
+//QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance");*)
+//Else 
+//QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+//End if 
+//QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate;*)
+//QUERY([Trxs]; & ;[Trxs]Match#-999)
+//CREATE SET([Trxs];"ToPrint")
+//Else 
+//QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+//QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+//  //QUERY([Agreement]; & ;[Agreement]InsureValue>0;*)
+//QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+//QUERY([Agreement]; & ;[Agreement]InsureCommence<=vMthDate;*)
+//QUERY([Agreement]; & ;[Agreement]InsureCommence#!00/00/0000!;*)
+//QUERY([Agreement]; & ;[Agreement]MoveIn<=vMthDate)
+//QUERY SELECTION([Agreement];[Agreement]InsureExpire=!00/00/0000!;*)
+//QUERY SELECTION([Agreement]; | ;[Agreement]InsureExpire>=vStDate)
+//QUERY SELECTION([Agreement];[Agreement]MoveOut=!00/00/0000!;*)
+//QUERY SELECTION([Agreement]; | ;[Agreement]MoveOut>=vStDate)
+//CREATE EMPTY SET([Agreement];"NotBilled")
+//CREATE EMPTY SET([Trxs];"ToPrint")
+//
+//  //////////// bug with chinese
+//  //For ($i;1;Records in selection([Agreement]))
+//  //QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+//  //QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//  //If (vReportSettings[[14]]="C")
+//  //QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance");*)
+//  //Else 
+//  //QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+//  //End if 
+//  //QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+//  //QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate)
+//  //If (Records in selection([Trxs])>0)
+//  //CREATE SET([Trxs];"Add")
+//  //UNION("ToPrint";"Add";"ToPrint")
+//  //Else 
+//  //QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+//  //QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//  //If (vReportSettings[[14]]="C")
+//  //QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance"))
+//  //Else 
+//  //QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN")
+//  //End if 
+//  //If (Records in selection([Trxs])>0)
+//  //REDUCE SELECTION([Trxs];1)
+//  //ADD TO SET([Trxs];"ToPrint")
+//  //Else 
+//  //ADD TO SET([Agreement];"NotBilled")
+//  //End if 
+//  //End if 
+//  //NEXT RECORD([Agreement])
+//  //End for 
+//  ////////////////////////////////////
+//
+//For ($i;1;Records in selection([Agreement]))
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//If (vReportSettings[[14]]="C")
+//QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance");*)
+//Else 
+//QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+//End if 
+//QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate)
+//
+//If (Records in selection([Trxs])=0)
+//
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//If (vReportSettings[[14]]="C")
+//QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Insurance";*)  //Get localized string("Insurance")
+//Else 
+//QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+//End if 
+//QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate)
+//
+//
+//End if 
+//
+//If (Records in selection([Trxs])>0)
+//CREATE SET([Trxs];"Add")
+//UNION("ToPrint";"Add";"ToPrint")
+//Else 
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//If (vReportSettings[[14]]="C")
+//QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance"))
+//Else 
+//QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN")
+//End if 
+//
+//
+//If (Records in selection([Trxs])=0)
+//
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//If (vReportSettings[[14]]="C")
+//QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Insurance")  //Get localized string("Insurance")
+//Else 
+//QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN")
+//End if 
+//
+//End if 
+//
+//If (Records in selection([Trxs])>0)
+//REDUCE SELECTION([Trxs];1)
+//ADD TO SET([Trxs];"ToPrint")
+//Else 
+//ADD TO SET([Agreement];"NotBilled")
+//End if 
+//End if 
+//NEXT RECORD([Agreement])
+//End for 
+//
+//  //QUERY([Transaction];[Transaction]AgreeNo=<>sFacility+"@";*)`commented out 12/10/11 NLT as was including agreements it shouldn't
+//  //If (vReportSettings≤14≥="C")
+//  //QUERY([Transaction]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance");*)
+//  //Else 
+//  //QUERY([Transaction]; & ;[Transaction]AnalysisCode="@IN";*)
+//  //End if 
+//  //QUERY([Transaction]; & ;[Transaction]TrxDate<=vMthDate;*)
+//  //QUERY([Transaction]; & ;[Transaction]TrxDate>=vStDate;*)
+//  //QUERY([Transaction]; & ;[Transaction]Match>0)
+//  //CREATE SET([Transaction];"Add")
+//  //UNION("ToPrint";"Add";"ToPrint")
+//USE SET("ToPrint")
+//USE SET("NotBilled")
+//If (Records in selection([Agreement])>0) & (<>tBatch=False)
+//ConfirmTwo (Get localized string("WARNING - There are")+" "+String(Records in selection([Agreement]))+Get localized string(" agreements with insurance");Get localized string("Display");Get localized string("Continue"))
+//If (OK=1)
+//FORM SET OUTPUT([Agreement];"Output")
+//DISPLAY SELECTION([Agreement];Single Selection;*)
+//End if 
+//End if 
+//CLEAR SET("NotBilled")
+//CLEAR SET("Add")
+//USE SET("ToPrint")
+//End if 
+//READ WRITE([Trxs])
+//For ($i;1;Records in selection([Trxs]))
+//GOTO SELECTED RECORD([Trxs];$i)
+//$ChargeAmt:=[Trxs]TotAmt
+//QUERY([Trxs];[Trxs]AgreeNo=[Trxs]AgreeNo;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+//QUERY([Trxs]; & ;[Trxs]Match>0)
+//If (Records in selection([Trxs])>0)
+//$PaidAmt:=$ChargeAmt
+//Else 
+//$PaidAmt:=0
+//End if 
+//  //If (vReportSettings≤14≥="C")
+//  //commented out 11/10/11 NLT as removing MiscDetls subtabe
+//  //QUERY([Transaction]; & ;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN@"))
+//  //Else 
+//  //QUERY([Transaction]; & ;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN"))
+//  //End if 
+//  //$PaidAmt:=0
+//  //While (End selection([Transaction])=False)
+//  //If (vReportSettings≤14≥="C")
+//  //QUERY SUBRECORDS([Transaction]MiscDetls;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN@"))
+//  //Else 
+//  //QUERY SUBRECORDS([Transaction]MiscDetls;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN"))
+//  //End if 
+//  //$PaidAmt:=$PaidAmt+$ChargeAmt`Sum([Transaction]MiscDetls'TotAmt)
+//  //NEXT RECORD([Transaction])
+//  //End while 
+//USE SET("ToPrint")
+//GOTO SELECTED RECORD([Trxs];$i)
+//[Trxs]Balance:=Round($PaidAmt;2)
+//SAVE RECORD([Trxs])
+//End for 
+//READ ONLY([Trxs])
+//CLEAR SET("ToPrint")
+//CREATE EMPTY SET([Agreement];"ToPrint")
+//If (vReportSettings[[15]]="P")
+//ORDER BY([Trxs];[Trxs]TotAmt;>)
+//Else 
+//SET AUTOMATIC RELATIONS(True;False)
+//ORDER BY([Trxs];[Agreement]InsureCommence;>)
+//SET AUTOMATIC RELATIONS(False;False)
+//End if 
+//vAmt1:=0
+//vAmt2:=0
+//vAmt3:=0
+//vAmt4:=0
+//vAmt5:=0
+//vAmt6:=0
+//vAmt7:=0
+//vAmt8:=0
+//vAmt9:=0
+//vAmt10:=0
+//vAmt11:=0
+//vAmt12:=0
+//vAmt13:=0
+//vAmt14:=0
+//vAmt15:=0
+//vMth1:=0
+//vMth2:=0
+//vMth3:=0
+//BREAK LEVEL(0)
+//ACCUMULATE([Trxs]TotAmt;[Agreement]InsureValue;[Trxs]Balance)
+//If ([Facility]InsuranceAgentType=1)
+//FORM SET OUTPUT([Trxs];"MiniCoInsurance")
+//PrintSelection ("L")
+//Else 
+//If (<>iPrinttoFile=3)
+//ARRAY TEXT(aFieldNames;10)
+//aFieldNames{1}:="OnDetail[Customer]CustomerName"
+//aFieldNames{2}:="[Agreement]AgreeNo"
+//aFieldNames{3}:="[Agreement]InsureCertNo"
+//aFieldNames{4}:="[Agreement]UnitsOccup"
+//aFieldNames{5}:=Get localized string("New")
+//aFieldNames{6}:="[Agreement]InsureValue"
+//aFieldNames{7}:="[Agreement]InsureCommence"
+//aFieldNames{8}:="[Agreement]InsureExpire"
+//aFieldNames{9}:="[Transaction]TotAmt"
+//aFieldNames{10}:=Get localized string("Paid")
+//vpTable:=->[Trxs]
+//CreateExcelReport (10;Records in selection([Trxs]);"MethodOnLoadInsurance";[Facility]FacilityName+"Facility Tax No."+[Facility]TaxNumber;"Insurance Summary Report For the Month Ended "+String(vMthDate;6))  //no of columns on report, no of rows, lines to execute, header 1, header 2, footer"
+//Else 
+//FORM SET OUTPUT([Trxs];"Insurance")
+//PrintSelection ("P")
+//End if 
+//End if 
+//CLEAR SET("ToPrint")
+//End if 
+//End if 
+
+
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+//SDD 10/5/11 Changed Query on Agreement table to not exclude inactive agreements in case of printing for prior date
+C_LONGINT($i)
+C_BOOLEAN($1;$web)//Web Call
+C_TEXT($WS_FacilityCode)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+$web:=False
+If (Count parameters=1)
+$web:=$1
+End if 
+
+If ($web=True)
+
+$WS_FacilityCode:=<>sFacility
+<>sFacility:=WS_FacilityCode
+Else 
+
+LogAction (False;"Insurance Summary Report started.")// records the report being started in the eventlog
+End if 
+If (PermissionsControl (64))
+DEFAULT TABLE([Trxs])
+SetFacility 
+If ($web=False)
+vReportSettings:=[Facility]ReportSettings
+End if 
+OK:=1
+If ($web=False)
+If (<>tBatch=False)
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+Open window((Screen width/2)-200;(Screen height/2)-213;(Screen width/2)+200;(Screen height/2)+213;5;Get localized string("MenuReportinsuranceSummary"))
+DIALOG([Trxs];"InsureDialog")
+CLOSE WINDOW
+End if 
+End if 
+If (OK=1)
+CLEAR SET("NotBilled")
+vLegend:=Get localized string("For the Month Ended")+" "+String(vMthDate;6)
+vStDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+If (vReportSettings[[13]]="M")
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+If (vReportSettings[[14]]="C")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance");*)
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+If (Records in selection([Trxs])=0)
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+If (vReportSettings[[14]]="C")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Insurance";*)
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+End if 
+CREATE SET([Trxs];"ToPrint")
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+//QUERY([Agreement]; & ;[Agreement]InsureValue>0;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]InsureCommence<=vMthDate;*)
+QUERY([Agreement]; & ;[Agreement]InsureCommence#!00-00-00!;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=vMthDate)
+QUERY SELECTION([Agreement];[Agreement]InsureExpire=!00-00-00!;*)
+QUERY SELECTION([Agreement]; | ;[Agreement]InsureExpire>=vStDate)
+QUERY SELECTION([Agreement];[Agreement]MoveOut=!00-00-00!;*)
+QUERY SELECTION([Agreement]; | ;[Agreement]MoveOut>=vStDate)
+CREATE EMPTY SET([Agreement];"NotBilled")
+CREATE EMPTY SET([Trxs];"ToPrint")
+For ($i;1;Records in selection([Agreement]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If (vReportSettings[[14]]="C")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance");*)
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate)
+
+If (Records in selection([Trxs])=0)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If (vReportSettings[[14]]="C")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Insurance";*)//Get localized string("Insurance")
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate)
+
+
+End if 
+
+If (Records in selection([Trxs])>0)
+CREATE SET([Trxs];"Add")
+UNION("ToPrint";"Add";"ToPrint")
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If (vReportSettings[[14]]="C")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance"))
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN")
+End if 
+
+
+If (Records in selection([Trxs])=0)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If (vReportSettings[[14]]="C")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Insurance")//Get localized string("Insurance")
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN")
+End if 
+
+End if 
+
+If (Records in selection([Trxs])>0)
+REDUCE SELECTION([Trxs];1)
+ADD TO SET([Trxs];"ToPrint")
+Else 
+ADD TO SET([Agreement];"NotBilled")
+End if 
+End if 
+NEXT RECORD([Agreement])
+End for 
+//QUERY([Transaction];[Transaction]AgreeNo=<>sFacility+"@";*)`commented out 12/10/11 NLT as was including agreements it shouldn't
+//If (vReportSettings≤14≥="C")
+//QUERY([Transaction]; & ;[Analysis]KeyStatsCategory=Get localized string("Insurance");*)
+//Else 
+//QUERY([Transaction]; & ;[Transaction]AnalysisCode="@IN";*)
+//End if 
+//QUERY([Transaction]; & ;[Transaction]TrxDate<=vMthDate;*)
+//QUERY([Transaction]; & ;[Transaction]TrxDate>=vStDate;*)
+//QUERY([Transaction]; & ;[Transaction]Match>0)
+//CREATE SET([Transaction];"Add")
+//UNION("ToPrint";"Add";"ToPrint")
+USE SET("ToPrint")
+USE SET("NotBilled")
+
+
+
+If (Records in selection([Agreement])>0) & (<>tBatch=False)
+If ($web=False)
+ConfirmTwo (Get localized string("WARNING - There are")+" "+String(Records in selection([Agreement]))+Get localized string(" agreements with insurance");Get localized string("Display");Get localized string("Continue"))
+Else 
+OK:=1
+End if 
+If (OK=1)
+FORM SET OUTPUT([Agreement];"Output")
+DISPLAY SELECTION([Agreement];Single selection;*)
+End if 
+End if 
+CLEAR SET("NotBilled")
+CLEAR SET("Add")
+USE SET("ToPrint")
+End if 
+READ WRITE([Trxs])
+For ($i;1;Records in selection([Trxs]))
+GOTO SELECTED RECORD([Trxs];$i)
+$ChargeAmt:=[Trxs]TotAmt
+QUERY([Trxs];[Trxs]AgreeNo=[Trxs]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vStDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Match>0)
+If (Records in selection([Trxs])>0)
+$PaidAmt:=$ChargeAmt
+Else 
+$PaidAmt:=0
+End if 
+//If (vReportSettings≤14≥="C")
+//commented out 11/10/11 NLT as removing MiscDetls subtabe
+//QUERY([Transaction]; & ;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN@"))
+//Else 
+//QUERY([Transaction]; & ;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN"))
+//End if 
+//$PaidAmt:=0
+//While (End selection([Transaction])=False)
+//If (vReportSettings≤14≥="C")
+//QUERY SUBRECORDS([Transaction]MiscDetls;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN@"))
+//Else 
+//QUERY SUBRECORDS([Transaction]MiscDetls;[Transaction]MiscDetls'AnalysisCode=(<>sFacility+"IN"))
+//End if 
+//$PaidAmt:=$PaidAmt+$ChargeAmt`Sum([Transaction]MiscDetls'TotAmt)
+//NEXT RECORD([Transaction])
+//End while 
+USE SET("ToPrint")
+GOTO SELECTED RECORD([Trxs];$i)
+[Trxs]Balance:=Round($PaidAmt;2)
+SAVE RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+CLEAR SET("ToPrint")
+CREATE EMPTY SET([Agreement];"ToPrint")
+If (vReportSettings[[15]]="P")
+ORDER BY([Trxs];[Trxs]TotAmt;>)
+Else 
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Trxs];[Agreement]InsureCommence;>)
+SET AUTOMATIC RELATIONS(False;False)
+End if 
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vAmt5:=0
+vAmt6:=0
+vAmt7:=0
+vAmt8:=0
+vAmt9:=0
+vAmt10:=0
+vAmt11:=0
+vAmt12:=0
+vAmt13:=0
+vAmt14:=0
+vAmt15:=0
+vMth1:=0
+vMth2:=0
+vMth3:=0
+
+If ($web=False)
+BREAK LEVEL(0)
+End if 
+
+ACCUMULATE([Trxs]TotAmt;[Agreement]InsureValue;[Trxs]Balance)
+
+If ($web=False)
+If ([Facility]InsuranceAgentType=1)
+FORM SET OUTPUT([Trxs];"MiniCoInsurance")
+PrintSelection ("L")
+Else 
+If (<>iPrinttoFile=3)
+ARRAY TEXT(aFieldNames;10)
+aFieldNames{1}:="OnDetail[Customer]CustomerName"
+aFieldNames{2}:="[Agreement]AgreeNo"
+aFieldNames{3}:="[Agreement]InsureCertNo"
+aFieldNames{4}:="[Agreement]UnitsOccup"
+aFieldNames{5}:=Get localized string("New")
+aFieldNames{6}:="[Agreement]InsureValue"
+aFieldNames{7}:="[Agreement]InsureCommence"
+aFieldNames{8}:="[Agreement]InsureExpire"
+aFieldNames{9}:="[Transaction]TotAmt"
+aFieldNames{10}:=Get localized string("Paid")
+vpTable:=->[Trxs]
+CreateExcelReport (10;Records in selection([Trxs]);"MethodOnLoadInsurance";[Facility]FacilityName+"Facility Tax No."+[Facility]TaxNumber;"Insurance Summary Report For the Month Ended "+String(vMthDate;6))//no of columns on report, no of rows, lines to execute, header 1, header 2, footer"
+Else 
+FORM SET OUTPUT([Trxs];"Insurance")
+PrintSelection ("P")
+End if 
+End if 
+CLEAR SET("ToPrint")
+End if 
+End if 
+End if 
+If ($web=True)
+<>sFacility:=$WS_FacilityCode
+Else 
+LogAction (True;"Insurance Summary Report ended.")
+End if 

@@ -1,0 +1,121 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 20/04/16, 16:03:52
+// ----------------------------------------------------
+// Method: [Notices].NoticesOut
+// Description
+// 
+// Form method Notices
+//
+// Parameters
+// ----------------------------------------------------
+
+If (Form event=On Load)
+C_TEXT($NoticeDisplay)
+C_LONGINT($i)
+C_BOOLEAN(bAddNotices)
+bAddNotices:=False
+LoadGradients 
+If (Size of array(<>asFacilities)>1)
+OBJECT SET VISIBLE(bMod;True)
+Else 
+OBJECT SET VISIBLE(bMod;False)
+End if 
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+ORDER BY([Notices];[Notices]NoticePlanNo;>;[Notices]DaysAfter;>;[Notices]Description;>)
+DISTINCT VALUES([Notices]NoticePlanNo;aiNoticesDisplay)
+ARRAY TEXT(asNoticesDisplay;Size of array(aiNoticesDisplay))
+For ($i;1;Size of array(asNoticesDisplay))
+asNoticesDisplay{$i}:=String(aiNoticesDisplay{$i})
+End for 
+INSERT IN ARRAY(asNoticesDisplay;1)
+asNoticesDisplay{1}:=Get localized string("All")
+asNoticesDisplay:=1
+End if 
+
+If (Form event=On Clicked)
+FILTER EVENT//FB10330s
+If (bAdd=1)
+bAddNotices:=True
+bAdd:=0
+If (<>iPlatform=3)
+$WinRef:=Open window((Screen width/2)-378;(Screen height/2)-309;(Screen width/2)+378;(Screen height/2)+309;Movable dialog box;Get localized string("Notices"))
+Else 
+$WinRef:=Open window((Screen width/2)-378;(Screen height/2)-309;(Screen width/2)+378;(Screen height/2)+309;4096;Get localized string("Notices"))
+End if 
+ADD RECORD(*)
+
+CLOSE WINDOW($WinRef)
+bAddNotices:=False
+bSort:=1
+End if 
+End if 
+
+If (Form event=On Outside Call) | (bAdd=1) | (bMod=1) | (bSort=1)
+$NoticeDisplay:=asNoticesDisplay{asNoticesDisplay}
+
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+DISTINCT VALUES([Notices]NoticePlanNo;aiNoticesDisplay)
+ARRAY TEXT(asNoticesDisplay;Size of array(aiNoticesDisplay))
+For ($i;1;Size of array(asNoticesDisplay))
+asNoticesDisplay{$i}:=String(aiNoticesDisplay{$i})
+End for 
+INSERT IN ARRAY(asNoticesDisplay;1)
+asNoticesDisplay{1}:=Get localized string("All")
+
+asNoticesDisplay:=Find in array(asNoticesDisplay;$NoticeDisplay)
+
+If (asNoticesDisplay<1)
+asNoticesDisplay:=1
+End if 
+
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+Case of 
+: (asNoticesDisplay=1)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+Else 
+QUERY([Notices]; & ;[Notices]NoticePlanNo=Num(asNoticesDisplay{asNoticesDisplay});*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+End case 
+ORDER BY([Notices];[Notices]NoticePlanNo;>;[Notices]DaysAfter;>;[Notices]Description;>)
+bSort:=0
+End if 
+
+
+If (Form event=On Double Clicked)
+If (Records in set("UserSet")>0)
+If (<>iPlatform=3)
+$WinRef:=Open window((Screen width/2)-378;(Screen height/2)-309;(Screen width/2)+378;(Screen height/2)+309;Movable dialog box;Get localized string("Notices"))
+Else 
+$WinRef:=Open window((Screen width/2)-378;(Screen height/2)-309;(Screen width/2)+378;(Screen height/2)+309;4096;Get localized string("Notices"))
+End if 
+START TRANSACTION
+MODIFY RECORD(*)
+CLOSE WINDOW($WinRef)
+If (OK=1)
+VALIDATE TRANSACTION
+bSort:=1
+Else 
+CANCEL TRANSACTION
+End if 
+End if 
+FILTER EVENT
+End if 
+
+
+If (Form event=On Display Detail)
+
+Case of 
+: ([Notices]AttachInvoice=1)
+vIncInvoice:=Get localized string("Yes")
+: ([Notices]AttachInvoice=2)
+vIncInvoice:=Get localized string("Optional")
+Else 
+vIncInvoice:=Get localized string("No")
+End case 
+
+End if 

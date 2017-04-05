@@ -1,0 +1,767 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_GateCode;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitID;Is text;SOAP input)
+SOAP DECLARATION(WS_InsuranceID;Is text;SOAP input)
+SOAP DECLARATION(WS_Promotioion;Is text;SOAP input)
+SOAP DECLARATION(WS_Start_Date;Is date;SOAP input)
+SOAP DECLARATION(WS_End_Date;Is date;SOAP input)
+SOAP DECLARATION(WS_PaymAmount;Is real;SOAP input)
+SOAP DECLARATION(WS_PaymMethod;Is text;SOAP input)
+SOAP DECLARATION(WS_CCType;Is text;SOAP input)
+SOAP DECLARATION(WS_CCNo;Is text;SOAP input)
+SOAP DECLARATION(WS_RoutingN;Is text;SOAP input)
+SOAP DECLARATION(WS_Expirdate;Is text;SOAP input)
+SOAP DECLARATION(WS_CCStreetAdr;Is text;SOAP input)
+SOAP DECLARATION(WS_CCPostCode;Is text;SOAP input)
+SOAP DECLARATION(WS_CCCVV;Is text;SOAP input)
+SOAP DECLARATION(WS_Track;Is text;SOAP input)
+SOAP DECLARATION(WS_SourceOfTenant;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_MoveIn"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_GateCode: "+WS_GateCode+Char(13)
+$String:=$String+"WS_UnitID: "+WS_UnitID+Char(13)
+$String:=$String+"WS_InsuranceID: "+WS_InsuranceID+Char(13)
+$String:=$String+"WS_Promotioion: "+WS_Promotioion+Char(13)
+$String:=$String+"WS_Start_Date: "+String(WS_Start_Date)+Char(13)
+$String:=$String+"WS_End_Date: "+String(WS_End_Date)+Char(13)
+$String:=$String+"WS_PaymAmount: "+String(WS_PaymAmount)+Char(13)
+$String:=$String+"WS_PaymMethod: "+WS_PaymMethod+Char(13)
+$String:=$String+"WS_CCType: "+WS_CCType+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_RoutingN: "+WS_RoutingN+Char(13)
+$String:=$String+"WS_Expirdate: "+WS_Expirdate+Char(13)
+$String:=$String+"WS_CCStreetAdr: "+WS_CCStreetAdr+Char(13)
+$String:=$String+"WS_CCPostCode: "+WS_CCPostCode+Char(13)
+$String:=$String+"WS_CCCVV: "+WS_CCCVV+Char(13)
+$String:=$String+"WS_Track: "+WS_Track+Char(13)
+$String:=$String+"WS_SourceOfTenant: "+WS_SourceOfTenant+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_PinCode;Is text;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sProduct:=[Facility]ProductCode
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sFacility:=WS_FacilityID
+
+C_BOOLEAN($Create;$FacState;$TrxState;$UnitState;$CustState;$OthState;$AgreeState;$MarkState)
+C_BOOLEAN($FacLocked;$TrxLocked;$UnitLocked;$CustLocked;$OthLocked;$AgreeLocked;$MarkLocked)
+READ WRITE([Facility])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([MarketingTypes])
+READ WRITE([PromotionHistory])
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityID)
+If (Records in selection([Facility])#0)
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitID;*)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+If (Records in selection([Unit])#0)
+WS_RET_CODE:=True
+QUERY([Customer];[Customer]CustomerCode=WS_Cust_Code)
+QUERY([Agreement];[Agreement]CustomerCode=WS_Cust_Code;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+//Create new agreement if rent a new unit
+If (Records in selection([Customer])#0)
+CREATE RECORD([Agreement])
+QUERY([Reservation];[Reservation]CustomerCode=WS_Cust_Code)
+[Reservation]ActiveReserve:=False
+
+If ([Reservation]DepositAmt=0) & ([Facility]AgreeOnlyDeposit=True)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If ([Analysis]DfltSellAmt#0)
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Analysis]DfltSellAmt
+End if 
+Else 
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Reservation]DepositAmt
+End if 
+$Continue:=False
+If (Not(Semaphore("<>bNextAgreeNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//If (Application type=4D Remote Mode)
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+//End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+Repeat 
+If (<>aiNextAgreeNo{$arraypos}>[Facility]NextAgreeNo)
+//ConfirmTwo (Get localized string("It appears the next agreement number of")+" "+String([Facility]NextAgreeNo;"000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+OK:=1
+If (OK=1)
+[Agreement]AgreeNo:=String(<>aiNextAgreeNo{$arraypos};"000000000")
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$arraypos}+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+Else 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+Else 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+vOldUser:=[Facility]NextAgreeNo
+
+$Key:=<>sFacility+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+//End if 
+Else 
+//AlertMessage ("Could not get next agreement number")
+Repeat 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+vOldUser:=[Facility]NextAgreeNo
+$Key:=<>sFacility+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+End if 
+If ($Continue)
+CLEAR SEMAPHORE("<>bNextAgreeNo")
+End if 
+[Agreement]RAgreeNo:=WS_FacilityID+[Agreement]AgreeNo
+SAVE RECORD([Facility])
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+[Agreement]CustomerCode:=WS_Cust_Code
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=1
+[Agreement]UserLogin:="Insomniac"
+//[Customer]GatePIN:=RandomWebPIN 
+WS_PinCode:=[Customer]GatePIN
+
+If (WS_Start_Date=!00-00-00!)
+WS_Start_Date:=Current date
+End if 
+
+[Agreement]MoveIn:=WS_Start_Date
+[Agreement]MoveOut:=WS_End_Date
+[Agreement]LastBillDate:=[Agreement]MoveIn
+[Agreement]UnitsOccup:=WS_UnitID
+If ([Facility]BillonFirst=True)
+[Agreement]DaytoBill:=1
+[Agreement]NextBillDate:=GetDate (1;Month of([Agreement]MoveIn+30);Year of([Agreement]MoveIn+30))
+Else 
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+[Agreement]NextBillDate:=[Agreement]MoveIn
+End if 
+
+
+//04/02/13 DAM Added to create a Sale Enq
+
+If ([Facility]SaleInqRequest=True)//Create a Contact
+CREATE RECORD([Contacts])
+If ([Contacts]ContactNo="")//Pick up the next Sales Enquiry number available
+If (<>sProduct="MV")
+vOldContact:=500001
+Else 
+vOldContact:=[Facility]NextContactNo
+End if 
+$Continue:=False
+If (Not(Semaphore("<>bNextSalesInqNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//If (Application type=4D Remote Mode)
+GET PROCESS VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+//End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+Repeat 
+If (<>aiNextSalesInqNo{$arraypos}>vOldContact)
+//If (<>sProduct#"MV")
+//ConfirmTwo (Get localized string("It appears the next sales inquiry number of")+" "+String(vOldContact;"0000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//Else 
+//OK:=1
+//End if 
+//If (OK=1)
+[Contacts]ContactNo:=<>sFacility+String(<>aiNextSalesInqNo{$arraypos};"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=<>aiNextSalesInqNo{$arraypos}+1
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+Else 
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+End if 
+//Else 
+//[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+//vOldContact:=vOldContact+1
+//If (<>sProduct#"MV")
+//[Facility]NextContactNo:=[Facility]NextContactNo+1
+//<>aiNextSalesInqNo{$arraypos}:=vOldContact
+//End if 
+//End if 
+Else 
+[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+<>aiNextSalesInqNo{$arraypos}:=vOldContact
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+//End if 
+CLEAR SEMAPHORE("<>bNextSalesInqNo")
+Else 
+Repeat 
+[Contacts]ContactNo:=<>sFacility+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+End if 
+
+//Fills out the Sales Enquiry
+[Contacts]Facility:=[Facility]FacilityCode
+[Contacts]ContactName:=[Customer]CustomerName
+[Contacts]Firstname:=[Customer]FirstName
+[Contacts]EmailAddress:=[Customer]EmailAddress
+[Contacts]Outcome:="Rented"
+[Contacts]CallTakenBy:="Insomniac"
+[Contacts]OutComeDate:=Current date
+[Contacts]CallDate:=Current date
+[Contacts]ContactPhone:=[Customer]PhonePrivate
+[Contacts]MarketSrce:="Insomniac"
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+[Contacts]SizeQuoted:=[UnitType]Description
+SAVE RECORD([Contacts])
+End if 
+
+QUERY([Promotions];[Promotions]VoucherCode=WS_Promotioion)
+If (Records in selection([Promotions])#0)
+If ([Promotions]PromoType=True)
+QUERY([BillPlan];[BillPlan]Code=[Promotions]BillingPlanCode;*)
+QUERY([BillPlan]; & ;[BillPlan]KioskInactive=False)
+End if 
+End if 
+
+If (Records in selection([BillPlan])=0)
+QUERY([BillPlan];[BillPlan]Code=WS_FacilityID+"MO")
+End if 
+[Agreement]BillUtilities:=<>tUtilities
+[Agreement]NextBillDate:=CalcNxtBillDate ([Agreement]LastBillDate;[BillPlan]PeriodstoPay;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+If (Records in selection([BillPlan])#0)
+Case of 
+: ([BillPlan]CasualBilling)
+[Unit]DailyRentedValue:=CalculateBaseRateNoUT (2;0)
+[Unit]DailyNewRent:=[Unit]DailyRentedValue
+[Unit]WeeklyRentedValue:=Round([Unit]DailyRentedValue*7;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]DailyRentedValue*7;2)
+[Unit]RentedValue:=Round([Unit]DailyRentedValue*7/0.2308;2)
+[Unit]NewRentAmt:=Round([Unit]DailyRentedValue*7/0.2308;2)
+
+[Agreement]RegularRent:=[Unit]DailyRentedValue
+[Agreement]NewRegularRent:=[Unit]DailyNewRent
+: ([BillPlan]PlanPeriod="Week")
+[Unit]WeeklyRentedValue:=CalculateBaseRateNoUT (2;0)
+[Unit]WeeklyNewRentAmt:=[Unit]WeeklyRentedValue
+[Unit]DailyRentedValue:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]DailyNewRent:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]RentedValue:=Round([Unit]WeeklyRentedValue/0.2308;2)
+[Unit]NewRentAmt:=Round([Unit]WeeklyRentedValue/0.2308;2)
+
+[Agreement]RegularRent:=[Unit]WeeklyRentedValue
+[Agreement]NewRegularRent:=[Unit]WeeklyNewRentAmt
+Else 
+[Unit]RentedValue:=CalculateBaseRateNoUT (2;0)
+[Unit]NewRentAmt:=[Unit]RentedValue
+[Unit]WeeklyRentedValue:=Round([Unit]RentedValue*0.2308;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]RentedValue*0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]RentedValue*0.2308/7;2)
+[Unit]DailyNewRent:=Round([Unit]RentedValue*0.2308/7;2)
+
+[Agreement]RegularRent:=[Unit]RentedValue
+[Agreement]NewRegularRent:=[Unit]NewRentAmt
+End case 
+Else 
+[Unit]RentedValue:=CalculateBaseRateNoUT (0;0)
+[Unit]NewRentAmt:=[Unit]DailyRentedValue
+[Unit]WeeklyRentedValue:=Round([Unit]RentedValue*0.2308;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]RentedValue*0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]RentedValue*0.2308/7;2)
+[Unit]DailyNewRent:=Round([Unit]RentedValue*0.2308/7;2)
+
+[Agreement]RegularRent:=[Unit]RentedValue
+[Agreement]NewRegularRent:=[Unit]NewRentAmt
+End if 
+
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+
+[Agreement]ActiveAgreemt:=True
+[Agreement]LastBillAmt:=[Agreement]RentAmt
+[Agreement]LastBillDate:=Current date
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=WS_FacilityID;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]PrimaryKey=WS_InsuranceID)
+If (Records in selection([InsuranceRates])#0)
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"IN")
+If (Records in selection([Analysis])#0)
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=[Analysis]Code
+[OtherChgs]Description:=[Analysis]Description
+[OtherChgs]Amount:=[InsuranceRates]Premium
+[OtherChgs]NewAmount:=[InsuranceRates]Premium
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+[Unit]InsureValue:=[InsuranceRates]EndValue
+[Agreement]InsureValue:=[Unit]InsureValue
+End if 
+End if 
+
+[Unit]AgreeNo:=[Agreement]RAgreeNo
+[Unit]Vacant:=False
+[Unit]Status:="Rented"
+[Unit]MoveIn:=[Agreement]MoveIn
+[Unit]MoveOut:=[Agreement]MoveOut
+[Unit]ReservedTo:=""
+[Unit]LastStatusDate:=Current date
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+[Unit]ReservedDate:=!00-00-00!
+[Unit]Deposit:=[Unit]ReserveDeposit
+If ([Facility]AgreeOnlyDeposit=True) & ([Unit]Deposit=0)
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]Deposit:=[UnitType]DepositAmt
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Unit]Deposit
+End if 
+[Unit]ReserveDeposit:=0
+[Unit]UpdateGate:=True
+[Unit]UpdatePULS:=<>tUtilities
+
+If (WS_SourceOfTenant#"")
+QUERY([MarketingTypes];[MarketingTypes]Description=WS_SourceOfTenant)
+If (Records in selection([MarketingTypes])=0)
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]SortOrder:=1
+[MarketingTypes]Description:=WS_SourceOfTenant
+[MarketingTypes]ListCode:="MS"
+[MarketingTypes]Facility:=WS_FacilityID
+End if 
+READ WRITE([Customer])
+[Customer]MarketSrce:=WS_SourceOfTenant
+End if 
+
+Case of 
+: (WS_PaymMethod="CC")
+$SpecOptions:=54
+If (WS_CCNo="37@") | (WS_CCNo="34@")//It is an Amex card
+$SpecOptions:=55
+End if 
+If ((WS_CCNo="300@") | (WS_CCNo="301@") | (WS_CCNo="38@") | (WS_CCNo="39@") | (WS_CCNo="309@") | (WS_CCNo="302@") | (WS_CCNo="303@") | (WS_CCNo="304@") | (WS_CCNo="305@") | (WS_CCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$SpecOptions:=56
+End if 
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="CA")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"CA")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="CK")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"CH")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="DB")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"EF")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="ACH")
+//Need adhoc direct debit support added
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+End case 
+
+If ($Create=True)
+If (Records in selection([Analysis])#0)
+CREATE RECORD([Trxs])
+[Trxs]Description:=[Analysis]Description
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=False
+[Trxs]TaxAmt:=[Analysis]TaxRate*[Analysis]DfltSellAmt
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=[Agreement]PaidToDate
+[Trxs]TotAmt:=WS_PaymAmount
+If (WS_PaymMethod="CK")
+[Trxs]Narration:="Check:"+WS_CCNo+"/"+WS_RoutingN
+[Trxs]Description:="Check:"+WS_CCNo+"/"+WS_RoutingN
+[Trxs]Drawer:="Check:"+WS_CCNo+"/"+WS_RoutingN
+End if 
+If (WS_PaymMethod="CC")
+WS_Expirdate:=Substring(WS_Expirdate;1;2)+Substring(WS_Expirdate;5;2)
+If (CheckCCExpiry (WS_Expirdate))
+[Trxs]CCAuthNo:=ProcCreditCard (False;"P";WS_PaymAmount;WS_CCNo;WS_Expirdate;"";[Agreement]RAgreeNo;[Analysis]Description;[Agreement]CustomerCode;[Customer]CustomerName;WS_CCStreetAdr;WS_CCPostCode;"";"";"";[Agreement]TaxExempt;True;"";False)
+Else 
+[Trxs]CCAuthNo:="ERR: CC- Expiry"
+End if 
+
+End if 
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+$FacState:=Read only state([Facility])
+$TrxState:=Read only state([Trxs])
+$UnitState:=Read only state([Unit])
+$CustState:=Read only state([Customer])
+$OthState:=Read only state([OtherChgs])
+$AgreeState:=Read only state([Agreement])
+$MarkState:=Read only state([MarketingTypes])
+
+$FacLocked:=Locked([Facility])
+$TrxLocked:=Locked([Trxs])
+$UnitLocked:=Locked([Unit])
+$CustLocked:=Locked([Customer])
+$OthLocked:=Locked([OtherChgs])
+$AgreeLocked:=Locked([Agreement])
+$MarkLocked:=Locked([MarketingTypes])
+
+WSRecordLog ("Insomniac Table - R/W;Locked:  Fac-"+String($FacState)+";"+String($FacLocked)+"; Agree-"+String($AgreeState)+";"+String($AgreeLocked)+"; Unit-"+String($UnitState)+";"+String($UnitLocked)+"; Cust-"+String($CustState)+";"+String($CustLocked)+"; Trx-"+String($TrxState)+";"+String($TrxLocked)+"; Other-"+String($OthState)+";"+String($OthLocked)+"; Mark-"+String($MarkState)+";"+String($MarkLocked))
+
+SAVE RECORD([Facility])
+SAVE RECORD([Trxs])
+SAVE RECORD([Unit])
+SAVE RECORD([Customer])
+SAVE RECORD([OtherChgs])
+SAVE RECORD([MarketingTypes])
+SAVE RECORD([Agreement])
+READ WRITE([UnitHistory])
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+WS_RET_CODE:=True
+Else 
+WS_ERROR:="Payment by Credit Card is not Successful "+[Trxs]CCAuthNo
+WS_RET_CODE:=False
+End if 
+End if 
+
+If (WS_RET_CODE=True)
+
+//Rent 
+Case of 
+: ([UnitType]OrgAnalysis#"") & ([Customer]Organization=True)
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis#"")
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"RF")
+End case 
+If (Records in selection([Analysis])#0)
+CREATE RECORD([Trxs])
+[Trxs]Description:=[Analysis]Description
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=[Agreement]PaidToDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]RentAmt
+
+If ([BillPlan]ShowIncentonInv)
+[Trxs]TotAmt:=[Agreement]RegularRent
+End if 
+
+If ([Promotions]ShowDiscount=False) & ([Promotions]PromoType=False)
+[Trxs]TotAmt:=[Trxs]TotAmt-[Promotions]DiscountAmount
+End if 
+
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+If ([Facility]TaxAddtoAmt=True)
+[Trxs]TotAmt:=[Trxs]TotAmt+[Trxs]TaxAmt
+[Agreement]RentAmt:=[Trxs]TotAmt
+End if 
+
+SAVE RECORD([Trxs])
+End if 
+
+//Billing Plan Discount 
+If ([BillPlan]ShowIncentonInv)
+CREATE RECORD([Trxs])
+[Trxs]Description:=[BillPlan]AnalysisDesc
+[Trxs]AnalysisCode:=<>sFacility+[BillPlan]AnalysisCode
+[Trxs]CustomerCode:=WS_Cust_Code
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]TotAmt:=[UnitType]WeeklyRate-[Agreement]RentAmt
+Else 
+[Trxs]TotAmt:=[UnitType]MonthlyRate-[Agreement]RentAmt
+End if 
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+If ([Facility]TaxAddtoAmt=True)
+[Trxs]TotAmt:=[Trxs]TotAmt+[Trxs]TaxAmt
+End if 
+SAVE RECORD([Trxs])
+End if 
+
+
+//Deposit
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])#0)
+CREATE RECORD([Trxs])
+[Trxs]Description:=[Analysis]Description
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]DateFrom:=Current date
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[UnitType]DepositAmt+[Analysis]DfltSellAmt
+[Trxs]TaxAmt:=[Analysis]TaxRate*[Analysis]DfltSellAmt
+SAVE RECORD([Trxs])
+End if 
+
+//Move In Charges
+QUERY([Analysis];[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"DP";*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"RF";*)
+QUERY([Analysis]; & ;[Analysis]Code#WS_FacilityID+"IN";*)
+QUERY([Analysis]; & ;[Analysis]Code=WS_FacilityID+"@")
+If (Records in selection([Analysis])#0)
+FIRST RECORD([Analysis])
+For ($i;1;Records in selection([Analysis]))
+CREATE RECORD([Trxs])
+[Trxs]TotAmt:=[Analysis]DfltSellAmt
+[Trxs]Description:=[Analysis]Description
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+If ([Facility]TaxAddtoAmt=True)
+[Trxs]TotAmt:=[Trxs]TotAmt+[Trxs]TaxAmt
+End if 
+
+SAVE RECORD([Trxs])
+NEXT RECORD([Analysis])
+End for 
+End if 
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=WS_FacilityID;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]PrimaryKey=WS_InsuranceID)
+If (Records in selection([InsuranceRates])#0)
+QUERY([Analysis];[Analysis]Code=WS_FacilityID+"IN")
+CREATE RECORD([Trxs])
+[Trxs]Description:=[Analysis]Description
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[InsuranceRates]Premium
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+If ([Facility]TaxAddtoAmt=True)
+[Trxs]TotAmt:=[Trxs]TotAmt+[Trxs]TaxAmt
+End if 
+SAVE RECORD([Trxs])
+End if 
+
+//Promotion Discount
+If (Records in selection([Promotions])#0) & ([Promotions]ShowDiscount) & ([Promotions]PromoType=False)
+
+QUERY([Analysis];[Analysis]Code=[Promotions]AnalysisCode)
+CREATE RECORD([Trxs])
+[Trxs]Description:=[Analysis]Description
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]CustomerCode:=WS_Cust_Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]UserLogin:="Insomniac"
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Promotions]DiscountAmount*(-1)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+If ([Facility]TaxAddtoAmt=True)
+[Trxs]TotAmt:=[Trxs]TotAmt+[Trxs]TaxAmt
+End if 
+SAVE RECORD([Trxs])
+
+CREATE RECORD([PromotionHistory])
+[PromotionHistory]AgreeNo:=[Agreement]RAgreeNo
+[PromotionHistory]VoucherNo:=[Promotions]VoucherCode
+[PromotionHistory]RedeemedDate:=Current date
+SAVE RECORD([PromotionHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]Category:="Promo"
+[NotesHistory]Note:="A "+[Promotions]Description+" voucher was redeemed"
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+
+End if 
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+SAVE RECORD([Agreement])
+End if 
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Customer Not Found"
+End if 
+WS_PinCode:=""
+Else 
+WS_ERROR:="Unit Not Found or Unavailable"
+WS_RET_CODE:=False
+WS_PinCode:=""
+End if 
+UNLOAD RECORD([Facility])
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Facility Not Found"
+End if 
+
+$String:="End WS_Insomniac_MoveIn"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_PinCode: "+WS_PinCode+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

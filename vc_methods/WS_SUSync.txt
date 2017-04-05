@@ -1,0 +1,399 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+//C_TEXT(WS_vtBillSyncFunction)
+//C_TEXT(WS_vtBillSyncFacilityCode)
+//C_LONGINT(WS_vliBillSyncFacilityID)
+//C_TEXT(WS_vtBillSyncSUDate)
+//C_TEXT(WS_vtBillSyncSUTime)
+//C_BLOB(WS_vbBillSyncSendPacket)
+
+C_TEXT(WS_vtBillSyncReturn;$vtFacilityCode;WS_vtBillSyncSendPacket;$lf)
+C_LONGINT($Index)
+C_BOOLEAN($PerformSync)
+C_LONGINT($SURecordCount;$SURecordCounter)
+
+//Initialise variables holding values from SU
+C_TEXT($vtSUFacilityID;$vtSUWebPassword;$vtSUEmailAddress;$vtSUPhoneNumber;$vtSUSupportPlan;$vtSUFacilityName;$vtSUOldSupportPlan)
+C_DATE($vdSULastUpdate;$vdSUPaidToDate)
+C_TIME($vtmSULastUpdate)
+
+//Initialise variables holding values from Billing
+C_TEXT($vtBillingFacilityID;$vtBillingWebPassword;$vtBillingEmailAddress;$vtBillingPhoneNumber;$vtBillingSupportPlan;$vtBillingFacilityName;$vtBillingOldSupportPlan;$vtBillingAnnualFee)
+C_DATE($vdBillingLastUpdate;$vdBillingPaidToDate)
+C_TIME($vtmBillingLastUpdate)
+
+C_DATE($vdLastStormanSyncDate)
+C_TIME($vtLastStormanSyncTime)
+
+
+
+//Compiler_Web
+
+WS_vtBillSyncReturn:=""
+WS_vtBillSyncReturnPacket:=""
+$vtFacilityCode:=""
+$PerformSync:=True
+$vdSUSystemDate:=!00-00-00!
+$vtmSUSystemTime:=?00:00:00?
+$SURecordCount:=0
+$SURecordCounter:=0
+$lf:=Char(Line feed)
+$Index:=0
+
+
+
+SOAP DECLARATION(WS_vtBillSyncFunction;Is text;SOAP input)
+SOAP DECLARATION(WS_vtBillSyncFacilityCode;Is text;SOAP input)
+SOAP DECLARATION(WS_vtBillSyncSUDate;Is text;SOAP input)
+SOAP DECLARATION(WS_vtBillSyncSUTime;Is text;SOAP input)
+SOAP DECLARATION(WS_vtBillSyncSendPacket;Is text;SOAP input)
+
+$String:="Start WS_SUSync"+Char(13)
+$String:=$String+"WS_vtBillSyncFunction: "+WS_vtBillSyncFunction+Char(13)
+$String:=$String+"WS_vtBillSyncFacilityCode: "+WS_vtBillSyncFacilityCode+Char(13)
+$String:=$String+"WS_vtBillSyncSUDate: "+WS_vtBillSyncSUDate+Char(13)
+$String:=$String+"WS_vtBillSyncSUTime: "+WS_vtBillSyncSUTime+Char(13)
+$String:=$String+"WS_vtBillSyncSendPacket: "+WS_vtBillSyncSendPacket+Char(13)
+
+WSRecordLog ($String)
+SOAP DECLARATION(WS_vtBillSyncReturn;Is text;SOAP output)
+SOAP DECLARATION(WS_vtBillSyncReturnPacket;Is text;SOAP output)
+
+
+
+Case of 
+: (WS_vtBillSyncFunction="TestLink")//To determine that Storman is responding
+WS_vtBillSyncReturn:="Available"
+
+
+: (WS_vtBillSyncFunction="CheckFacilityCode")//To determine that this is the database with the Facility Code that was passed
+$Index:=Find in field([Facility]FacilityCode;WS_vtBillSyncFacilityCode)
+If ($Index#-1)
+WS_vtBillSyncReturn:="Billing"
+Else 
+WS_vtBillSyncReturn:="Other"
+End if 
+
+
+
+
+: (WS_vtBillSyncFunction="CheckUpdated")//To determine which (if any) Agreements have been updated
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+
+
+//Find all Agreements that have a SUFacilitiesUpdated value whatever it is
+//Ensure that the first character is a comma
+//Remove any '-'s
+//Remove any ',,'s
+//If only value left is a single ',' then blank the field
+QUERY([Agreement];[Agreement]SUFacilitiesUpdated#"")
+FIRST RECORD([Agreement])
+For ($Counter;1;Records in selection([Agreement]))
+If (Substring([Agreement]SUFacilitiesUpdated;1;1)#",")
+[Agreement]SUFacilitiesUpdated:=","+[Agreement]SUFacilitiesUpdated//Add leading comma for returned string
+End if 
+[Agreement]SUFacilitiesUpdated:=Replace string([Agreement]SUFacilitiesUpdated;",-,";",")
+[Agreement]SUFacilitiesUpdated:=Replace string([Agreement]SUFacilitiesUpdated;",,";",")
+[Agreement]SUFacilitiesUpdated:=Replace string([Agreement]SUFacilitiesUpdated;",0,";",")
+If (Length([Agreement]SUFacilitiesUpdated)=1) & (Substring([Agreement]SUFacilitiesUpdated;1;1)=",")
+[Agreement]SUFacilitiesUpdated:=""
+End if 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+
+QUERY([Agreement];[Agreement]SUFacilitiesUpdated#"")
+FIRST RECORD([Agreement])
+For ($Counter;1;Records in selection([Agreement]))
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+[Agreement]SUFacilitiesUpdated
+
+// Modified by: nicholas.wykes (18/01/2011)
+// Clear field as update has been completed.
+//[Agreement]SUFacilitiesUpdated:=""
+NEXT RECORD([Agreement])
+End for 
+WS_vtBillSyncReturnPacket:=Replace string(WS_vtBillSyncReturnPacket;",-,";",")
+WS_vtBillSyncReturnPacket:=Replace string(WS_vtBillSyncReturnPacket;",,";",")
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+WS_vtBillSyncReturnPacket:=Substring(WS_vtBillSyncReturnPacket;2)
+WS_vtBillSyncReturn:="Checked"
+
+
+
+
+: (WS_vtBillSyncFunction="Sync")
+If (WS_vtBillSyncSendPacket#"")//Determine if any records sent from SU
+
+//Receive the packet of records from SU
+$SURecordCount:=GetSeparatedTextCount (WS_vtBillSyncSendPacket;$lf)
+If ($SURecordCount>0)
+WS_vtBillSyncReturnPacket:=""//Initialise the response packet to return to SU
+
+//For each Facility Update Record Deconstruct the Sent Packet from SU and process
+For ($SURecordCounter;1;$SURecordCount)
+
+//Get the SU Record Line from the SU Packet
+$SURecordLine:=GetSeparatedText (WS_vtBillSyncSendPacket;$lf;$SURecordCounter)
+
+
+//00001;2010/01/13;20:00:00;2009/12/30;webpassword;stuart@storman.com;021979800;standard;Storman Software;corporate
+
+//Deconstruct the Sent Packet
+WSRecordLog (Get localized string("Syncing Packet received from SU to update:")+Char(Carriage return)+Char(Carriage return)+$SURecordLine)
+$vtSUFacilityID:=GetSeparatedText ($SURecordLine;";";1)
+$vliSUFacilityID:=Num($vtSUFacilityID)
+$vdSULastUpdate:=Date(Substring(GetSeparatedText ($SURecordLine;";";2);9;2)+"/"+Substring(GetSeparatedText ($SURecordLine;";";2);6;2)+"/"+Substring(GetSeparatedText ($SURecordLine;";";2);1;4))
+$vtmSULastUpdate:=Time(GetSeparatedText ($SURecordLine;";";3))
+$vdSUPaidToDate:=Date(Substring(GetSeparatedText ($SURecordLine;";";4);9;2)+"/"+Substring(GetSeparatedText ($SURecordLine;";";4);6;2)+"/"+Substring(GetSeparatedText ($SURecordLine;";";4);1;4))
+$vtSUWebPassword:=GetSeparatedText ($SURecordLine;";";5)
+$vtSUEmailAddress:=GetSeparatedText ($SURecordLine;";";6)
+$vtSUPhoneNumber:=GetSeparatedText ($SURecordLine;";";7)
+$vtSUSupportPlan:=GetSeparatedText ($SURecordLine;";";8)
+$vtSUFacilityName:=GetSeparatedText ($SURecordLine;";";9)
+$vtSUOldSupportPlan:=GetSeparatedText ($SURecordLine;";";10)
+$vtBillingAnnualFee:=GetSeparatedText ($SURecordLine;";";11)
+
+
+
+//Identify the Facility ID in the SU response packet line
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+String(Num($vtSUFacilityID);"00000")+";"
+
+
+//Check whether Storman HOF is syncing with the Facility that the current record belongs to.
+//If Storman HOF has not synced to Facility within 3 minutes, or system date settings are wrong, then syncing for that Facility record is cancelled. 
+
+
+
+//Find the Unit record where the FacilityID link is set 
+$Index:=Find in field([Unit]SUFacilityID;$vliSUFacilityID)
+If ($Index#-1)
+GOTO RECORD([Unit];$Index)
+$vtFacilityCode:=Substring([Unit]RUnitNo;1;5)
+$Index:=Find in field([Facility]FacilityCode;$vtFacilityCode)
+If ($Index#-1)
+GOTO RECORD([Facility];$Index)
+
+//Get the last Storman syncing dates for this Facility and Last StormanUsers Sync Date and Time
+$vdLastStormanSyncDate:=UTCDate ([Facility]LastSyncTime;False;[Facility]LastSyncDate)
+$vtLastStormanSyncTime:=UTCTime ([Facility]LastSyncTime;False)
+$vdSUSystemDate:=Date(Substring(WS_vtBillSyncSUDate;9;2)+"/"+Substring(WS_vtBillSyncSUDate;6;2)+"/"+Substring(WS_vtBillSyncSUDate;1;4))
+$vtmSUSystemTime:=Time(WS_vtBillSyncSUTime)
+WSRecordLog (Get localized string("Last Facility Storman Sync Date / Time:")+" "+String(UTCDate ([Facility]LastSyncTime;False;[Facility]LastSyncDate))+", "+String(UTCTime ([Facility]LastSyncTime;False)))
+WSRecordLog (Get localized string("Last SU Sync Date / Time:")+" "+String($vdSUSystemDate)+", "+String($vtmSUSystemTime))
+
+
+//Check to see if Storman syncing is up to date, abort SU sync if not
+Case of 
+: ($vdLastStormanSyncDate=!00-00-00!) & ($vtLastStormanSyncTime=?00:00:00?)//Non-syncing Storman Facility - OK to sync to SU
+WSRecordLog (Get localized string("Non-syncing Storman Facility - OK to sync with SU"))
+
+: ($vdLastStormanSyncDate=$vdSUSystemDate) & ($vtLastStormanSyncTime>($vtmSUSystemTime-?00:03:00?))//If Storman has synced within the last 3 minutes - OK to sync to SU
+WSRecordLog (Get localized string("Storman has synced in the last 3 minutes - OK to sync with SU"))
+
+Else 
+Case of 
+: ($vdLastStormanSyncDate#$vdSUSystemDate) & ($vdLastStormanSyncDate#!00-00-00!) & (String($vdLastStormanSyncDate)#"00/00/00")
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"13;Facility is a syncing site but has not synced today!"+$lf
+$PerformSync:=False
+WSRecordLog (Get localized string("Facility is a syncing site but has not synced today - Delaying sync with SU until syncing!"))
+
+: ($vdLastStormanSyncDate=$vdSUSystemDate) & ($vtLastStormanSyncTime<($vtmSUSystemTime-?00:03:00?))
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"14;Facility has not synced within the last 3 minutes!"+$lf
+$PerformSync:=False
+WSRecordLog (Get localized string("Facility has not synced within the last 3 minutes - Delaying sync with SU until syncing!"))
+
+: ($vdSUSystemDate<$vdLastStormanSyncDate) | (($vdSUSystemDate=$vdLastStormanSyncDate) & ($vtmSUSystemTime<$vtLastStormanSyncTime))
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"15;Facility has a syncing date / time later than StormanUsers, please check date!"+$lf
+$PerformSync:=False
+WSRecordLog (Get localized string("Facility has a syncing date / time later than StormanUsers, please check date - Delaying sync with SU until system dates corrected!"))
+
+Else 
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"16:Unknown syncing check error!"+$lf
+$PerformSync:=False
+WSRecordLog (Get localized string("Unknown syncing check error - syncing cancelled!"))
+End case 
+End case 
+Else 
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"17;Facility record related to Unit not found!"+$lf
+$PerformSync:=False
+WSRecordLog (Get localized string("Facility record related to Unit not found - syncing cancelled!"))
+End if 
+Else 
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]SUFacilitiesUpdated="@,"+String($vliSUFacilityID)+",@")
+[Agreement]SUFacilitiesUpdated:=Replace string([Agreement]SUFacilitiesUpdated;","+String($vliSUFacilityID)+",";",")
+SAVE RECORD([Agreement])
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"10;Unit with matching Facility ID not found!"+$lf
+$PerformSync:=False
+WSRecordLog (Get localized string("Unit with matching Facility ID not found - syncing cancelled!"))
+End if 
+
+
+
+
+//If syncing has not been cancelled by any of the checks above, then perform syncing.
+If ($PerformSync=True)
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+RELATE ONE([Unit]AgreeNo)//Giving us the Agreement
+If (Records in selection([Agreement])=1)
+If (Locked([Agreement])=False)//
+$vtSUFacilityIDShort:=String(Num($vtSUFacilityID))//Drops all leading Zeros
+
+//Find the record / line number of the Billing Record Line within the [Agreement]SUFacilityInfo field
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;$lf;";";1;$vtSUFacilityIDShort)//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+
+If ($Index#-1)//This Facility entry already existed
+WSRecordLog (Get localized string("Facility record exists in Agreement!"))
+
+//Get the contents of the Billing record found above
+$BillingRecordsLine:=GetSeparatedText ([Agreement]SUFacilityInfo;$lf;$Index)
+
+//Read the Billing record into vars
+$vtBillingFacilityID:=GetSeparatedText ($BillingRecordsLine;";";1)//Billing Facility ID
+$vdBillingLastUpdate:=Date(GetSeparatedText ($BillingRecordsLine;";";2))//Billing Last Update Date
+$vtmBillingLastUpdate:=Time(GetSeparatedText ($BillingRecordsLine;";";3))//Billing Last Update Time
+$vdBillingPaidToDate:=Date(GetSeparatedText ($BillingRecordsLine;";";4))//Billing Paid To Date
+$vtBillingWebPassword:=GetSeparatedText ($BillingRecordsLine;";";5)//Billing Web Password
+$vtBillingEmailAddress:=GetSeparatedText ($BillingRecordsLine;";";6)//Billing Email Address
+$vtBillingPhoneNumber:=GetSeparatedText ($BillingRecordsLine;";";7)//Billing Phone Number
+$vtBillingSupportPlan:=GetSeparatedText ($BillingRecordsLine;";";8)//Billing Support Plan
+$vtBillingFacilityName:=GetSeparatedText ($BillingRecordsLine;";";9)//Billing Facility Name
+$vtBillingOldSupportPlan:=GetSeparatedText ($BillingRecordsLine;";";10)//Billing Old Support Plan
+$vtBillingAnnualFee:=GetSeparatedText ($BillingRecordsLine;";";11)//Billing Annual Fee
+
+
+
+//Find the last update date of the Agreement Facility record, if greater than that of SU then update SU, if less then SU updates Billing
+Case of 
+: ($vdSULastUpdate>$vdBillingLastUpdate) | (($vdSULastUpdate=$vdBillingLastUpdate) & ($vtmSULastUpdate>$vtmBillingLastUpdate))//SU is later than Billing
+
+//Update the current Facility values with those from SU
+$SURecordLine:=$vtSUFacilityIDShort+";"
+$SURecordLine:=$SURecordLine+String($vdSULastUpdate)+";"
+$SURecordLine:=$SURecordLine+String($vtmSULastUpdate)+";"
+$SURecordLine:=$SURecordLine+String($vdSUPaidToDate)+";"
+$SURecordLine:=$SURecordLine+$vtSUWebPassword+";"
+$SURecordLine:=$SURecordLine+$vtSUEmailAddress+";"
+$SURecordLine:=$SURecordLine+$vtSUPhoneNumber+";"
+$SURecordLine:=$SURecordLine+$vtSUSupportPlan+";"
+$SURecordLine:=$SURecordLine+$vtSUFacilityName+";"
+$SURecordLine:=$SURecordLine+$vtSUOldSupportPlan+";"
+$SURecordLine:=$SURecordLine+$vtBillingAnnualFee+";"
+
+
+
+
+//Overwrite the Billing Record line with the one from SU
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;$lf;$Index);$SURecordLine)
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"4;Billing record updated successfully!"+$lf
+WSRecordLog (Get localized string("Billing record updated successfully!"))
+
+: (($vdSULastUpdate=$vdBillingLastUpdate) & ($vtmSULastUpdate=$vtmBillingLastUpdate))//SU is the same as Billing
+
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"7;Billing record is the same as SU!"+$lf
+WSRecordLog (Get localized string("Billing record is the same as SU!"))
+QUERY([Agreement];[Agreement]SUFacilitiesUpdated="@,"+$vtSUFacilityIDShort+",@")
+
+Else 
+//Return the Billing values to SU so that it can be updated
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"5;Billing Later than SU!"+";"+String(Year of($vdBillingLastUpdate);"0000")+"-"+String(Month of($vdBillingLastUpdate);"00")+"-"+String(Day of($vdBillingLastUpdate);"00")+";"
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+String($vtmBillingLastUpdate)+";"+String(Year of($vdBillingPaidToDate);"0000")+"-"+String(Month of($vdBillingPaidToDate);"00")+"-"+String(Day of($vdBillingPaidToDate);"00")+";"
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+$vtBillingWebPassword+";"+$vtBillingEmailAddress+";"+$vtBillingPhoneNumber+";"+$vtBillingSupportPlan+";"+$vtBillingFacilityName+";"+$vtBillingOldSupportPlan+";"+$vtBillingAnnualFee+";"+$lf
+WSRecordLog (Get localized string("Billing Later than SU!"))
+End case 
+Else 
+WSRecordLog (Get localized string("Facility doesn't exist in Agreement!"))
+
+$SURecordLine:=$vtSUFacilityIDShort+";"
+$SURecordLine:=$SURecordLine+String($vdSULastUpdate)+";"
+$SURecordLine:=$SURecordLine+String($vtmSULastUpdate)+";"
+$SURecordLine:=$SURecordLine+String($vdSUPaidToDate)+";"
+$SURecordLine:=$SURecordLine+$vtSUWebPassword+";"
+$SURecordLine:=$SURecordLine+$vtSUEmailAddress+";"
+$SURecordLine:=$SURecordLine+$vtSUPhoneNumber+";"
+$SURecordLine:=$SURecordLine+$vtSUSupportPlan+";"
+$SURecordLine:=$SURecordLine+$vtSUFacilityName+";"
+$SURecordLine:=$SURecordLine+$vtSUOldSupportPlan+";"
+$SURecordLine:=$SURecordLine+$vtBillingAnnualFee+";"
+
+//Add the Record line from SU to Billing
+[Agreement]SUFacilityInfo:=[Agreement]SUFacilityInfo+$SURecordLine+$lf
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"6;Billing record added!"+$lf
+WSRecordLog (Get localized string("Billing record added!"))
+End if 
+
+
+//Remove this SU Facility from the SUFacilitiesUpdated field
+$Pos:=Position($vtSUFacilityIDShort+",";[Agreement]SUFacilitiesUpdated)
+
+//If the Facility ID is at the start of the [Agreement]SUFacilitiesUpdated text field, it will look like e.g 1; (note the trailing semi-colon)
+//If the Facility ID is in the middle or at the end of the [Agreement]SUFacilitiesUpdated text field it will look like e.g. ;1; (Note preceeding and trailing semi-colons)
+//Checking like this, we can be positive that we are not getting any false matches e.g. when searching for '1', instead getting '10001' by mistake.
+If ($Pos=1)//At the start of the field value
+[Agreement]SUFacilitiesUpdated:=Substring([Agreement]SUFacilitiesUpdated;Length($vtSUFacilityIDShort)+2)
+Else 
+$Pos:=Position(","+$vtSUFacilityIDShort+",";[Agreement]SUFacilitiesUpdated)//In the middle of the field value
+If ($Pos>0)
+[Agreement]SUFacilitiesUpdated:=Substring([Agreement]SUFacilitiesUpdated;1;$Pos)+Substring([Agreement]SUFacilitiesUpdated;$Pos+1+Length($vtSUFacilityIDShort)+1)
+End if 
+End if 
+
+SAVE RECORD([Agreement])
+Else //Someone else is currently modifying the Agreement record - error appropriately
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"12;Agreement record is locked! - "+$lf
+End if 
+Else 
+$vtSUFacilityIDShort:=String(Num($vtSUFacilityID))
+WS_vtBillSyncReturnPacket:=WS_vtBillSyncReturnPacket+"11;Related Agreement for supplied Unit not found! - Unlinking"+$lf
+READ WRITE([Unit])
+LOAD RECORD([Unit])
+[Unit]SUFacilityID:=0
+SAVE RECORD([Unit])
+READ ONLY([Unit])
+LOAD RECORD([Unit])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]SUFacilitiesUpdated=","+$vtSUFacilityIDShort+",")
+If (Records in selection([Agreement])>0)
+FIRST RECORD([Agreement])
+[Agreement]SUFacilitiesUpdated:=Replace string([Agreement]SUFacilitiesUpdated;","+$vtSUFacilityIDShort+",";",")
+SAVE RECORD([Agreement])
+End if 
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+LOAD RECORD([Agreement])
+End if 
+Else 
+//Syncing Errors already handled above
+End if 
+End for 
+WS_vtBillSyncReturn:="0;Completed"//Prepare response for SU
+Else 
+WS_vtBillSyncReturn:="3;There were no Update Records!"
+End if 
+Else 
+WS_vtBillSyncReturn:="2;Packet was empty!"
+End if 
+Else 
+WS_vtBillSyncReturn:="1:Unknown BillSyncFunction passed!"
+End case 
+
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+
+$String:="End WS_SUSync"+Char(13)
+$String:=$String+"WS_vtBillSyncReturn: "+WS_vtBillSyncReturn+Char(13)
+$String:=$String+"WS_vtBillSyncReturnPacket: "+WS_vtBillSyncReturnPacket+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

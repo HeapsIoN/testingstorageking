@@ -1,0 +1,156 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (PermissionsControl (26))
+SetFacility 
+Open window((Screen width/2)-245;(Screen height/2)-187;(Screen width/2)+245;(Screen height/2)+187;5;Get localized string("Change Agreement Number or Customer Code"))
+DIALOG([Facility];"Change")
+CLOSE WINDOW
+If (OK=1)
+READ WRITE(*)
+$OK:=True
+Case of 
+: (bAgree=1)
+If (vNewCode=(<>sFacility+Substring(vNewCode;6)))
+QUERY([Agreement];[Agreement]RAgreeNo=vNewCode)
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+vNewCode)
+End if 
+If (Records in selection([Agreement])>0)
+BEEP
+AlertMessage (Get localized string("There is already an agreement with number")+" "+[Agreement]AgreeNo)
+$OK:=False
+End if 
+If (vExisting=(<>sFacility+Substring(vExisting;6)))
+QUERY([Agreement];[Agreement]RAgreeNo=vExisting)
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+vExisting)
+End if 
+If (Records in selection([Agreement])#1)
+BEEP
+AlertMessage (Get localized string("No such agreement on file."))
+$OK:=False
+Else 
+If (Locked([Agreement])=True)
+$OK:=False
+AlertMessage (Get localized string("This agreement is being edited by another process. Quit that process first."))
+Else 
+RELATE MANY([Agreement]RAgreeNo)
+End if 
+End if 
+: (bCust=1)
+If (vNewCode=(<>sFacility+Substring(vNewCode;6)))
+QUERY([Customer];[Customer]CustomerCode=vNewCode)
+Else 
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+vNewCode)
+End if 
+If (Records in selection([Customer])>0)
+BEEP
+AlertMessage (Get localized string("There is already a customer with code")+" "+[Customer]CustomerCode)
+$OK:=False
+End if 
+If (vExisting=(<>sFacility+Substring(vExisting;6)))
+QUERY([Customer];[Customer]CustomerCode=vExisting)
+Else 
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+vExisting)
+End if 
+If (Records in selection([Customer])#1)
+BEEP
+AlertMessage (Get localized string("No such customer on file."))
+$OK:=False
+Else 
+If (Locked([Customer])=True)
+$OK:=False
+AlertMessage (Get localized string("This customer is being edited by another process. Quit that process first."))
+Else 
+RELATE MANY([Customer]CustomerCode)
+End if 
+End if 
+: (bResv=1)
+If (vNewCode=(<>sFacility+Substring(vNewCode;6)))
+QUERY([Reservation];[Reservation]RReserveNo=vNewCode)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+vNewCode)
+End if 
+If (Records in selection([Reservation])>0)
+BEEP
+AlertMessage (Get localized string("There is already a reservation with number")+" "+[Reservation]ReserveNo)
+$OK:=False
+End if 
+If (vExisting=(<>sFacility+Substring(vExisting;6)))
+QUERY([Reservation];[Reservation]RReserveNo=vExisting)
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+vExisting)
+End if 
+If (Records in selection([Reservation])#1)
+BEEP
+AlertMessage (Get localized string("No such reservation on file."))
+$OK:=False
+Else 
+If (Locked([Reservation])=True)
+$OK:=False
+AlertMessage (Get localized string("This reservation is being edited by another process. Quit that process first."))
+Else 
+RELATE MANY([Reservation]RReserveNo)
+End if 
+End if 
+Else 
+//Do Nothing
+End case 
+If ($OK=True)
+BEEP
+ConfirmTwo (Get localized string("Change")+" "+vExisting+" "+Get localized string("to2")+" "+vNewCode+"?")
+If (OK=1)
+Case of 
+: (bAgree=1)
+APPLY TO SELECTION([UnitHistory];[UnitHistory]AgreeNo:=<>sFacility+vNewCode)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=<>sFacility+vNewCode)
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=<>sFacility+vNewCode)
+APPLY TO SELECTION([Unit];[Unit]AgreeNo:=<>sFacility+vNewCode)
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=[Agreement]RAgreeNo)
+QUERY([Customer];[Customer]AgreemtsOperating=vExisting)
+READ WRITE([Customer])
+APPLY TO SELECTION([Customer];[Customer]AgreemtsOperating:=vNewCode)
+SAVE RECORD([Customer])
+QUERY([Customer];[Customer]AgreemtsOperating=vNewCode)
+QUERY([PromotionHistory];[PromotionHistory]RefAgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]RefAgreeNo:=<>sFacility+vNewCode)
+QUERY([PromotionHistory];[PromotionHistory]RefAgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]RefAgreeNo:=<>sFacility+vNewCode)
+[Agreement]AgreeNo:=vNewCode
+[Agreement]RAgreeNo:=<>sFacility+vNewCode
+SAVE RECORD([Agreement])
+: (bCust=1)
+APPLY TO SELECTION([Trxs];[Trxs]CustomerCode:=<>sFacility+vNewCode)
+APPLY TO SELECTION([Agreement];[Agreement]CustomerCode:=<>sFacility+vNewCode)
+APPLY TO SELECTION([Reservation];[Reservation]CustomerCode:=<>sFacility+vNewCode)
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=<>sFacility+vNewCode)
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=<>sFacility+vNewCode)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=<>sFacility+vNewCode)
+[Customer]CustomerCode:=<>sFacility+vNewCode
+
+//If ([Customer]DDPaymentProfileID="Deleted")
+//[Customer]DDPaymentProfileID:=""
+//End if 
+
+
+SAVE RECORD([Customer])
+: (bResv=1)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+QUERY([Letters];[Letters]AgreeNo=[Reservation]RReserveNo)
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=<>sFacility+vNewCode)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=<>sFacility+vNewCode)
+APPLY TO SELECTION([Unit];[Unit]ReservedTo:=<>sFacility+vNewCode)
+[Reservation]ReserveNo:=vNewCode
+[Reservation]RReserveNo:=<>sFacility+vNewCode
+SAVE RECORD([Reservation])
+Else 
+//Do Nothing
+End case 
+End if 
+End if 
+End if 
+READ ONLY(*)
+UnloadAll 
+End if 
+
+CalendarSave // Add by Hamid 30/03/2015 - 8256
+CANCEL// Add by Hamid 30/03/2015 - 8256

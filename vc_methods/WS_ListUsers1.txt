@@ -1,0 +1,117 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 04/03/15, 10:26:50
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_ListUsers1
+// Description
+// This method is used to retrieve all User Logins in a database from a website.
+// 
+// Parameters
+// ----------------------------------------------------
+TRACE
+
+C_TEXT($String)
+SOAP DECLARATION(WS_FacilityCode;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)// Check WS password for HOF record or one record in selection
+
+SOAP DECLARATION(WS_asNameOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asUserIDOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asActualOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asPasswordOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asPermissionsOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asLanguageOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asAccessFacOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asGroupIDOut;Text array;SOAP output)
+SOAP DECLARATION(WS_asGUserIDOut;Text array;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_ListUsers1"+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_ORFacilityCode+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If ([Facility]ODBCPassword#"") & ([Facility]ODBCPassword=WS_WebServicePassword)
+
+If (<>sHOFacility="@HUB")
+QUERY([UserLogins];[UserLogins]UserID=WS_FacilityCode+"@";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"adminsupport";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"syncadd";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"daily";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"sync";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"server")
+Else 
+ALL RECORDS([UserLogins])
+QUERY([UserLogins];[UserLogins]Name#"adminsupport";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"syncadd";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"daily";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"sync";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"server")
+End if 
+
+SELECTION TO ARRAY([UserLogins]Name;WS_asNameOut;[UserLogins]UserID;WS_asUserIDOut;[UserLogins]ActualName;WS_asActualOut;[UserLogins]Password;WS_asPasswordOut;[UserLogins]Permissions;WS_asPermissionsOut;[UserLogins]Language;WS_asLanguageOut;[UserLogins]AccessFacility;WS_asAccessFacOut)
+UNLOAD RECORD([UserLogins])
+
+If (<>sHOFacility="@HUB")
+QUERY([UserGroup];[UserGroup]UserID=WS_FacilityCode+"@")
+Else 
+ALL RECORDS([UserGroup])
+End if 
+
+SELECTION TO ARRAY([UserGroup]GroupID;WS_asGroupIDOut;[UserGroup]UserID;WS_asGUserIDOut)
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Incorrect Web Service password."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Requested Facility does not exist in database."
+End if 
+
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([BillPlan])
+UNLOAD RECORD([BillPlan])
+
+$String:="End WS_ListUsers1"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 
+

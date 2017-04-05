@@ -1,0 +1,146 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($0)//Error return code -16020=Invalid Key Field
+C_TEXT($Code)
+$0:=0
+If (Trigger event=On Saving New Record Event) | (Trigger event=On Saving Existing Record Event)
+If (Trigger event=On Saving New Record Event)
+//Save new PrimaryKey value
+If ([Agreement]PrimaryKey=0)
+[Agreement]PrimaryKey:=<>aliPrimaryKeys{Table(->[Agreement])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[Agreement])}:=<>aliPrimaryKeys{Table(->[Agreement])}-1
+Else 
+<>aliPrimaryKeys{Table(->[Agreement])}:=<>aliPrimaryKeys{Table(->[Agreement])}+1
+End if 
+End if 
+End if 
+If (<>sFacility="ST@")
+If ([Agreement]PaidToDate#Old([Agreement]PaidToDate))//If the PaidUpToDate has been modified in any way then SU needs to be notified / updated
+C_LONGINT($Offset)
+C_TEXT($BillingRecordBatchWriteRead;$BillingRecordBatchWrite)
+$BillingRecordBatchWrite:=""
+$Offset:=0
+
+$BillingRecordCount:=GetSeparatedTextCount ([Agreement]SUFacilityInfo;Char(Line feed))
+For ($BillingRecordCounter;1;$BillingRecordCount)
+
+//Get the contents of the Billing record found above
+$BillingRecordBatchWriteRead:=GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$BillingRecordCounter)
+
+//Read the Billing record into vars
+$vtBillingFacilityID:=GetSeparatedText ($BillingRecordBatchWriteRead;";";1)//Billing Facility ID
+$vtBillingFacilityIDShort:=String(Num($vtBillingFacilityID))
+$vdBillingLastUpdate:=Date(GetSeparatedText ($BillingRecordBatchWriteRead;";";2))//Billing Last Update Date
+$vtmBillingLastUpdate:=Time(GetSeparatedText ($BillingRecordBatchWriteRead;";";3))//Billing Last Update Time
+$vdBillingPaidToDate:=Date(GetSeparatedText ($BillingRecordBatchWriteRead;";";4))//Billing Paid To Date
+$vtBillingWebPassword:=GetSeparatedText ($BillingRecordBatchWriteRead;";";5)//Billing Web Password
+$vtBillingEmailAddress:=GetSeparatedText ($BillingRecordBatchWriteRead;";";6)//Billing Email Address
+$vtBillingPhoneNumber:=GetSeparatedText ($BillingRecordBatchWriteRead;";";7)//Billing Phone Number
+$vtBillingSupportPlan:=GetSeparatedText ($BillingRecordBatchWriteRead;";";8)//Billing Support Plan
+$vtBillingFacilityName:=GetSeparatedText ($BillingRecordBatchWriteRead;";";9)//Billing Facility Name
+$vtBillingOldSupportPlan:=GetSeparatedText ($BillingRecordBatchWriteRead;";";10)//Billing Old Support Plan
+$vtBillingAnnualFee:=GetSeparatedText ($BillingRecordBatchWriteRead;";";11)//Billing Unit Rented Value
+
+If ([Agreement]PaidToDate>$vdBillingPaidToDate)
+$vdBillingPaidToDate:=[Agreement]PaidToDate
+If ($vtBillingSupportPlan="Expired")
+$Temp:=$vtBillingOldSupportPlan
+$vtBillingOldSupportPlan:=$vtBillingSupportPlan
+$vtBillingSupportPlan:=$Temp
+End if 
+End if 
+
+//Update the current Facility values with those from SU
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingFacilityIDShort+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+String(Current date)+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+String(Current time)+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+String($vdBillingPaidToDate)+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingWebPassword+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingEmailAddress+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingPhoneNumber+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingSupportPlan+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingFacilityName+";"
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingOldSupportPlan+";"
+
+C_LONGINT($Index;$UnitFacilityID)
+$UnitFacilityID:=Num($vtBillingFacilityIDShort)
+$Index:=Find in field([Unit]SUFacilityID;$UnitFacilityID)
+If ($Index#-1)//We don't want to update the value if there is no loaded Unit record
+GOTO RECORD([Unit];$Index)
+$vtBillingAnnualFee:=String([Unit]RentedValue)
+End if 
+$BillingRecordBatchWrite:=$BillingRecordBatchWrite+$vtBillingAnnualFee+";"+Char(Line feed)
+
+
+//Register that the Facility has been updated
+If (Position(","+$vtBillingFacilityIDShort+",";[Agreement]SUFacilitiesUpdated)=0)// Checking to see if Facility ID is already listed as having been updated
+If (Position(",";[Agreement]SUFacilitiesUpdated)#1)//Needs a comma as the first character
+[Agreement]SUFacilitiesUpdated:=","+[Agreement]SUFacilitiesUpdated
+End if 
+[Agreement]SUFacilitiesUpdated:=[Agreement]SUFacilitiesUpdated+$vtBillingFacilityIDShort+","
+End if 
+End for 
+[Agreement]SUFacilityInfo:=$BillingRecordBatchWrite
+End if 
+End if 
+If ([Agreement]LastRentIncrDate<[Agreement]MoveIn)
+[Agreement]LastRentIncrDate:=[Agreement]MoveIn
+End if 
+If ([Agreement]BB=True)
+[Agreement]ActiveAgreemt:=False
+End if 
+If ([Agreement]UnitsOccup="") & ([Agreement]AgreeNo#"#@")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+While (End selection([Unit])=False)
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+", "+[Unit]UnitNo
+NEXT RECORD([Unit])
+End while 
+[Agreement]UnitsOccup:=Substring([Agreement]UnitsOccup;3)
+End if 
+Case of 
+: (([Agreement]MoveIn=!00-00-00!) & ([Agreement]CustomerCode#"@MISCL")) | ([Agreement]AgreeNo="") | ([Agreement]CustomerCode="")
+$0:=-16020
+: ([Agreement]RAgreeNo="")
+$0:=-16104
+: (Substring([Agreement]RAgreeNo;1;5)#Substring([Agreement]CustomerCode;1;5))
+$0:=-16002
+: (Substring([Agreement]RAgreeNo;1;5)#Substring([Agreement]BillingPlanCode;1;5)) & (Length([Agreement]BillingPlanCode)>5)
+$0:=-16002
+: (Length([Agreement]CustomerCode)<6) & (Length([Agreement]RAgreeNo)>5)//SDD To stop entering a blank customer code for a valid record
+$0:=-16003
+Else 
+If ([Agreement]InsureCommence>!1990-01-01!)
+$0:=LogActivity (Substring([Agreement]RAgreeNo;1;5);[Agreement]InsureCommence;->[Activity]InsureNew;1)
+End if 
+If (Old([Agreement]InsureCommence)>!1990-01-01!) & ($0=0)
+$0:=LogActivity (Substring([Agreement]RAgreeNo;1;5);Old([Agreement]InsureCommence);->[Activity]InsureNew;-1)
+End if 
+If (Trigger event=On Saving Existing Record Event)
+If (Old([Agreement]NoticePlanNo)#[Agreement]NoticePlanNo)
+$Code:=$Code+"N"
+End if 
+If (Old([Agreement]InsureCommence)#[Agreement]InsureCommence) | (Old([Agreement]InsureExpire)#[Agreement]InsureExpire) | (Old([Agreement]InsureValue)#[Agreement]InsureValue)
+$Code:=$Code+"I"
+End if 
+If (Old([Agreement]NewRentAmt)#[Agreement]NewRentAmt)
+$Code:=$Code+"+"
+End if 
+If (Old([Agreement]NextBillDate)#[Agreement]NextBillDate) | (Old([Agreement]PaidToDate)#[Agreement]PaidToDate) | (Old([Agreement]LateCycleStDate)#[Agreement]LateCycleStDate)
+$Code:=$Code+"D"
+End if 
+If (Old([Agreement]ActiveAgreemt)=False) & ([Agreement]ActiveAgreemt=True)
+$Code:=$Code+"A"
+End if 
+End if 
+If ($0=0)
+TriggerLog (4;"113";Old([Agreement]BillingPlanCode);Old([Agreement]MoveIn);Old([Agreement]RegularRent);$Code;Substring([Agreement]RAgreeNo;1;5);[Agreement]RAgreeNo)
+End if 
+End case 
+Else 
+If (Old([Agreement]InsureCommence)>!1990-01-01!)
+$0:=LogActivity (Substring([Agreement]RAgreeNo;1;5);Old([Agreement]InsureCommence);->[Activity]InsureNew;-1)
+End if 
+If ($0=0)
+TriggerLog (4;"113";Old([Agreement]BillingPlanCode);Old([Agreement]MoveIn);Old([Agreement]RegularRent);$Code;Substring([Agreement]RAgreeNo;1;5);[Agreement]RAgreeNo)
+End if 
+End if 

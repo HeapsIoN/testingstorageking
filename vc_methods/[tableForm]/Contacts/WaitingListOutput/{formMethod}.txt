@@ -1,0 +1,71 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+vSalesInqNo:=Substring([Contacts]ContactNo;6)
+If (Form event=On Load)
+LoadGradients 
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text11";Get localized string("This screen shows Sales Enquiries & Contacts who have asked to be notified when a berth type they require becomes available."))
+OBJECT SET TITLE(*;"Text19";Get localized string("Berth size req"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text11";Get localized string("This screen shows Sales Enquiries & Contacts who have asked to be notified when a appliance type they require becomes available."))
+OBJECT SET TITLE(*;"Text19";Get localized string("Appliance size req"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text11";Get localized string("This screen shows Sales Enquiries & Contacts who have asked to be notified when a space type they require becomes available."))
+OBJECT SET TITLE(*;"Text19";Get localized string("Space size req"))
+Else 
+OBJECT SET TITLE(*;"Text11";Get localized string("This screen shows Sales Enquiries & Contacts who have asked to be notified when a unit type they require becomes available."))
+OBJECT SET TITLE(*;"Text19";Get localized string("Unit size req"))
+End case 
+QUERY([Contacts];[Contacts]OnWaitingList=True;*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=<>sFacility+"@")
+ORDER BY([Contacts];[Contacts]WhenRequired;>)
+If (vUnits>"")
+CREATE SET([Contacts];"WList")
+CREATE EMPTY SET([Contacts];"Contacts")
+$Position:=Position(",";vUnits)
+If ($Position>0)
+Repeat 
+USE SET("WList")
+$Unit:=Substring(vUnits;1;($Position-1))
+QUERY([Unit];[Unit]UnitNo=$Unit)
+$UnitType:=[Unit]UnitTypeCode
+QUERY SELECTION BY FORMULA([Contacts];Position($UnitType;[Contacts]PreferredUnits)>0)
+If (Records in set("Contacts")>0)
+CREATE SET([Contacts];"Contacts2")
+UNION("Contacts";"Contacts2";"Contacts")
+Else 
+CREATE SET([Contacts];"Contacts")
+End if 
+vUnits:=Substring(vUnits;($Position+1))
+Until (Position(",";vUnits)=0)
+Else 
+$Unit:=vUnits
+QUERY([Unit];[Unit]UnitNo=$Unit)
+$UnitType:=[Unit]UnitTypeCode
+QUERY SELECTION BY FORMULA([Contacts];Position($UnitType;[Contacts]PreferredUnits)>0)
+End if 
+
+End if 
+vUnits:=""
+End if 
+
+If (Form event=On Clicked) & (bAdd=1)
+ADD RECORD([Contacts];*)
+QUERY([Contacts];[Contacts]Facility=<>sFacility;*)
+QUERY([Contacts]; & ;[Contacts]OnWaitingList=True)
+End if 
+
+If (Form event=On Activate)
+//////////////fb8815 by eugene 20.04.2015
+Case of 
+: (asSortBy=1)
+ORDER BY([Contacts];[Contacts]CallDate;<;[Contacts]WhenRequired;<)
+: (asSortBy=2)
+ORDER BY([Contacts];[Contacts]ContactName;>)
+: (asSortBy=3)
+ORDER BY([Contacts];[Contacts]SizeQuoted;>)
+Else 
+//do nothing
+End case 
+//////////
+End if 

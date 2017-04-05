@@ -1,0 +1,298 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: SendSMS
+// Description
+// This method is used to Send SMS messages from Storman to a recipient by SendSMS & DailyPrint.
+//
+// Parameters
+// ----------------------------------------------------
+//
+// $0 - Returns 'T' if successful else error message
+// $1 - Recipient Phone Numbers separated by comma ','
+// $2 - Message that you wish to send - Max 160 Characters
+// $3 - Reference text - Max 20 Characters
+
+
+C_TEXT($1;$2;$3;$0)
+C_BOOLEAN($4;$Alert;$5;$Web;$6;$NewRecord)
+C_TEXT($Account;$Originator;$UserName;$Password)
+//C_TEXT(ID)  //Elliot
+$0:="0"
+$Alert:=True
+$Web:=False
+$NewRecord:=False
+If (Count parameters>3)
+$Alert:=$4
+If (Count parameters>4)
+$Web:=$5
+If (Count parameters>5)
+$NewRecord:=$6
+End if 
+End if 
+End if 
+SetFacility 
+$Account:=Substring(GetTextNo ([Facility]SMSAcctDetails;1;",");1;20)
+$Originator:=Substring(GetTextNo ([Facility]SMSAcctDetails;2;",");1;20)
+$UserName:=Substring(GetTextNo ([Facility]SMSAcctDetails;3;",");1;20)
+$Password:=Substring(GetTextNo ([Facility]SMSAcctDetails;4;",");1;20)
+If (Num($1)#0)
+Case of 
+: (GetTextNo ([Facility]SMSAcctDetails;5;",")="Advam")
+$0:=SendSMSAdvam ($Account;$Originator;$UserName;$Password;$1;$2;$3)
+: (GetTextNo ([Facility]SMSAcctDetails;5;",")="Storman SMS")
+$0:=HTTP_StormanSMS ($Account;$Originator;$UserName;$Password;$1;$2)
+//ID:="" //Elliot test
+//$0:=TestESD ($Account;$UserName;$Password;$1;$2) //Elliot's test sms method
+//$0:=SendSMSsolMobile ($Account;$Originator;$UserName;$Password;$1;$2;$3)
+Else 
+$0:=SendSMSAdvam ($Account;$Originator;$UserName;$Password;$1;$2;$3)
+End case 
+Else 
+$0:="IPN"
+End if 
+
+If (Substring($0;1;1)="T")//"Sent")
+If ($NewRecord)
+CREATE RECORD([Letters])
+End if 
+
+//FB11183
+Case of 
+: ([Agreement]RAgreeNo#"")
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+
+: ([Reservation]RReserveNo#"")
+[Letters]AgreeNo:=[Reservation]RReserveNo
+
+: ([Contacts]ContactNo#"")
+[Letters]ContactNo:=[Contacts]ContactNo
+
+Else 
+[Letters]AgreeNo:=[Customer]CustomerCode
+End case 
+//FB11183
+
+[Letters]DateSent:=Current date
+[Letters]SMSMessage:=$2
+
+If ([Letters]LetterDesc="")
+[Letters]LetterDesc:="SMS"
+End if 
+
+If (([Letters]AgreeNo#"") & ([Letters]ContactNo#"")) | ([Letters]DateSent#!00-00-00!)//-- 8436
+SAVE RECORD([Letters])
+
+Else 
+$Alert:=False
+If ($web=False)
+AlertMessage (Get localized string("Message unable to be sent"))
+ABORT
+End if 
+
+End if 
+
+//CLEAR VARIABLE(ID) //Elliot's test
+
+If ($NewRecord)
+$LetterAgree:=[Letters]AgreeNo
+QUERY([Letters];[Letters]AgreeNo=$LetterAgree)
+ORDER BY([Letters];[Letters]DateSent;<)
+End if 
+
+
+If ($Alert)
+AlertMessage (Get localized string("Message sent successfully!"))
+End if 
+Else 
+If ($Web=False)
+If ($0="IPN")
+AlertMessage (Get localized string("Message unable to be sent - Invalid Phone Number")+" - "+$1)
+Else 
+
+If (GetTextNo ([Facility]SMSAcctDetails;5;",")="Storman SMS")
+AlertMessage (Get localized string("Message unable to be sent")+" - "+$0)
+Else 
+AlertMessage (Get localized string("Message unable to be sent")+" - "+Substring($0;3))
+End if 
+
+End if 
+End if 
+End if 
+
+
+
+
+//04/10/16 DAM commented the code in order to avoid further errors
+
+
+//  // ----------------------------------------------------
+//  // User name (OS): 
+//  // Date and time: 00/00/00, 00:00:00
+//  // ----------------------------------------------------
+//  // Method: SendSMS
+//  // Description
+//  // This method is used to Send SMS messages from Storman to a recipient by SendSMS & DailyPrint.
+//  //
+//  // Parameters
+//  // ----------------------------------------------------
+//  //
+//  // $0 - Returns 'T' if successful else error message
+//  // $1 - Recipient Phone Numbers separated by comma ','
+//  // $2 - Message that you wish to send - Max 160 Characters
+//  // $3 - Reference text - Max 20 Characters
+
+
+//C_TEXT($1;$2;$3;$0)
+//C_BOOLEAN($4;$Alert;$5;$Web;$6;$NewRecord)
+//C_TEXT($Account;$Originator;$UserName;$Password)
+//  //C_TEXT(ID)  //Elliot
+//$0:="0"
+//$Alert:=True
+//$Web:=False
+//$NewRecord:=False
+//If (Count parameters>3)
+//$Alert:=$4
+//If (Count parameters>4)
+//$Web:=$5
+//If (Count parameters>5)
+//$NewRecord:=$6
+//End if 
+//End if 
+//End if 
+//SetFacility 
+//$Account:=Substring(GetTextNo ([Facility]SMSAcctDetails;1;",");1;20)
+//$Originator:=Substring(GetTextNo ([Facility]SMSAcctDetails;2;",");1;20)
+//$UserName:=Substring(GetTextNo ([Facility]SMSAcctDetails;3;",");1;20)
+//$Password:=Substring(GetTextNo ([Facility]SMSAcctDetails;4;",");1;20)
+
+//If (Num($1)#0)
+
+//Case of 
+//: (GetTextNo ([Facility]SMSAcctDetails;5;",")="Advam")
+//$0:=SendSMSAdvam ($Account;$Originator;$UserName;$Password;$1;$2;$3)
+
+//: (GetTextNo ([Facility]SMSAcctDetails;5;",")="Storman SMS")
+//$0:=HTTP_StormanSMS ($Account;$Originator;$UserName;$Password;$1;$2)
+//  //ID:="" //Elliot test
+//  //$0:=TestESD ($Account;$UserName;$Password;$1;$2) //Elliot's test sms method
+//  //$0:=SendSMSsolMobile ($Account;$Originator;$UserName;$Password;$1;$2;$3)
+//Else 
+//$0:=SendSMSAdvam ($Account;$Originator;$UserName;$Password;$1;$2;$3)
+//End case 
+
+//Else 
+//$0:="IPN"
+//End if 
+
+
+//If (Substring($0;1;1)="T")  //"Sent")
+
+//If ($NewRecord)
+//CREATE RECORD([Letters])
+//End if 
+
+//  //[Letters]AgreeNo:=[Agreement]RAgreeNo
+//  //If ([Letters]AgreeNo="")
+//  //[Letters]AgreeNo:=[Reservation]RReserveNo
+//  //End if 
+//  //If ([Letters]AgreeNo="")
+//  //[Letters]ContactNo:=[Contacts]ContactNo
+//  //End if 
+//  //If ([Letters]LetterDesc="")
+//  //[Letters]LetterDesc:="SMS"
+//  //End if 
+//  //[Letters]DateSent:=Current date
+//  //[Letters]SMSMessage:=$2
+//  //
+//  //  //[Letters]SMSID:=ID //Elliot's test
+//  //  //[Letters]SMSReceipt:=False //Elliot's test
+//  //SAVE RECORD([Letters])
+
+
+
+
+
+
+//  //JCW FB11183
+//  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+//  //[Letters]AgreeNo:=[Agreement]RAgreeNo
+//  //If ([Letters]AgreeNo="")
+//  //[Letters]AgreeNo:=[Reservation]RReserveNo
+//  //End if 
+
+//  //If ([Letters]AgreeNo="")
+//  //  //[Letters]AgreeNo:=[Contacts]ContactNo  //---    Modified by Hamid  - 13/4/2015 - 8970
+//  //  // this cuts off the last digit of contact number
+//  //[Letters]ContactNo:=[Contacts]ContactNo
+//  //End if 
+
+//  //If ([Letters]AgreeNo="")
+//  //  //if we comment the above line that cuts off the last digit, then it blanks the contact number because there 
+//  ////is no customer in selection, and errors on letters trigger
+//  //[Letters]ContactNo:=[Customer]CustomerCode
+//  //End if 
+//  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//If ([Letters]LetterDesc="")
+//[Letters]LetterDesc:="SMS"
+//End if 
+
+//[Letters]DateSent:=Current date
+//[Letters]SMSMessage:=$2
+
+//If (([Letters]AgreeNo#"") & ([Letters]ContactNo#"")) | ([Letters]DateSent#!00-00-00!)  //-- 8436
+//SAVE RECORD([Letters])
+//Else 
+//$Alert:=False
+//If ($web=False)
+//AlertMessage (Get localized string("Message unable to be sent"))
+//ABORT
+//End if 
+
+//End if 
+
+//  //CLEAR VARIABLE(ID) //Elliot's test
+
+//If ($NewRecord)
+
+//Case of   //FB11183
+//: ([Letters]AgreeNo#"")  //FB11183
+//$LetterAgree:=[Letters]AgreeNo
+
+//: ([Letters]ContactNo#"")  //FB11183
+//$LetterAgree:=[Letters]ContactNo  //FB11183
+
+//End case   //FB11183
+
+//QUERY([Letters];[Letters]AgreeNo=$LetterAgree)
+//ORDER BY([Letters];[Letters]DateSent;<)
+
+//End if 
+
+
+//If ($Alert)
+//AlertMessage (Get localized string("Message sent successfully!"))
+//End if 
+//Else 
+//If ($Web=False)
+//If ($0="IPN")
+//AlertMessage (Get localized string("Message unable to be sent - Invalid Phone Number")+" - "+$1)
+//Else 
+
+//If (GetTextNo ([Facility]SMSAcctDetails;5;",")="Storman SMS")
+//AlertMessage (Get localized string("Message unable to be sent")+" - "+$0)
+//Else 
+//AlertMessage (Get localized string("Message unable to be sent")+" - "+Substring($0;3))
+//End if 
+
+//End if 
+//End if 
+//End if 

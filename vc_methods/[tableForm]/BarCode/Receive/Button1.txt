@@ -1,0 +1,194 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($Warning)
+C_TEXT($LengthStay)
+C_POINTER($pBoxes)
+ARRAY TEXT(ArrivedBoxes;0)
+$Warning:=False
+
+READ WRITE([Trxs])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Unit])
+
+For ($i;1;Size of array(arActive))
+If (arActive{$i}=False) & (arBilled{$i}=True)
+$Warning:=True
+End if 
+End for 
+
+If ($Warning)
+ConfirmTwo ("Not all billed boxes have arrived to Depot. Do you wish to continue?";"Yes";"No")
+Else 
+OK:=1
+End if 
+
+If (OK=1)
+READ WRITE([BarCode])
+READ WRITE([Unit])
+For ($i;1;Size of array(arBarCode))
+//Set the barcode inactive
+QUERY([BarCode];[BarCode]Code=arBarCode{$i})
+[BarCode]Active:=arActive{$i}
+
+//set the units vacant if the barcode inactive
+If (arActive{$i}=False)
+QUERY([Unit];[Unit]RUnitNo=arUnitNo{$i})
+
+[Unit]ReservedTo:=""
+[Unit]Status:="Vacant"
+[Unit]ReservedDate:=!00-00-00!
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD([Unit])
+End if 
+SAVE RECORD([BarCode])
+
+//Delete transactions for units that didn't arrive to depot
+//Up to the staff to delete it
+//QUERY([Transaction];[Transaction]AgreeNo=[Reservation]RReserveNo;*)
+//QUERY([Transaction]; & ;[Transaction]UnitNo=Substring(arUnitNo{$i};6))
+//DELETE SELECTION([Transaction])
+
+End for 
+
+//Convert to agreement 
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+If (ConvToAgreemt )
+[Reservation]Balance:=0
+
+//Move OUT Date from reservation
+READ WRITE([Agreement])
+LOAD RECORD([Agreement])
+$LengthStay:=GetTextNo ([Reservation]BoxnStore;1;",")
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+If ([BillPlan]PlanPeriod="Week")
+[Agreement]MoveOut:=Add to date([Agreement]MoveIn;0;0;Num($LengthStay)*7)
+[Agreement]OutNoticeDate:=[Agreement]MoveOut-[Facility]NoticeDaysReqd
+[Agreement]NextBillDate:=Add to date([Agreement]MoveOut;0;0;1)
+[Agreement]MthsAdv:=1
+Else 
+[Agreement]MoveOut:=Add to date([Agreement]MoveIn;0;(Num($LengthStay));0)
+[Agreement]OutNoticeDate:=[Agreement]MoveOut-[Facility]NoticeDaysReqd
+[Agreement]NextBillDate:=Add to date([Agreement]MoveOut;0;0;1)
+
+[Agreement]MthsAdv:=1
+End if 
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+
+//Set last Bill Amount
+
+QUERY([Trxs];[Trxs]AnalysisCode=Substring([Agreement]RAgreeNo;1;5)+"RF";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Agreement]RAgreeNo)
+
+[Agreement]LastBillAmt:=[Agreement]LastBillAmt+Sum([Trxs]TotAmt)
+
+//set the agreement no for active barcodes
+//Add ORC for Compulsory/Extra Insurance
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=Substring([Agreement]RAgreeNo;1;5)+"IN")
+For ($i;1;Size of array(arBarCode))
+QUERY([BarCode];[BarCode]Code=arBarCode{$i})
+If (arActive{$i}=True)
+[BarCode]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([BarCode])
+//Add ORC for Compulsory/Extra Insurance
+FIRST RECORD([Trxs])
+If (Records in selection([Trxs])#0)
+READ WRITE([OtherChgs])
+For ($k;1;Records in selection([Trxs]))
+$Pos:=Position(arUnitNo{$i};[Trxs]Description)
+If ($Pos>0)
+CREATE RECORD([OtherChgs])
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+"IN")
+[OtherChgs]AnalysisCode:=[Analysis]Code
+If ([Trxs]Description="@Extra@")
+[OtherChgs]Description:="Extra"+" "+[Analysis]Description+" "+arUnitNo{$i}
+Else 
+[OtherChgs]Description:=[Analysis]Description+" "+arUnitNo{$i}
+End if 
+[OtherChgs]Amount:=[Trxs]TotAmt
+[OtherChgs]Amount:=Round([OtherChgs]Amount/Num($LengthStay);2)
+[OtherChgs]NewAmount:=[OtherChgs]Amount
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+End if 
+NEXT RECORD([Trxs])
+End for 
+End if 
+End if 
+End for 
+
+
+//Add ORC for BnS Rent
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=Substring([Agreement]RAgreeNo;1;5)+"RF1")
+For ($i;1;Size of array(arBarCode))
+If (arActive{$i}=True)
+FIRST RECORD([Trxs])
+If (Records in selection([Trxs])#0)
+READ WRITE([OtherChgs])
+For ($k;1;Records in selection([Trxs]))
+$Pos:=Position(Substring(arUnitNo{$i};6);[Trxs]Description)
+If ($Pos>0)
+CREATE RECORD([OtherChgs])
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+"RF1")
+[OtherChgs]AnalysisCode:=[Analysis]Code
+[OtherChgs]Description:=[Trxs]Description
+[OtherChgs]Amount:=[Trxs]TotAmt
+[OtherChgs]Amount:=Round([OtherChgs]Amount/Num($LengthStay);2)
+[OtherChgs]NewAmount:=[OtherChgs]Amount
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+End if 
+NEXT RECORD([Trxs])
+End for 
+End if 
+End if 
+End for 
+
+
+//Agreement Insurance
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+[Agreement]InsureValue:=Sum([Unit]InsureValue)
+[Agreement]InsureCommence:=[Agreement]MoveIn
+[Agreement]InsureExpire:=[Agreement]NextBillDate
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=1
+asShowHistory:=1
+ReCalc 
+
+//Call Kinitek and pass the Boxes ID and the Agreement No
+
+QUERY([BarCode];[BarCode]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([BarCode]; & ;[BarCode]Active=True)
+SELECTION TO ARRAY([BarCode]Code;ArrivedBoxes)
+CallKinitekURL (False;True)
+
+//Send email to customer that boxes have arrived to depot
+//If ([Facility]EmailAddress#"")
+//$OK:=OR_EmailCust ("3")  //("";"";"";"";"";"";False;->Attachments;"";"";"";"";"";"";"")  `Notification Email to Customer - details of email are filled in from 'OR_EmailNotice' method 
+//If ($OK=False)  //Email Failed
+//WS_ORErrorCode:=10  //Email Failed
+//WS_ORErrorDescription:="Customer Notification Email failed!"
+//End if 
+//End if 
+
+
+SAVE RECORD([BarCode])
+READ ONLY([BarCode])
+SAVE RECORD([Agreement])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+ACCEPT
+End if 
+End if 

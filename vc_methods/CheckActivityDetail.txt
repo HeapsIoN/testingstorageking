@@ -1,0 +1,111 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//FacilityCode to check   `CheckActivityAll
+C_DATE($2;$3;$Date)//Date range
+C_BOOLEAN($4;$5;$6;$7)//$4=True is Calc Sums, False=Totals/Occup $5=Arrears as well, $6=True is calc starting pos, $7=true=from menu CheckActivity
+C_BOOLEAN($CheckForward)
+C_LONGINT($i;$Calc;$Occup;$Occup2)
+$CheckForward:=False
+$Calc:=0
+$Occup:=0
+If ($5)
+$Calc:=2
+End if 
+Open window(20;200;600;300;0;Get localized string("Progress"))
+GOTO XY(2;2)
+If ($4) & ($7)
+Case of 
+: ($3>[Facility]ReCalcActivity) & ($2<=[Facility]ReCalcActivity)
+QUERY([Activity];[Activity]FacilityCode=$1;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=[Facility]ReCalcActivity)
+If ($6) | ([Activity]OccupUnitNo<50)
+MESSAGE(Get localized string("Calculating Activity Date")+":"+$1+":"+String([Facility]ReCalcActivity;6)+"   ")
+DailyActivity ([Facility]ReCalcActivity;$Calc;2;$7)
+End if 
+$CheckForward:=True
+: ($3<=[Facility]ReCalcActivity)
+QUERY([Activity];[Activity]FacilityCode=$1;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=$3)
+If ($6) | ([Activity]OccupUnitNo<50)
+MESSAGE(Get localized string("Calculating Activity Date")+":"+$1+":"+String($3;6)+"   ")
+DailyActivity ($3;$Calc;2;$7)
+End if 
+: ($2>[Facility]ReCalcActivity)
+$CheckForward:=True
+Else 
+//do nothing
+End case 
+End if 
+READ WRITE([Activity])
+QUERY([Activity];[Activity]FacilityCode=$1;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=$2;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=$3)
+ORDER BY([Activity];[Activity]ActivityDate;>)
+ARRAY DATE($aDates;Records in selection([Activity]))
+SELECTION TO ARRAY([Activity]ActivityDate;$aDates)
+$Date:=$2
+Repeat 
+If (Find in array($aDates;$Date)<1)
+CREATE RECORD([Activity])
+[Activity]FacilityCode:=$1
+[Activity]ActivityDate:=$Date
+[Activity]ActivityWeek:=GetWeekMonthNo (1;[Activity]ActivityDate)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;[Activity]ActivityDate)
+SAVE RECORD([Activity])
+End if 
+$Date:=$Date+1
+Until ($Date>=$3)
+QUERY([Activity];[Activity]FacilityCode=$1;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=$2;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=$3)
+If ($CheckForward)
+QUERY SELECTION([Activity];[Activity]ActivityDate<=[Facility]ReCalcActivity)
+ORDER BY([Activity];[Activity]ActivityDate;<)
+$Occup2:=[Activity]OccupUnitNo
+End if 
+If ($4)
+ORDER BY([Activity];[Activity]ActivityDate;<)
+Else 
+ORDER BY([Activity];[Activity]ActivityDate;>)
+End if 
+If ($7)
+$Occup:=[Activity]OccupUnitNo
+End if 
+For ($i;1;Records in selection([Activity]))
+GOTO XY(2;2)
+If (GetWeekMonthNo (1;[Activity]ActivityDate)#[Activity]ActivityWeek) | (GetWeekMonthNo (2;[Activity]ActivityDate)#[Activity]ActivityMonth)
+[Activity]ActivityWeek:=GetWeekMonthNo (1;[Activity]ActivityDate)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;[Activity]ActivityDate)
+SAVE RECORD([Activity])
+End if 
+If ($4=False)
+If ($i<=Size of array($aDates))
+MESSAGE("Calculating Activity Date:"+$1+":"+String($aDates{$i};6)+" - "+String($i)+" of "+String(Size of array($aDates))+"   ")
+DailyActivity ($aDates{$i};$Calc;2;$7)
+End if 
+Else 
+MESSAGE(Get localized string("Checking Activity Date")+":"+$1+":"+String([Activity]ActivityDate)+" - "+String($i)+" of "+String(Records in selection([Activity]))+"   ")
+$Occup:=CheckActivityData ($Occup;True)//LogMonLoopCode
+End if 
+NEXT RECORD([Activity])
+End for 
+If ($CheckForward)
+QUERY([Activity];[Activity]FacilityCode=$1;*)
+QUERY([Activity]; & ;[Activity]ActivityDate>[Facility]ReCalcActivity;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=$3)
+ORDER BY([Activity];[Activity]ActivityDate;>)
+$Occup:=$Occup2
+For ($i;1;Records in selection([Activity]))
+GOTO XY(2;2)
+If (GetWeekMonthNo (1;[Activity]ActivityDate)#[Activity]ActivityWeek) | (GetWeekMonthNo (2;[Activity]ActivityDate)#[Activity]ActivityMonth)
+[Activity]ActivityWeek:=GetWeekMonthNo (1;[Activity]ActivityDate)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;[Activity]ActivityDate)
+SAVE RECORD([Activity])
+End if 
+MESSAGE(Get localized string("Checking Activity Date")+":"+String([Activity]ActivityDate)+" - "+String($i)+" of "+String(Records in selection([Activity]))+"   ")
+$Occup:=CheckActivityData ($Occup;True)//LogMonLoopCode
+NEXT RECORD([Activity])
+End for 
+End if 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+CLOSE WINDOW

@@ -1,0 +1,183 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+
+LoadGradients 
+bAddNew:=False
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(bAdd;Get localized string("Add")+" "+Get localized string("Berth Type"))
+OBJECT SET TITLE(*;"Text20";Get localized string("Berth Types and Rates"))
+OBJECT SET TITLE(*;"Text17";Get localized string("Maintenance - Types and RatesC"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(bAdd;Get localized string("Add")+" "+Get localized string("Appliance Type"))
+OBJECT SET TITLE(*;"Text20";Get localized string("Appliance Types and Rates"))
+OBJECT SET TITLE(*;"Text17";Get localized string("Maintenance - Types and RatesB"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(bAdd;Get localized string("Add")+" "+Get localized string("Space Type"))
+OBJECT SET TITLE(*;"Text20";Get localized string("Space Types and Rates"))
+OBJECT SET TITLE(*;"Text17";Get localized string("Maintenance - Space Types and RatesA"))
+Else 
+OBJECT SET TITLE(bAdd;Get localized string("Add")+" "+Get localized string("Unit Type"))
+OBJECT SET TITLE(*;"Text20";Get localized string("Unit Types and Rates"))
+OBJECT SET TITLE(*;"Text17";Get localized string("Maintenance - Types and RatesA"))
+End case 
+
+OBJECT SET VISIBLE(*;"bSelect";False)
+OBJECT SET VISIBLE(*;"bIncRates";False)
+OBJECT SET VISIBLE(*;"bUnitRate";True)
+
+If (PermissionsControl (212;False)=False)
+OBJECT SET VISIBLE(*;"bSelect";False)
+OBJECT SET VISIBLE(*;"bIncRates";False)
+OBJECT SET VISIBLE(*;"bUnitRate";False)
+End if 
+
+End if 
+
+If (Form event=On Display Detail)
+vOccUnit:=[UnitType]NoTotal-[UnitType]NoVacant
+If ([UnitType]UnitTypeCode="")
+OBJECT SET FORMAT(vOccUnit;" ")
+Else 
+OBJECT SET FORMAT(vOccUnit;"####0")
+End if 
+If ([UnitType]RCSpecial=True)
+OBJECT SET VISIBLE(*;"SpecialStar";True)
+Else 
+OBJECT SET VISIBLE(*;"SpecialStar";False)
+End if 
+End if 
+
+If (Form event=On Clicked)
+If (bAdd=1)
+bAdd:=0
+If (PermissionsControl (207))
+bAddNew:=True
+$WinRef:=Open window((Screen width/2)-419;(Screen height/2)-350;(Screen width/2)+419;(Screen height/2)+350;5;<>vtUnitsCap+" Type")
+Repeat 
+ADD RECORD([UnitType];*)
+Until (OK#1) | (bCancel=1)
+CLOSE WINDOW($WinRef)
+bAddNew:=False
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+Case of 
+: (asUnitDisplay#1)
+QUERY([UnitType]; & ;[UnitType]UnitCategory=asUnitDisplay{asUnitDisplay})
+Else 
+QUERY([UnitType])
+End case 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+End if 
+End if 
+If (bMod=1)
+//If (PermissionsControl (208))
+bMod:=0
+USE SET("UserSet")
+$WinRef:=Open window((Screen width/2)-419;(Screen height/2)-350;(Screen width/2)+419;(Screen height/2)+350;5;<>vtUnitsCap+" Type")
+MODIFY RECORD([UnitType];*)
+CLOSE WINDOW($WinRef)
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+Case of 
+: (asUnitDisplay#1)
+QUERY([UnitType]; & ;[UnitType]UnitCategory=asUnitDisplay{asUnitDisplay})
+Else 
+QUERY([UnitType])
+End case 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+//End if 
+End if 
+If (bPrint=1)
+If (PermissionsControl (198))
+ARRAY REAL($aWeeklyRate;0)
+SELECTION TO ARRAY([UnitType]WeeklyRate;$aWeeklyRate)
+SORT ARRAY($aWeeklyRate;<)
+If ($aWeeklyRate{1}>1) | (<>sFacility="KE@")
+bPrint:=2
+End if 
+Case of 
+: (<>sProduct="@B")
+vTitle:=Get localized string("Berth Type Listing")
+: (<>sProduct="@R")
+vTitle:=Get localized string("Appliance Type Listing")
+: (<>sProduct="@C")
+vTitle:=Get localized string("Space Type Listing")
+Else 
+vTitle:=Get localized string("Unit Type Listing")
+End case 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+FORM SET OUTPUT([UnitType];"PrintUnitTypes")
+vOccup:=0
+vVac:=0
+BREAK LEVEL(0)
+PrintSelection ("P")
+FORM SET OUTPUT([UnitType];"UnitTypeOut")
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+Case of 
+: (asUnitDisplay#1)
+QUERY([UnitType]; & ;[UnitType]UnitCategory=asUnitDisplay{asUnitDisplay})
+Else 
+QUERY([UnitType])
+End case 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+End if 
+End if 
+If (bDRC=1)
+$WinRef:=Open window((Screen width/2)-285;(Screen height/2)-323;(Screen width/2)+285;(Screen height/2)+323;5;<>vtUnitsCap+" Type Vacant DRC")
+DIALOG([UnitType];"DRCEdit")
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+Case of 
+: (asUnitDisplay#1)
+QUERY([UnitType]; & ;[UnitType]UnitCategory=asUnitDisplay{asUnitDisplay})
+Else 
+QUERY([UnitType])
+End case 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+End if 
+If (bSelect=1)
+bSelect:=0
+ShowSubset 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+OBJECT SET VISIBLE(*;"bSelect";False)
+OBJECT SET VISIBLE(*;"bIncRates";True)
+End if 
+If (bIncRates=1)
+bIncRates:=0
+vUnitsAnlysCodes:=<>vtUnits
+vNumber:=Records in selection([UnitType])
+vTitle:=Get localized string("Adjust Rates")
+Open window((Screen width/2)-200;(Screen height/2)-195;(Screen width/2)+200;(Screen height/2)+195;Movable dialog box;Get localized string("Adjust Unit Type Rates"))
+DIALOG([Facility];"AdjustRatesDialog")
+CLOSE WINDOW
+ALL RECORDS([UnitType])
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+OBJECT SET VISIBLE(*;"bIncRates";False)
+OBJECT SET VISIBLE(*;"bSelect";False)
+OBJECT SET VISIBLE(*;"bUnitRate";True)
+End if 
+End if 
+If (Form event=On Outside Call)
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+Case of 
+: (asUnitDisplay#1)
+QUERY([UnitType]; & ;[UnitType]UnitCategory=asUnitDisplay{asUnitDisplay})
+Else 
+QUERY([UnitType])
+End case 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+End if 
+If (Form event=On Double Clicked)
+If ([UnitType]UnitTypeCode>"")// & (PermissionsControl (208))
+$WinRef:=Open window((Screen width/2)-419;(Screen height/2)-350;(Screen width/2)+419;(Screen height/2)+350;5;<>vtUnitsCap+" Type")
+MODIFY RECORD([UnitType];*)
+CLOSE WINDOW($WinRef)
+End if 
+FILTER EVENT
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+Case of 
+: (asUnitDisplay#1)
+QUERY([UnitType]; & ;[UnitType]UnitCategory=asUnitDisplay{asUnitDisplay})
+Else 
+QUERY([UnitType])
+End case 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+End if 

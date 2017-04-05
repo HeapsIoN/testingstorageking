@@ -1,0 +1,29 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+If (PermissionsControl (104;False))//currently only let these do it as don't want customer stuffing it up
+If (Length([ChartAccts]ReportName)=5)
+QUERY([Facility];[Facility]FacilityCode=[ChartAccts]ReportName)
+$Facility:=[Facility]FacilityCode
+Else 
+$Facility:=<>sFacility
+End if 
+ConfirmTwo (Get localized string("Set all receipt trx prior to")+" "+String(Add to date([ChartAccts]BankBalDate;0;0;1))+" "+Get localized string("for facility")+" "+$Facility+" "+Get localized string("to reconciled?"))
+If (OK=1)
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=[ChartAccts]BankBalDate;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked>!00-00-00!;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled=!00-00-00!;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+If (Records in selection([Trxs])>0)
+ConfirmTwo (Get localized string("Warning! You are about to set")+" "+String(Records in selection([Trxs]))+" "+Get localized string("trx to 'reconciled'. Continue?"))
+If (OK=1)
+READ WRITE([Trxs])
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=[ChartAccts]BankBalDate)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=True)
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+End if 
+End if 
+End if 
+End if 

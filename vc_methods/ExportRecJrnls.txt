@@ -1,0 +1,49 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1;$2)//Date range for journals
+C_LONGINT($i;$j)
+C_TEXT($t)
+QUERY([Journal];[Journal]JrnlDate>=$1;*)
+QUERY([Journal]; & ;[Journal]JrnlDate<=$2;*)
+QUERY([Journal]; & ;[Journal]JrnlType="REC")
+ORDER BY([Journal];[Journal]JrnlDate;>)
+$t:=Char(9)
+$Filename:="GreatPlainsReceipts"+GetDateString ([Journal]JrnlDate;7)+".txt"
+$Doc:=Create document(<>sExportPath+$Filename;"TEXT")
+SEND PACKET($Doc;"Type"+$t+"TrxsDate"+$t+"CheckbookID"+$t+"Amount"+$t+"DocNum"+$t)
+SEND PACKET($Doc;"Desc"+$t+"From"+$t+"AcctNo"+$t+"OtherAmt"+Char(13))
+For ($i;1;Records in selection([Journal]))
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]Amount#0)
+If (Records in selection([CashBookTrxs])>0)
+$j:=Position("-";[Journal]Narration)
+$Prefix:=""
+If ($j>5)
+$Prefix:=Substring([Journal]Narration;1;$j-2)
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="D")//Debtors / Accts Receivable Account
+If (Records in selection([ChartAccts])>1)
+If ([Facility]FacilityCode="KE@")
+QUERY SELECTION BY FORMULA([ChartAccts];Position($Prefix;[ChartAccts]Description)>0)
+Else 
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=[Facility]FacilityCode)
+End if 
+End if 
+$AcctNo:=[ChartAccts]AcctNo
+If ($Prefix="M@")
+$AcctNo:=String(Num([ChartAccts]ReportName);"#-##########")
+Else 
+$AcctNo:=String(Num([ChartAccts]AcctNo);"#-#######")
+End if 
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;>)
+For ($j;1;Records in selection([CashBookTrxs]))
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+QUERY([Facility];[Facility]FacilityCode=Substring(GetKeyNo ([CashBookTrxs]Description;2);1;5))
+SEND PACKET($Doc;GetStringfromBoolean ([CashBookTrxs]Amount>0;"3";"4")+$t+String([CashBookTrxs]TrxDate)+$t+[ChartAccts]Description+$t+String(Abs([CashBookTrxs]Amount))+$t+Substring([CashBookTrxs]DocNum;1;20)+$t)//Was String($j) instead of DocNum
+SEND PACKET($Doc;GetKeyNo ([CashBookTrxs]Description;2)+$t+GetKeyNo ([CashBookTrxs]Description;1)+$t+$AcctNo+"-"+[Facility]GLCodeExt+$t+String([CashBookTrxs]Amount*(-1))+Char(13))
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+NEXT RECORD([Journal])
+End for 
+CLOSE DOCUMENT($Doc)
+AlertMessage (Get localized string("Export Complete!"))

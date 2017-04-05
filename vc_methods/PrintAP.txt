@@ -1,0 +1,41 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($Other)
+If ([Facility]TaxAddtoAmt)
+vBal:=Round([Agreement]RentAmt*(1+(GetTaxRate ([Agreement]NextBillDate)/100));2)
+Else 
+vBal:=[Agreement]RentAmt
+End if 
+vDate:=[Agreement]NextBillDate
+If ([Agreement]NewRentAmt>0) & ([Agreement]NewRentAmt#[Agreement]RentAmt) & ([Agreement]NewRentFrom#!00-00-00!)
+ConfirmTwo (Get localized string("Print AP for New Rent Amt from")+" "+String([Agreement]NewRentFrom)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+If ([Facility]TaxAddtoAmt)
+vBal:=Round([Agreement]NewRentAmt*(1+(GetTaxRate ([Agreement]NextBillDate)/100));2)
+Else 
+vBal:=[Agreement]NewRentAmt
+End if 
+vDate:=[Agreement]NewRentFrom
+End if 
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([OtherChgs])>0)
+If ([Facility]TaxAddtoAmt)
+$Other:=Sum([OtherChgs]Amount)*(1+(GetTaxRate ([Agreement]NextBillDate)/100))
+Else 
+$Other:=Sum([OtherChgs]Amount)
+End if 
+ConfirmTwo (Get localized string("Also include other charges of")+" "+String($Other;<>sFormat)+" "+Get localized string("in A/P amount?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+vBal:=Round(vBal+$Other;2)
+End if 
+End if 
+If ([Facility]Country="AU")
+FORM SET OUTPUT([Agreement];"AutoPayFormAust")
+Else 
+FORM SET OUTPUT([Agreement];"AutoPayFormNZ")
+End if 
+If (<>tWinLetterFormat#"A4")
+PAGE SETUP([Facility];"ClientSetup")//US Letter Portrait full size
+End if 
+PRINT RECORD
+FORM SET OUTPUT([Agreement];"UnitHistOut")

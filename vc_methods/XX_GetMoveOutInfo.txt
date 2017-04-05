@@ -1,0 +1,136 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+SOAP DECLARATION(WS_IsAgreement;Is Boolean;SOAP input;"WS_IsAgreement")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP output;"WS_MoveInDate")
+SOAP DECLARATION(WS_OutNoticeDate;Is date;SOAP output;"WS_OutNoticeDate")
+SOAP DECLARATION(WS_MoveOutDate;Is date;SOAP output;"WS_MoveOutDate")
+SOAP DECLARATION(WS_ExpectedMoveOutTime;Is time;SOAP output;"WS_ExptectedMoveOutTime")
+SOAP DECLARATION(WS_PriorLastBill;Is date;SOAP output;"WS_PriorLastBill")
+SOAP DECLARATION(WS_LastBillDate;Is date;SOAP output;"WS_LastBillDate")
+SOAP DECLARATION(WS_LastBillAmt;Is real;SOAP output;"WS_LastBillAmt")
+SOAP DECLARATION(WS_LastBillPlan;Is text;SOAP output;"WS_LastBillPlan")
+SOAP DECLARATION(WS_LastDiscAmt;Is real;SOAP output;"WS_LastDiscAmt")
+SOAP DECLARATION(WS_NextBillDte;Is date;SOAP output;"WS_NextBillDate")
+SOAP DECLARATION(WS_BalanceOwing;Is real;SOAP output;"WS_BalanceOwing")
+SOAP DECLARATION(WS_RemoveDiscount;Is real;SOAP output;"WS_RemoveDiscount")
+SOAP DECLARATION(WS_RentalCredits;Is real;SOAP output;"WS_RentalCredits")
+SOAP DECLARATION(WS_RentalCharges;Is real;SOAP output;"WS_RentalCharges")
+SOAP DECLARATION(WS_InsuranceCredits;Is real;SOAP output;"WS_InsuranceCredits")
+SOAP DECLARATION(WS_ReverseDeposit;Is real;SOAP output;"WS_ReverseDeposit")
+SOAP DECLARATION(WS_OtherCharges;Is real;SOAP output;"WS_OtherCharges")
+SOAP DECLARATION(WS_TotBal;Is real;SOAP output;"WS_TotBal")
+SOAP DECLARATION(WS_MoveOutSummary;Is text;SOAP output;"WS_MoveOutSummary")
+SOAP DECLARATION(WS_ReasonMoveOut;Is text;SOAP output;"WS_ReasonMoveOut")
+
+$String:="Start WS_GetMoveOutInfo"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+
+Case of 
+: (Records in selection([Agreement])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement found"
+: (Records in selection([Agreement])=1)
+
+RELATE ONE([Agreement]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+WS_MoveInDate:=[Agreement]MoveIn
+WS_OutNoticeDate:=[Agreement]OutNoticeDate
+WS_MoveOutDate:=[Agreement]MoveOut
+WS_ExpectedMoveOutTime:=[Agreement]ExpectedMoveOutTime
+WS_ReasonMoveOut:=[Customer]ReasonMoveout
+WS_PriorLastBill:=[Agreement]PriorLastBill
+WS_LastBillDate:=[Agreement]LastBillDate
+WS_LastBillAmt:=[Agreement]LastBillAmt
+WS_LastBillPlan:=[Agreement]LastBillPlan
+WS_LastDiscAmt:=[Agreement]LastDiscAmt
+WS_NextBillDte:=[Agreement]NextBillDate
+WS_BalanceOwing:=[Agreement]BalanceOwing
+
+//Calculate totals and summary
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vAmt5:=0
+vAmt6:=0
+vTotBal:=0
+
+If ([Agreement]MoveOut#!00-00-00!) & ([Agreement]ActiveAgreemt)
+MoveOutCalc 
+End if 
+
+WS_RemoveDiscount:=vAmt1
+WS_RentalCredits:=vAmt2
+WS_RentalCharges:=vAmt3
+WS_InsuranceCredits:=vAmt4
+WS_ReverseDeposit:=vAmt5
+WS_OtherCharges:=vAmt6
+WS_TotBal:=vTotBal
+WS_MoveOutSummary:=vLeg1
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+
+End case 
+End if 
+
+
+$String:="End WS_GetMoveOutInfo"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+$String:=$String+"WS_OutNoticeDate: "+String(WS_OutNoticeDate)+Char(13)
+$String:=$String+"WS_MoveOutDate: "+String(WS_MoveOutDate)+Char(13)
+$String:=$String+"WS_ExpectedMoveOutTime: "+String(WS_ExpectedMoveOutTime)+Char(13)
+$String:=$String+"WS_ReasonMoveOut: "+WS_ReasonMoveOut+Char(13)
+$String:=$String+"WS_PriorLastBill: "+String(WS_PriorLastBill)+Char(13)
+$String:=$String+"WS_LastBillDate: "+String(WS_LastBillDate)+Char(13)
+$String:=$String+"WS_LastBillAmt: "+String(WS_LastBillAmt)+Char(13)
+$String:=$String+"WS_LastBillPlan: "+WS_LastBillPlan+Char(13)
+$String:=$String+"WS_LastDiscAmt: "+String(WS_LastDiscAmt)+Char(13)
+$String:=$String+"WS_NextBillDte: "+String(WS_NextBillDte)+Char(13)
+$String:=$String+"WS_BalanceOwing: "+String(WS_BalanceOwing)+Char(13)
+$String:=$String+"WS_RemoveDiscount: "+String(WS_RemoveDiscount)+Char(13)
+$String:=$String+"WS_RentalCharges: "+String(WS_RentalCredits)+Char(13)
+$String:=$String+"WS_InsuranceCredits: "+String(WS_InsuranceCredits)+Char(13)
+$String:=$String+"WS_ReverseDeposit: "+String(WS_ReverseDeposit)+Char(13)
+$String:=$String+"WS_OtherCharges: "+String(WS_OtherCharges)+Char(13)
+$String:=$String+"WS_TotBal: "+String(WS_TotBal)+Char(13)
+$String:=$String+"WS_MoveOutSummary: "+String(WS_MoveOutSummary)+Char(13)
+
+ReadOnlyAll 
+UnloadAll 
+WSRECORDLOG ($String)

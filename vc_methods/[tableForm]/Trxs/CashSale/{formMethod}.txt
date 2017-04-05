@@ -1,0 +1,442 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+C_REAL(vDiscount;vPrevQty)
+C_BOOLEAN(vDisable;vtReverse;bDiscount;bDiscountDisable;bModArray;bReceipt;$bNoPerm)
+C_TEXT($MerchString)
+If (Form event=On Load)
+OBJECT SET TITLE(*;"Text8";Get localized string("Name")+":")
+OBJECT SET TITLE(*;"Text9";Get localized string("Address")+":")
+OBJECT SET TITLE(*;"Text17";Get localized string("Date")+":")
+OBJECT SET TITLE(*;"Text18";Get localized string("User Login")+":")
+OBJECT SET TITLE(*;"Text1";Get localized string("Method")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Details")+":")
+OBJECT SET TITLE(*;"Text28";Get localized string("Description")+":")
+OBJECT SET TITLE(*;"Text2";Get localized string("Cheque drawer")+":")
+OBJECT SET TITLE(*;"Text14";Get localized string("Total")+":")
+OBJECT SET TITLE(*;"Text12";Get localized string("Discount")+":")
+OBJECT SET TITLE(*;"Text127";Get localized string("Total")+":")
+START TRANSACTION
+bModReceipt:=False
+bReceipt:=False
+vDisable:=False
+vDiscount:=0
+vChange:=[Trxs]CashReceived-[Trxs]TotAmt
+bDiscount:=False
+bDiscountDisable:=[Trxs]DiscountCalc
+vrTotal:=0
+For ($m;1;Size of array(aTot))
+vrTotal:=vrTotal+aTot{$m}
+End for 
+$bNoPerm:=False
+OBJECT SET VISIBLE(*;"@DiscountCalc";bDiscountDisable)
+LoadListBoxColour 
+
+OBJECT SET ENABLED(bModArray;False)
+OBJECT SET ENABLED(bDeleteArray;False)
+//From old method
+bSwipe:=Num(GetTextNo ([Facility]MerchantDetails;7;","))
+If (bSwipe=1)
+OBJECT SET VISIBLE(*;"@Enter@";False)
+OBJECT SET VISIBLE(*;"@Swipe@";True)
+Else 
+If (GetTextNo ([Facility]MerchantDetails;1;",")#"None")
+OBJECT SET VISIBLE(*;"@Enter@";True)
+OBJECT SET VISIBLE(*;"@Swipe@";False)
+Else 
+OBJECT SET VISIBLE(*;"@Enter@";False)
+OBJECT SET VISIBLE(*;"@Swipe@";False)
+End if 
+End if 
+If (GetTextNo ([Facility]MerchantDetails;1;",")="") | (GetTextNo ([Facility]MerchantDetails;1;",")="None")
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bCCInst;False)
+OBJECT SET VISIBLE(bEnter;False)
+OBJECT SET VISIBLE(*;"Rectangle7";False)
+OBJECT SET VISIBLE(*;"Text27";False)
+OBJECT SET VISIBLE(*;"Text16";False)
+OBJECT SET VISIBLE(*;"Text19";False)
+OBJECT SET VISIBLE([Trxs]CCAuthNo;False)
+OBJECT SET VISIBLE([Trxs]OriginalReceipt;False)
+End if 
+vPostCode:=<>tPostCode
+vCountyState:=<>tCountyState
+ARRAY TEXT(aPageNo;2)
+aPageNo{1}:=Get localized string("Charges")
+aPageNo{2}:=Get localized string("Receipts")
+aPageNo:=1
+vCCNo:=""
+vCCName:=""
+vCCExpiry:=""
+vTrack:=""
+OBJECT SET FORMAT([Trxs]BankBranch;<>tBankBranch)
+Case of 
+: ([Facility]Country="NZ")
+OBJECT SET FILTER([Trxs]BankBranch;"!0&9##-####")
+: ([Facility]Country="AU")
+OBJECT SET FILTER([Trxs]BankBranch;"!0&9###-###")
+Else 
+//do nothing
+End case 
+vSearch:=True
+//vcCustomerCode:=<>sFacility+"MISCL"
+[Trxs]CustomerCode:=<>sFacility+"MISCL"
+
+If (Locked([Customer]))
+AlertMessage (Get localized string("Another instance of Storman Client has locked the Other Cash Sale record. Please quit the other client to continue")+"...")
+bCancel:=1
+CANCEL
+End if 
+//vcAgreeNo:=<>sFacility+"MISCL"
+[Trxs]AgreeNo:=<>sFacility+"MISCL"
+RELATE ONE([Trxs]AgreeNo)
+
+If (Records in selection([Agreement])=0)
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:="MISCL"
+[Agreement]RAgreeNo:=<>sFacility+"MISCL"
+[Agreement]CustomerCode:=[Trxs]CustomerCode
+[Agreement]ActiveAgreemt:=False
+[Agreement]MoveIn:=Current date
+SAVE RECORD([Agreement])
+End if 
+UNLOAD RECORD([Agreement])
+//ALL SUBRECORDS([Transaction]MiscDetls)
+If (bAdd=1)
+vCustomerName:=Get localized string("Cash Sale")
+vMailAddress:=""
+vMailCity:=""
+vMailState:=""//[Facility]Statea
+vMailPostZIPCode:=""//[Facility]PostZIPCode
+//OBJECT SET ENTERABLE([Transaction]DateBanked;False)`NLT 7/9/11 commented out since KSS complained couldn't edit date banked; no idea why this would be here anyway?
+Else 
+$Narration:=[Trxs]Narration
+For ($i;1;5)
+$Pos:=Position(Char(17);$Narration;*)
+$String:=Substring($Narration;1;$Pos-1)
+$Narration:=Substring($Narration;$Pos+1)
+Case of 
+
+: ($i=1)
+vCustomerName:=$String//[Transaction]MiscDetls'CustName
+: ($i=2)
+vMailAddress:=$String//[Transaction]MiscDetls'MailAddress
+: ($i=3)
+vMailCity:=$String//[Transaction]MiscDetls'MailCity
+: ($i=4)
+vMailState:=$String//[Transaction]MiscDetls'MailState
+: ($i=5)
+vMailPostZIPCode:=$String//[Transaction]MiscDetls'MailPostZIPCode
+Else 
+//do nothing 
+End case 
+End for 
+bReceipt:=True
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+End if 
+If ([Trxs]UserLogin="")
+[Trxs]UserLogin:=<>sCurrentUser
+End if 
+vLeg:=""
+If (PermissionsControl (185;False)=False) & (bDiscountDisable=True)
+vLeg:=Get localized string("Receipt cannot be changed as you do not have permission")+"."
+$bNoPerm:=True
+End if 
+If (TestValidDate ([Trxs]TrxDate)=False) | (TestValidDate ([Trxs]DateBanked;True)=False)
+vLeg:=Get localized string("Receipt can't be changed as the transaction date or the date banked is earlier than the can't modify prior to date!")
+$bNoPerm:=False
+End if 
+If ([Trxs]CCAuthNo>"") & ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+vLeg:=Get localized string("Receipt can't be changed as this credit card trx has been authorized!")
+$bNoPerm:=False
+End if 
+If ([Trxs]DateReconciled>!00-00-00!)
+If (<>sCurrentUser#"AdminSupport")
+vLeg:=Get localized string("Receipt cannot be modified as it has been reconciled")+"! ("+String([Trxs]DateReconciled)+")"
+$bNoPerm:=False
+Else 
+AlertMessage (Get localized string("Receipt has been reconciled - do not modify amounts!"))
+End if 
+End if 
+
+OBJECT SET ENTERABLE([Trxs]TaxAmt;False)
+
+If (vLeg>"")
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bAccept;False)
+OBJECT SET VISIBLE(bOKArray;False)
+OBJECT SET VISIBLE(bAddChg;False)
+OBJECT SET VISIBLE(bDelChg;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET VISIBLE(bNone;True)//To catch Enter Key
+OBJECT SET VISIBLE(hlList;False)
+OBJECT SET VISIBLE(*;"Picture16Lite";False)
+OBJECT SET VISIBLE(*;"Picture21Lite";False)
+OBJECT SET VISIBLE(*;"Picture33";False)
+OBJECT SET VISIBLE(bToday;False)
+OBJECT SET VISIBLE(asReceiptDesc;False)
+OBJECT SET ENTERABLE(vCustomerName;False)
+OBJECT SET ENTERABLE(vMailAddress;False)
+OBJECT SET ENTERABLE(vMailCity;False)
+OBJECT SET ENTERABLE(vMailState;False)
+OBJECT SET ENTERABLE(vMailPostZipCode;False)
+OBJECT SET ENTERABLE(aQuantity;False)
+OBJECT SET ENTERABLE(aCost;False)
+OBJECT SET ENTERABLE(aNet;False)
+OBJECT SET ENTERABLE(aTot;False)
+OBJECT SET ENABLED(bAddArray;False)
+OBJECT SET ENABLED(bDeleteArray;False)
+OBJECT SET ENTERABLE([Trxs]TrxDate;False)
+OBJECT SET ENTERABLE([Trxs]Description;False)
+OBJECT SET ENTERABLE([Trxs]Drawer;False)
+OBJECT SET ENTERABLE([Trxs]BankBranch;False)
+OBJECT SET ENTERABLE([Trxs]DateBanked;False)
+OBJECT SET ENTERABLE([Trxs]TotAmt;False)
+OBJECT SET ENTERABLE([Trxs]CashReceived;False)
+//OBJECT SET ENTERABLE([Transaction]MiscDetls;False)
+If ($bNoPerm) & (PermissionsControl (186;False)=True)
+OBJECT SET VISIBLE(bAccept;True)
+OBJECT SET VISIBLE(bOKArray;True)
+OBJECT SET VISIBLE(asReceiptDesc;True)
+vLeg:=Get localized string("You can only modify the payment type for this receipt")
+End if 
+End if 
+If (PermissionsControl (45;False)=False)
+OBJECT SET VISIBLE(bDelete;False)
+Else 
+OBJECT SET VISIBLE(bDelete;True)
+End if 
+If (Records in selection([Trxs])=0)
+OBJECT SET VISIBLE(bDelete;False)
+End if 
+//`Remember to add delete button
+If (PermissionsControl (46;False)=False)
+OBJECT SET ENTERABLE([Trxs]DateBanked;False)
+OBJECT SET ENABLED(bToday;False)
+End if 
+
+//If (PermissionsControl (185;False)=False)  //fb9336 by Eugene
+//OBJECT SET ENTERABLE(aDate;False)
+//OBJECT SET ENTERABLE(adDesc;False)
+//OBJECT SET ENTERABLE(aQuantity;False)
+//OBJECT SET ENTERABLE(aCost;False)
+//OBJECT SET ENTERABLE(aNet;False)
+//OBJECT SET ENTERABLE(aTax;False)
+//OBJECT SET ENTERABLE(aTot;False)
+//Else 
+//OBJECT SET ENTERABLE(aDate;True)
+//OBJECT SET ENTERABLE(adDesc;True)
+//OBJECT SET ENTERABLE(aQuantity;True)
+//OBJECT SET ENTERABLE(aCost;True)
+//OBJECT SET ENTERABLE(aNet;True)
+//OBJECT SET ENTERABLE(aTax;True)
+//OBJECT SET ENTERABLE(aTot;True)
+//End if 
+
+
+If ([Trxs]AnalysisCode="")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=52)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+Field16:=[Analysis]Description
+End if 
+asReceipts:=Find in array(asReceipts;[Trxs]AnalysisCode)
+If (asReceipts>0)
+asReceiptDesc:=asReceipts
+Else 
+OBJECT SET VISIBLE(asChargeDesc;False)
+OBJECT SET VISIBLE(asReceiptDesc;False)
+//READ ONLY([Transaction])`these two lines commented out 7/9/11 NLT as was not allowing user to reopen a cash sale + was reloading the wrong transaction data.
+//LOAD RECORD([Transaction])
+OBJECT SET VISIBLE(*;"Field17";False)
+OBJECT SET VISIBLE(bAddChg;False)
+OBJECT SET VISIBLE(bDelChg;False)
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bToday;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET VISIBLE(*;"Picture21Lite";False)
+OBJECT SET VISIBLE(*;"Picture16Lite";False)
+OBJECT SET ENTERABLE(vCustomerName;False)
+OBJECT SET ENTERABLE(vMailAddress;False)
+OBJECT SET ENTERABLE(vMailCity;False)
+OBJECT SET ENTERABLE(vMailState;False)
+OBJECT SET ENTERABLE(vMailPostZipCode;False)
+OBJECT SET ENABLED(bAccept;False)
+vDisable:=True
+End if 
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//vNo:=Records in subselection([Transaction]MiscDetls)
+//ARRAY LONGINT(aSeqNo;vNo)
+//For ($i;1;vNo)
+//aSeqNo{$i}:=[Transaction]MiscDetls'SeqNo
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End for 
+//vrTotal:=Sum([Transaction]MiscDetls'TotAmt)
+If ([Trxs]AnalysisCode=(<>sFacility+"CA")) & ([Facility]DisableTender=False)
+If ([Trxs]DiscountCalc=False)
+[Trxs]CashReceived:=0
+End if 
+OBJECT SET VISIBLE(*;"@Change";True)
+Else 
+If ([Trxs]DiscountCalc=False)
+[Trxs]CashReceived:=Abs([Trxs]TotAmt)
+End if 
+OBJECT SET VISIBLE(*;"@Change";False)
+End if 
+
+QUERY([Analysis];[Analysis]Description=asReceiptDesc{asReceiptDesc})
+//10/11/16 RNE1 Set format 
+OBJECT SET FORMAT(*;"Column4";<>sFormat)
+OBJECT SET FORMAT(*;"Column15";<>sFormat)
+OBJECT SET FORMAT(*;"Column5";<>sFormat)
+OBJECT SET FORMAT(*;"Column9";<>sFormat)
+OBJECT SET FORMAT(*;"Column6";<>sFormat)
+OBJECT SET FORMAT(*;"Variable5";<>sFormat)
+OBJECT SET FORMAT(*;"Field9";<>sFormat)
+OBJECT SET FORMAT(*;"Field20Change";<>sFormat)
+
+End if 
+If (Form event=On Data Change) | (Form event=On Clicked)
+If (bDiscount=True) & (bDiscountDisable=False)
+bDiscount:=False
+vDiscount:=0
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=False)
+ORDER BY([MerchPlan];[MerchPlan]Priority;>;[MerchPlan]MerchPlanID;>)
+ARRAY TEXT(asTMAnalysisCodes;0)
+For ($i;1;Size of array(asAnalysis))
+$Find:=Find in array(asTMAnalysisCodes;asAnalysis{$i})
+If ($Find<=0)
+APPEND TO ARRAY(asTMAnalysisCodes;asAnalysis{$i})
+End if 
+End for 
+For ($i;1;Records in selection([MerchPlan]))
+$Qty:=0
+$Total:=0
+$KSSPercent:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+For ($k;1;Size of array(asAnalysis))
+If (asAnalysis{$k}=asTMAnalysisCodes{$j})
+$Qty:=$Qty+aQuantity{$k}
+$Total:=$Total+aTot{$k}
+End if 
+End for 
+End if 
+End for 
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+$aQty:=0
+$aTotal:=0
+$aNetTotal:=0
+For ($k;1;Size of array(asAnalysis))
+If (asAnalysis{$k}=asTMAnalysisCodes{$j})
+$aQty:=$aQty+aQuantity{$k}
+$aTotal:=$aTotal+aTot{$k}
+$aNetTotal:=$aNetTotal+aNet{$k}
+End if 
+End for 
+
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-$Percent)/100);1)*$aQty)
+Else 
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-[MerchPlan]PercDiscount)/100);1)*$aQty)
+End if 
+
+End if 
+End for 
+
+If ([MerchPlan]ItemQuantity<=$Qty)
+If ([MerchPlan]PercDiscount>0)
+If (<>sFacility="KE@")
+If ([MerchPlan]RepeatMP=True)
+//$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+//$NewTotal:=Round(($Total/$Qty)*((100-$Percent)/100);1)*$Qty
+vDiscount:=vDiscount+($Total-$KSSPercent)
+Else 
+//$NewTotal:=Round(($Total/$Qty)*((100-[MerchPlan]PercDiscount)/100);1)*$Qty
+vDiscount:=vDiscount+($Total-$KSSPercent)
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total*((100-$Percent)/100)
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total*((100-[MerchPlan]PercDiscount)/100)
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$FixedDiscRepeat:=[MerchPlan]FixedDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+If ([Facility]TaxAddtoAmt=True)
+$Percent:=$FixedDiscRepeat+CalcTaxAmt ($FixedDiscRepeat;asTMAnalysisCodes{$j-1})
+Else 
+$Percent:=$FixedDiscRepeat
+End if 
+$NewTotal:=$Total-$Percent
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+If ([Facility]TaxAddtoAmt=True)
+$NewTotal:=$Total-[MerchPlan]FixedDiscount-CalcTaxAmt ([MerchPlan]FixedDiscount;asTMAnalysisCodes{$j-1})
+Else 
+$NewTotal:=$Total-[MerchPlan]FixedDiscount
+End if 
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Repeat 
+$k:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+DELETE FROM ARRAY(asTMAnalysisCodes;$j)
+$k:=1
+$j:=Size of array(asTMAnalysisCodes)+1
+End if 
+End for 
+Until ($k=0)
+End if 
+NEXT RECORD([MerchPlan])
+End for 
+vDiscount:=vDiscount*-1
+vrTotal:=0
+For ($m;1;Size of array(aTot))
+vrTotal:=vrTotal+aTot{$m}
+End for 
+vrTotal:=vrTotal+vDiscount
+[Trxs]TotAmt:=vrTotal
+Else 
+If (bDiscountDisable)
+vDiscount:=0
+vrTotal:=0
+For ($m;1;Size of array(aTot))
+vrTotal:=vrTotal+aTot{$m}
+End for 
+vrTotal:=vrTotal+vDiscount
+End if 
+End if 
+If (Count in array(List Box1;True)>0)
+OBJECT SET ENABLED(bModArray;True)
+OBJECT SET ENABLED(bDeleteArray;True)
+Else 
+OBJECT SET ENABLED(bModArray;False)
+OBJECT SET ENABLED(bDeleteArray;False)
+End if 
+QUERY([Analysis];[Analysis]Description=asReceiptDesc{asReceiptDesc})
+End if 

@@ -1,0 +1,1090 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//This method modified so that CheckActivity is only called on Central from 12:10am to 4:30am in the morning
+C_LONGINT($0)//No of seconds that this method takes to execute
+C_LONGINT($1;$Control)//If = 1 then only do GateLog, 0 = Do all
+C_LONGINT($i;$Days;$LastRecNo;$TCPID;$Error;$Tickcount)//LogMonitor   `LogMonServer   `This is only used by Standalone & Server
+C_BOOLEAN($Window;$Locked;$Invis;$UpdateActivity)//InitLoopCode    set vars for this method
+C_TIME($Time;$BeginTime)
+C_TEXT($Localization)
+C_TIME(LastMirrorLogSendTime)
+$TCPID:=0
+$BeginTime:=Current time
+$Control:=0
+
+
+If (LastMirrorLogSendTime=?00:00:00?)
+C_BOOLEAN(vbBackupPrefsLoaded)
+
+vbBackupPrefsLoaded:=LoadBackupPrefs 
+If (vbBackupPrefsLoaded=True)
+LastMirrorLogSendTime:=vtmBackupLastBackupTime
+SyncRecordLog ("Storman's backup preferences file successfully loaded, setting the last backup time to: "+String(LastMirrorLogSendTime);"JournalLogFile")
+Else 
+LastMirrorLogSendTime:=Current time
+SyncRecordLog ("Storman is not able to load the backup preferences file, setting the last backup time to: "+String(LastMirrorLogSendTime);"JournalLogFile")
+End if 
+End if 
+
+
+If (Test path name(Get 4D folder(Current resources folder)+"DebugMode.txt")=Is a document)
+SET DATABASE PARAMETER(34;3)
+Else 
+SET DATABASE PARAMETER(34;0)
+End if 
+
+If (Count parameters>0)
+$Control:=$1
+End if 
+
+If ([Facility]ClientQuit=True) & (Current time>=[Facility]ClientQuitTime) & (Current time<=([Facility]ClientQuitTime+?00:05:00?))
+If (Application type=4D Server)
+EXECUTE ON CLIENT("@";"Quit";True)
+End if 
+End if 
+
+//TRACE
+If ([Facility]AutoShutdown)
+If ([Facility]AutoShutdownTime#?00:00:00?) & (String(Current time;Hour min)=String([Facility]AutoShutdownTime;Hour min))
+If (Application type=4D Server)
+EXECUTE ON CLIENT("@";"Quit4DMethod")
+End if 
+QUIT 4D
+End if 
+End if 
+
+
+//29/3/17 DM Move incremental backups from LogmonServer
+If (Application type=4D Server)
+If ([Facility]MirrorSendLogEveryMins>0)
+If (Current time>(LastMirrorLogSendTime+(60*[Facility]MirrorSendLogEveryMins)))//Correct interval of time assume one hour
+//Load the Backup Preferences
+C_BOOLEAN(vbBackupPrefsLoaded)
+vbBackupPrefsLoaded:=LoadBackupPrefs 
+If (vbBackupPrefsLoaded=True)
+//On Err Call here in case something goes wrong
+$LogFileName:=New log file
+//on err call off
+//Send LogFileName to Backup Folder for retrieval by Mirror
+$i:=Length($LogFileName)
+
+Repeat 
+$i:=$i-1
+Until (Substring($LogFileName;$i;1)=GetFolderDelimiter ) | ($i<3)
+If ($i>2)
+$i:=$i+1
+
+////////MOVE DOCUMENT($LogFileName;vtBackupDestinationFolder+Substring($LogFileName;$i))  //Initialise - <>sBackupPath
+BackupIncr1 ($LogFileName;vtBackupDestinationFolder;$i)
+
+
+End if 
+SyncRecordLog ("Activated New Journal Log File and Log moved to Backups folder. FileName "+$LogFileName;"JournalLogFile")
+LastMirrorLogSendTime:=Current time
+End if 
+End if 
+//If (Current time<?00:50:00?) & (LastMirrorLogSendTime>?13:00:00?)  //Change of day
+//LastMirrorLogSendTime:=Current time
+//End if 
+End if 
+End if 
+
+//Removed 24/05/11 until a suitable fix has been decided upon
+//If (Current date#<>dToday)
+//If (Current date=(<>dToday+1))
+//<>dToday:=Current date
+//SyncRecordLog (Get localized string("Updated Today to")+" "+String(Current date))
+//Else 
+//SyncRecordLog ("<>dToday "+String(<>dToday)+" "+Get localized string("was too far behind, quitting Storman"))
+//AlertServer (Get localized string("It appears the computer's date has been changed! - Quitting Storman!"))
+//QUIT 4D
+//End if 
+//End if 
+//If ((<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY))
+If ($Control#1)
+//Used by FrontDesk to PrintOut Invoice
+If (<>sAgreeNo>"")
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Trxs])
+READ WRITE([Customer])
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo=<>sAgreeNo)
+If (Records in selection([Agreement])=1)
+RELATE ONE([Agreement]CustomerCode)
+QUERY([Trxs];[Trxs]Match=0;*)
+QUERY([Trxs]; | ;[Trxs]Match=[Customer]NextMatch;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+CREATE EMPTY SET([Trxs];"ToPrint")
+PrintInvRecCode (1)
+If (Records in selection([Trxs])>0)
+If ([Facility]InvUseAgrBalFwd)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+Else 
+ORDER BY([Trxs];[Trxs]CustomerCode;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+End if 
+PrintInvRecCode (4)
+Else 
+AlertServer (Get localized string("No transactions to print for Agreement:")+<>sAgreeNo)
+End if 
+End if 
+<>sAgreeNo:=""
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Trxs])
+READ ONLY([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Customer])
+End if 
+//Turn Gate On or Off  
+GateTurnOnOff 
+End if 
+If (Test path name("veLetter_.4WT")=Is a document)
+GET DOCUMENT PROPERTIES("veLetter_.4WT";$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+DELETE DOCUMENT("veLetter_.4WT")
+End if 
+End if 
+If (Test path name("veLetter_")=Is a document)
+GET DOCUMENT PROPERTIES("veLetter_";$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+DELETE DOCUMENT("veLetter_")
+End if 
+End if 
+If (Test path name("veEmail_.4WT")=Is a document)
+GET DOCUMENT PROPERTIES("veEmail_.4WT";$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+DELETE DOCUMENT("veEmail_.4WT")
+End if 
+End if 
+If (Test path name("veEmail_")=Is a document)
+GET DOCUMENT PROPERTIES("veEmail_";$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+DELETE DOCUMENT("veEmail_")
+End if 
+End if 
+//$Position:=Position(".4DD";Data file)
+//$logfileloc:=Substring(Data file;1;$Position-1)+".lg"
+//If (Test path name($logfileloc)=Is a document)
+//GET DOCUMENT PROPERTIES($logfileloc;$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+//If ($Locked=False)
+//ARRAY TEXT(aText;1)
+//aText{1}:=$logfileloc
+//SendEmail ("datachecklog@storman.com";"Datacheck log for "+[Facility]FacilityCode+" - "+String(Current date);"See attached";True)
+//DELETE DOCUMENT($logfileloc)
+//End if 
+//End if 
+//TRACE
+
+If (<>tUtilities)//To read PULS meter
+FloatMessage ("UnititiesLog...")
+ReadPULS 
+End if 
+
+
+If (<>tUtilities)
+QUERY([Unit];[Unit]UpdatePULS=True)
+If (Records in selection([Unit])#0)
+UtilitiesAction 
+End if 
+End if 
+
+If (<>tGateOn)
+FloatMessage ("GateLog...")
+If (<>tEmulate=False) & ([Facility]GateSysType=3)//PTI Falcon
+If (Semaphore("SerialPort")=False)
+ReadPTIGateLog 
+CLEAR SEMAPHORE("SerialPort")
+End if 
+End if 
+If ([Facility]GateSysType=5)//AccessEzy
+ON ERR CALL("ErrorDisk")
+If (Test path name(<>sTutPath+"AELog.txt")#Is a document) & (Test path name([Facility]GateLogFile)=Is a document)
+GET DOCUMENT PROPERTIES([Facility]GateLogFile;$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+COPY DOCUMENT([Facility]GateLogFile;<>sTutPath+"AELog.txt")
+DELETE DOCUMENT([Facility]GateLogFile)
+If (Test path name([Facility]GateLogFile)=Is a document)
+<>tGateOn:=False
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+SyncRecordLog ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+End if 
+End if 
+End if 
+ON ERR CALL("ErrorLog")
+If (Test path name(<>sTutPath+"AELog.txt")=Is a document)
+ReadAEGateLog 
+End if 
+End if 
+If ([Facility]GateSysType=7) | ([Facility]GateSysType=8)//Digigate
+ON ERR CALL("ErrorDisk")
+If (Test path name(<>sTutPath+"logbase.sm")#Is a document) & (Test path name([Facility]GateLogFile)=Is a document)
+GET DOCUMENT PROPERTIES([Facility]GateLogFile;$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+COPY DOCUMENT([Facility]GateLogFile;<>sTutPath+"logbase.sm")
+DELETE DOCUMENT([Facility]GateLogFile)
+If (Test path name([Facility]GateLogFile)=Is a document)
+<>tGateOn:=False
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+SyncRecordLog ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+End if 
+End if 
+End if 
+ON ERR CALL("ErrorLog")
+If (Test path name(<>sTutPath+"logbase.sm")=Is a document)
+ReadDigigateGateLog 
+End if 
+End if 
+If ([Facility]GateSysType=9)//Sentinel
+ON ERR CALL("ErrorDisk")
+If (Test path name(<>sTutPath+"StormanEvents.txt")#Is a document) & (Test path name([Facility]GateLogFile)=Is a document)
+GET DOCUMENT PROPERTIES([Facility]GateLogFile;$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+COPY DOCUMENT([Facility]GateLogFile;<>sTutPath+"StormanEvents.txt")
+DELETE DOCUMENT([Facility]GateLogFile)
+If (Test path name([Facility]GateLogFile)=Is a document)
+<>tGateOn:=False
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+SyncRecordLog ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+End if 
+End if 
+End if 
+ON ERR CALL("ErrorLog")
+If (Test path name(<>sTutPath+"StormanEvents.txt")=Is a document)
+ReadSentinelGateLog 
+End if 
+End if 
+If ([Facility]GateSysType=10)//Quikstor
+ON ERR CALL("ErrorDisk")
+If (Test path name(<>sTutPath+"QSGATE.FIL")#Is a document) & (Test path name([Facility]GateLogFile)=Is a document)
+GET DOCUMENT PROPERTIES([Facility]GateLogFile;$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+COPY DOCUMENT([Facility]GateLogFile;<>sTutPath+"QSGATE.FIL")
+DELETE DOCUMENT([Facility]GateLogFile)
+If (Test path name([Facility]GateLogFile)=Is a document)
+<>tGateOn:=False
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+SyncRecordLog ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+End if 
+End if 
+End if 
+ON ERR CALL("ErrorLog")
+If (Test path name(<>sTutPath+"QSGATE.FIL")=Is a document)
+ReadQuikStorGateLog 
+End if 
+End if 
+If ([Facility]GateSysType=2) | ([Facility]GateSysType=4)//Falcon 2000
+ON ERR CALL("ErrorDisk")
+If (Test path name(<>sTutPath+"LocalEvent.txt")#Is a document) & (Test path name([Facility]GateLogFile)=Is a document)
+GET DOCUMENT PROPERTIES([Facility]GateLogFile;$Locked;$Invis;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+COPY DOCUMENT([Facility]GateLogFile;<>sTutPath+"LocalEvent.txt")
+DELETE DOCUMENT([Facility]GateLogFile)
+If (Test path name([Facility]GateLogFile)=Is a document)
+<>tGateOn:=False
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+SyncRecordLog ("urgent@storman.com";Get localized string("URGENT - Gate System Error at")+" "+[EventLog]FacilityCode;Get localized string("Unable to delete")+" "+[Facility]GateLogFile+" "+Get localized string("for")+" "+<>sFacility+" - "+Get localized string("Gate System is now disabled."))
+End if 
+End if 
+End if 
+ON ERR CALL("ErrorLog")
+If (Test path name(<>sTutPath+"LocalEvent.txt")=Is a document)
+If ([Facility]GateSysType=2)
+ReadFalconXTGateLog 
+Else 
+ReadFalconGateLog 
+End if 
+End if 
+End if 
+If ([Facility]GateSysType=12)//BearBox        Add by Hamid 23 Sep 2014
+ON ERR CALL("ErrorLog")
+If ([Facility]GateModemInit#"") & ([Facility]GateLogFile#"") & ([Facility]GateBatchFile#"")
+
+//BearBoxXML ([Facility]GateLogFile;[Facility]GateModemInit;[Facility]GateBatchFile;"full")
+End if 
+End if 
+End if 
+
+
+
+If (Test path name(<>sAttachPath+"UserLogins.txt")=Is a document)
+UserRecordLog ("Reading UserLogins.txt")
+//FloatMessage ("UserLogins..")
+ReadUserLoginsImport 
+//Else 
+//If (Current time>?01:00:00?) & (Current time<?01:00:30?)  //SDD What is the point of writing this every 10 secs?
+//SyncRecordLog ("No UserLogins.txt present - "+<>sAttachPath+"UserLogins.txt")
+//End if 
+End if 
+If (Test path name(<>sAttachPath+"UserGroup.txt")=Is a document)
+UserRecordLog ("Reading UserGroup.txt")
+//FloatMessage ("UserGroup...")
+ReadUserGroupsImport 
+//Else 
+//If (Current time>?01:00:00?) & (Current time<?01:00:30?)
+//SyncRecordLog ("No UserGroup.txt present - "+<>sAttachPath+"UserGroup.txt")
+//End if 
+End if 
+
+If ($Control#1)
+If (<>tGateOn)
+FloatMessage ("GateAction")
+<>tStop:=False
+vErrors:=""
+READ WRITE([QueueLog])
+QUERY([QueueLog];[QueueLog]Order>=0;*)//1-20000 for Gate, 20001+ for Activity Queue
+QUERY([QueueLog]; & ;[QueueLog]Order<20000)
+ORDER BY([QueueLog];[QueueLog]Order;>)
+
+For ($i;1;Records in selection([QueueLog]))
+
+If (GateAction ([QueueLog]GateActionText;[QueueLog]GateUnit;[QueueLog]GatePIN;[QueueLog]GateDeny;[QueueLog]GateUser;[QueueLog]GateDate;[QueueLog]GateZone;[QueueLog]GateMux;Round([QueueLog]GateChannel;0);[QueueLog]GateSection;[QueueLog]GateLetter;[QueueLog]GateUnitCode;[QueueLog]GatePort;[QueueLog]KeypadZone;[QueueLog]DisableAlarm;[QueueLog]AgreeNo)#"Fail")
+[QueueLog]Actioned:=True
+SAVE RECORD([QueueLog])
+End if 
+NEXT RECORD([QueueLog])
+End for 
+QUERY([QueueLog];[QueueLog]Actioned=True)
+DELETE SELECTION([QueueLog])
+READ ONLY([QueueLog])
+UNLOAD RECORD([QueueLog])
+
+If ([Facility]LockbefMovein=True) & ([Facility]GateSysType#3) & ([Facility]GateSysType#5)
+QUERY([Unit];[Unit]UpdateGate=True;*)
+QUERY([Unit]; & ;[Unit]MoveIn<=Current date)
+Else 
+QUERY([Unit];[Unit]UpdateGate=True)
+End if 
+If (Records in selection([Unit])>0)
+If (Current time>(vTime+(30*60)))
+If (Application type#4D Server)
+AlertMessage (Get localized string("It appears that the GatePIN for unit")+" "+[Unit]UnitNo+" "+Get localized string("has not been able to be downloaded successfully after 30 minutes of trying. Please check this unit, your access control software or contact Technical Support for assistance."))
+End if 
+vTime:=Current time
+End if 
+If (Records in selection([Unit])>5)
+ORDER BY([Unit];[Unit]UnitNo;>)
+vErrors:="Errors:"+Char(13)
+<>tStop:=False
+If (<>tClient=False)
+ON EVENT CALL("StopProcess")
+End if 
+Open window(20;50;350;150;0;Get localized string("Progress"))
+GOTO XY(2;2)
+If (<>tClient=False)
+MESSAGE(Get localized string("Click anywhere in this window to stop the download process")+"..."+"    ")
+End if 
+$Window:=True
+Else 
+$Window:=False
+End if 
+//trace
+//If ((<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY))
+//
+//Else 
+$Facility:=[Facility]FacilityCode
+LoadGateUnits 
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+//End if 
+
+
+If ($Window)
+CLOSE WINDOW
+If (<>tClient=False)
+ON EVENT CALL("")
+End if 
+vErrors:=vErrors+Get localized string("Please check the above actions at the keypad!.")
+$Localization:=Get database localization(Current localization)
+If ($Localization="es-es")// For Spanish version, 
+If (Length(vErrors)>70)
+vTitle:=Get localized string("Gate Errors")
+Open window(20;50;580;360;0;Get localized string("Gate Errors"))
+DIALOG([GateLog];"GateErrors")
+CLOSE WINDOW
+End if 
+Else 
+If (Length(vErrors)>55)
+vTitle:=Get localized string("Gate Errors")
+Open window(20;50;580;360;0;Get localized string("Gate Errors"))
+DIALOG([GateLog];"GateErrors")
+CLOSE WINDOW
+End if 
+End if 
+
+vErrors:=""
+End if 
+Else 
+vTime:=Current time
+End if 
+If ([Facility]GateSysType=5)
+If (Test path name([Facility]GateModemInit)=Is a document)
+If (Current time>(vFileTime+120))//Two minutes
+If (viCounter=0) | (viCounter>30)//Every hour repeat the message
+viCounter:=0
+AlertMessage (Get localized string("It appears that the Access Ezy software is not currently active or responding to")+" "+<>sOEMName+" "+Get localized string("gate commands!"))
+End if 
+viCounter:=viCounter+1
+vFileTime:=Current time
+End if 
+Else 
+vFileTime:=Current time
+viCounter:=0
+End if 
+End if 
+If ([Facility]GateSysType>3) | ([Facility]GateSysType=2)//Falcon 2000, Access Ezy, Digigate    
+If ([Facility]GateBatchFile>"")
+If (Test path name([Facility]GateModemInit)=Is a document)
+LAUNCH EXTERNAL PROCESS([Facility]GateBatchFile)//"c:\digi\digisend /p"
+End if 
+Else 
+If ([Facility]GateModemInit#<>sGatePath)
+ON ERR CALL("ErrorDisk")
+If (Test path name(<>sGatePath)=Is a document) & (Test path name([Facility]GateModemInit)#Is a document)
+COPY DOCUMENT(<>sGatePath;[Facility]GateModemInit)
+DELETE DOCUMENT(<>sGatePath)
+End if 
+ON ERR CALL("ErrorLog")
+End if 
+End if 
+End if 
+End if 
+
+//Matching-This is probably only necessary for trxs entered not from Agreement.
+FloatMessage (Get localized string("Matching")+" "+String(<>iLogMonitor))//SDD We need to investigate why this section is necessary!!!
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Starting (Matching)"))
+End if 
+READ WRITE([Trxs])
+READ WRITE([QueueLog])
+QUERY([QueueLog];[QueueLog]Order<0;*)
+QUERY([QueueLog]; & ;[QueueLog]Order#-99)
+If (Records in selection([QueueLog])>0)
+ORDER BY([QueueLog];[QueueLog]Order;<)
+For ($i;1;Records in selection([QueueLog]))
+COPY NAMED SELECTION([QueueLog];"Process")
+FloatMessage ("M-"+Substring(Lowercase([QueueLog]GateActionText);1;10))
+If (MatchTrx ([QueueLog]GateActionText;[QueueLog]GateUnit)=0)
+USE NAMED SELECTION("Process")
+[QueueLog]Actioned:=True
+Else 
+USE NAMED SELECTION("Process")
+[QueueLog]GateDeny:=[QueueLog]GateDeny+1//Increment unsucessful attempt
+End if 
+SAVE RECORD([QueueLog])
+NEXT RECORD([QueueLog])
+End for 
+CLEAR NAMED SELECTION("Process")
+End if 
+QUERY([QueueLog];[QueueLog]Actioned=True)
+DELETE SELECTION([QueueLog])
+QUERY([QueueLog];[QueueLog]GateDeny>60;*)//Approx 5 minutes
+QUERY([QueueLog]; & ;[QueueLog]Order<0)
+If (Records in selection([QueueLog])>0)
+If (Records in selection([QueueLog])>1)
+AlertServer (Get localized string("Agreement Number")+" : "+[QueueLog]GateActionText+" "+Get localized string("and")+" "+String(Records in selection([QueueLog])-1)+" "+Get localized string("other Agreements cannot be auto-matched because they are locked by other processes! Please close other processes."))
+Else 
+AlertServer (Get localized string("Agreement Number")+" : "+[QueueLog]GateActionText+" "+Get localized string("cannot be auto-matched because the Agreement is locked by another process! Please close other processes."))
+End if 
+APPLY TO SELECTION([QueueLog];[QueueLog]GateDeny:=0)
+End if 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Starting (UpdateActivity)"))
+End if 
+
+FloatMessage (Get localized string("Activity")+" "+String(<>iLogMonitor))//SDD We need to investigate why this section is necessary!!!
+QUERY([QueueLog];[QueueLog]Order>20000)//1-20000 for Gate, 20001+ for Activity Queue
+If (vDatafileRebuild)
+DELETE SELECTION([QueueLog])
+Else 
+//Updating Activity Records from Queue
+ORDER BY([QueueLog];[QueueLog]Order;>)
+If (Records in selection([QueueLog])>0) & (<>tLoggingOn=True)
+READ WRITE([Activity])
+For ($i;1;Records in selection([QueueLog]))
+If (Locked([QueueLog])=False)
+If (Find in array(<>asSiteCodes;[QueueLog]GateUnitCode)>0)//Only add it if a valid site 7/12/04
+QUERY([Activity];[Activity]FacilityCode=[QueueLog]GateUnitCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=[QueueLog]GateDate)
+If (Records in selection([Activity])=0)
+CREATE RECORD([Activity])
+[Activity]FacilityCode:=[QueueLog]GateUnitCode
+[Activity]ActivityDate:=[QueueLog]GateDate
+[Activity]ActivityWeek:=GetWeekMonthNo (1;[Activity]ActivityDate)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;[Activity]ActivityDate)
+SAVE RECORD([Activity])
+End if 
+If (Locked([Activity])=False)
+$p:=Field(10;[QueueLog]GateMux)
+$p->:=Round($p->+[QueueLog]GateChannel;2)
+[Activity]Updated:=True
+SAVE RECORD([Activity])
+[QueueLog]Actioned:=True
+SAVE RECORD([QueueLog])
+Else 
+LOCKED BY([Activity];$Tickcount;$User;$Machine;$ProcessName)
+End if 
+Else 
+[QueueLog]Actioned:=True
+SAVE RECORD([QueueLog])
+End if 
+End if 
+NEXT RECORD([QueueLog])
+End for 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+QUERY([QueueLog];[QueueLog]Actioned=True)
+DELETE SELECTION([QueueLog])
+QUERY([QueueLog];[QueueLog]Order>20000)
+If (Records in selection([QueueLog])=0)//LogMonitor
+viCount2:=0
+Else 
+viCount2:=viCount2+1
+If (viCount2>180)//Every 30 minutes
+If ([QueueLog]GateDate#!00-00-00!)
+AlertServer ("WARNING - The Activity data for "+String([QueueLog]GateDate)+" cannot be updated as the record is locked by "+$ProcessName+":"+$User)
+End if 
+viCount2:=0
+End if 
+End if 
+End if 
+End if 
+READ ONLY([QueueLog])
+UNLOAD RECORD([QueueLog])
+
+//Checking of Event Log
+If (<>sProduct#"M@")//LogEvent
+FloatMessage (Get localized string("CheckLog")+" "+String(<>iLogMonitor))
+CheckLog 
+//DELAY PROCESS(Current process;30)  `Half second between each running
+End if 
+
+//Check with Storman Users
+If ([Facility]TutorialData=False) & (Length([Facility]UserCode)=5) & ([Facility]LastUpdateCheck<Current date) & (Test path name(<>sPreferencesPath+"Training.xml")#Is a document)
+$Time:=?07:00:00?+(Num(Substring([Facility]UserCode;4;2))*60)
+$TickCount:=Tickcount
+If (Current time>$Time) & (viCheckTime<10)
+$Error:=IT_SetTimeOut (1)
+$Error:=TCP_Open (GetDNS ("SUV1");443;$TCPID;0)
+If ($Error=0)
+$Error:=TCP_Close ($TCPID)
+$Error:=IT_SetTimeOut (30)
+CheckUpdate ("NOMSG")
+End if 
+$Error:=IT_SetTimeOut (30)
+viCheckTime:=Round((Tickcount-$Tickcount)/60;0)
+End if 
+End if 
+
+//Sync SDD 12/1/12 Modified to allow multiple site datafiles to sync to HOF
+ALL RECORDS([Facility])
+If (<>sProduct#"M@") & ([Facility]SyncingOn)
+QUERY([Facility];[Facility]CentralAddress>"   ")
+For ($i;1;Records in selection([Facility]))
+//Replication of Event Log Site
+If ([Facility]CentralAddress>"   ")//Is a site
+FloatMessage ("Sync")
+If ([Facility]NewSync)
+SyncLogNew //Using Webservice
+Else 
+SyncLog 
+End if 
+SyncLogStormanHOF 
+If (vMax=0) & (Current time>UTCTime ([Facility]LastSyncTime;False))
+DELAY PROCESS(Current process;30)//Half second between each running
+End if 
+End if 
+NEXT RECORD([Facility])
+End for 
+ALL RECORDS([Facility])
+End if 
+
+//SyncUpdate
+$LastRecNo:=-5
+
+QUERY([EventLog];[EventLog]SyncStatus=2;*)
+QUERY([EventLog]; | ;[EventLog]SyncStatus=102;*)//SHOF events
+QUERY([EventLog]; | ;[EventLog]SyncStatus=4)//prev locked records
+
+While (Records in selection([EventLog])>0) & (<>tLoggingOn=True) & (Record number([EventLog])#$LastRecNo)//To stop getting stuck on same records continuously
+If (Records in selection([EventLog])>500)
+FloatMessage (Get localized string("Sync")+" "+String(Round((Records in selection([EventLog])/500)+1;0)))
+End if 
+
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Starting SyncUpdate"))
+End if 
+TRACE
+If (<>sProduct="M@")//Is a host server
+$LastRecNo:=SyncUpdate (False)
+Else 
+$LastRecNo:=SyncUpdate (True)
+End if 
+
+If (<>tDetailLog)
+SyncRecordLog (Get localized string("Ending SyncUpdate"))
+End if 
+
+DELAY PROCESS(Current process;5)//A twelth second between each running
+QUERY([EventLog];[EventLog]SyncStatus=2)
+End while 
+If (Record number([EventLog])=$LastRecNo)
+READ WRITE([EventLog])
+LOAD RECORD([EventLog])
+[EventLog]SyncStatus:=10
+SAVE RECORD([EventLog])
+SyncRecordLog (Get localized string("Invalid EventLog Record")+" # "+String($LastRecNo)+" - "+Get localized string("SyncStatus set to 10"))
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+End if 
+
+//THIS SECTION TO BE REVIEWED FOR Central
+$UpdateActivity:=(<>sProduct#"M@")//True for sites, False for Central
+//below 9 lines commented out 12/01/08 in v7.2.15 and 8.1.0:
+//$StartTime:=†21:00:00†
+//If ([Facility]FacilityCode="KE@")  `Kennards start at 10pm for faster server
+//$StartTime:=†22:00:00†
+//End if 
+//If ($UpdateActivity=False)
+//If ((Current time>$StartTime) & (Current time<†23:40:00†)) | ((Current time>†01:00:00†) & (Current time<†06:00:00†))  `Must stop before 23:59 so that LogMonServer process can run
+//$UpdateActivity:=Not([Facility]UpdateActivityOff)
+//End if 
+//End if 
+If (($UpdateActivity) | ([Facility]NonSyncingSiteMV=True)) & (<>tLoggingOn=True)//2nd test added 24/4/09 for non-syncing Central sites
+//If (<>sProduct#"M@") | ((Current time>$StartTime) & (Current time<?23:40:00?)) | ((Current time>?01:00:00?) & (Current time<?06:00:00?))  `Must stop before 23:59 so that LogMonServer process can run
+READ WRITE([Activity])
+$Time:=Current time
+For ($i;1;Size of array(<>adReCalc))
+QUERY([Facility];[Facility]FacilityCode=<>asSiteCodes{$i})
+If (Records in selection([Facility])=1)
+//If (◊sProduct#"M@") | ((Current time<†23:40:00†) & ((Current time<†06:45:00†) | (Current time>$StartTime)))
+If ([Facility]ReCalcActivity<(Current date-40))
+vDate:=Current date-40
+UpdateSystem (165;->vDate;"";True)
+End if 
+FloatMessage (Get localized string("Calc")+[Facility]FacilityCode+String(Size of array(<>adReCalc)-$i;"#0"))
+
+UpdateActivity (True)
+
+If (<>adReCalc{$i}<[Facility]ReCalcActivity)
+$Days:=[Facility]ReCalcActivity-<>adReCalc{$i}
+OK:=1
+If ($Days>40) & (<>tClient=False)
+If ($Days<1000)
+ConfirmTwo (Get localized string("Recalculate from")+" "+String(<>adReCalc{$i})+" "+Get localized string("for site code")+" "+<>asSiteCodes{$i}+"?";Get localized string("Yes");Get localized string("No"))
+Else 
+OK:=0
+End if 
+If (OK=0)
+[Facility]ReCalcActivity:=Current date-3
+<>adReCalc{$i}:=[Facility]ReCalcActivity-30
+End if 
+End if 
+If (OK=1)
+vtFormula:=""
+QUERY([Activity];[Activity]FacilityCode=<>asSiteCodes{$i};*)
+QUERY([Activity]; & ;[Activity]ActivityDate>=<>adReCalc{$i};*)//InitSites
+<>adReCalc{$i}:=[Facility]ReCalcActivity
+QUERY([Activity]; & ;[Activity]ActivityDate<=[Facility]ReCalcActivity)
+ORDER BY([Activity];[Activity]ActivityDate;<)
+$Occup:=[Activity]OccupUnitNo
+If (Is compiled mode)//SDD 04/02/14 This annoys me no end when this runs on a dev datafile
+For ($i;1;Records in selection([Activity]))
+FloatMessage (Get localized string("Activity")+String(Day of([Activity]ActivityDate);"#0"))
+$Occup:=CheckActivityData ($Occup;True)//LogMonLoop
+NEXT RECORD([Activity])
+DELAY PROCESS(Current process;10)//Half second between each running so as to not tie up computer
+End for 
+End if 
+End if 
+End if 
+//Else 
+//SyncRecordLog ("Update of adReCalc for facility "+◊asSiteCodes{$i}+" not completed.  Out of time!")
+//End if 
+Else 
+SyncRecordLog (Get localized string("Update of adReCalc for facility")+" "+<>asSiteCodes{$i}+" "+Get localized string("not completed. No facility record found!"))
+End if 
+End for 
+If (<>sProduct="M@") & ((Current time-$Time)>?00:00:15?)
+SyncRecordLog (Get localized string("Update of adReCalc commenced at")+" "+String($Time)+" "+Get localized string("has now finished."))
+End if 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+End if 
+
+If ((Current date>vdCheckDate) & (Current time>=vtStartTime) & (Current time<vtStartEndTime)) & (<>tLoggingOn=True)//| ((Current user#"Designer") & (Shift down) & ((Windows Ctrl down | (Macintosh control down))))`commented out 4/3/08, as KSS complain of Check Act running in the middle of the day
+CheckTables 
+CheckActivityAll 
+//04/02/16 DAM Added fix untitled to run overnight
+FixUntitled 
+If (vbCheckInvQty)
+SyncRecordLog ("Starting Check Inventory Quantity")
+CheckInvQty 
+SyncRecordLog ("Finished Check Inventory Quantity")
+End if 
+If (vNextDayFinish=True)
+vdCheckDate:=Current date-1//initloopcode
+Else 
+vdCheckDate:=Current date//initloopcode
+End if 
+
+If (<>sFacility="ST@")
+SendToSU ("Overnight")
+End if 
+
+If (Day of(Current date)=15)
+
+If (<>sProduct="M@")
+SendToSUDatafileInfo 
+
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+For ($k;1;Records in selection([Facility]))
+If ($k>1)
+WS_SM_SU 
+End if 
+NEXT RECORD([Facility])
+End for 
+
+Else 
+WS_SM_SU 
+End if 
+End if 
+
+
+If (<>sProduct="M@")
+ExportDataOvernight 
+LogMonPurge 
+Else 
+//DAM Added for purging eventlog at the sites for KSS only
+If (<>sFacility="KE@")
+LogMonPurge 
+End if 
+End if 
+
+
+If (<>sFacility="SDCTY") | (<>sFacility="SACTY")
+CheckDemoDates (False;True)
+End if 
+
+
+If (Is compiled mode=True)
+AU_CheckForUpdates (True;True)
+End if 
+
+//ALL RECORDS([Facility])
+
+//For (1;$a;Records in selection([Facility]))
+//Overnight_CalculateCharts ([Facility]FacilityCode)
+//End for 
+
+End if 
+
+
+READ WRITE([Facility])
+//Perform Internet Backup if scheduled to
+//QUERY([Facility];[Facility]SortOrder<0)
+ORDER BY([Facility];[Facility]SortOrder;<)
+LAST RECORD([Facility])
+If (Substring([Facility]BackupInfo;3;1)="1") & (Current date>=[Facility]BackupNextDate)
+$Time:=Time(Substring([Facility]BackupInfo;7;2)+":"+String(Random%59;"00")+":00")
+If (Current date>[Facility]BackupNextDate) | (Current time>$Time)
+[Facility]BackupNextDate:=Add to date([Facility]BackupNextDate;0;0;1)
+SAVE RECORD([Facility])
+$RunBackup:=True
+For ($i;2;Count tasks)
+PROCESS PROPERTIES($i;$Name;$State;$TimeState)
+If ($Name="Internet Backups")
+$RunBackup:=False
+End if 
+End for 
+If ($RunBackup)
+$Process:=New process("InetBackups";20000000;"Internet Backups";[Facility]UserCode;[Facility]FacilityCode;[Facility]BusinessName)
+End if 
+End if 
+End if 
+READ ONLY([Facility])
+End if 
+
+//If an Online Reservation is made (and Storman requires payment for a Reservation to exist), but no payment is made within the Facility-specific time period (in minutes), the Reservation and all associated records are deleted. - the Unit is returned to is Vacant state.   This is checked every cycle of LogMonLoopCode
+
+If (Application type#4D Remote mode) & ((<>sProduct="M@") | ([Facility]CentralAddress=""))
+
+C_TEXT($ReservationNo;$SyncRecordLogMessage)
+C_TIME($10MinutesAgo)
+
+$10MinutesAgo:=Current time
+$ReservationNo:=""
+$SyncRecordLogMessage:=""
+
+FloatMessage ("Reservations")
+READ WRITE([Reservation])
+READ WRITE([Customer])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([Authenticate])
+READ WRITE([BarCode])
+
+
+//Find all Facilities that require compulsory payment for the Reservation to survive
+QUERY([Facility];[Facility]OResCompPrePay=True)
+FIRST RECORD([Facility])
+For ($FacilityCounter;1;Records in selection([Facility]))
+
+//Find the Reservations that have not had their deposit paid
+
+If ([Facility]FacilityCode#"SK@")// DO NOT DELETE Reservations for SK
+
+QUERY([Reservation];[Reservation]RReserveNo=[Facility]FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]OnlineRes=True;*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+
+
+If (Records in selection([Reservation])#0)
+
+//In 4D, subtracting from a time does not decrement the date when you get below 00:00:00, so we have to do that manually
+CREATE SET([Reservation];"ReservationsToProcess")
+If (Current time>?01:00:00?)//Compulsory payment time limit is 1 hour - this check allows for the occasion where a User might start the Online Reservations process before midnight but complete it after.
+
+//Find Yesterday's Reservations
+QUERY SELECTION([Reservation];[Reservation]ReservedDate<Current date)
+CREATE SET([Reservation];"OldReservationsToProcess")
+
+//Find Today's Reservations
+USE SET("ReservationsToProcess")
+$10MinutesAgo:=Time(Time string(Current time-([Facility]OResDepositPayTime*60)))
+QUERY SELECTION([Reservation];[Reservation]ReservedDate=Current date;*)
+QUERY SELECTION([Reservation]; & ;[Reservation]ReservedTime<$10MinutesAgo)
+CREATE SET([Reservation];"NewReservationsToProcess")
+UNION("OldReservationsToProcess";"NewReservationsToProcess";"ReservationsToProcess")
+End if 
+USE SET("ReservationsToProcess")
+
+//Step through each Reservation checking to see if the compulsory deposit payment time period has expired.
+//If it has expired then email the User advising of this cancellation, delete the Reservation, and Transactions - reset Unit Type to Vacant settings
+//If the email cannot be sent, then an entry is added to the Synclog.txt and the deletion is cancelled
+//If the required Records / tables cannot be deleted, an error with detail is sent to the Synclog.txt.
+//The Facility is not notified of this deletion. 
+FIRST RECORD([Reservation])
+For ($ReservationCounter;1;Records in selection([Reservation]))
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)//Find all Payment Transactions for this Reservation
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+If (Records in selection([Trxs])=0)
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+QUERY([BarCode];[BarCode]ReserveNo=[Reservation]RReserveNo)
+
+$ReservationNo:=[Reservation]ReserveNo
+If (Locked([Customer])=False) & (Locked([Trxs])=False) & (Locked([Unit])=False) & (Records in selection([Customer])=1)//& (Records in selection([Unit])=1) // 12/03/13 DAM Commented as for B&S there could be more that one unit reserved
+START TRANSACTION
+
+If (Records in selection([Trxs])#0)
+//Delete Transactions
+DELETE SELECTION([Trxs])
+End if 
+
+//19/07/13 DAM Added code for deleting Bar Codes if the reservations is getting deleted.
+If (Records in selection([BarCode])#0)
+//Delete barcode
+DELETE SELECTION([BarCode])
+End if 
+
+If (Records in set("lockedset")#0)
+CANCEL TRANSACTION
+Else 
+//Reset the Unit to default 'Vacant' settings
+
+//12/03/13 DAM Commented as for B&S there could be more than one unit and need to use Apply formula to selection - Original code in comments
+//[Unit]ReservedTo:=""
+//[Unit]ReserveDeposit:=0
+//[Unit]ReservedDate:=!00/00/00!
+//[Unit]Vacant:=True
+//[Unit]Status:="Vacant"
+//[Unit]QuotedRate:=0
+//[Unit]LastStatusDate:=Current date
+
+SyncRecordLog (Get localized string("Reservation")+" "+$ReservationNo+" "+Get localized string("deleted from Facility")+" "+[Facility]BusinessName+" "+Get localized string("after mandatory payment of deposit not received within")+" "+String([Facility]OResDepositPayTime)+" "+Get localized string("minutes")+".")
+$OK:=OR_OnlineReservation_Cancel //("";"";"";"";"";"";False;->Attachments;"";"";"";"";"";"";"")  `Notification Email to Customer of Reservation Cancellation - details of email are filled in from 'OR_EmailCancellation' method
+If ($OK=False)
+SyncRecordLog (Get localized string("Reservation")+" "+$ReservationNo+" "+Get localized string("Cancellation Email was unable to be sent."))
+End if 
+
+//07/04/15 DAM Added the unit query
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+//24/02/14 DAM Moved after generation of the emails as unit table data annot be used
+APPLY TO SELECTION([Unit];[Unit]ReservedTo:="")
+APPLY TO SELECTION([Unit];[Unit]ReserveDeposit:=0)
+APPLY TO SELECTION([Unit];[Unit]ReservedDate:=!00-00-00!)
+APPLY TO SELECTION([Unit];[Unit]Vacant:=True)
+APPLY TO SELECTION([Unit];[Unit]Status:="Vacant")
+APPLY TO SELECTION([Unit];[Unit]QuotedRate:=0)
+APPLY TO SELECTION([Unit];[Unit]LastStatusDate:=Current date)
+SAVE RECORD([Unit])
+
+//19/07/13 DAM Added code for deleting Bar Codes if the reservations is getting deleted.
+QUERY([BarCode];[BarCode]ReserveNo=[Reservation]RReserveNo)
+If (Records in selection([BarCode])#0)
+DELETE SELECTION([BarCode])
+End if 
+
+READ WRITE([Contacts])
+QUERY([Contacts];[Contacts]ContactNo=[Reservation]ContactNo)
+If (Records in selection([Contacts])#0)
+READ WRITE([NotesHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]ContactNo:=[Contacts]ContactNo
+[NotesHistory]Category:="System"
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+[NotesHistory]Note:="Reservation: "+[Reservation]RReserveNo+" was deleted as no payment was successfully processed in time. The number may have been reused."
+SAVE RECORD([NotesHistory])
+READ ONLY([NotesHistory])
+
+APPLY TO SELECTION([Contacts];[Contacts]Outcome:="")
+APPLY TO SELECTION([Contacts];[Contacts]OutComeDate:=!00-00-00!)
+APPLY TO SELECTION([Contacts];[Contacts]FollowUpDone:=False)
+APPLY TO SELECTION([Contacts];[Contacts]FollowUpDate:=Current date)
+End if 
+
+//21/11/14 DAM commented to not remove customer record
+//DELETE RECORD([Customer])
+DELETE RECORD([Reservation])
+VALIDATE TRANSACTION
+End if 
+Else 
+$SyncRecordLogMessage:=$SyncRecordLogMessage+Get localized string("Reservation")+" "+$ReservationNo+" "+Get localized string("deletion cancelled: Cust Locked=")+BooleanToString (Locked([Customer]))+", "+Get localized string("Trans Locked")+"="+BooleanToString (Locked([Trxs]))
+$SyncRecordLogMessage:=$SyncRecordLogMessage+", "+Get localized string("Unit Locked")+"="+BooleanToString (Locked([Unit]))+", "+Get localized string("Cust Records")+"="+String(Records in selection([Customer]))+"(1)"
+$SyncRecordLogMessage:=$SyncRecordLogMessage+", "+Get localized string("Trans Records")+"="+String(Records in selection([Trxs]))+"(#0), "+Get localized string("Unit Records")+"="+String(Records in selection([Unit]))+"(1)"
+SyncRecordLog ($SyncRecordLogMessage)
+End if 
+
+End if 
+NEXT RECORD([Reservation])
+End for 
+CLEAR SET("ReservationsToProcess")
+CLEAR SET("OldReservationsToProcess")
+CLEAR SET("NewReservationsToProcess")
+End if 
+End if 
+
+//04/02/13 DAM Added code for B&S to set reservations inactive if created more than 2 weeks ago
+//Find the Reservations that were created more than 2 weeks ago
+QUERY([Reservation];[Reservation]RReserveNo=[Facility]FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]BoxnStore#"";*)// This field contains data only if it is from B&S
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True;*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate<Add to date((Current date);0;0;-21))
+
+If (Records in selection([Reservation])#0)
+
+FIRST RECORD([Reservation])
+$SyncRecordLogMessage:=""
+For ($BnSCounter;1;Records in selection([Reservation]))
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+$ReservationNo:=[Reservation]ReserveNo
+If (Locked([Customer])=False) & (Locked([Unit])=False)
+START TRANSACTION
+
+If (Records in set("lockedset")#0)
+CANCEL TRANSACTION
+Else 
+//Reset the Unit to default 'Vacant' settings
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+APPLY TO SELECTION([Unit];[Unit]ReservedTo:="")
+APPLY TO SELECTION([Unit];[Unit]QuotedRate:=0)
+APPLY TO SELECTION([Unit];[Unit]ReservedDate:=!00-00-00!)
+APPLY TO SELECTION([Unit];[Unit]Vacant:=True)
+APPLY TO SELECTION([Unit];[Unit]Status:="Vacant")
+APPLY TO SELECTION([Unit];[Unit]QuotedRate:=0)
+APPLY TO SELECTION([Unit];[Unit]LastStatusDate:=Current date)
+//QUERY SELECTION([Unit];[Unit]AgreeNo="")
+//APPLY TO SELECTION([Unit];[Unit]Vacant:=True)
+//APPLY TO SELECTION([Unit];[Unit]Status:="Vacant")
+
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Expired"
+[Reservation]OutcomeDate:=Current date
+SAVE RECORD([Reservation])
+SyncRecordLog (Get localized string("Reservation")+" "+$ReservationNo+" "+"was set to inactive after 2 weeks from reserved date")
+//$OK:=OR_OnlineReservation_Cancel   //("";"";"";"";"";"";False;->Attachments;"";"";"";"";"";"";"")  `Notification Email to Customer of Reservation Cancellation - details of email are filled in from 'OR_EmailCancellation' method
+//If ($OK=False)
+//SyncRecordLog (Get localized string("Reservation")+" "+$ReservationNo+" "+Get localized string("Cancellation Email was unable to be sent."))
+//End if 
+//DELETE RECORD([Customer])
+//DELETE RECORD([Reservation])
+VALIDATE TRANSACTION
+End if 
+Else 
+$SyncRecordLogMessage:=$SyncRecordLogMessage+Get localized string("Reservation")+" "+$ReservationNo+" "+"deletion cancelled: UnitType Locked="+BooleanToString (Locked([UnitType]))
+$SyncRecordLogMessage:=$SyncRecordLogMessage+", "+Get localized string("Unit Locked")+"="+BooleanToString (Locked([Unit]))
+SyncRecordLog ($SyncRecordLogMessage)
+End if 
+
+NEXT RECORD([Reservation])
+End for 
+End if 
+
+//21/08/13 DAM Added to remove [Authenticate] reocrds if it was created for MO yesterday
+QUERY([Authenticate];[Authenticate]RAgreeNo#"";*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress="BnS")
+QUERY([Authenticate]; & ;[Authenticate]DateAuth=Add to date(Current date;0;0;-1))
+If (Records in selection([Authenticate])#0)
+DELETE SELECTION([Authenticate])
+End if 
+NEXT RECORD([Facility])
+End for 
+
+
+READ ONLY([Reservation])
+READ ONLY([Customer])
+READ ONLY([Unit])
+READ ONLY([Authenticate])
+READ ONLY([BarCode])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Authenticate])
+UNLOAD RECORD([BarCode])
+REDUCE SELECTION([Reservation];0)
+REDUCE SELECTION([Customer];0)
+REDUCE SELECTION([Unit];0)
+REDUCE SELECTION([Trxs];0)
+REDUCE SELECTION([Authenticate];0)
+
+//29/07/13 DAM Added to find out when the sizes of arrays are getting broken
+If (<>sProduct="MV")
+If (Size of array(<>asSiteCodes)#Size of array(<>aiNextSalesInqNo))
+SyncRecordLog ("LogMonLoopCode size if arrays <>asSiteCodes = "+String(Size of array(<>asSiteCodes))+" <>aiNextSalesInqNo = "+String(Size of array(<>aiNextSalesInqNo)))
+End if 
+If (Size of array(<>asSiteCodes)#Size of array(<>aiNextAgreeNo))
+SyncRecordLog ("LogMonLoopCode size if arrays <>asSiteCodes = "+String(Size of array(<>asSiteCodes))+" <>aiNextAgreeNo = "+String(Size of array(<>aiNextAgreeNo)))
+End if 
+If (Size of array(<>asSiteCodes)#Size of array(<>aiNextResNo))
+SyncRecordLog ("LogMonLoopCode size if arrays <>asSiteCodes = "+String(Size of array(<>asSiteCodes))+" <>aiNextResNo = "+String(Size of array(<>aiNextResNo)))
+End if 
+If (Size of array(<>asSiteCodes)#Size of array(<>aiNextCreditSaleNo))
+SyncRecordLog ("LogMonLoopCode size if arrays <>asSiteCodes = "+String(Size of array(<>asSiteCodes))+" <>aiNextSalesInqNo = "+String(Size of array(<>aiNextSalesInqNo)))
+End if 
+End if 
+If (Size of array(<>asSiteCodes)#Size of array(<>aiNextInvNo))
+SyncRecordLog ("LogMonLoopCode size if arrays <>asSiteCodes = "+String(Size of array(<>asSiteCodes))+" <>aiNextInvNo = "+String(Size of array(<>aiNextInvNo)))
+End if 
+
+End if 
+
+
+$0:=0
+If (Current time>$BeginTime) & (Current time>?06:00:00?) & (Current time<?20:00:00?)
+$0:=Current time-$BeginTime//This is used to measure how long the loop is taking in Central
+End if 

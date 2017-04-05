@@ -1,0 +1,70 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($0)//Error return code
+C_TEXT($Facility)
+$0:=0
+If (Trigger event#On Deleting Record Event) & (Substring([UnitHistory]UnitNo;1;5)#Substring([UnitHistory]AgreeNo;1;5)) & (Substring([UnitHistory]AgreeNo;1;5)#<>sHOFacility) & (<>sProduct="M@")
+$0:=-16002
+Else 
+If ([UnitHistory]MoveOut>=[UnitHistory]MoveIn) & ([UnitHistory]MoveIn#!00-00-00!)
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn+1
+Else 
+[UnitHistory]DaysStayed:=0
+End if 
+$Facility:=Substring([UnitHistory]UnitNo;1;5)
+Case of 
+: (Trigger event=On Saving New Record Event)
+
+//Save new PrimaryKey value
+If ([UnitHistory]PrimaryKey=0)
+[UnitHistory]PrimaryKey:=<>aliPrimaryKeys{Table(->[UnitHistory])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[UnitHistory])}:=<>aliPrimaryKeys{Table(->[UnitHistory])}-1
+Else 
+<>aliPrimaryKeys{Table(->[UnitHistory])}:=<>aliPrimaryKeys{Table(->[UnitHistory])}+1
+End if 
+End if 
+
+[UnitHistory]UnitNo:=Uppercase([UnitHistory]UnitNo;*)
+If ([UnitHistory]UnitNo="") | ([UnitHistory]AgreeNo="") | ([UnitHistory]MoveIn<!1980-01-01!)
+$0:=-16021
+Else 
+$0:=LogActivity ($Facility;[UnitHistory]MoveIn;->[Activity]MoveIns;1;->[Activity]OccupUnitNo;1;->[Activity]VacantUnitNo;-1)
+UpdateRecalc ($Facility;[UnitHistory]MoveIn)
+End if 
+: (Trigger event=On Saving Existing Record Event)
+If (Old([UnitHistory]MoveIn)#[UnitHistory]MoveIn)
+If ([UnitHistory]MoveIn>!00-00-00!)
+$0:=LogActivity ($Facility;[UnitHistory]MoveIn;->[Activity]MoveIns;1;->[Activity]OccupUnitNo;1;->[Activity]VacantUnitNo;-1)
+End if 
+If (Old([UnitHistory]MoveIn)>!00-00-00!)
+$0:=LogActivity ($Facility;Old([UnitHistory]MoveIn);->[Activity]MoveIns;-1;->[Activity]OccupUnitNo;-1;->[Activity]VacantUnitNo;1)
+End if 
+UpdateRecalc ($Facility;[UnitHistory]MoveIn)
+UpdateRecalc ($Facility;Old([UnitHistory]MoveIn))
+End if 
+If (Old([UnitHistory]MoveOut)#[UnitHistory]MoveOut)
+If ([UnitHistory]MoveOut>!00-00-00!)
+$0:=LogActivity ($Facility;[UnitHistory]MoveOut;->[Activity]MoveOuts;1;->[Activity]OccupUnitNo;-1;->[Activity]VacantUnitNo;1)
+End if 
+If (Old([UnitHistory]MoveOut)>!00-00-00!)
+$0:=LogActivity ($Facility;Old([UnitHistory]MoveOut);->[Activity]MoveOuts;-1;->[Activity]OccupUnitNo;1;->[Activity]VacantUnitNo;-1)
+End if 
+UpdateRecalc ($Facility;[UnitHistory]MoveOut)
+UpdateRecalc ($Facility;Old([UnitHistory]MoveOut))
+End if 
+: (Trigger event=On Deleting Record Event)
+If (Old([UnitHistory]MoveOut)>!00-00-00!)
+$0:=LogActivity ($Facility;Old([UnitHistory]MoveIn);->[Activity]MoveIns;-1;->[Activity]OccupUnitNo;-1;->[Activity]VacantUnitNo;1)
+$0:=LogActivity ($Facility;Old([UnitHistory]MoveOut);->[Activity]MoveOuts;-1;->[Activity]OccupUnitNo;1;->[Activity]VacantUnitNo;-1)
+UpdateRecalc ($Facility;Old([UnitHistory]MoveOut))
+Else 
+$0:=LogActivity ($Facility;Old([UnitHistory]MoveIn);->[Activity]MoveIns;-1;->[Activity]OccupUnitNo;-1;->[Activity]VacantUnitNo;1)
+End if 
+UpdateRecalc ($Facility;Old([UnitHistory]MoveIn))
+Else 
+//Do Nothing
+End case 
+If ($0=0)//Only save the log if record is actually saved
+TriggerLog (20;"007";"";!00-00-00!;0;"";Substring([UnitHistory]UnitNo;1;5);[UnitHistory]AgreeNo)//Key is UnitNo,AgreeNo,MoveInDate
+End if 
+End if 

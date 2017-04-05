@@ -1,0 +1,118 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+If (PermissionsControl (11))
+$j:=0
+For ($i;1;Size of array(<>aButton))
+If (<>aButton{$i}="Cust@") | (<>aButton{$i}="Sale@")
+$j:=1
+End if 
+End for 
+If ($j>0)
+AlertMessage (Get localized string("Changing Types & Categories"))
+Else 
+DEFAULT TABLE([MarketingTypes])
+READ WRITE([MarketingTypes])
+FORM SET OUTPUT([MarketingTypes];"MarketingTypesOut")
+FORM SET INPUT([MarketingTypes];"MarketingTypesIn")
+DefineTypesArray 
+asSigns:=1
+ARRAY TEXT(asDescription;17)
+asDescription{1}:=[Facility]MarketingTypeTitle
+asDescription{2}:=[Facility]CustomerTypeTitle
+asDescription{3}:=[Facility]BusinessTypeTitle
+Case of 
+: (<>sProduct="@B")
+asDescription{4}:=Get localized string("Reason for Using")
+asDescription{5}:=Get localized string("Reason for Move Out")
+: (<>sProduct="@R")
+asDescription{4}:=Get localized string("Reason for Hiring")
+asDescription{5}:=Get localized string("Reason for Return")
+: (<>sProduct="@C")
+asDescription{4}:=Get localized string("Reason for Using")
+asDescription{5}:=Get localized string("Reason for Move Out")
+Else 
+asDescription{4}:=Get localized string("Reason for Storing")
+asDescription{5}:=Get localized string("Reason for Move Out")
+End case 
+
+asDescription{6}:=Get localized string("Contact Categories")
+asDescription{7}:=Get localized string("ZIP Post Codes")
+asDescription{8}:=Get localized string("Analysis Categories")
+asDescription{9}:=Get localized string("Central Regions")
+asDescription{10}:=Get localized string("Central Categories")
+asDescription{11}:=Get localized string("Note Categories")
+asDescription{12}:=Get localized string("Unit Type Categories")
+asDescription{13}:=Get localized string("Facility Features")
+asDescription{14}:=Get localized string("Size Categories")
+asDescription{15}:=Get localized string("Reason for Decline")
+asDescription{16}:=Get localized string("Inventory Adjustment")
+asDescription{17}:="Photo ID Type"
+asDescription:=1
+ARRAY TEXT(asMarketFilter;3)
+asMarketFilter{1}:="Active"
+asMarketFilter{2}:="Inactive"
+asMarketFilter{3}:="All"
+asMarketFilter:=1
+If (<>sFacility="KE@")
+APPEND TO ARRAY(asSigns;"KQ")
+APPEND TO ARRAY(asDescription;"Contact Questions")
+End if 
+ARRAY TEXT(asKQDescription;0)
+ARRAY TEXT(asKQSelect;0)
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode=asSigns{asDescription})
+Case of 
+: (asMarketFilter=1)
+QUERY SELECTION([MarketingTypes];[MarketingTypes]Inactive=False)
+: (asMarketFilter=2)
+QUERY SELECTION([MarketingTypes];[MarketingTypes]Inactive=True)
+End case 
+ORDER BY([MarketingTypes];[MarketingTypes]ListCode;>;[MarketingTypes]SortOrder;>)
+MODIFY SELECTION(*)
+For ($i;1;Size of array(asSigns))
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode=asSigns{asDescription})
+Case of 
+: (asMarketFilter=1)
+QUERY SELECTION([MarketingTypes];[MarketingTypes]Inactive=False)
+: (asMarketFilter=2)
+QUERY SELECTION([MarketingTypes];[MarketingTypes]Inactive=True)
+End case 
+ORDER BY([MarketingTypes];[MarketingTypes]ListCode;>;[MarketingTypes]SortOrder;>)
+For ($j;1;Records in selection([MarketingTypes]))
+If ([MarketingTypes]SortOrder#$j)// | (Length([MarketingTypes]Description)>20)
+//If ($i>8)
+//[MarketingTypes]Description:=Substring([MarketingTypes]Description;1;20)
+//End if 
+[MarketingTypes]SortOrder:=$j
+SAVE RECORD([MarketingTypes])
+End if 
+NEXT RECORD([MarketingTypes])
+End for 
+End for 
+READ ONLY([MarketingTypes])
+UNLOAD RECORD([MarketingTypes])
+End if 
+READ WRITE([UnitType])
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@")
+
+For ($i;1;Records in selection([UnitType]))
+QUERY([MarketingTypes];[MarketingTypes]ListCode="SC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]LowerArea<[UnitType]Area;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]UpperArea>=[UnitType]Area)
+
+If (Records in selection([MarketingTypes])=1)
+[UnitType]SizeCategory:=[MarketingTypes]Description
+Else 
+[UnitType]SizeCategory:="Not Found"
+End if 
+
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])
+End for 
+
+READ ONLY([UnitType])
+UNLOAD RECORD([UnitType])
+
+End if 

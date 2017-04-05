@@ -1,0 +1,56 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($CustCode)
+
+$CustCode:=$1
+
+QUERY([Customer];[Customer]CustomerCode=$CustCode)
+If (Records in selection([Customer])>0)
+RELATE MANY([Customer]CustomerCode)
+
+$Date1:=CalculateLastZeroBalance (0)
+
+vOpenBal:=BalanceDateCalc (1;$Date1;True;$CustCode)
+
+//need to create a "transaction" for the opening balance if it is not equal to 0 called balance brought forward
+If (vOpenBal#0)
+$Units:="Opening Bal"
+$Amount:=vOpenBal
+End if 
+
+QUERY([Trxs];[Trxs]TrxDate>$Date1)
+
+For ($i;1;Records in selection([Trxs]))
+Case of 
+: (Position("#";[Trxs]AgreeNo;0;*)>0)
+$Units:="Credit Sale"
+: (Length([Trxs]AgreeNo)=9)
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+$Units:=[Reservation]UnitsReserved
+If ($Units="")
+$Units:="Reservation"
+End if 
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=[Trxs]AgreeNo)
+$Units:=[Agreement]UnitsOccup
+If ($Units="")
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Trxs]AgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory]AgreeNo;>)
+If (Records in selection([UnitHistory])>0)
+$Units:=Substring([UnitHistory]UnitNo;6)
+Else 
+$Units:="Unknown"
+End if 
+End if 
+End case 
+
+If ([Trxs]Charge=True)
+$Amount:=[Trxs]TotAmt
+$TaxAmount:=[Trxs]TaxAmt
+Else 
+$Amount:=-1*[Trxs]TotAmt
+$TaxAmount:=0
+End if 
+
+End for 
+End if 

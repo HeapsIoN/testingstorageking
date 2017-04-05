@@ -1,0 +1,50 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_FacilityID;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitIDFrom;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitIDTo;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_Modify_Reservation"+Char(13)
+$String:=$String+"WS_FacilityID: "+WS_FacilityID+Char(13)
+$String:=$String+"WS_UnitIDFrom: "+WS_UnitIDFrom+Char(13)
+$String:=$String+"WS_UnitIDTo: "+WS_UnitIDTo+Char(13)
+
+WSRECORDLOG ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityID+"@";*)
+QUERY([Reservation];[Reservation]ActiveReserve=True;*)
+QUERY([Reservation]; & ;[Reservation]UnitsReserved="@"+WS_UnitIDFrom+"@")
+
+READ WRITE([Reservation])
+READ WRITE([Unit])
+
+If (Records in selection([Reservation])#0)
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitIDTo)
+
+If ([Unit]Vacant=True) & ([Unit]Status="Vacant")
+[Unit]ReservedTo:=[Reservation]RReserveNo
+WS_RET_CODE:=True
+[Unit]Status:="Reserved"
+[Reservation]UnitsReserved:=WS_UnitIDTo
+
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityID+WS_UnitIDFrom)
+[Unit]AgreeNo:=""
+[Unit]Status:="Vacant"
+[Unit]ReservedTo:=""
+SAVE RECORD([Reservation])
+SAVE RECORD([Unit])
+Else 
+WS_ERROR:="Unit is not available"
+WS_RET_CODE:=False
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Reservation Not Found"
+End if 
+
+$String:="End WS_Insomniac_Modify_Reservation"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)

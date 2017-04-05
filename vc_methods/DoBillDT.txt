@@ -1,0 +1,820 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (bAdd=1)
+If (Length([Customer]AgreemtsOperating)=0)
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=1
+Else 
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+", "+[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+End if 
+End if 
+bAdd:=0//This is to stop additional units being added to a newly created agreement not billing correctly
+
+$DateFrom:=[Agreement]NextBillDate
+
+$DateTo:=[Agreement]MoveOut
+
+If ($DateTo<=$DateFrom) | ($DateTo=!00-00-00!)
+If ([BillPlan]PeriodicBilling=True)
+$DateTo:=CalcNxtBillDate ([Agreement]NextBillDate;1;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+$DateTo:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End if 
+End if 
+
+Repeat 
+$DateTo:=RequestDate ("Start Date "+String($DateFrom)+" Please confirm the end date for this billing:";$DateTo)
+Until ($DateTo>$DateFrom) & ($DateTo#!00-00-00!)
+
+RELATE ONE([Agreement]BillingPlanCode)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+RELATE ONE([Unit]UnitTypeCode)
+
+vDTDays:=$DateTo-$DateFrom
+
+ARRAY LONGINT(Days_DT;1)
+ARRAY LONGINT(Weeks_DT;1)
+ARRAY LONGINT(Months_DT;1)
+ARRAY LONGINT(Years_DT;1)
+
+Days_DT{1}:=0
+Weeks_DT{1}:=0
+Months_DT{1}:=0
+Years_DT{1}:=0
+
+$Window:=Open window((Screen width/2)-283;(Screen height/2)-130;(Screen width/2)+283;(Screen height/2)+130;Movable dialog box;"Billing Selection")
+DIALOG([Agreement];"DoBillDT")
+CLOSE WINDOW($Window)
+
+If ([BillPlan]PlanPeriod="Week")
+$Discount:=(CalculateBaseRate (1;0)-[Unit]WeeklyRentedValue)/7
+Else 
+$Discount:=(CalculateBaseRate (0;0)-[Unit]RentedValue)*0.2308/7
+End if 
+
+$Days:=Days_DT{1}*(CalculateBaseRate (3;0)-$Discount)
+$Weeks:=Weeks_DT{1}*(CalculateBaseRate (1;0)-$Discount)
+If (Months_DT{1}>2)
+QUERY([BillPlan];[BillPlan]PeriodstoPay=3;*)
+QUERY([BillPlan]; & ;[BillPlan]Description#"@service@";*)
+QUERY([BillPlan]; & ;[BillPlan]Code=<>sFacility+"@")
+$Months:=Months_DT{1}*[BillPlan]FixedBill
+
+If ([UnitType]VariableLength)
+If ([Unit]UnitLength<[UnitType]VariableMinimum)
+$Months:=[UnitType]VariableMinimum*$Months
+Else 
+$Months:=[Unit]UnitLength*$Months
+End if 
+End if 
+
+Else 
+$Months:=Months_DT{1}*(CalculateBaseRate (0;0)-$Discount)
+End if 
+QUERY([BillPlan];[BillPlan]PeriodstoPay=12;*)
+QUERY([BillPlan]; & ;[BillPlan]Description#"@service@";*)
+QUERY([BillPlan]; & ;[BillPlan]Code=<>sFacility+"@")
+$Years:=Years_DT{1}*[BillPlan]FixedBill
+
+If ([UnitType]VariableLength)
+If ([Unit]UnitLength<[UnitType]VariableMinimum)
+$Years:=[UnitType]VariableMinimum*$Years
+Else 
+$Years:=[Unit]UnitLength*$Years
+End if 
+End if 
+
+RELATE ONE([Agreement]BillingPlanCode)
+
+$Rental:=$Days+$Weeks+$Months+$Years
+
+$RegularTotal:=Round($Rental/[Agreement]MthsAdv;2)
+
+$RentTotal:=RoundAmt (($Rental*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+$RentTotal:=RoundAmt ($Rental)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+$RentTotal:=RoundAmt ($Rental)
+End if 
+End if 
+
+$DiscountTotal:=Round($Rental-$RentTotal;2)
+
+If ([BillPlan]PeriodicBilling=True)
+If (([Agreement]PeriodicBillingPosition+1)>=[BillPlan]FreePeriodStart) & (([Agreement]PeriodicBillingPosition+1)<([BillPlan]FreePeriodStart+[BillPlan]FreePeriods)) & ([BillPlan]FreePeriods>0)
+$DiscAmt:=($DiscountTotal/[Agreement]MthsAdv)+$RegularTotal
+Else 
+$DiscAmt:=$DiscountTotal/[Agreement]MthsAdv//removed 26/9/08 NLT: +[BillPlan]DiscFixedAmt
+End if 
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+$DiscAmt:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+$DiscAmt:=0
+End if 
+End if 
+Else 
+$DiscAmt:=$DiscountTotal+([BillPlan]FreePeriods*$RegularTotal)//removed 26/9/08 NLT: +[BillPlan]DiscFixedAmt
+If ([BillPlan]BillRentEachUnit)
+$DiscAmt:=$DiscountTotal
+//+[Agreement]AgreedDisc
+End if 
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+$DiscAmt:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+$DiscAmt:=0
+End if 
+End if 
+End if 
+
+If ($DiscAmt>0) & (([BillPlan]ShowIncentonInv) | ([BillPlan]BillRentEachUnit))
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+[BillPlan]AnalysisCode)
+$DsTotAmt:=0
+If (Records in selection([Analysis])=1)
+$DsCust:=[Agreement]CustomerCode
+$DsAgreeNo:=[Agreement]RAgreeNo
+$DsTrxDate:=$DateFrom
+If ($DsTrxDate<[Facility]CantModPrior)
+$DsTrxDate:=[Facility]CantModPrior
+End if 
+$DsChge:=True
+$DsAnlys:=[Analysis]Code
+$DsConfirm:=True
+$DsDesc:=[BillPlan]AnalysisDesc
+If ([BillPlan]AnalysisDesc="")
+$DsDesc:=[Analysis]Description
+End if 
+$DsTotAmt:=RoundAmt ($DiscAmt*(-1))
+vDsDateFrom:=$DateFrom
+vDsDateTo:=$DateTo
+$DsTaxAmt:=CalcTaxAmt ($DsTotAmt;$DsAnlys;vDsDateFrom;vDsDateTo)
+$DsDiscAmt:=Round($DiscAmt;2)//Added 3.0.2
+End if 
+End if 
+GetAnalysis 
+If (Records in selection([Analysis])=1)
+$Analysis:=[Analysis]Code
+$Desc:=[Analysis]Description
+$i:=Position(" ";$Desc)-1
+If ($i<2)
+$i:=Length($Desc)
+End if 
+Else 
+$Analysis:=<>sFacility+"RF"
+$Desc:="Rental Fee"
+$i:=4//Was 6 prior to 350
+End if 
+[Agreement]PriorLastBill:=[Agreement]LastBillDate
+[Agreement]LastBillDate:=[Agreement]NextBillDate
+//If ([Agreement]LastDiscAmt#0)
+[Agreement]PriorDiscAmt:=[Agreement]LastDiscAmt
+//End if 
+[Agreement]LastDiscAmt:=$DiscAmt//Was [Agreement]DiscountAmt
+//If ([Agreement]LastBillAmt#0)
+[Agreement]PriorBillAmt:=[Agreement]LastBillAmt
+//End if 
+If ([BillPlan]ShowIncentonInv)
+If ([BillPlan]PeriodicBilling=True)
+$LastBillAmount:=RoundAmt (($RentTotal+$DiscountTotal)/[Agreement]MthsAdv)
+Else 
+$LastBillAmount:=RoundAmt ($RentTotal+$DiscountTotal+([BillPlan]FreePeriods*$RegularTotal))
+End if 
+Else 
+If ([BillPlan]PeriodicBilling=True)
+If (([Agreement]PeriodicBillingPosition+1)>=[BillPlan]FreePeriodStart) & (([Agreement]PeriodicBillingPosition+1)<([BillPlan]FreePeriodStart+[BillPlan]FreePeriods)) & ([BillPlan]FreePeriods>0)
+$LastBillAmount:=0
+Else 
+$LastBillAmount:=RoundAmt (($RentTotal+$DiscountTotal)/[Agreement]MthsAdv)
+End if 
+Else 
+$LastBillAmount:=RoundAmt ($RentTotal+$DiscountTotal+([BillPlan]FreePeriods*$RegularTotal))
+End if 
+End if 
+If ([Facility]TaxAddtoAmt=True) & ([Analysis]Taxable=True) & ([Agreement]TaxExempt=False)//2nd condition added 20/3/06 NLT
+[Agreement]LastBillAmt:=Round($LastBillAmount*(1+(GetTaxRate ([Agreement]LastBillDate;True)/100));2)
+Else 
+[Agreement]LastBillAmt:=Round($LastBillAmount;2)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]NextBillDate:=CalcNxtBillDate ([Agreement]LastBillDate;1;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+[Agreement]LastMthsAdv:=1
+Else 
+[Agreement]LastMthsAdv:=[Agreement]MthsAdv
+[Agreement]NextBillDate:=$DateTo+1
+End if 
+If ([BillPlan]PlanPeriod="Week")//Added in 3.3.4
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+//moved create discount trx from above 
+If ($DiscAmt>0) & (([BillPlan]ShowIncentonInv) | ([BillPlan]BillRentEachUnit))
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=$DsCust
+[Trxs]AgreeNo:=$DsAgreeNo
+[Trxs]TrxDate:=$DsTrxDate
+[Trxs]Charge:=$DsChge
+[Trxs]AnalysisCode:=$DsAnlys
+[Trxs]Confirmed:=$DsConfirm
+[Trxs]Description:=$DsDesc
+If ([Facility]TaxAddtoAmt=True) & ([Analysis]Taxable=True) & ([Agreement]TaxExempt=False)
+[Trxs]TotAmt:=Round($DsTotAmt*(1+(GetTaxRate ([Trxs]TrxDate;True)/100));2)
+[Trxs]TaxAmt:=[Trxs]TotAmt-$DsTotAmt
+Else 
+[Trxs]TotAmt:=$DsTotAmt
+[Trxs]TaxAmt:=$DsTaxAmt
+End if 
+[Trxs]DiscAmt:=$DsDiscAmt
+[Trxs]DateFrom:=vDsDateFrom
+[Trxs]DateTo:=$DateTo
+If ([Facility]InvDateDetail=True) & ([Trxs]DateFrom#[Trxs]DateTo)
+If ([Facility]FacilityCode="ST@")
+FIRST RECORD([Unit])
+[Trxs]Narration:=[Unit]UnitSize
+Else 
+If ([Facility]InvToDate)
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo-1)
+Else 
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo)
+End if 
+End if 
+[Trxs]PrintNarration:=True
+End if 
+[Agreement]BillPlanValidTo:=[Trxs]DateTo
+If ([Trxs]TotAmt#0)
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Agreement]TotRentUnpaid:=Round([Agreement]TotRentUnpaid+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+End if 
+SAVE RECORD([Trxs])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+[Trxs]CCAuthNo:="Auto"
+SAVE RECORD([Trxs])
+End if 
+End if 
+End if 
+If ([BillPlan]BillRentEachUnit=True)
+If ([Agreement]MthsAdv=0)//possible cause of NAN's in calc below 20/4/10
+SyncRecordLog (Get localized string("DoBillNext method Dev to investigate")+" "+[Agreement]RAgreeNo+" "+Get localized string("[Agreement]MthsAdv=0. Check Eventlog to see when/how set to zero."))
+[Agreement]MthsAdv:=1
+End if 
+FIRST RECORD([Unit])
+For ($j;1;Records in selection([Unit]))
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+GetAnalysis (True)
+$Analysis:=[Analysis]Code
+$Desc:=[Analysis]Description
+$i:=Position(" ";$Desc)-1
+If ($i<2)
+$i:=Length($Desc)
+End if 
+[Trxs]AnalysisCode:=$Analysis
+[Trxs]Confirmed:=True
+[Trxs]Description:=GetTrxDesc ($Desc;$i;False)
+If ([BillPlan]PeriodicBilling=True)
+Case of 
+: (([Agreement]PeriodicBillingPosition+1)>=[BillPlan]FreePeriodStart) & (([Agreement]PeriodicBillingPosition+1)<([BillPlan]FreePeriodStart+[BillPlan]FreePeriods)) & ([BillPlan]FreePeriods>0)
+[Trxs]TotAmt:=0
+: ([BillPlan]PlanPeriod="Week") & (bFromMoveIn=False)
+[Trxs]TotAmt:=$RegularTotal
+Else 
+[Trxs]TotAmt:=$RegularTotal
+End case 
+Else 
+If ([BillPlan]PlanPeriod="Week") & (bFromMoveIn=False)
+[Trxs]TotAmt:=$RegularTotal*[Agreement]MthsAdv
+Else 
+[Trxs]TotAmt:=$RegularTotal*[Agreement]MthsAdv
+End if 
+End if 
+//RELATE ONE([Unit]UnitType)
+//If ([BillPlan]WeeksMonths)
+//[Transaction]TotAmt:=[UnitType]WeeklyRate*[Agreement]MthsAdv
+//Else 
+//[Transaction]TotAmt:=[UnitType]MonthlyRate*[Agreement]MthsAdv
+//End if 
+[Trxs]DiscAmt:=0
+[Trxs]DateFrom:=$DateFrom
+[Trxs]DateTo:=$DateTo
+If ([Facility]InvDateDetail=True) & ([Trxs]DateFrom#[Trxs]DateTo)
+If ([Facility]InvToDate=True)
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo-1)
+Else 
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo)
+End if 
+
+[Trxs]PrintNarration:=True
+End if 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]CCAuthNo:="Auto"
+[Agreement]BillPlanValidTo:=[Trxs]DateTo
+If ([Trxs]TotAmt>0)
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Agreement]TotRentUnpaid:=Round([Agreement]TotRentUnpaid+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+[Trxs]CCAuthNo:="Auto"
+SAVE RECORD([Trxs])
+End if 
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=$Analysis
+[Trxs]Confirmed:=True
+[Trxs]Description:=GetTrxDesc ($Desc;$i;True)
+If ([BillPlan]ShowIncentonInv)
+If ([BillPlan]PeriodicBilling=True)
+[Trxs]TotAmt:=RoundAmt (($RentTotal+$DiscountTotal)/[Agreement]MthsAdv)
+Else 
+[Trxs]TotAmt:=RoundAmt ($RentTotal+$DiscountTotal+([BillPlan]FreePeriods*$RegularTotal))
+End if 
+[Trxs]DiscAmt:=0
+Else 
+If ([BillPlan]PeriodicBilling=True)
+If (([Agreement]PeriodicBillingPosition+1)>=[BillPlan]FreePeriodStart) & (([Agreement]PeriodicBillingPosition+1)<([BillPlan]FreePeriodStart+[BillPlan]FreePeriods)) & ([BillPlan]FreePeriods>0)
+[Trxs]TotAmt:=0
+Else 
+[Trxs]TotAmt:=RoundAmt ($RentTotal/[Agreement]MthsAdv)
+End if 
+Else 
+[Trxs]TotAmt:=RoundAmt ($RentTotal)
+End if 
+[Trxs]DiscAmt:=Round($DiscAmt;2)//Added in 3.0.2
+End if 
+[Trxs]DateFrom:=$DateFrom
+[Trxs]DateTo:=$DateTo
+If ([Facility]InvDateDetail=True) & ([Trxs]DateFrom#[Trxs]DateTo)
+If ([Facility]InvToDate)
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo-1)
+Else 
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo)
+End if 
+
+[Trxs]PrintNarration:=True
+End if 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]CCAuthNo:="Auto"
+[Agreement]BillPlanValidTo:=[Trxs]DateTo
+If ([Trxs]TotAmt>0)
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Agreement]TotRentUnpaid:=Round([Agreement]TotRentUnpaid+[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+[Trxs]CCAuthNo:="Auto"
+SAVE RECORD([Trxs])
+End if 
+End if 
+End if 
+End if 
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+$i:=1
+If (Count parameters>0)
+If ($1="RentOnly")
+$i:=0
+End if 
+End if 
+If ($i=1)
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+For ($j;1;Records in selection([OtherChgs]))
+RELATE ONE([OtherChgs]AnalysisCode)
+If ([Analysis]InvItem=True) & ([Analysis]InvQtyonHand<1)
+AlertMessage ("You cannot add an other regular charge for "+" "+[OtherChgs]Description+" "+Get localized string("as there are only")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("units on hand.  Please re-enter!"))
+Else 
+CREATE RECORD([Trxs])
+[Trxs]Qty:=1
+If ([Analysis]InvItem=True)
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-1
+End if 
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]CCAuthNo:="Auto"
+[Trxs]AnalysisCode:=[OtherChgs]AnalysisCode
+RELATE ONE([Trxs]AnalysisCode)
+If (Records in selection([Analysis])#1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+[Trxs]AnalysisCode:=[Analysis]Code
+End if 
+If ([Analysis]KeyStatsCategory="Insurance") & ([Agreement]InsureCommence=!00-00-00!)//This condition & action added 17/11/05 SDD to make easier to track insurance
+[Agreement]InsureCommence:=[Agreement]LastBillDate
+End if 
+[Trxs]Confirmed:=True
+[Trxs]Description:=[OtherChgs]Description
+If (([OtherChgs]NewAmount)>([OtherChgs]Amount)) & (([OtherChgs]IncreaseFrom=[Agreement]LastBillDate))
+[OtherChgs]Amount:=Round([OtherChgs]NewAmount;2)
+[OtherChgs]IncreaseFrom:=!00-00-00!
+End if 
+If ([BillPlan]PeriodicBilling=True)
+[Trxs]TotAmt:=Round([OtherChgs]Amount/([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+Else 
+[Trxs]TotAmt:=Round([OtherChgs]Amount;2)
+End if 
+[Trxs]DateFrom:=$DateFrom
+[Trxs]DateTo:=$DateTo
+If ([Facility]InvDateDetail=True) & ([Trxs]DateFrom#[Trxs]DateTo)
+If ([Facility]InvToDate)
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo-1)
+Else 
+[Trxs]Narration:=Get localized string("From")+" "+String([Trxs]DateFrom)+" "+Get localized string("to")+" "+String([Trxs]DateTo)
+End if 
+[Trxs]PrintNarration:=True
+End if 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+If ([Trxs]AnalysisCode="@IN")
+[Agreement]InsureExpire:=[Agreement]NextBillDate
+[Agreement]TotInsUnpaid:=Round([Agreement]TotInsUnpaid+[Trxs]TotAmt;2)
+Else 
+[Agreement]TotOthrUnpaid:=Round([Agreement]TotOthrUnpaid+[Trxs]TotAmt;2)//Prev was TotRentUnpaid 3.3.6
+End if 
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing+[Trxs]TotAmt;2)
+[Agreement]BillPlanValidTo:=[Trxs]DateTo
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+SAVE RECORD([Analysis])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+$TrxDate:=[Trxs]TrxDate
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+[Trxs]CCAuthNo:="Auto"
+SAVE RECORD([Trxs])
+End if 
+End if 
+SAVE RECORD([OtherChgs])
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+
+//Bill Next Charges for Power
+QUERY([Analysis];[Analysis]SpecialOptions=4;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<50)
+If (Records in selection([Analysis])#0)
+If (Records in selection([Unit])#0)
+QUERY([Utilities];[Utilities]UnitNo=[Unit]RUnitNo;*)
+QUERY([Utilities]; & ;[Utilities]Billed=False;*)
+QUERY([Utilities]; & ;[Utilities]ReadEvent=True;*)
+QUERY([Utilities]; & ;[Utilities]EventCode=98;*)
+QUERY([Utilities]; & ;[Utilities]Date<=$DateTo)
+ORDER BY([Utilities];[Utilities]Date;>;*)
+ORDER BY([Utilities];[Utilities]Time;>)
+$StValue:=[Utilities]CurrentRead
+ORDER BY([Utilities];[Utilities]Date;<;*)
+ORDER BY([Utilities];[Utilities]Time;<)
+$Endvalue:=[Utilities]CurrentRead
+
+$Differ:=$Endvalue-$StValue
+If ($Differ#0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]DateFrom:=$DateFrom
+[Trxs]DateTo:=$DateTo
+[Trxs]Charge:=True
+[Trxs]CCAuthNo:="Auto"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=Round($Differ*[Analysis]DfltSellAmt;2)
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ WRITE([Utilities])
+APPLY TO SELECTION([Utilities];[Utilities]TransactionPK:=[Trxs]PrimaryKey)
+APPLY TO SELECTION([Utilities];[Utilities]Billed:=True)
+READ ONLY([Utilities])
+[Agreement]TotOthrUnpaid:=Round([Agreement]TotOthrUnpaid+[Trxs]TotAmt;2)//Prev was TotRentUnpaid 3.3.6
+End if 
+End if 
+End if 
+
+//Bill Next Charges for Water
+QUERY([Analysis];[Analysis]SpecialOptions=5;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<50)
+If (Records in selection([Analysis])#0)
+If (Records in selection([Unit])#0)
+QUERY([Utilities];[Utilities]UnitNo=[Unit]RUnitNo;*)
+QUERY([Utilities]; & ;[Utilities]Billed=False;*)
+QUERY([Utilities]; & ;[Utilities]ReadEvent=True;*)
+QUERY([Utilities]; & ;[Utilities]EventCode=97;*)
+QUERY([Utilities]; & ;[Utilities]Date<=$DateTo)
+ORDER BY([Utilities];[Utilities]Date;>;*)
+ORDER BY([Utilities];[Utilities]Time;>)
+$StValue:=[Utilities]CurrentRead
+ORDER BY([Utilities];[Utilities]Date;<;*)
+ORDER BY([Utilities];[Utilities]Time;<)
+$Endvalue:=[Utilities]CurrentRead
+
+$Differ:=$Endvalue-$StValue
+If ($Differ#0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=$DateFrom
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+[Trxs]TrxDate:=[Facility]CantModPrior
+End if 
+[Trxs]DateFrom:=$DateFrom
+[Trxs]DateTo:=$DateTo
+[Trxs]Charge:=True
+[Trxs]CCAuthNo:="Auto"
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=Round($Differ*[Analysis]DfltSellAmt;2)
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ WRITE([Utilities])
+APPLY TO SELECTION([Utilities];[Utilities]TransactionPK:=[Trxs]PrimaryKey)
+APPLY TO SELECTION([Utilities];[Utilities]Billed:=True)
+READ ONLY([Utilities])
+[Agreement]TotOthrUnpaid:=Round([Agreement]TotOthrUnpaid+[Trxs]TotAmt;2)//Prev was TotRentUnpaid 3.3.6
+End if 
+End if 
+End if 
+
+End if 
+//If ([Agreement]LastBillPlan#"")
+[Agreement]PriorBillPlan:=[Agreement]LastBillPlan
+//End if 
+[Agreement]LastBillPlan:=[Agreement]BillingPlanCode
+[Agreement]PeriodicBillingPosition:=[Agreement]PeriodicBillingPosition+1
+
+If ([BillPlan]SwaptoCode>"") | ([Agreement]NewBillingPlan#"")
+If ([BillPlan]PeriodicBilling=False) | (([BillPlan]PeriodicBilling=True) & ([Agreement]PeriodicBillingPosition=([Agreement]MthsAdv+[BillPlan]FreePeriods)))
+[Agreement]PeriodicBillingPosition:=0
+If ([Agreement]NewBillingPlan#"")
+[Agreement]NewBillingPlan:=[BillPlan]SwaptoCode
+End if 
+//[Agreement]NewRentFrom:=[Agreement]NextBillDate
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+$PlanPeriod:=[BillPlan]PlanPeriod
+viSwapMthsAdv:=[Agreement]MthsAdv+[BillPlan]FreePeriods
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+QUERY([BillPlan];[BillPlan]Code=Substring([Agreement]RAgreeNo;1;5)+[Agreement]NewBillingPlan)
+[Agreement]NewBillingPlan:=[BillPlan]SwaptoCode
+If (Records in selection([BillPlan])#1)
+QUERY([BillPlan];[BillPlan]Code=Substring([Agreement]RAgreeNo;1;5)+"MO")
+End if 
+If ([BillPlan]PlanPeriod#$PlanPeriod)//Added in 2.5.5 so that regular rent is adjusted if change from weekly to monthly
+$Total:=0
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([BillPlan]PlanPeriod="Week")
+If ([UnitType]WeeklyRate=0)
+[UnitType]WeeklyRate:=Round([UnitType]MonthlyRate*[Facility]RentWeeklyMthly;1)
+End if 
+$Total:=$Total+CalculateBaseRate (2;0)
+Else 
+$Total:=$Total+CalculateBaseRate (2;0)
+End if 
+NEXT RECORD([Unit])
+End for 
+Else 
+$Total:=[Agreement]RegularRent
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([OtherChgs])>0)
+If ([BillPlan]PlanPeriod#$PlanPeriod)
+If ([BillPlan]PlanPeriod="Month")
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount/[Facility]InsWeeklyMthly;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount/[Facility]InsWeeklyMthly;2))
+End if 
+If ([BillPlan]PlanPeriod="Week")
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*[Facility]InsWeeklyMthly;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount*[Facility]InsWeeklyMthly;2))
+End if 
+End if 
+If ([BillPlan]PeriodstoPay>=1)
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Amount:=Round([OtherChgs]Amount*([BillPlan]PeriodstoPay+[BillPlan]FreePeriods)/viSwapMthsAdv;2))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]NewAmount:=Round([OtherChgs]NewAmount*([BillPlan]PeriodstoPay+[BillPlan]FreePeriods)/viSwapMthsAdv;2))
+End if 
+End if 
+//Following changes in 3.3.3 to fix problem of RegRent instead of RentAmt  
+//[Agreement]NewRentAmt:=RoundAmt ($Total)  `WAS RoundAmt ($Total*[BillPlan]MthstoPay*(100-[BillPlan]DiscPercentage)/100)
+//[Agreement]NewDiscAmt:=0  `WAS ($Total*[BillPlan]MthstoPay)-[Lease]NewRentAmt
+[Agreement]NewRegularRent:=RoundAmt ($Total)
+//[Agreement]NewRentAmt:=RoundAmt ([Agreement]NewRegularRent*[BillPlan]MthstoPay*(100-[BillPlan]DiscPercentage)/100;1)
+//vNewRentAmt:=Round(RoundAmt (([Agreement]NewRegularRent*[BillPlan]MthstoPay*(100-[BillPlan]DiscPercentage)/100);1)+vNewOthTotal;2)
+//[Agreement]NewDiscAmt:=Round(([Agreement]NewRegularRent*[BillPlan]MthstoPay)-[Agreement]NewRentAmt;2)
+[Agreement]LastBillPlan:=[Agreement]BillingPlanCode
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]NewBillingPlan:=[BillPlan]SwaptoCode
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vNewOthTotal;2)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+End if 
+End if 
+
+If ([Agreement]PeriodicBillingPosition=([Agreement]MthsAdv+[BillPlan]FreePeriods))
+[Agreement]PeriodicBillingPosition:=0
+End if 
+If ([BillPlan]PlanPeriod="Week")
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied weekly")
+Else 
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied monthly")
+End if 
+
+OBJECT SET VISIBLE(vtPeriodicBilling;[BillPlan]PeriodicBilling)
+
+ReCalc 

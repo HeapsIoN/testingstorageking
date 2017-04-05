@@ -1,0 +1,159 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 23/12/09, 15:02:59
+// ----------------------------------------------------
+// Method: Form Method: [Transaction]ModChargesArray
+// Description
+// This is the Add Charges screen for the new array-based charging adding system.
+//
+// Parameters
+// ----------------------------------------------------
+
+Case of 
+: (Form event=On Load)
+C_REAL(vPerciville;vQuincy)
+OBJECT SET TITLE(*;"Text7";Get localized string("Customer Name")+":")
+OBJECT SET TITLE(*;"Text8";Get localized string("Agreement Number")+":")
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text9";Get localized string("Berth No"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text9";Get localized string("Appl No"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text9";Get localized string("Space No"))
+Else 
+OBJECT SET TITLE(*;"Text9";Get localized string("Unit No"))
+End case 
+
+OBJECT SET TITLE(*;"Text10";Get localized string("Quantity")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Description")+":")
+OBJECT SET TITLE(*;"Text2";Get localized string("Date of transaction")+":")
+
+//09/11/16 RNE1 
+OBJECT SET FORMAT(vPlus;<>sFormat)
+OBJECT SET FORMAT(vTax;<>sFormat)
+
+
+vTitle:=Get localized string("Charges")+"..."
+vDateFrom:=Current date
+vDateTo:=Current date
+vTrxDate:=Current date
+vDatePick:=vTrxDate
+vDatePick1:=vDateFrom
+vDatePick2:=vDateTo
+C_DATE(vTrxDateOld;vDateToOld;vDateFromOld)
+vTrxDateOld:=vTrxDate
+vDateToOld:=vDateTo
+vDateFromOld:=vDateFrom
+OBJECT SET VISIBLE(bNone;False)//To not catch Enter Key
+If (Length([Agreement]RAgreeNo)>=5) | (Length([Reservation]RReserveNo)>=5)
+If ([Reservation]RReserveNo>"")
+QUERY([Analysis];[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+"@";*)
+End if 
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder>=4;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+If (bIsCashSale)
+//QUERY([Analysis]; & ;[Analysis]KeyStatsCategory=Get localized string("Merchandise");*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+
+Case of 
+: (bIsCashSale)
+OBJECT SET VISIBLE(*;"@CashText";True)
+OBJECT SET VISIBLE([Customer]CustomerName;False)
+OBJECT SET VISIBLE([Agreement]AgreeNo;False)
+OBJECT SET VISIBLE([Unit]UnitNo;False)
+OBJECT SET VISIBLE(*;"Text9";False)
+: ([Reservation]RReserveNo>"")
+OBJECT SET TITLE(*;"Text8";"Reservation number:")
+OBJECT SET VISIBLE(*;"@CashText";False)
+OBJECT SET VISIBLE([Customer]CustomerName;True)
+OBJECT SET VISIBLE([Agreement]AgreeNo;False)
+OBJECT SET VISIBLE([Unit]UnitNo;True)
+OBJECT SET VISIBLE(*;"Text9";True)
+OBJECT SET VISIBLE(*;"AgreeCashText";True)
+OBJECT SET TITLE(*;"AgreeCashText";[Reservation]ReserveNo)
+Else 
+OBJECT SET VISIBLE(*;"@CashText";False)
+OBJECT SET VISIBLE([Customer]CustomerName;True)
+OBJECT SET VISIBLE([Agreement]AgreeNo;True)
+OBJECT SET VISIBLE([Unit]UnitNo;True)
+OBJECT SET VISIBLE(*;"Text9";True)
+End case 
+
+
+If (bModArray)
+cbPrint:=bChecked
+LoadAnlsChgArray (True;True)
+vQuincy:=vQtyPlus
+Else 
+vQuincy:=0
+vAnalysisCode:=[Analysis]Code
+LoadAnlsChgArray (True;True)
+vQtyPlus:=1
+vDescr:=[Analysis]Description
+vPlus:=[Analysis]DfltSellAmt
+vTax:=CalcTaxAmt (vPlus;vAnalysisCode;vDateFrom;vDateTo;4)
+cbPrint:=False
+vNarration:=""
+If (bDeleteArray=1)
+vQuincy:=vQtyPlus
+End if 
+End if 
+: (Form event=On Data Change) | (Form event=On Clicked)
+
+If (vTrxDateOld#vTrxDate)
+If (vTrxDate>Current date)
+AlertMessage (Get localized string("Warning - Transaction date is past today."))
+End if 
+vTrxDate:=GetValidDate (vTrxDate;Current date)//This method requires two parameters!
+If (vDateFrom=vDateTo)
+vDateFrom:=vTrxDate
+vDateTo:=vTrxDate
+End if 
+vTrxDateOld:=vTrxDate
+vDatePick:=vTrxDate
+End if 
+
+If (vDateFromOld#vDateFrom)
+vDateFrom:=GetValidDate (vDateFrom;Current date)
+If (vDateFrom>vDateTo) & (vDateTo>!00-00-00!)
+AlertMessage (Get localized string("Date From cannot be later than DateTo!"))
+GOTO OBJECT(vDateFrom)
+vDateFrom:=vDateTo
+End if 
+vDateFromOld:=vDateFrom
+vDatePick1:=vDateFrom
+End if 
+
+If (vDateToOld#vDateTo)
+If (vDateFrom>vDateTo) & (vDateTo>!00-00-00!)
+AlertMessage (Get localized string("Date From cannot be later than DateTo!"))
+GOTO OBJECT(vDateFrom)
+vDateFrom:=vDateTo
+End if 
+vDateToOld:=vDateTo
+vDatePick2:=vDateTo
+vDateFromOld:=vDateFrom
+vDatePick1:=vDateFrom
+End if 
+
+End case 

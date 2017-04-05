@@ -1,0 +1,104 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 00/00/00, 00:00:00 (old)
+// ----------------------------------------------------
+// Method: WS_GetActivityData
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+//SDD 15/04/13 Webservice Method to retrieve Activity record for a specific date
+//Used existing variable names so they are a little odd in naming
+//These vars defined in the Compiler_Web method
+//C_TEXT(WS_FacilityCode;WS_GetDate)
+
+SOAP DECLARATION(WS_FacilityCode;Is text;SOAP input)
+SOAP DECLARATION(WS_ActivityDate;Is date;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_CustName;String array;SOAP output)//Field Names
+SOAP DECLARATION(WS_aTotAmt;Real array;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_GetActivityData"+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+Char(13)
+$String:=$String+"WS_ActivityDate: "+String(WS_ActivityDate)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+ARRAY TEXT(WS_CustName;0)
+ARRAY REAL(WS_aTotAmt;0)
+
+C_LONGINT($i)
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+
+If (Records in selection([Facility])=1)
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Activity];[Activity]FacilityCode=WS_FacilityCode;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=WS_ActivityDate)
+
+If (Records in selection([Activity])=1)
+For ($i;9;Get last field number(->[Activity]))
+If (Is field number valid(->[Activity];$i))
+$p:=Field(10;$i)
+If (Type($p->)=Is integer) | (Type($p->)=Is longint) | (Type($p->)=Is real)
+APPEND TO ARRAY(WS_CustName;Field name($p))
+APPEND TO ARRAY(WS_aTotAmt;$p->)
+End if 
+End if 
+End for 
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Activity data successfully retrieved."
+Else 
+//WS_OLD=APPEND TO ARRAY(WS_CustName;"No Activity record found for "+WS_FacilityCode+" on date "+String(WS_ActivityDate))
+//WS_OLD=APPEND TO ARRAY(WS_aTotAmt;-1)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1036
+WS_ORErrorDescription:="Activity record not found in database Storman."
+End if 
+Else 
+//WS_OLD=APPEND TO ARRAY(WS_CustName;"Please check the password / Records in selection Facility = "+String(Records in selection([Facility])))
+//WS_OLD=APPEND TO ARRAY(WS_aTotAmt;-1)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+$String:="End WS_GetActivityData"+Char(13)
+$vlElem:=1
+$sizeofarray:=Size of array(WS_CustName)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_CustName("+String($vlElem)+"):"+WS_CustName{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aTotAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aTotAmt("+String($vlElem)+"):"+String(WS_aTotAmt{$vlElem})+Char(13)
+End for 
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

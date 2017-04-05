@@ -1,0 +1,148 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL(vBal;vTot1;vTot2;vBankBal;$Amt;vBankClose;vOpenBal)
+C_DATE(vDate;vBSDate)
+C_BOOLEAN(vCancel;$Contact;vMod)
+ARRAY DATE(aOTBankd;0)
+ARRAY TEXT(aOTDesc;0)
+ARRAY REAL(aOTAmt;0)
+ARRAY TEXT(aOTAnlys;0)
+READ WRITE([Facility])
+READ WRITE([Trxs])
+If (PermissionsControl (109))
+DEFAULT TABLE([ChartAccts])
+SetFacility 
+vBankBal:=0
+vDate:=!00-00-00!
+vCancel:=False
+vBal:=0
+vTot1:=0
+vTot2:=0
+vTotal:=vBankBal
+vDifference:=0
+$Amt:=0
+$Contact:=False
+vMod:=False
+vBSDate:=Current date
+vRecNo:=0
+READ WRITE([ChartAccts])
+QUERY([ChartAccts];[ChartAccts]AcctType="b1")
+If (<>sProduct="M@")
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+If (Records in selection([ChartAccts])>0)
+If (Records in selection([ChartAccts])>1)
+ORDER BY([ChartAccts];[ChartAccts]AcctType;>)
+End if 
+FIRST RECORD([ChartAccts])
+vRecNo:=Record number([ChartAccts])
+If (<>sProduct="M@") | ([Facility]CentralAddress="")
+If ([ChartAccts]Notes="LOCKED")
+AlertMessage (Get localized string("The site is currently performing a bank reconciliation."))
+Else 
+vBankBal:=[ChartAccts]OpeningBal
+vBBDate:=[ChartAccts]BankBalDate
+$Contact:=True
+End if 
+Else 
+$Contact:=WSC_GetBankRecBal (<>sFacility;vBankBal;vBBDate;1)//This call retrieves vBankBal & vBBDate from MV
+End if 
+If ($Contact=True)
+If (vBBDate>=[Facility]BankRecCantModPrior)
+ConfirmTwo (Get localized string("Unreconcile the bank reconciliation dated")+" "+String(vBBDate)+"?")
+
+If (OK=1)
+If (<>sProduct="M@")//trying to make the search speed faster at HOF end
+QUERY([Trxs];[Trxs]DateReconciled<vBBDate;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled>=vBBDate-45;*)//go back 45 days to find a start date
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt#0)
+Else 
+QUERY([Trxs];[Trxs]DateReconciled<vBBDate;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled>=vBBDate-45;*)//go back 45 days to find a start date
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt#0)
+End if 
+ORDER BY([Trxs];[Trxs]DateReconciled;<)
+FIRST RECORD([Trxs])
+$PriorDate:=[Trxs]DateReconciled
+
+If (<>sProduct="M@")//trying to make the search speed faster at HOF end
+QUERY([Trxs];[Trxs]DateReconciled=vBBDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TotAmt#0)
+Else 
+QUERY([Trxs];[Trxs]DateReconciled=vBBDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt#0)
+End if 
+If (Records in selection([Trxs])>0)
+CREATE SET([Trxs];"Unreconcile")
+$Bal:=vBankBal
+vBankBal:=$Bal-Sum([Trxs]TaxAmt)
+APPLY TO SELECTION([Trxs];[Trxs]Reconciled:=False)
+APPLY TO SELECTION([Trxs];[Trxs]DateReconciled:=!00-00-00!)
+Else 
+AlertMessage (Get localized string("There are no transactions to unreconcile!"))
+End if 
+
+Else 
+vCancel:=True
+//GOTO RECORD([ChartAccts];vRecNo)
+//[ChartAccts]Notes:=""
+//SAVE RECORD([ChartAccts])
+End if 
+If (vCancel=True)
+vBBDate:=!00-00-00!
+Else 
+vBBDate:=$PriorDate
+End if 
+If (vBBDate#!00-00-00!)//if the user did not press cancel
+If (<>sProduct="M@") | ([Facility]CentralAddress="")
+GOTO RECORD([ChartAccts];vRecNo)
+[ChartAccts]BankBalDate:=vBBDate
+[ChartAccts]OpeningBal:=vBankBal
+[ChartAccts]Notes:=""//unlock the record
+SAVE RECORD([ChartAccts])
+[Facility]BankRecBal:=vBankBal
+[Facility]LastBankRec:=vBBDate
+SAVE RECORD([Facility])
+Else 
+GOTO RECORD([ChartAccts];vRecNo)
+[ChartAccts]BankBalDate:=vBBDate
+[ChartAccts]OpeningBal:=vBankBal
+[ChartAccts]Notes:=""//unlock the record
+SAVE RECORD([ChartAccts])
+[Facility]BankRecBal:=vBankBal
+[Facility]LastBankRec:=vBBDate
+SAVE RECORD([Facility])
+If (WSC_GetBankRecBal (<>sFacility;vBankBal;vBBDate;2)=True)//This call sets vBankBal & vBBDate back to MV
+//ALERT("The chart of accounts has been updated successfully!")
+//ALERT(String(vBankBal)+":"+String(vBBDate)+":"+String(viAction))
+Else 
+AlertMessage (Get localized string("Failure")+":"+String(vBankBal)+":"+String(vBBDate)+":"+String(viAction))
+End if 
+End if 
+End if 
+If (vCancel=False)
+AlertMessage (Get localized string("All transactions for previous Bank Rec have been unreconciled!"))
+AlertMessage (Get localized string("New Bank Balance")+" = "+String(vBankBal)+" "+Get localized string("dated")+" "+String(vBBDate))
+End if 
+Else 
+AlertMessage (Get localized string("You cannot unreconcile the last bank reconciliation dated")+" "+String(vBBDate)+" "+Get localized string("as it is before the bank reconciliation can't modify prior to date of")+" "+String([Facility]BankRecCantModPrior))
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("You need to set up a Chart of Accounts with Account Type 'B' that contains the Facility code. For more info, click the Learn More link provided below");Get localized string("OK");"http://my.storman.com/support/knowledgebase/accounting/chartofaccounts.php?src=lm")
+End if 
+READ ONLY([ChartAccts])
+READ ONLY([Trxs])
+READ ONLY([Facility])
+UNLOAD RECORD([Facility])
+UNLOAD RECORD([ChartAccts])
+UNLOAD RECORD([Trxs])
+
+End if 

@@ -1,0 +1,216 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$k;$Rec;$Count;$Pos)
+C_TEXT($Unit;$StartUnit)
+USE SET("UserSet")
+$k:=0
+If (<>sFacility="KY@") & (Shift down=False)//Transfer Unit button
+If (Records in selection([Unit])=1)
+$Unit:=RequestMessage (Get localized string("Please enter new Facilitycode and Unit number for")+" "+[Unit]RUnitNo+":";[Unit]RUnitNo)
+If (OK=1)
+$Rec:=Record number([Unit])
+QUERY([Unit];[Unit]RUnitNo=$Unit)
+If (Records in selection([Unit])=1) & ([Unit]Status#"Unavail")
+AlertMessage (Get localized string("Unit No")+": "+[Unit]RUnitNo+" "+Get localized string("already exists. Unable to transfer."))
+Else 
+GOTO RECORD([Unit];$Rec)
+$i:=Find in array(<>asSiteCodes;Substring($Unit;1;5))
+QUERY([UnitType];[UnitType]RUnitType=Substring($Unit;1;5)+Substring([Unit]UnitTypeCode;6))
+Case of 
+: ($i<1)
+AlertMessage (Get localized string("New Unit number must begin with a valid Facility Code."))
+: ([Unit]AgreeNo>"") | ([Unit]ReservedTo>"")
+AlertMessage (Get localized string("The selected Unit to be transferred is")+" "+[Unit]Status+".  "+Get localized string("Only units with a vacant status can be transferred."))
+: (Records in selection([UnitType])=0)
+AlertMessage (Get localized string("There is no UnitType for the new site of")+" "+Substring($Unit;1;5)+Substring([Unit]UnitTypeCode;6)+"!")
+Else 
+$Rec:=Record number([UnitType])
+RELATE ONE([Unit]UnitTypeCode)
+[UnitType]NoTotal:=[UnitType]NoTotal-1
+[UnitType]NoVacant:=[UnitType]NoVacant-1
+SAVE RECORD([UnitType])
+[Unit]Status:="Unavail"
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD([Unit])
+//QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo)
+//APPLY TO SELECTION([UnitHistory];[UnitHistory]UnitNo:=$Unit)
+GOTO RECORD([UnitType];$Rec)
+$Rec:=Find in field([Unit]RUnitNo;$Unit)
+If ($Rec<0)
+DUPLICATE RECORD([Unit])
+[Unit]PrimaryKey:=0
+Else 
+GOTO RECORD([Unit];$Rec)
+End if 
+[Unit]RUnitNo:=$Unit
+[Unit]UnitNo:=Substring([Unit]RUnitNo;6)
+[Unit]UnitTypeCode:=[UnitType]RUnitType
+[Unit]Status:="Vacant"
+[Unit]StartDate:=Current date
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD([Unit])
+[UnitType]NoTotal:=[UnitType]NoTotal+1
+[UnitType]NoVacant:=[UnitType]NoVacant+1
+SAVE RECORD([UnitType])
+End case 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Please select a Unit to transfer before clicking the button..."))
+End if 
+Else //Multiply Units button
+If (Records in selection([Unit])=1)
+vOldPIN:=[Unit]UnitNo
+Open window((Screen width/2)-290;(Screen height/2)-225;(Screen width/2)+290;(Screen height/2)+225;5;"Multiply "+<>vtUnitsCap+"s")
+DIALOG("MultiplyUnits")
+CLOSE WINDOW
+If (OK=1)
+FIRST RECORD
+$Rec:=Record number
+$Pos:=1
+$StartUnit:=[Unit]UnitNo
+While ($Pos<Length($StartUnit)) & (Character code($StartUnit[[$Pos]])>57)
+$Pos:=$Pos+1
+End while 
+SET QUERY DESTINATION(3;$k)
+$Count:=0
+While (vName>"")
+$i:=Position(",";vName)
+If ($i>0)
+vHex:=Substring(vName;1;$i-1)
+vName:=Substring(vName;$i+1)
+Else 
+vHex:=vName
+vName:=""
+End if 
+$j:=Position("-";vHex)
+If ($j>0)
+For ($i;Num(Substring(vHex;1;$j-1));Num(Substring(vHex;$j+1)))
+$Unit:=Substring($StartUnit;1;$Pos-1)+String($i;"0"*vMax)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+$Unit)
+If ($k<1)
+SET QUERY DESTINATION(0)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail@")
+SET QUERY DESTINATION(3;$k)
+If (Records in selection([Unit])>=<>iMaxUnits)
+AlertMessage (Get localized string("Maintenance - Unit1A"))
+SET QUERY DESTINATION(0)
+ABORT
+Else 
+GOTO RECORD($Rec)
+DUPLICATE RECORD
+[Unit]PrimaryKey:=0
+[Unit]UnitNo:=$Unit
+[Unit]RUnitNo:=<>sFacility+$Unit
+[Unit]Vacant:=True
+[Unit]AgreeNo:=""
+[Unit]MoveIn:=!00-00-00!
+[Unit]MoveOut:=!00-00-00!
+[Unit]Status:=<>asUnitStatus{2}
+[Unit]BillPlanDisc:=0
+[Unit]ExtraDisc:=0
+[Unit]ReservedTo:=""
+[Unit]ReservedDate:=!00-00-00!
+[Unit]ObjectID:=0
+[Unit]TextID:=0
+[Unit]RectID:=0
+[Unit]XCoordinate:=0
+[Unit]YCoordinate:=0
+[Unit]Rotation:=0
+[Unit]Comments:=""
+[Unit]OccupRentedVal:=0
+[Unit]RentedValue:=0
+[Unit]StartDate:=Current date
+CalcUnitNumeric 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+
+SAVE RECORD
+End if 
+Else 
+$Count:=$Count+1
+End if 
+End for 
+Else 
+If (Length(vHex)<vMax)
+$Unit:=String(Num(vHex);"0"*vMax)
+Else 
+$Unit:=vHex
+End if 
+QUERY([Unit];[Unit]UnitNo=$Unit)
+If ($k<1)
+SET QUERY DESTINATION(0)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail@")
+SET QUERY DESTINATION(3;$k)
+If (Records in selection([Unit])>=<>iMaxUnits)
+AlertMessage (Get localized string("Maintenance - Unit1A"))
+SET QUERY DESTINATION(0)
+ABORT
+Else 
+GOTO RECORD($Rec)
+DUPLICATE RECORD
+[Unit]PrimaryKey:=0
+[Unit]UnitNo:=$Unit
+[Unit]RUnitNo:=<>sFacility+$Unit
+[Unit]Vacant:=True
+[Unit]AgreeNo:=""
+[Unit]MoveIn:=!00-00-00!
+[Unit]MoveOut:=!00-00-00!
+[Unit]Status:=<>asUnitStatus{2}
+[Unit]BillPlanDisc:=0
+[Unit]ExtraDisc:=0
+[Unit]ReservedTo:=""
+[Unit]ReservedDate:=!00-00-00!
+[Unit]ObjectID:=0
+[Unit]TextID:=0
+[Unit]RectID:=0
+[Unit]XCoordinate:=0
+[Unit]YCoordinate:=0
+[Unit]Rotation:=0
+[Unit]Comments:=""
+[Unit]OccupRentedVal:=0
+[Unit]RentedValue:=0
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+SAVE RECORD
+End if 
+Else 
+$Count:=$Count+1
+End if 
+End if 
+End while 
+SET QUERY DESTINATION(0)
+If ($Count>0)
+AlertMessage (Get localized string("There were")+" "+String($Count)+" "+<>vtUnitsCap+"s that could not be created because of duplicates.")
+End if 
+End if 
+Else 
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("Please select the Berth to multiply, by highlighting it..."))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("Please select the Appliance to multiply, by highlighting it..."))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("Please select the Space to multiply, by highlighting it..."))
+Else 
+AlertMessage (Get localized string("Please select the Unit to multiply, by highlighting it..."))
+End case 
+End if 
+End if 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+Case of 
+: (aUnit=2)
+QUERY([Unit]; & ;[Unit]Vacant=False)
+: (aUnit=3)
+QUERY([Unit]; & ;[Unit]Vacant=True)
+Else 
+QUERY([Unit])
+End case 
+ORDER BY([Unit];[Unit]UnitNo;>)

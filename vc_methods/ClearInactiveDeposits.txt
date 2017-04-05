@@ -1,0 +1,181 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+LOAD RECORD([Customer])
+LOAD RECORD([Trxs])
+
+
+GOTO XY(2;2)
+MESSAGE("Calculating Deposits for Reservation "+String($i)+" of "+String(Records in selection([Reservation])))
+
+C_DATE($Date)
+$Date:=RequestDate ("Please enter the date for transactions";Current date)
+
+If ($Date=!00-00-00!)
+$Date:=Current date
+End if 
+
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False)
+
+$TotAgree:=Records in selection([Agreement])
+$ClearInactiveDepA:=Open window(20;50;450;150;0)
+
+For ($i;1;Records in selection([Agreement]))
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+
+GOTO XY(2;2)
+MESSAGE("Clearing Inactive Deposits for Agreement "+String($i)+" of "+String(Records in selection([Agreement])))
+//RELATE MANY([Agreement]RAgreeNo)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+
+QUERY SELECTION([Trxs];[Analysis]KeyStatsCategory="Deposit")
+
+[Agreement]DepositAmt:=Sum([Trxs]TotAmt)
+
+SAVE RECORD([Agreement])
+
+If ([Agreement]DepositAmt#0)
+
+RELATE ONE([Agreement]CustomerCode)
+
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]TotAmt:=[Agreement]DepositAmt*-1
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]TrxDate:=$Date
+[Trxs]TrxTime:=Current time
+[Trxs]Description:="Deposit Reversal"
+[Trxs]Confirmed:=True
+[Trxs]UserLogin:=<>sCurrentUser
+[Trxs]Qty:=1
+[Trxs]Charge:=True
+[Trxs]Match:=[Customer]NextMatch
+SAVE RECORD([Trxs])
+
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]TotAmt:=[Agreement]DepositAmt
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]TrxDate:=$Date
+[Trxs]TrxTime:=Current time
+[Trxs]Description:="Write Off to Rent"
+[Trxs]Confirmed:=True
+[Trxs]UserLogin:=<>sCurrentUser
+[Trxs]Qty:=1
+[Trxs]Charge:=True
+[Trxs]Match:=[Customer]NextMatch
+SAVE RECORD([Trxs])
+
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+
+viMatch:=-1
+bPrtRec:=0
+bEmailReceipt:=0
+asShowHistory:=1
+bAll:=0
+ReCalc 
+
+End if 
+
+[Agreement]DepositAmt:=0
+SAVE RECORD([Agreement])
+
+NEXT RECORD([Agreement])
+End for 
+<>ProgressInd:=100
+
+READ WRITE([Reservation])
+
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+"@";*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=False)
+
+$TotAgree:=Records in selection([Reservation])
+
+CLOSE WINDOW($ClearInactiveDepA)
+$ClearInactiveDepR:=Open window(20;50;450;150;0)
+
+For ($i;1;Records in selection([Reservation]))
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+
+GOTO XY(2;2)
+MESSAGE("Clearing Inactive Deposits for Reservation "+String($i)+" of "+String(Records in selection([Reservation])))
+//RELATE MANY([Agreement]RAgreeNo)
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+
+QUERY SELECTION([Trxs];[Analysis]KeyStatsCategory="Deposit")
+
+[Reservation]DepositAmt:=Sum([Trxs]TotAmt)
+
+SAVE RECORD([Reservation])
+
+If ([Reservation]DepositAmt#0)
+
+RELATE ONE([Reservation]CustomerCode)
+
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]TotAmt:=[Reservation]DepositAmt*-1
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]TrxDate:=$Date
+[Trxs]TrxTime:=Current time
+[Trxs]Description:="Deposit Reversal"
+[Trxs]Confirmed:=True
+[Trxs]UserLogin:=<>sCurrentUser
+[Trxs]Qty:=1
+[Trxs]Charge:=True
+[Trxs]Match:=[Customer]NextMatch
+SAVE RECORD([Trxs])
+
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]TotAmt:=[Reservation]DepositAmt
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]TrxDate:=$Date
+[Trxs]TrxTime:=Current time
+[Trxs]Description:="Write Off to Rent"
+[Trxs]Confirmed:=True
+[Trxs]UserLogin:=<>sCurrentUser
+[Trxs]Qty:=1
+[Trxs]Charge:=True
+[Trxs]Match:=[Customer]NextMatch
+SAVE RECORD([Trxs])
+
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+
+viMatch:=-1
+bPrtRec:=0
+bEmailReceipt:=0
+asShowHistory:=1
+bAll:=0
+ReCalc 
+
+End if 
+
+[Reservation]DepositAmt:=0
+SAVE RECORD([Reservation])
+
+NEXT RECORD([Reservation])
+End for 
+<>ProgressInd:=100
+
+CLOSE WINDOW($ClearInactiveDepR)
+
+AlertMessage ("ClearInactiveDeposits completed!")
+
+READ ONLY([Agreement])
+READ ONLY([Reservation])
+READ ONLY([Customer])
+READ ONLY([Trxs])
+
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Trxs])

@@ -1,0 +1,58 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header) & (Level=1)
+vLegend:=[Agreement]NoticeBilled
+If (vLegend="AA@")
+vLegend:=Substring(vLegend;3)+" - "+Get localized string("Due Today")
+End if 
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]Description=vLegend;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+If ([Notices]BillNextRent)
+vLegend:=Get localized string("Recurring Rent")+" & "+vLegend+" - "+Get localized string("Invoices to be Sent Today")
+End if 
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+SetFormats 
+RELATE ONE([Agreement]CustomerCode)
+If (vLegend="Recurring Ren@")
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([OtherChgs];[OtherChgs]AnalysisCode;>)
+Else 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode="Z9")
+End if 
+If ([Agreement]NoticeAmtToBill=[Agreement]LateFeeAmt) & ([Notices]DaysAfter>0) & ([Agreement]LateFeeAmt>0)
+[Customer]CustomerName:=[Customer]CustomerName+"  *"
+bAgree:=1
+End if 
+Case of 
+: ([Customer]PrimaryPhone=2)
+vPhone:=[Customer]PhoneBus
+: ([Customer]PrimaryPhone=3)
+vPhone:=[Customer]MobilePhone
+: ([Customer]PrimaryPhone=4)
+vPhone:=[Customer]MilCPhone
+Else 
+vPhone:=[Customer]PhonePrivate
+End case 
+If ([Agreement]OutNoticeDate#!00-00-00!)
+vLeg2:=Get localized string("Move Out")+":"+String([Agreement]MoveOut;1)
+Else 
+vLeg2:=""
+End if 
+
+
+End if 
+If (Form event=On Printing Break)
+If (bAgree=1)
+vLeg1:="* "+Get localized string("Late fee comes from Agreement file rather than regular amount!")
+Else 
+vLeg1:=""
+End if 
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

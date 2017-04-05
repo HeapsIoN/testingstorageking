@@ -1,0 +1,69 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE(vSDate;vEDate)
+DEFAULT TABLE([CashBookTrxs])
+vSDate:=RequestDate (Get localized string("Enter report start date:");Current date)
+vEDate:=RequestDate (Get localized string("Enter report end date:");Current date)
+If (OK=1)
+CreateRecJrnls (vSDate;vEDate;6)
+CreateRevJrnls (vEDate;3)
+QUERY([Journal];[Journal]JrnlDate>=vSDate;*)
+QUERY([Journal]; & ;[Journal]JrnlDate=vEDate;*)
+QUERY([Journal]; & ;[Journal]JrnlType="REC")
+QUERY([Journal];[Journal]JrnlDate=vEDate;*)
+QUERY([Journal]; & ;[Journal]JrnlType="REV")
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position(<>sFacility;[CashBookTrxs]Description)>1)
+CREATE SET([CashBookTrxs];"Test")
+DISTINCT VALUES([CashBookTrxs]AcctNo;aAccts)
+READ WRITE([CashBookTrxs])
+For ($i;1;Size of array(aAccts))
+USE SET("Test")
+QUERY SELECTION([CashBookTrxs];[CashBookTrxs]AcctNo=aAccts{$i})
+If (Records in selection([CashBookTrxs])>1)
+$Amt:=Sum([CashBookTrxs]Amount)
+$GrAmt:=Sum([CashBookTrxs]Amount)
+$Desc:=[CashBookTrxs]Description
+$SiteID:=[CashBookTrxs]SiteID
+DELETE SELECTION([CashBookTrxs])
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]AcctNo:=aAccts{$i}
+[CashBookTrxs]Amount:=$Amt
+[CashBookTrxs]Description:=$Desc
+[CashBookTrxs]SiteID:=$SiteID
+[CashBookTrxs]GrossAmt:=$GrAmt
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+SAVE RECORD([CashBookTrxs])
+End if 
+End for 
+SetFacility 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=1)
+If ([Analysis]Taxable) & ([Facility]TaxAddtoAmt=False)
+vTax:=GetTaxRate (vEDate)
+$TaxMult:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$TaxMult:=1/(1+(vTax/100))
+End if 
+vPPTax:=Round($TaxMult;2)
+Else 
+vTax:=0
+$TaxMult:=1
+If ([Analysis]Taxable)
+vTax:=GetTaxRate (vEDate)
+vPPTax:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+vPPTax:=1/(1+(vTax/100))
+End if 
+Else 
+vPPTax:=1
+End if 
+End if 
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position(<>sFacility;[CashBookTrxs]Description)>1)
+ORDER BY([CashBookTrxs];[CashBookTrxs]AcctNo;>;[CashBookTrxs]Amount;>;[CashBookTrxs]Description;>)
+BREAK LEVEL(1)
+ACCUMULATE([CashBookTrxs]Amount;vAmt1;vAmt2)
+FORM SET OUTPUT([CashBookTrxs];"GenLedger")
+PrintSelection ("P")
+FORM SET OUTPUT([CashBookTrxs];"Output")
+End if 

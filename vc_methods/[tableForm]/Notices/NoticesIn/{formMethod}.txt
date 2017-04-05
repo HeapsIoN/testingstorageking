@@ -1,0 +1,411 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$Count;btnLetterEdit;btnEmailEdit)
+C_BLOB($Blank)
+C_BOOLEAN(bEmailPrevLoaded;ShowveLetter)
+$j:=0
+$Name:=""
+$Type:=""
+$Count:=0
+Test_TheID:=0
+If (Form event=On Unload)
+//To clear the Event handling method when the write area is activated/deactivated
+WR ON EVENT (veLetter;wr on activate;"")
+//WR ON EVENT (veEmail;wr on activate;"")
+End if 
+
+
+If (Form event=On Load) | ((Form event=On Clicked) & ((bNext=1) | (bPrev=1)))
+LoadBackground 
+SetFormats 
+
+If (bNext#1) & (bPrev#1)
+aPageNo:=1
+End if 
+
+Case of 
+: (<>sProduct="@B")
+//OBJECT SET TITLE(*;"Field133";Get localized string("Over-Lock berth(s)"))
+OBJECT SET TITLE(*;"Field133";Get localized string("Flag for Over-Lock berth(s)"))
+OBJECT SET TITLE(*;"Field10";Get localized string("Charge is per berth"))
+OBJECT SET VISIBLE(*;"Field12";False)
+OBJECT SET VISIBLE(*;"Field133";False)
+: (<>sProduct="@R")
+//OBJECT SET TITLE(*;"Field133";Get localized string("Over-Lock appliance(s)"))
+OBJECT SET TITLE(*;"Field133";Get localized string("Flag for Over-Lock appliance(s)"))
+OBJECT SET TITLE(*;"Field10";Get localized string("Charge is per appliance"))
+OBJECT SET VISIBLE(*;"Field12";False)
+OBJECT SET VISIBLE(*;"Field133";False)
+: (<>sProduct="@C")
+//OBJECT SET TITLE(*;"Field133";Get localized string("Over-Lock space(s)"))
+OBJECT SET TITLE(*;"Field133";Get localized string("Flag for Over-Lock space(s)"))
+OBJECT SET TITLE(*;"Field10";Get localized string("Charge is per space"))
+Else 
+//OBJECT SET TITLE(*;"Field133";Get localized string("Over-Lock unit(s)"))
+OBJECT SET TITLE(*;"Field133";Get localized string("Flag for Over-Lock unit(s)"))
+OBJECT SET TITLE(*;"Field10";Get localized string("Charge is per unit"))
+End case 
+QUERY([Analysis];[Analysis]Code=<>sFacility+[Notices]AnalysisCode)
+vPage:=BLOB size([Notices]Email)
+vNumber:=BLOB size([Notices]Letter)
+LoadPictures 
+If ([Facility]GateSysType=0)
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Field5";Get localized string("Set unit status to LockedB"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Field5";Get localized string("Set unit status to LockedC"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Field5";Get localized string("Set space status to Locked"))
+Else 
+OBJECT SET TITLE(*;"Field5";Get localized string("Set status to Locked"))
+End case 
+
+//OBJECT SET TITLE(*;"Field5";"Set "+<>vtUnits+" status to Locked")
+End if 
+
+bEmailPrevLoaded:=False
+bPreview:=False
+ARRAY TEXT(dBefAfter;2)
+dBefAfter{1}:=Get localized string("after")
+dBefAfter{2}:=Get localized string("before")
+
+vDaysAfter:=Abs([Notices]DaysAfter)
+
+
+If ([Notices]DaysAfter<0)
+dBefAfter:=2
+Else 
+dBefAfter:=1
+End if 
+
+vSMSText:=Get localized string("Text messages to mobile phones can currently carry a maximum of {number} characters.")
+
+If (GetTextNo ([Facility]SMSAcctDetails;5;",")="Storman SMS")
+vSMSText:=Replace string(vSMSText;"{number}";"450")
+Else 
+vSMSText:=Replace string(vSMSText;"{number}";"160")
+End if 
+
+If ([Notices]DaysAfter=0)
+OBJECT SET VISIBLE(*;"Text9";False)
+OBJECT SET VISIBLE(*;"Variable7";False)
+OBJECT SET VISIBLE(*;"Variable15";False)
+OBJECT SET VISIBLE(*;"Text34";False)
+Else 
+OBJECT SET VISIBLE(*;"Text9";True)
+OBJECT SET VISIBLE(*;"Variable7";True)
+OBJECT SET VISIBLE(*;"Variable15";True)
+OBJECT SET VISIBLE(*;"Text34";False)
+Case of 
+: ([Notices]RefDateField=11)
+asDescription:=1
+: ([Notices]RefDateField=44)
+asDescription:=2
+OBJECT SET VISIBLE([Notices]LateCycleIgnore;True)
+: ([Notices]RefDateField=16)
+asDescription:=3
+: ([Notices]RefDateField=3)
+asDescription:=4
+: ([Notices]RefDateField=4)
+asDescription:=5
+: ([Notices]RefDateField=41)
+asDescription:=6
+: ([Notices]RefDateField=61)
+asDescription:=7
+: ([Notices]RefDateField=48)
+asDescription:=8
+OBJECT SET VISIBLE([Notices]LateCycleIgnore;True)
+: ([Notices]RefDateField=70)
+asDescription:=9
+: ([Notices]RefDateField=20)
+asDescription:=10
+: ([Notices]RefDateField=75)
+asDescription:=11
+Else 
+If ([Notices]DaysAfter<0)
+If ([Notices]Description="Insur@")
+[Notices]RefDateField:=16
+asDescription:=3
+Else 
+[Notices]RefDateField:=11
+asDescription:=1
+End if 
+Else 
+[Notices]RefDateField:=44
+asDescription:=2
+End if 
+End case 
+End if 
+
+ARRAY TEXT(aSendInvoices;3)
+aSendInvoices{1}:=Get localized string("Never attach an invoice")
+aSendInvoices{2}:=Get localized string("Always attach an invoice")
+aSendInvoices{3}:=Get localized string("Use setting from agreement for invoices")
+aSendInvoices:=[Notices]AttachInvoice+1
+
+ARRAY TEXT(aSendStatements;3)
+aSendStatements{1}:=Get localized string("Never attach a statement")
+aSendStatements{2}:=Get localized string("Always attach a statement")
+aSendStatements{3}:=Get localized string("Use setting from agreement for statements")
+aSendStatements:=[Notices]AttachStatement+1
+
+//
+//If (BLOB size([Notices]Letter)>0)
+//EXPAND BLOB([Notices]Letter)
+//End if 
+//If (BLOB size([Notices]Email)>0)
+//EXPAND BLOB([Notices]Email)
+//End if 
+
+//Load the Letter and Email previews, calculate the 'size' values and activate a few settings
+If (BLOB size([Notices]Letter)>0)
+DecompressBlob (->[Notices]Letter)
+End if 
+If (BLOB size([Notices]Email)>0)
+DecompressBlob (->[Notices]Email)
+End if 
+
+//$DocRef:=Create document(<>sTutPath+"Email.html")
+//CLOSE DOCUMENT($DocRef)
+//BLOB TO DOCUMENT(<>sTutPath+"Email.html";[Notices]Email)
+//
+
+
+WR BLOB TO AREA (veLetter;[Notices]Letter)
+//WR OPEN DOCUMENT (veEmail;<>sTutPath+"Email.html";"HTML")
+WR BLOB TO AREA (veEmail;[Notices]Email)
+vpLetter:=WR Build preview (veLetter;1)
+If (Length(WR Get text (veLetter;0;32000))>10)
+showveLetter:=True
+Else 
+ShowveLetter:=False
+End if 
+//vpEmail:=WR Build preview (veEmail;1)
+//DELETE DOCUMENT(<>sTutPath+"Email.html")
+For ($i;310;311)//Turn on menu & ruler
+WR GET COMMAND INFO (veLetter;$i;$j;$Name;$Type;$Count)
+If ($j=0)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if on
+End if 
+End for 
+For ($i;331;334)//Turn back on all toolbars
+WR GET COMMAND INFO (veLetter;$i;$j;$Name;$Type;$Count)
+If ($j=0)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if on
+End if 
+End for 
+
+//Prevent a confirmation dialog box to save the write area when modified
+WR SET AREA PROPERTY (veLetter;wr confirm dialog;0)
+//WR SET AREA PROPERTY (veEmail;wr confirm dialog;0)
+
+//To set the Event handling method when the write area is activated/deactivated
+WR ON EVENT (veLetter;wr on activate;"NoticeWROnClose")
+//WR ON EVENT (veEmail;wr on activate;"NoticeWROnClose")
+
+
+ARRAY TEXT(aPageNo;3)
+aPageNo{1}:=Get localized string("Notice Setup")
+aPageNo{2}:=Get localized string("Notice Design")
+aPageNo{3}:=Get localized string("Notice Charges")
+If ([Notices]TieredLateFeeOn=True)
+bSimple:=0
+bTiered:=1
+Else 
+bSimple:=1
+bTiered:=0
+End if 
+GenerateTieredLate 
+If ([Notices]FacilityCode="")
+[Notices]FacilityCode:=<>sFacility
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asBillingPlanInit;0)
+ARRAY TEXT(asBillingPlanDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asBillingPlanInit;[Analysis]Description;asBillingPlanDesc)
+INSERT IN ARRAY(asBillingPlanDesc;1)
+asBillingPlanDesc{1}:="<None>"
+INSERT IN ARRAY(asBillingPlanInit;1)
+asBillingPlanInit{1}:="<None>"
+asBillingPlanInit:=Find in array(asBillingPlanInit;<>sFacility+[Notices]InvoiceFeeAnalysis)
+If (asBillingPlanInit>0)
+asBillingPlanDesc:=asBillingPlanInit
+Else 
+asBillingPlanDesc:=1
+End if 
+
+//As the Analysis Code dropdown has the same content then copy the same arrays to prevent the need for further querying
+ARRAY TEXT(asNoticeAnalysisCode;0)
+ARRAY TEXT(asNoticeAnalysisCodeDesc;0)
+COPY ARRAY(asBillingPlanInit;asNoticeAnalysisCode)
+COPY ARRAY(asBillingPlanDesc;asNoticeAnalysisCodeDesc)
+asNoticeAnalysisCode:=Find in array(asNoticeAnalysisCode;<>sFacility+[Notices]AnalysisCode)
+If (asNoticeAnalysisCode>0)
+asNoticeAnalysisCodeDesc:=asNoticeAnalysisCode
+Else 
+asNoticeAnalysisCodeDesc:=1
+End if 
+
+If (bAddNotices)
+OBJECT SET ENABLED(bPrev;False)
+OBJECT SET ENABLED(bNext;False)
+End if 
+
+End if 
+
+
+
+
+If (Form event=On Clicked)
+If ([Notices]BillNextRent=True) & (([Notices]MinimumCharge>0) | ([Notices]MinimumPCent>0))
+AlertMessage (Get localized string("The Bill Next Rent option cannot be set unless the amounts to bill are zero."))
+[Notices]BillNextRent:=False
+End if 
+SMSMessage:=[Notices]SMSMessage
+If (aPageNo=3)
+If (bSimple=1)
+bTiered:=0
+[Notices]TieredLateFeeOn:=False
+End if 
+If (bTiered=1)
+bSimple:=0
+[Notices]TieredLateFeeOn:=True
+End if 
+If ([Notices]TieredLateFeeOn=True)
+OBJECT SET VISIBLE(*;"@Tier";True)
+OBJECT SET VISIBLE(*;"@Simple";False)
+If (vSym1="None")
+OBJECT SET VISIBLE(vAmount1;False)
+OBJECT SET VISIBLE(*;"@{1}@";False)
+Else 
+OBJECT SET VISIBLE(vAmount1;True)
+OBJECT SET VISIBLE(*;"@{1}@";True)
+End if 
+If (vSym2="None")
+OBJECT SET VISIBLE(vAmount2;False)
+OBJECT SET VISIBLE(*;"@{2}@";False)
+Else 
+OBJECT SET VISIBLE(vAmount2;True)
+OBJECT SET VISIBLE(*;"@{2}@";True)
+End if 
+If (vSym3="None")
+OBJECT SET VISIBLE(vAmount3;False)
+OBJECT SET VISIBLE(*;"@{3}@";False)
+Else 
+OBJECT SET VISIBLE(vAmount3;True)
+OBJECT SET VISIBLE(*;"@{3}@";True)
+End if 
+If (vSym4="None")
+OBJECT SET VISIBLE(vAmount4;False)
+OBJECT SET VISIBLE(*;"@{4}@";False)
+Else 
+OBJECT SET VISIBLE(vAmount4;True)
+OBJECT SET VISIBLE(*;"@{4}@";True)
+End if 
+If (vSym5="None")
+OBJECT SET VISIBLE(vAmount5;False)
+OBJECT SET VISIBLE(*;"@{5}@";False)
+Else 
+OBJECT SET VISIBLE(vAmount5;True)
+OBJECT SET VISIBLE(*;"@{5}@";True)
+End if 
+If (vSym6="None")
+OBJECT SET VISIBLE(vAmount6;False)
+OBJECT SET VISIBLE(*;"@{6}@";False)
+Else 
+OBJECT SET VISIBLE(vAmount6;True)
+OBJECT SET VISIBLE(*;"@{6}@";True)
+End if 
+Else 
+OBJECT SET VISIBLE(*;"@Tier";False)
+OBJECT SET VISIBLE(*;"@Simple";True)
+End if 
+End if 
+
+
+If (aPageNo=2) & (bEmailPrevLoaded=False)
+Test_TextBlob:=Convert to text([Notices]Email;"UTF-8")
+WA OPEN URL(waEmailPrev;"about:blank")
+firstLoad:=1
+bEmailPrevLoaded:=True
+End if 
+
+End if 
+If (bPrint=1)
+WR SET PRINT OPTION (veLetter;wr number of copies option;1)
+WR EXECUTE COMMAND (veLetter;wr cmd print)
+//WR O DO COMMAND (Letter;111)
+// WR PRINT (Letter;1)
+End if 
+//If (bSet=1)
+//If ([Facility]DefaultForm="")
+//CONFIRM("Set default form to "+Description+"?")
+//Else 
+//CONFIRM("Change default form from "+[Facility]DefaultForm+" to "+Description+"?")
+//End if 
+//If (OK=1)
+//UpdateSystem (164;->[Notices]Description;"Default form could not be updated as System is locked!")
+//If (OK=1)
+//ALERT("Default form set to "+[Facility]DefaultForm+" correctly.")
+//End if 
+//End if 
+//End if 
+
+If (Form event=On Unload)
+HTMLPreview_url:="http://www.storman.com/blank.html"
+If (Test_TheID#0)
+EMail_ReturnURLCleanUp (Test_TheID)
+End if 
+End if 
+
+If (Form event=On Validate)
+If ([Notices]RefDateField=44) & (Old([Notices]DaysAfter)>0) & (Old([Notices]DaysAfter)#[Notices]DaysAfter) & ([Notices]LateCycleIgnore=False)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]NoticePlanNo=Old([Notices]NoticePlanNo);*)
+QUERY([Agreement]; & ;[Agreement]LastNotice=Old([Notices]DaysAfter))
+If (Records in selection([Agreement])>0)
+ConfirmTwo (Get localized string("Change")+" "+String(Records in selection([Agreement]))+" "+Get localized string("Agreements where LastNotice")+" = "+String(Old([Notices]DaysAfter))+" "+Get localized string("to")+" "+String([Notices]DaysAfter)+"?"+Char(13)+Get localized string("(Otherwise these agreements will not complete their late notice cycle!)");Get localized string("Change Agreements");Get localized string("Ignore"))
+If (OK=1)
+APPLY TO SELECTION([Agreement];[Agreement]LastNotice:=[Notices]DaysAfter)
+End if 
+End if 
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+End if 
+[Notices]LetterBlank:=True
+
+If (ShowveLetter=False)
+If (Length(WR Get text (veLetter;0;32000))>10)
+[Notices]LetterBlank:=False
+[Notices]Letter:=WR Area to blob (veLetter;1)
+COMPRESS BLOB([Notices]Letter)
+Else 
+[Notices]Letter:=$Blank
+End if 
+Else 
+[Notices]LetterBlank:=False
+End if 
+
+
+[Notices]EmailBlank:=True
+
+If (BLOB size([Notices]Email)>0)
+[Notices]EmailBlank:=False
+COMPRESS BLOB([Notices]Email)
+End if 
+
+//If (Length(WR Get text (veEmail;0;32000))>10)
+//[Notices]EmailBlank:=False
+//[Notices]Email:=WR Area to blob (veEmail;1)
+//COMPRESS BLOB([Notices]Email)
+//Else 
+//[Notices]Email:=$Blank
+//End if 
+End if 

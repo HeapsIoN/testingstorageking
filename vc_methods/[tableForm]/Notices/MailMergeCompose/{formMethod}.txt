@@ -1,0 +1,70 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(Test_TheID)
+C_TEXT(Test_TextBlob;vtOldContent)
+C_BOOLEAN(bURLLoaded;bPreview)
+
+Case of 
+: (Form event=On Load)
+READ WRITE([Notices])
+bPreview:=False
+vSMSMessage:=""
+vCharacter:=0
+ARRAY TEXT(arContacts;0;0)
+C_TEXT(textAttachName)
+DEFAULT TABLE([Customer])
+Case of 
+: (bLetter=1)
+QUERY([Notices]; & ;[Notices]LetterBlank=False;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]HideNotice=False)
+SELECTION TO ARRAY([Notices]Description;asFiles)
+FORM GOTO PAGE(1)
+: (bSMS=1)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]SMSMessage#"";*)
+QUERY([Notices]; & ;[Notices]HideNotice=False)
+SELECTION TO ARRAY([Notices]Description;asFiles)
+FORM GOTO PAGE(2)
+: (bEmail=1)
+QUERY([Notices];[Notices]EmailBlank=False;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]HideNotice=False)
+SELECTION TO ARRAY([Notices]Description;asFiles)
+vtEmailSubject:=[Notices]EmailSubject
+FORM GOTO PAGE(3)
+If (Test_TheID=0) & (BLOB size([Notices]Email)>0)
+Test_TheID:=Milliseconds
+End if 
+
+bURLLoaded:=False
+HTMLEdit_url:="http://www.storman.com/blank.html"
+vLastNo:=""
+SET TIMER(60*5)
+If (Test_TheID#0)
+If (Test_Mailpath#"")
+EMail_Edit_Prepare ("HTMLEdit";"";Test_TheID;Test_Mailpath)
+Else 
+EMail_Edit_Prepare ("HTMLEdit";Test_TextBlob;Test_TheID;"")
+Test_TextBlob:=""
+End if 
+Else 
+$id:=Milliseconds
+EMail_Edit_Prepare ("HTMLEdit";"";$id)
+End if 
+End case 
+
+
+: ((Form event=On Resize) | (Form event=On Timer))
+If (bPreview=False)
+EMail_Edit_EventHandler ("HTMLEdit")
+End if 
+
+: (Form event=On Unload)
+HTMLEdit_url:="http://www.storman.com/blank.html"
+If (Test_TheID#0)
+EMail_ReturnURLCleanUp (Test_TheID)
+End if 
+End case 

@@ -1,0 +1,119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//merchantid
+C_TEXT($2)//ref
+C_TEXT($3)//payerref 
+C_TEXT($4)// Shared Secret
+
+
+
+C_TEXT($valRootRef;$valElemRef;$response;$Content;$valueElmRes;$vsMonth;$vsDay;$vsYear;$type;$timestamp;$time;$sha1hash)
+C_DATE($vdDate)
+
+
+$vdDate:=Current date
+$vsMonth:=String(Month of($vdDate))
+If (Length($vsMonth)<2)
+$vsMonth:="0"+$vsMonth
+End if 
+$vsDay:=String(Day of($vdDate))
+If (Length($vsDay)<2)
+$vsDay:="0"+$vsDay
+End if 
+$vsYear:=String(Year of($vdDate))
+If ($vsYear="0")
+$vsYear:="0000"
+End if 
+
+$time:=Replace string(String(Current time);":";"")
+$timestamp:=$vsYear+$vsMonth+$vsDay+$time
+
+$sha1hash:=""
+$sha1hash:=$timestamp+"."
+$sha1hash:=$sha1hash+$1+"."
+$sha1hash:=$sha1hash+$3+"."
+$sha1hash:=$sha1hash+$2
+
+$valRootRef:=DOM Create XML Ref("request";"";"type";"card-cancel-card";"timestamp";$timestamp)
+$valxmlPath:="/request/merchantid"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+
+$valxmlPath:="/request/orderid"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;"")
+
+$valxmlPath:="/request/card"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+
+$valxmlPath:="/request/card/ref"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$2)
+
+$valxmlPath:="/request/card/payerref"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$3)
+
+
+$sha1hash:=Generate digest($sha1hash;SHA1 digest)
+$sha1hash:=$sha1hash+"."+$4
+$sha1hash:=Generate digest($sha1hash;SHA1 digest)
+
+
+$valxmlPath:="/request/sha1hash"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$sha1hash)
+
+
+DOM EXPORT TO VAR($valRootRef;$Content)
+
+SyncRecordLog ($Content)
+
+$httpStatus_l:=HTTP Request(HTTP POST method;"https://epage.payandshop.com/epage-remote.cgi";$Content;$response)
+
+
+
+If ($httpStatus_l=200)
+SyncRecordLog ($response)
+$xml_Struct_Ref:=DOM Parse XML variable($response)
+$documentRef:=DOM Get XML document ref($xml_Struct_Ref)
+$xml_Struct_Ref:=DOM Parse XML variable($response)
+$documentRef:=DOM Get XML document ref($xml_Struct_Ref)
+$valFound:=DOM Find XML element($documentRef;"response/result")
+
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+
+$Content:=""
+$Content:="RealexDeleteStoredCard response for Ref#:"+$2
+
+
+If ($valueElmRes="00")
+$0:="Ok"
+Else 
+$0:=$valueElmRes
+End if 
+
+$Content:=$Content+" (Code: "+$valueElmRes
+$Content:=$Content+")  ["
+
+$valFound:=DOM Find XML element($documentRef;"response/message")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+If ($0#"Ok")
+$0:=$valueElmRes
+End if 
+
+$Content:=$Content+$valueElmRes
+$Content:=$Content+"]"
+
+SyncRecordLog ($Content)
+
+//If (Application type=4D Server)
+//EXECUTE ON CLIENT("@";"AlertMessage";$Content)
+//End if 
+
+DOM CLOSE XML($valRootRef)//Close Request XML
+DOM CLOSE XML($xml_Struct_Ref)//Close Response XML
+Else 
+$0:="http"+String($httpStatus_l)
+End if 

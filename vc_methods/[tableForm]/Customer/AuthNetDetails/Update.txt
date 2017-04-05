@@ -1,0 +1,59 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($Valid)
+
+If (Form event=On Clicked)
+If (vCCNo="") | (vCCExpiryYear="") | (vCCExpiryMonth="")
+AlertMessage (Get localized string("Please check Credit Card Details are entered"))
+Else 
+If (Num(vCCExpiryYear)>=Year of(Current date))
+If (Num(vCCExpiryYear)>Year of(Current date))
+$Valid:=True
+End if 
+If (Num(vCCExpiryMonth)>=Month of(Current date))
+$Valid:=True
+End if 
+Else 
+$Valid:=False
+End if 
+If ($Valid=False)
+AlertMessage (Get localized string("Invalid date"))
+Else 
+vCCExpiry:=vCCExpiryYear+"-"+vCCExpiryMonth
+End if 
+End if 
+
+
+If ($Valid=True)
+
+//If (vCustomerOrg=False)
+//vCustomerOrg:="individual"
+//Else 
+//vCustomerOrg:="business"
+//End if 
+$Merchant:=GetTextNo ([Facility]MerchantDetails2;1;",")
+If ($Merchant="AuthorizeNet CIM")
+WSC_AuthnetUpdCustPmtProf (GetTextNo ([Facility]MerchantDetails2;3;",");GetTextNo ([Facility]MerchantDetails2;4;",");[Customer]customerProfileID;vCustomerOrg;vCustomerFirstName;vCustomerName;vCustomerName;vCustomerAddress;vCustomerCity;vCustomerState;vCustomerPostZIPCode;vCustomerCountry;vCCNo;vCCExpiry;"";[Customer]custPaymentProfID;"testMode")
+If (AuthnetUCPResultCode#"Error")
+[Customer]CCName:=vCustomerFirstName+" "+vCustomerName
+[Customer]CCNo:="000000000000"+Substring(vCCNo;Length(vCCNo)-3;4)
+//[Customer]CCNo:=Tokenizer ([Customer]CCNo;True)
+Encode256 (vCCNo)
+
+[Customer]CCExpiry:=vCCExpiryMonth+Substring(vCCExpiryYear;3;2)
+vCCNo:=""
+vCCExpiry:=""
+SAVE RECORD([Customer])
+ACCEPT
+OBJECT SET VISIBLE(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+End if 
+
+End if 
+End if 

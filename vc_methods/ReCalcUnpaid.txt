@@ -1,0 +1,146 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 12/09/13 Added support for Daily Plans to calculated PaidToDate correctly
+C_REAL($Total;$NoMths;$Days)
+C_BOOLEAN($SKBilling)
+ORDER BY([Trxs];[Trxs]TrxDate;<;[Trxs]TotAmt;>)
+FIRST RECORD([Trxs])
+[Agreement]TotRentUnpaid:=0
+[Agreement]TotLateUnpaid:=0
+[Agreement]TotInsUnpaid:=0
+[Agreement]TotOthrUnpaid:=0
+$Total:=[Agreement]BalanceOwing
+bPrepaid:=0
+If (Count parameters>=1)
+bPrepaid:=$1
+End if 
+While ($Total>0) & (Not(End selection([Trxs])))
+RELATE ONE([Trxs]AnalysisCode)
+If ($Total<[Trxs]TotAmt)
+[Trxs]TotAmt:=$Total
+End if 
+Case of //SDD 28/12/10 Modified to use ChgCategory instead of hard coded so that it will work for Billing
+: ([Analysis]KeyStatsCategory=<>asChgCategory{1}) | ([Analysis]KeyStatsCategory="Discounts")
+[Agreement]TotRentUnpaid:=Round([Agreement]TotRentUnpaid+[Trxs]TotAmt;2)
+: ([Analysis]KeyStatsCategory=<>asChgCategory{3})
+[Agreement]TotLateUnpaid:=Round([Agreement]TotLateUnpaid+[Trxs]TotAmt;2)
+: ([Analysis]KeyStatsCategory=<>asChgCategory{4})
+[Agreement]TotInsUnpaid:=Round([Agreement]TotInsUnpaid+[Trxs]TotAmt;2)
+Else 
+[Agreement]TotOthrUnpaid:=Round([Agreement]TotOthrUnpaid+[Trxs]TotAmt;2)
+End case 
+$Total:=Round($Total-[Trxs]TotAmt;2)
+NEXT RECORD([Trxs])
+End while 
+
+If ([Agreement]AgreeNo="#@")
+[Agreement]TotOthrUnpaid:=Round([Agreement]BalanceOwing-[Agreement]TotLateUnpaid-[Agreement]TotInsUnpaid-[Agreement]TotRentUnpaid;2)//RWFR To deal with credit sales
+Else 
+[Agreement]TotRentUnpaid:=Round([Agreement]BalanceOwing-[Agreement]TotLateUnpaid-[Agreement]TotInsUnpaid-[Agreement]TotOthrUnpaid;2)//SDD 27/7/04 to deal with returned cheques
+End if 
+If (bPrepaid=0)
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+End if 
+//If ([Facility]TaxAddtoAmt) & ([Analysis]Taxable=True)  `2nd condition added 20/3/06 NLT
+//$RentAmt:=Round(CalcTaxAmt ([Agreement]LastBillAmt;"RF";[Agreement]LastBillDate;[Agreement]NextBillDate;1;[Agreement]TaxExempt)+[Agreement]LastBillAmt;2)
+//Else 
+$RentAmt:=[Agreement]LastBillAmt-[Agreement]LastDiscAmt//LastBillAmt seems to always include tax these days? - RR
+//End if 
+//RELATE ONE([Agreement]BillingPlanCode)
+QUERY([BillPlan];[BillPlan]Code=[Agreement]LastBillPlan)
+If ([Agreement]TotRentUnpaid>0) & ([Agreement]RentAmt>0)
+If ($RentAmt#0)
+$NoMths:=([Agreement]TotRentUnpaid/$RentAmt)*[Agreement]LastMthsAdv
+Else 
+$NoMths:=0
+End if 
+$Add:=False
+Else 
+If ([Agreement]BalanceOwing<0)
+If ($RentAmt#0)
+$NoMths:=([Agreement]BalanceOwing/$RentAmt)*[Agreement]LastMthsAdv
+Else 
+$NoMths:=0
+End if 
+$Add:=True
+Else 
+$NoMths:=0
+End if 
+End if 
+
+
+If ($NoMths#0)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+$Days:=Abs($NoMths)
+$NoMths:=0
+: ([BillPlan]PlanPeriod="Week")
+$Days:=7*Abs($NoMths)
+$NoMths:=0
+Else 
+//$Days:=Round(Dec(Abs($NoMths))*365/12;0) Dec function not working so replaced with following 2 lines
+$Total:=Abs($NoMths)
+$NoMths:=Int($Total)
+$Days:=Round(($Total-$NoMths)*365/12;0)
+End case 
+If ($Add=False)
+$NoMths:=Round($NoMths*(-1);0)
+$Days:=Round($Days*(-1);0)
+End if 
+If (bPrepaid=0)
+//[Agreement]PaidToDate:=Add to date([Agreement]NextBillDate;0;$NoMths;$Days)-1
+
+//If (Test path name(<>sPreferencesPath+"SKBilling.xml")=Is a document)
+//If ([Facility]FacilityCode="SK@") & ([Agreement]MthsAdv+[BillPlan]FreeMths>1) & ([BillPlan]PlanPeriod="Month")
+//If ($Days#0) | ([BillPlan]PlanPeriod="Week")
+//[Agreement]PaidToDate:=Add to date([Agreement]NextBillDate;0;$NoMths;$Days)-1
+//Else 
+//[Agreement]PaidToDate:=CalcNxtBillDate (Add to date([Agreement]LastBillDate;0;$NoMths;-1);1;[Agreement]DaytoBill-1;[BillPlan]PlanPeriod)
+//End if 
+//$SKBilling:=True
+//Else 
+//$SKBilling:=False
+//End if 
+//End if 
+
+$DayToBill:=[Agreement]DaytoBill-1
+
+If ($DayToBill<1)
+$DayToBill:=31
+End if 
+
+
+//If ($SKBilling=False)
+If ($Days#0) | ([BillPlan]PlanPeriod="Week")
+[Agreement]PaidToDate:=Add to date([Agreement]NextBillDate;0;$NoMths;$Days)-1
+Else 
+[Agreement]PaidToDate:=CalcNxtBillDate (Add to date([Agreement]LastBillDate;0;$NoMths;-1);[Agreement]LastMthsAdv;$DayToBill;[BillPlan]PlanPeriod)
+End if 
+//End if 
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+SELECTION TO ARRAY([Trxs]TrxDate;$adTrxDateUnpaid;[Trxs]TotAmt;$arTotAmtUnpaid)
+
+//25/08/16 DAM Duplicated the code from above because the selection to array breaks selection
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+
+ARRAY TEXT($atAnalysisUnpaid;0)
+
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AnalysisCode)
+APPEND TO ARRAY($atAnalysisUnpaid;[Analysis]KeyStatsCategory)
+NEXT RECORD([Trxs])
+End for 
+
+ARRAY LONGINT($aType;3)
+$aType{1}:=-5
+$aType{2}:=-3
+$aType{3}:=8
+
+[Agreement]FutureTrxs:=ArraysToText (->$aType;->$adTrxDateUnpaid;->$arTotAmtUnpaid;->$atAnalysisUnpaid)
+
+End if 

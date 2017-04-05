@@ -1,0 +1,266 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//OR_OnlineReservation
+//SDD Modified 19/02/14 Set Read Only so that tables don't get left with locked records as process stays open!
+C_TEXT($1;$2;$3;$4)//;$5;$6)
+
+C_TEXT(vtSessionID)//Unique identifier
+C_TEXT(vtOnlineReservationContent)//Variable containing HTML content to display
+C_TEXT(vtFacilityCodeSelect)
+C_TEXT(vtFacilityCodeSelectOld)
+C_TEXT(vtUnitTypeSelect)
+C_TEXT(vtUnitTypeRateSelected)
+C_TEXT(vtCustomerName)
+C_TEXT(vtEmailAddress)
+C_TEXT(vtErrorMessage)
+C_TEXT(vtPhoneNumber)
+C_TEXT(vtDateUnitRequired)
+C_TEXT(vtDepositAmt)
+C_TEXT(ShortURL)
+C_TEXT(vtCurrencySymbol)
+C_TEXT(vtCustMarketSrc;vtCustCustType;vtCustBusType;vtCustReasonRenting)
+C_TEXT(vtReserve)
+
+C_BOOLEAN($ValidSessionID)//Whether or not the SessionID is valid
+C_BOOLEAN($ReservedSessionID)
+C_DATE($MonthEarlier)
+
+//Initialise
+$ValidSessionID:=False//Whether the Session ID is a valid one
+$ReservedSessionID:=False//Whether the Session is for a completed reservation
+$DuplicateSessionID:=False//Whether the Session is a duplicate
+READ ONLY(*)//All tables read only  SDD 19/02/14
+
+//Capture the requesting URL, find the last 'parameter', if it is one of the predefined values or a file then allow it, otherwise force the 'Welcome' page
+
+ShortURL:=$1
+//Remove Trailing slashes '/' from URL
+While (Substring(ShortURL;Length(ShortURL);1)="/")
+ShortURL:=Substring(ShortURL;1;Length(ShortURL)-1)
+End while 
+
+//Find the last parameter in the URL
+For ($Counter;Length(ShortURL);1;-1)
+If (ShortURL[[$Counter]]="/")
+ShortURL:=Substring(ShortURL;$Counter+1)
+$Counter:=0
+End if 
+End for 
+
+//If not one of the permissable URL endings, then force the Welcome page.
+If (ShortURL#"unittypes") & (ShortURL#"subsequent") & (ShortURL#"storpay") & (ShortURL#"error") & (ShortURL#"homepage") & (ShortURL#"thankyou") & (ShortURL#"confirm") & (Position(".";ShortURL)=0) & (ShortURL#"Start?@")
+ShortURL:=""
+Else 
+//If the 'Start' URL ending is used...
+If (ShortURL="Start?facility=@")
+$FacilityShortcut:=Substring(ShortURL;16)//Find out the FacilityCode used as the shortcut
+$Index:=Find in field([Facility]FacilityCode;$FacilityShortcut)//See if the FacilityCode exists
+If ($Index#-1)//The Facility does exist
+QUERY([Facility];[Facility]FacilityCode=$FacilityShortcut)
+vtFacilityCodeSelect:=$FacilityShortcut//Mark the Facility as having been chosen
+ShortURL:="unittypes"//Jump directly to the UnitTypes screen
+Else 
+QUERY([Facility];[Facility]SortOrder<1)//Find the Head Office Facility
+FIRST RECORD([Facility])
+vtFacilityCodeSelect:=[Facility]FacilityCode//Mark the Facility chosen as the Head Office One
+ShortURL:="homepage"//Jump directly to the Head Office Facility Homepage
+End if 
+End if 
+End if 
+
+//Calculate date one month in advance, use to license entitlement
+$MonthEarlier:=Add to date(Current date;0;-1;0)
+QUERY([Facility];[Facility]SortOrder>=0;*)//Find all Facility records except the Head Office one
+QUERY([Facility]; & ;[Facility]UpgradesPaidTo>$MonthEarlier;*)
+QUERY([Facility]; | ;[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; & ;[Facility]OnlineReserveIncl=True;*)
+QUERY([Facility]; & ;[Facility]UseOnlineReservations=True)
+CREATE SET([Facility];"OnlineReservationsEntitled")
+
+//Determine Status of the Session ID and set appropriate flags for future action
+//OR_SessionID("Check"|"Create"|"Delete";SessionID;IPAddress;Date;Time;RAgreeNo)
+Case of 
+: (Records in set("OnlineReservationsEntitled")=0)
+OR_Error ("There are no Facilities that are licensed / activated for Online Reservations.")
+ShortURL:="Error"
+
+: (ShortURL="storpay") & (OR_SessionID ("check";vtSessionID;$4;Current date;Current time;"")="reserved")//This is where the Session ID is created in the process
+$ValidSessionID:=True
+$ReservedSessionID:=True
+$DuplicateSessionID:=False
+
+: ((ShortURL="unittypes") | (ShortURL="subsequent")) & (OR_SessionID ("check";vtSessionID;$4;Current date;Current time;"")="invalid")//This is where the Session ID is created in the process
+vtSessionID:=OR_SessionID ("create";GetRandomPassword (20;"";True;True;True;False;True;True;True;False);$4;Current date;Current time;"")
+$ValidSessionID:=True
+$ReservedSessionID:=False
+$DuplicateSessionID:=False
+ShortURL:="unittypes"
+
+: (OR_SessionID ("check";vtSessionID;$4;Current date;Current time;"")="valid")//There is already a valid Session ID
+$ValidSessionID:=True
+$ReservedSessionID:=False
+$DuplicateSessionID:=False
+
+: (OR_SessionID ("check";vtSessionID;$4;Current date;Current time;"")="reserved")//Session ID refers to completed reservation
+$ValidSessionID:=True
+$ReservedSessionID:=True
+$DuplicateSessionID:=False
+ShortURL:="error"
+vtSessionID:=""
+OR_Error ("A Reservation with the details you entered has already been created.    Please cr"+"eate a new reservation.")
+
+: (OR_SessionID ("check";vtSessionID;$4;Current date;Current time;"")="duplicate")//The session ID is already used
+$ValidSessionID:=False
+$ReservedSessionID:=False
+$DuplicateSessionID:=True
+ShortURL:="error"
+vtSessionID:=""
+OR_Error ("A Reservation with this ID is already in progress, perhaps in another browser win"+"dow.    Please create a new reservation.")
+Else 
+//Do nothing
+End case 
+
+//If the Session has been validated then continue.    If the Facility has changed since initial selection, then allow further selection of options before starting to check them.
+If ($ValidSessionID=True) & ($ReservedSessionID=False) & ($DuplicateSessionID=False)
+USE SET("OnlineReservationsEntitled")
+If (vtFacilityCodeSelect#vtFacilityCodeSelectOld) & (vtFacilityCodeSelectOld#"")//If the User changes the Facility, then Customer Entered info shouldn't be validated yet, as they may again change the Facility, and they will need to select a Unit Type
+ShortURL:="unittypes"
+End if 
+End if 
+
+//If the Facility has been chosen, load the record
+If (vtFacilityCodeSelect#"")
+QUERY([Facility];[Facility]FacilityCode=vtFacilityCodeSelect)
+End if 
+
+vtCurrencySymbol:=<>tCurrencyHTML
+
+//Check which 'page' the user is up to and perform necessary checking and display the correct page
+Case of 
+: (ShortURL="error")
+
+: (ShortURL="storpay") & ($ValidSessionID=True) & ($ReservedSessionID=True) & ($DuplicateSessionID=False)
+OR_Storpay 
+
+: (ShortURL="homepage")
+WEB SEND HTTP REDIRECT([Facility]Homepage)
+
+: (ShortURL="thankyou") & ($ValidSessionID=True) & ($ReservedSessionID=False) & ($DuplicateSessionID=False)
+READ WRITE([Unit])
+READ WRITE([Customer])
+READ WRITE([Reservation])
+READ WRITE([Contacts])
+
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+vtUnitTypeSelect)
+RELATE MANY([UnitType]RUnitType)
+QUERY SELECTION([Unit];[Unit]Vacant=True;*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Company";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Reserved";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Repair";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Unavail")
+QUERY([Analysis];[Analysis]SortOrder=2;*)
+QUERY([Analysis]; & ;[Analysis]Code=[Facility]FacilityCode+"@")
+
+ORDER BY([Unit];[Unit]UnitNo;>)
+
+FIRST RECORD([Unit])
+While ((Locked([Unit])=True) | (Read only state([Unit])=True)) & (End selection([Unit])=False)
+NEXT RECORD([Unit])
+End while 
+
+If (End selection([Unit])=False)//Able to reserve a Unit
+START TRANSACTION
+
+$Error:=OR_CreateCust 
+If ($Error=0)
+OR_CreateResv 
+//29/10/14 DAM Added it to select correct facility record
+QUERY([Facility];[Facility]FacilityCode=<>SFACILITY)
+If ([Facility]OResFacNotifEmail#"")
+OR_FacNote 
+End if 
+OR_EmailCust //("";"";"";"";"";"";False;->Attachments;"";"";"";"";"";"";"")  `Notification Email to Customer - details of email are filled in from 'OR_EmailNotice' method
+VALIDATE TRANSACTION
+$Response:=OR_SessionID ("reserve";vtSessionID;$4;Current date;Current time;[Reservation]ReserveNo)
+OR_Thankyou 
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+Else 
+CANCEL TRANSACTION
+OR_Error ("Unable to create Customer record, please contact Facility")
+End if 
+Else 
+CANCEL TRANSACTION
+OR_Error ("Unable to Reserve Unit, please contact the Facility")
+End if 
+
+: (ShortURL="confirm") & (vtReserve="Reserve")
+Case of 
+: (vtCustomerName="") | (Length(vtCustomerName)<1)
+vtErrorMessage:="Please enter name longer than 1 character"
+OR_UnitTypes 
+
+: (Position("@";vtEmailAddress)=0) | (Position(".";vtEmailAddress)=0) | (Length(vtEmailAddress)<6)
+vtErrorMessage:="Please enter a valid Email Address"
+OR_UnitTypes 
+
+: (Length(vtDateUnitRequired)<6)
+vtErrorMessage:="Please enter a valid date in the format shown"
+OR_UnitTypes 
+
+: (Substring(OR_CheckValidDate (vtDateUnitRequired;Current date);1;6)="Error:")
+vtErrorMessage:=Substring(OR_CheckValidDate (vtDateUnitRequired;Current date);7)
+OR_UnitTypes 
+Else 
+OR_FacNoteNoUnitType 
+OR_ThankyouNoUnitType 
+End case 
+
+: (ShortURL="confirm") & ($ValidSessionID=True) & ($ReservedSessionID=False) & ($DuplicateSessionID=False)
+Case of 
+: (vtCustomerName="") | (Length(vtCustomerName)<1)
+vtErrorMessage:="Please enter name longer than 1 character"
+OR_UnitTypes 
+
+: (Position("@";vtEmailAddress)=0) | (Position(".";vtEmailAddress)=0) | (Length(vtEmailAddress)<6)
+vtErrorMessage:="Please enter a valid Email Address"
+OR_UnitTypes 
+
+: (Length(vtDateUnitRequired)<6)
+vtErrorMessage:="Please enter a valid date in the format shown"
+OR_UnitTypes 
+
+: (Substring(OR_CheckValidDate (vtDateUnitRequired;Current date);1;6)="Error:")
+vtErrorMessage:=Substring(OR_CheckValidDate (vtDateUnitRequired;Current date);7)
+OR_UnitTypes 
+
+: (vtUnitTypeSelect="")
+vtErrorMessage:="Please select a Unit Type to Reserve"
+OR_UnitTypes 
+
+: ([Facility]OResCompMarketType=True) & ((vtCustMarketSrc="Not Selected") | (vtCustCustType="Not Selected") | (vtCustBusType="Not Selected") | (vtCustReasonRenting="Not Selected"))
+vtErrorMessage:="Please select an option from each of the Marketing Information menus"
+OR_UnitTypes 
+
+Else 
+OR_Confirm 
+End case 
+
+: (ShortURL="unittypes") & ($ValidSessionID=True) & ($ReservedSessionID=False) & ($DuplicateSessionID=False)
+vtErrorMessage:=""
+If (vtFacilityCodeSelect#"") | (Records in selection([Facility])=1)//If the Facility has been chosen, then the 'Confirm' button is visible, then Customer entered info should be validated, requiring ShortURL variable change
+ShortURL:="confirm"
+End if 
+OR_UnitTypes 
+Else 
+USE SET("OnlineReservationsEntitled")
+ORDER BY([Facility];[Facility]SortOrder;>)
+OR_Welcome 
+End case 
+
+OR_CreateIndexFile 
+READ ONLY(*)//SDD 19/02/14
+UnloadAll //SDD 19/02/14
+UNLOAD RECORD([Facility])//DAM 01/07/14
+WEB SEND FILE("reserve/index.shtml")

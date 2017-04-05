@@ -1,0 +1,42 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)
+C_LONGINT($2)
+C_LONGINT($3)
+C_DATE($4)
+C_LONGINT($5)
+C_BLOB($6;$Message)
+C_BLOB($7)
+C_TEXT($Response;$Description)
+C_LONGINT($i)
+//This code to remove any potential references from the message
+$Letter:=WR New offscreen area 
+WR BLOB TO AREA ($Letter;$6)
+For ($i;WR Count ($Letter;wr nb objects);1;-1)//Reverse order as ref no changes as freezes happen
+WR SELECT ($Letter;1;$i)
+WR DELETE SELECTION ($Letter)
+End for 
+$Message:=WR Area to blob ($Letter;1)
+WR DELETE OFFSCREEN AREA ($Letter)
+WEB SERVICE SET PARAMETER("vtMessageSubject";$1)
+WEB SERVICE SET PARAMETER("vliFacilityID";$2)
+WEB SERVICE SET PARAMETER("vliMessageTime";$3)
+WEB SERVICE SET PARAMETER("vdMessageDate";$4)
+WEB SERVICE SET PARAMETER("viMessagePriority";$5)
+WEB SERVICE SET PARAMETER("vblMessageBody";$6)
+WEB SERVICE SET PARAMETER("vblMessageAttachments";$7)
+WEB SERVICE CALL("https://"+GetDNS ("SUV1")+":443/4DSOAP/";"StormanUsersV2#WS_SupportEmail";"WS_SupportEmail";"StormanUsersV2";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT($Description;"vtMessageDescription")
+WEB SERVICE GET RESULT($Response;"vtMessageResponse";*)// Memory clean-up on the final return value.
+If ($Response="0@")
+[Message]SentRead:=True
+SAVE RECORD([Message])
+If ($Description>"")
+AlertMessage (Substring($Description;2))
+End if 
+Else 
+AlertMessage ($Description)
+End if 
+Else 
+AlertMessage (Get localized string("Unable to contact the Storman Support server. Please try again later, or contact Technical Support if the issue continues."))
+End if 

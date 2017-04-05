@@ -1,0 +1,78 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//28/07/14 DAM Added for WS_GetReportData
+C_BOOLEAN($1;$Web)
+C_TEXT($2)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Income Received Report started.")// records the report being started in the eventlog
+$Web:=False
+If (Count parameters=2)
+$Web:=$1
+End if 
+
+If (PermissionsControl (87)) | ($Web)
+SetFacility 
+vTitle:=Get localized string("MenuMoreReportsincomeReceivedReport")
+vLegend:=Get localized string("Income Received Report1")
+vReportSettings:=[Facility]ReportSettings
+
+If ($Web=False)
+If (<>tBatch=False)
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+Open window((Screen width/2)-200;(Screen height/2)-168;(Screen width/2)+200;(Screen height/2)+168;5;Get localized string("MenuMoreReportsincomeReceivedReport"))
+DIALOG([Trxs];"IncomeDialog")
+CLOSE WINDOW
+Else 
+bCheckMatch:=1
+OK:=1
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+End if 
+Else 
+// 11/10/16 DAM Commeted the code below
+//$dd:=String(vMthDate)
+//vMthDate:=Date(Substring($dd;9;2)+"/"+Substring($dd;6;2)+"/"+Substring($dd;1;4))  //OLR
+OK:=1
+End if 
+
+If (OK=1)
+If ($Web)
+QUERY([Trxs];[Trxs]AgreeNo=$2+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#$2+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+End if 
+
+CREATE SET([Trxs];"Report")
+QUERY SELECTION BY FORMULA([Trxs];Length([Trxs]AgreeNo)<14)
+ARRAY TEXT($aBookings;0)
+SELECTION TO ARRAY([Trxs]AgreeNo;$aBookings)
+QUERY WITH ARRAY([Reservation]RReserveNo;$aBookings)
+USE SET("Report")
+RELATE ONE SELECTION([Trxs];[Agreement])
+If (bCheckMatch=1)
+If ($Web)
+CheckMatching (True;2;False;!00-00-00!;$2)
+Else 
+CheckMatching (True;1;False;!00-00-00!;<>sFacility)
+End if 
+End if 
+USE SET("Report")
+vLegend:=Get localized string("Income Received from ")+String(vDate;6)+" "+Get localized string("to")+" "+String(vMthDate;6)
+If (Shift down)
+vOld:=True
+Else 
+vOld:=False
+End if 
+ChargeAnalysisRpt ($Web)
+End if 
+End if 
+LogAction (True;"Income Received Report ended.")

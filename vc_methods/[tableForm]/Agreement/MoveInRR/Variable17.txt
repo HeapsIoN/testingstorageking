@@ -1,0 +1,49 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+BillPlanReference 
+GenerateRentIncreaseFields (False)
+FORM SET INPUT([Letters];"EmailIn")
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]Description="Default";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+If (Records in selection([Notices])=1)
+[Letters]LetterBLOB:=[Notices]Email
+[Letters]LetterDesc:=[Notices]Description
+
+If ([Notices]EmailSubject#"")
+[Letters]Custom1:=[Notices]EmailSubject
+Else 
+[Letters]Custom1:=[Letters]LetterDesc
+End if 
+Else 
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; | ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]EmailBlank=False;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+ORDER BY([Notices];[Notices]DaysAfter;>;[Notices]Description;>)
+LOAD RECORD([Notices])
+[Letters]LetterBLOB:=[Notices]Email
+[Letters]LetterDesc:=[Notices]Description
+
+If ([Notices]EmailSubject#"")
+[Letters]Custom1:=[Notices]EmailSubject
+Else 
+[Letters]Custom1:=[Letters]LetterDesc
+End if 
+End if 
+[Letters]DateSent:=Current date
+SAVE RECORD([Letters])
+vboolOld:=False
+Test_TextBlob:=Convert to text([Letters]LetterBLOB;"UTF-8")
+Test_TheID:=Record number([Letters])
+Test_Mailpath:=""
+$WinRef:=Open window((Screen width/2)-425;(Screen height/2)-325;(Screen width/2)+425;(Screen height/2)+325;4096;Get localized string("Email"))
+MODIFY RECORD([Letters];*)//No scroll bars
+CLOSE WINDOW($WinRef)
+If (bCancel=1)
+DELETE RECORD([Letters])
+End if 
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Letters];[Letters]DateSent;<)

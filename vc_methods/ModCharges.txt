@@ -1,0 +1,56 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (PermissionsControl (40))
+SetFacility 
+READ WRITE([Customer])
+READ WRITE([Agreement])
+READ WRITE([Trxs])
+READ WRITE([Analysis])
+DEFAULT TABLE([Trxs])
+FORM SET OUTPUT([Trxs];"TransOut")
+FORM SET INPUT([Trxs];"ModCharges")
+vTitle:=Get localized string("Charges")+"..."
+tBoolean:=True
+vtReverse:=False
+vMisc:=False
+aDesc:=[Facility]PullDownDefault
+bFromMoveIn:=False
+bLast:=1
+vLastDate:=Current date
+bAbortArray:=0
+vCol1:=""
+ARRAY TEXT(asCharges;Size of array(<>asCharges))
+ARRAY TEXT(asChargeDesc;Size of array(<>asCharges))
+For ($i;1;Size of array(<>asCharges))
+asCharges{$i}:=<>asCharges{$i}
+asChargeDesc{$i}:=<>asChargeDesc{$i}
+End for 
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=tBoolean;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+$WeekEndDay:=<>iWeekEndDay
+If ($WeekEndDay<1)
+$WeekEndDay:=7//This should pick up a variable at startup
+End if 
+If ($WeekEndDay<1)
+$WeekEndDay:=1
+End if 
+If ($WeekEndDay>7)
+$WeekEndDay:=7
+End if 
+If ($WeekEndDay>4)
+$WeekEndDay:=$WeekEndDay-6
+Else 
+$WeekEndDay:=$WeekEndDay+1
+End if 
+$Week:=Trunc(((Current date-!2000-01-01!)-$WeekEndDay)/7;0)
+$WeekDate:=Add to date(!2000-01-01!;0;0;$Week*7)
+QUERY([Trxs]; & ;[Trxs]TrxDate>$WeekDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$WeekDate+7;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+ORDER BY([Trxs]TrxDate;<;[Trxs]TotAmt;>)
+MODIFY SELECTION(*)
+READ ONLY(*)
+UnloadAll 
+SetFacility 
+End if 

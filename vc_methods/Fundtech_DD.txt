@@ -1,0 +1,209 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($1)//$one
+C_LONGINT($2)//$many
+C_TIME($Doc)
+C_TEXT($cr)
+C_TEXT($TrnCode)
+C_DATE($Date)
+C_REAL($AMOUNT;$BalanceOwing;$Surcharge)
+$Date:=Current date
+$File:=<>sExportPath+<>sFacility+String(Year of($Date))+String(Month of($Date))+String(Day of($Date))+".txt"
+
+//0N : Setup a New Instruction , 0C : Cancel an Instruction , 0S : Convert a paper DDI to AUDDIS specification 
+//There are 4 codes used for collecting Direct Debits
+//01 – First Collection
+//17 – Regular Collection
+//18 – Re-presented Collection
+//19 – Final Collection
+$TrnCode:="17"
+
+GET FIELD RELATION([Agreement]CustomerCode;$1;$2)
+SET FIELD RELATION([Agreement]CustomerCode;Automatic;Manual)
+QUERY SELECTION([Agreement];[Agreement]BalanceOwing>0;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]AutoPay=True;*)
+QUERY SELECTION([Agreement]; & ;[Agreement]AutoPayType=3;*)
+QUERY SELECTION([Agreement]; & ;[Customer]BankAccountName#"";*)
+QUERY SELECTION([Agreement]; & ;[Customer]BankAcct#"")
+
+
+SET FIELD RELATION([Agreement]CustomerCode;$1;$2)
+ORDER BY([Agreement];[Agreement]RAgreeNo;>)
+FIRST RECORD([Agreement])
+For ($i;1;Records in selection([Agreement]))
+//*** new code 26 Sep 2014
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+If (Length([Customer]BankAcct)>8)
+If (Num(Substring([Customer]BankAcct;9;Length([Customer]BankAcct)-8))=0)
+$BankA:=Substring([Customer]BankAcct;1;8)
+Else 
+$BankA:=[Customer]BankAcct
+$ErrMsg:=""
+$ErrMsg:="Bank account number:"+[Customer]BankAcct
+$ErrMsg:=$ErrMsg+" is more than 8 digits and will not process in direct debit daily processing. Please contact to: "
+$ErrMsg:=$ErrMsg+[Customer]CustomerName
+$ErrMsg:=$ErrMsg+" (Customer Code:"
+$ErrMsg:=$ErrMsg+[Customer]CustomerCode
+$ErrMsg:=$ErrMsg+" / Agreement No: "
+$ErrMsg:=$ErrMsg+[Agreement]AgreeNo
+$ErrMsg:=$ErrMsg+")"
+AlertMessage ($ErrMsg)
+End if 
+Else 
+$BankA:=[Customer]BankAcct
+End if 
+//***
+
+//If ((Length([Customer]BankAcct)=8) & (Length([Customer]BankAccountName)<=18) & (Length(String([Agreement]AutoPayAmt))<=11))
+If ((Length($BankA)=8) & (Length([Customer]BankAccountName)<=18) & (Length(String([Agreement]AutoPayAmt))<=11))
+//The sort code, which is a six-digit number, is usually formatted as three pairs of numbers, for example 12-34-56. It identifies both the bank and the branch where the account is held. 
+//In some cases, the first digit of the sort code identifies the bank itself and in other cases the first 2 digits identify the bank.
+//QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode) //*** Old code marked on 26 Sep 2014
+$Bank_SORT_CODE:=[Customer]BSB//Bank SORT CODE 
+//[Customer]BankAcct  //Bank ACCOUNT NUMBER  //*** Old code marked on 26 Sep 2014
+$Bank_ACCOUNT_NUMBER:=$BankA//Bank ACCOUNT NUMBER 
+$Bank_ACCOUNT_NAME:=[Customer]BankAccountName//Bank ACCOUNT NAME
+$AMOUNT:=[Agreement]AutoPayAmt//AMOUNT
+$REFERENCE:=[Agreement]AgreeNo//REFERENCE 
+$cr:=$cr+String($Bank_SORT_CODE)
+$cr:=$cr+","
+$cr:=$cr+$Bank_ACCOUNT_NUMBER
+$cr:=$cr+","
+$cr:=$cr+$Bank_ACCOUNT_NAME
+$cr:=$cr+","
+$cr:=$cr+String($AMOUNT)
+$cr:=$cr+","
+$cr:=$cr+$REFERENCE
+$cr:=$cr+","
+$cr:=$cr+$TrnCode
+$cr:=$cr+Char(13)
+$cr:=$cr+Char(10)
+
+[Agreement]NoticeAmtToBill:=Round([Agreement]BalanceOwing;2)
+If ([Agreement]AutoPayAmt<[Agreement]NoticeAmtToBill)
+[Agreement]NoticeAmtToBill:=Round([Agreement]AutoPayAmt;2)
+End if 
+
+//10/06/15 DAM Added for CC Surcharge
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+
+$BalanceOwing:=[Agreement]BalanceOwing
+$Surcharge:=0
+If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)))
+$BalanceOwing:=Round(($BalanceOwing*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=$BalanceOwing-[Agreement]BalanceOwing
+End if 
+
+If ([Agreement]NoticeAmtToBill#Round($BalanceOwing;2))
+If ($Surcharge>0)// New for CC Surcharge processing
+[Agreement]NoticeAmtToBill:=Round(Num(RequestMessage (Get localized string("Customer")+": "+\
+[Customer]CustomerName+" "+"has a balance of"+": "+String([Agreement]BalanceOwing;"###,###.00")+\
+", the surcharge on this would be: "+String($Surcharge;"###,###.00")+", for a total of "+String([Agreement]BalanceOwing+$Surcharge;"###,###.00")+\
+" However their authorised amount is set to: "+String([Agreement]AutoPayAmt;"###,###.00")+". "+\
+" How much would you like to charge to this customer including surcharge?";String([Agreement]AutoPayAmt;"###,###.00");"OK";"Skip"));2)
+Else // If surcharge is 0
+[Agreement]NoticeAmtToBill:=Round(Num(RequestMessage (Get localized string("Customer")+": "+[Customer]CustomerName+" "+Get localized string("currently has a balance of")+": "+String($BalanceOwing;"###,###.00")+", "+Get localized string("but their Authorised Amount is set to")+": "+String([Agreement]AutoPayAmt;"###,###.00")+". "+"How much would you like to charge to this customer?";String($BalanceOwing;"###,###.00");"OK";"Skip"));2)
+End if 
+
+If (OK=0)
+[Agreement]NoticeAmtToBill:=0
+[Agreement]NoticeBilled:="Skipped"
+End if 
+End if 
+
+
+If ([Agreement]NoticeAmtToBill>0)
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If (Records in selection([Analysis])=1)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=Substring("AutoPay - "+[Analysis]Description;1;80)
+[Trxs]TotAmt:=Round([Agreement]NoticeAmtToBill;2)
+[Trxs]Confirmed:=True
+[Trxs]CCAuthNo:="Fundtech"
+SAVE RECORD([Trxs])
+
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))
+$ReceiptAmount:=[Trxs]TotAmt
+$Date:=[Trxs]TrxDate
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Agree:=[Trxs]AgreeNo
+$Cust:=[Trxs]CustomerCode
+$Fixed:=[Analysis]ReceiptFeeFixed
+$Percent:=[Analysis]ReceiptFeePerc
+QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]ReceiptFeeAnalysis)
+If (Records in selection([Analysis])>=1)
+CREATE RECORD([Trxs])
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]DateFrom:=$Date
+[Trxs]DateTo:=$Date
+[Trxs]AgreeNo:=$Agree
+[Trxs]CustomerCode:=$Cust
+[Trxs]Charge:=True
+
+$PercCalc:=$ReceiptAmount-$Fixed
+$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))//$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+SAVE RECORD([Trxs])
+
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+
+End if 
+
+End if 
+
+If ([Agreement]BalanceOwing=0)
+[Agreement]TotRentUnpaid:=0
+[Agreement]TotLateUnpaid:=0
+[Agreement]TotOthrUnpaid:=0
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ReCalcUnpaid 
+End if 
+SyncRecordLog (Get localized string("Daily AutoPay Customer Read Only:")+" "+String(Num(Read only state([Customer]))))
+SAVE RECORD([Customer])
+MatchTrx ([Agreement]RAgreeNo;0;True)//new line added 28/6/06
+SyncRecordLog (Get localized string("Daily AutoPay Agreement Read Only:")+" "+String(Num(Read only state([Agreement]))))
+SAVE RECORD([Agreement])
+End if 
+End if 
+
+End if 
+NEXT RECORD([Agreement])
+
+End for 
+
+SyncRecordLog ($cr)
+If (Test path name($File)=Is a document)
+$Doc:=Append document($File)
+Else 
+$Doc:=Create document($File)
+End if 
+
+SEND PACKET($Doc;$cr)
+CLOSE DOCUMENT($Doc)

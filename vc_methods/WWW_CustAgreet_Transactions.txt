@@ -1,0 +1,96 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method: WWW_CustAgreemt_Tranx
+//Date: 4.4.2000
+C_TEXT($HTML;vtTable;$1)
+
+// Extract the record number from the URL
+$Rec:=$1
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+GOTO RECORD([Agreement];Num($Rec))
+RELATE ONE([Agreement]CustomerCode)
+
+$HTML:=Char(1)
+
+If (bAll=1)
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]AgreeNo)
+End if 
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+ReCalc 
+
+$HTML:=$HTML+"<table cellspacing=0 cellpadding=2 border=1 width=100%>"+Char(13)
+$HTML:=$HTML+"<tr bgcolor="+Char(34)+"#CCCCCC"+Char(34)+">"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Date</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Description</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Anls Cde</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Net Charges</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Tax</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Total</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Payments</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Balance</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">Match</td>"+Char(13)
+$HTML:=$HTML+"</tr>"
+FIRST RECORD([Trxs])
+For (i;1;Records in selection([Trxs]))
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td ><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"+String([Trxs]TrxDate)+"</td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"
+If ([Trxs]Charge=True)
+$HTML:=$HTML+"<a href="+Char(34)+"/4DMETHOD/WWW_ModifyCharge/"+String(Record number([Trxs]))+Char(34)+" target="+Char(34)+"_top"+Char(34)+">"+[Trxs]Description+"</a>"
+Else 
+$HTML:=$HTML+"<a href="+Char(34)+"/4DMETHOD/WWW_ModifyReceipt/"+String(Record number([Trxs]))+Char(34)+" target="+Char(34)+"_top"+Char(34)+">"+[Trxs]Description+"</a>"
+End if 
+
+$HTML:=$HTML+"</td>"+Char(13)
+
+
+$HTML:=$HTML+"<td><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"+[Trxs]AnalysisCode+"</td>"+Char(13)
+$HTML:=$HTML+"<td align=right><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"
+If ([Trxs]Charge=True)
+$HTML:=$HTML+String(([Trxs]TotAmt-[Trxs]TaxAmt);"#####0.00")
+End if 
+$HTML:=$HTML+"&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td align=right><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"
+If ([Trxs]Charge=True)
+$HTML:=$HTML+String([Trxs]TaxAmt;"#####0.00")
+End if 
+$HTML:=$HTML+"&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td align=right><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"
+If ([Trxs]Charge=True)
+$HTML:=$HTML+String([Trxs]TotAmt;"#####0.00")
+End if 
+$HTML:=$HTML+"&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td align=right><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"
+If ([Trxs]Charge=False)
+$HTML:=$HTML+String([Trxs]TotAmt;"#####0.00")
+End if 
+$HTML:=$HTML+"&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td align=right><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"+String([Trxs]Balance;"#####0.00")+"</td>"+Char(13)
+$HTML:=$HTML+"<td align=right><font face="+Char(34)+"Arial"+Char(34)+" size="+Char(34)+"-2"+Char(34)+">"+String([Trxs]Match)+"</td>"+Char(13)
+$HTML:=$HTML+"</tr>"
+NEXT RECORD([Trxs])
+End for 
+
+$HTML:=$HTML+"</table>"
+
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+
+//Assign the HTML code to vtTable to be inserted in the "CustAgreemt.htm" page
+vtTable:=$HTML+Char(13)
+//SET HTTP HEADER("pragma: no-cache")
+WEB SEND FILE("CustAgreemt.shtm")//BLOB(vtTable;"text/html")

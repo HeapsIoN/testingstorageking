@@ -1,0 +1,341 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$g;$k;$m;$movein;$moveout)
+C_TEXT($tAgreeno;$moveinname;$space;$moveoutname)
+C_DATE($dMovein;$dMoveout;$moveincalc;$moveoutcalc;$MoveInDate)
+
+$Window:=Open window((Screen width/2)-200;(Screen height/2)-136;(Screen width/2)+200;(Screen height/2)+136;5;"Unit History Fix")
+DIALOG([Unit];"UnitHistoryFix")
+CLOSE WINDOW($Window)
+
+If (OK=1)
+
+READ WRITE([Unit])
+LOAD RECORD([Unit])
+READ WRITE([UnitHistory])
+ALL RECORDS([UnitHistory])
+
+FORM SET OUTPUT([UnitHistory];"Output")
+EXPORT SYLK([UnitHistory];"")
+
+Open window(20;150;400;250;0;Get localized string("Progress"))
+For ($i;1;Records in selection([Unit]))
+GOTO XY(0;2)
+MESSAGE(Get localized string("Processing Unit")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Unit]))+"                    "+Char(13)+"                    "+"                    "+"                    "+"                    "+"                    "+"                    "+"                    ")
+ARRAY DATE($adChange;0)
+ARRAY TEXT($atName;0)
+
+APPEND TO ARRAY($adChange;Current date+12775)
+APPEND TO ARRAY($atName;[Unit]RUnitNo)
+
+
+If (bPrev=1)
+If ([Unit]AgreeNo>"")
+RELATE ONE([Unit]AgreeNo)
+If ([Unit]MoveIn<[Agreement]MoveIn)
+[Unit]MoveIn:=[Agreement]MoveIn
+End if 
+End if 
+
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+
+Case of 
+: ([Unit]Vacant=True) & ([Unit]MoveOut=!00-00-00!) & (Records in selection([UnitHistory])>0)
+QUERY([Agreement];[Agreement]RAgreeNo=[UnitHistory]AgreeNo)
+[Unit]MoveOut:=[Agreement]MoveOut
+If ([Unit]MoveIn>[Unit]MoveOut)
+[Unit]MoveIn:=[Agreement]MoveIn
+End if 
+If ([Unit]MoveOut=!00-00-00!)
+$moveoutname:=[Unit]UnitNo
+$space:=Substring($moveoutname;Length($moveoutname))
+
+While ($space=" ")
+$moveoutname:=Substring($moveoutname;1;Length($moveoutname)-1)
+$space:=Substring($moveoutname;Length($moveoutname))
+End while 
+
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="@Credit@"+$moveoutname+"@")
+
+Case of 
+: (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+[Unit]MoveOut:=[Trxs]DateFrom-1
+If ([Unit]MoveOut=!00-00-00!)
+[Unit]MoveOut:=[Trxs]TrxDate
+End if 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="Prorata@"+$moveoutname+"@";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt<=0)
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+[Unit]MoveOut:=[Trxs]DateFrom-1
+If ([Unit]MoveOut=!00-00-00!)
+[Unit]MoveOut:=[Trxs]TrxDate
+End if 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="@"+$moveoutname+"@")
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+[Unit]MoveOut:=[Trxs]DateTo
+If ([Unit]MoveOut=!00-00-00!)
+[Unit]MoveOut:=[Trxs]TrxDate
+End if 
+End if 
+End if 
+End case 
+End if 
+: ([Unit]Vacant=True) & ([Unit]MoveOut=!00-00-00!) & (Records in selection([UnitHistory])=0)
+[Unit]MoveIn:=!00-00-00!
+End case 
+
+If ([Unit]MoveOut<[Unit]MoveIn) & ([Unit]MoveOut#!00-00-00!)
+[Unit]MoveOut:=[Unit]MoveIn
+End if 
+
+SAVE RECORD([Unit])
+End if 
+
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]OldNo>"";*)
+If ([Unit]EndDate#!00-00-00!)
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]DateUnitStatus<=[Unit]EndDate;*)
+End if 
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]DateUnitStatus>=[Unit]StartDate)
+
+$j:=1
+$g:=Records in selection([UnitStatusTrx])
+
+While ($g>0) & ($j<1000)
+
+ORDER BY([UnitStatusTrx];[UnitStatusTrx]DateUnitStatus;<)
+APPEND TO ARRAY($adChange;[UnitStatusTrx]DateUnitStatus)
+APPEND TO ARRAY($atName;[UnitStatusTrx]OldNo)
+
+$j:=$j+1
+
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=[UnitStatusTrx]OldNo;*)
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]OldNo>"";*)
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]DateUnitStatus<=[UnitStatusTrx]DateUnitStatus;*)
+If ([Unit]EndDate#!00-00-00!)
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]DateUnitStatus<=[Unit]EndDate;*)
+End if 
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]DateUnitStatus>=[Unit]StartDate)
+
+$g:=Records in selection([UnitStatusTrx])
+
+End while 
+
+
+
+If (bNext=1)
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+
+If (Records in selection([UnitHistory])>1)
+$tAgreeno:=[UnitHistory]AgreeNo
+$dMovein:=[UnitHistory]MoveIn
+$dMoveout:=[UnitHistory]MoveOut
+
+For ($k;1;Records in selection([UnitHistory]))
+If ($k#1)
+If ($tAgreeno=[UnitHistory]AgreeNo) & ($dMovein=[UnitHistory]MoveIn) & ($dMoveout=[UnitHistory]MoveOut)
+DELETE RECORD([UnitHistory])
+Else 
+$tAgreeno:=[UnitHistory]AgreeNo
+$dMovein:=[UnitHistory]MoveIn
+$dMoveout:=[UnitHistory]MoveOut
+End if 
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+
+End if 
+
+End if 
+
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+
+If ([UnitHistory]AgreeNo#[Unit]AgreeNo) & ([Unit]Vacant=False)
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]MoveOut:=!00-00-00!
+SAVE RECORD([UnitHistory])
+End if 
+
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+
+If (Records in selection([UnitHistory])>0)
+If ([UnitHistory]MoveIn#[Unit]MoveIn)
+[UnitHistory]MoveIn:=[Unit]MoveIn
+End if 
+
+If ([Unit]Vacant=True)
+If ([UnitHistory]MoveOut#[Unit]MoveOut)
+[UnitHistory]MoveOut:=[Unit]MoveOut
+End if 
+Else 
+[UnitHistory]MoveOut:=!00-00-00!
+End if 
+
+SAVE RECORD([UnitHistory])
+
+For ($m;1;Records in selection([UnitHistory]))
+GOTO XY(0;2)
+MESSAGE(Get localized string("Processing Unit")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Unit]))+Char(13)+Get localized string("Processing Unit History")+" "+String($m)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"                    ")
+
+If ($m#1)
+$movein:=Size of array($adChange)
+
+While ([UnitHistory]MoveIn>=$adChange{$movein}) & ($movein#1)
+$movein:=$movein-1
+End while 
+
+$moveincalc:=$adChange{$movein}
+$moveinname:=Substring($atName{$movein};6)
+
+$space:=Substring($moveinname;Length($moveinname))
+
+While ($space=" ")
+$moveinname:=Substring($moveinname;1;Length($moveinname)-1)
+$space:=Substring($moveinname;Length($moveinname))
+End while 
+
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="Prorata@"+$moveinname+"@";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt>=0)
+
+Case of 
+: (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+[UnitHistory]MoveIn:=[Trxs]DateFrom
+If ([UnitHistory]MoveIn=!00-00-00!)
+[UnitHistory]MoveIn:=[Trxs]TrxDate
+End if 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="@"+$moveinname+"@")
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+[UnitHistory]MoveIn:=[Trxs]DateFrom
+If ([UnitHistory]MoveIn=!00-00-00!)
+[UnitHistory]MoveIn:=[Trxs]TrxDate
+End if 
+End if 
+End case 
+
+$moveout:=Size of array($adChange)
+
+While ([UnitHistory]MoveOut>=$adChange{$moveout}) & ($moveout#1)
+$moveout:=$moveout-1
+End while 
+
+$moveoutcalc:=$adChange{$moveout}
+$moveoutname:=Substring($atName{$moveout};6)
+
+$space:=Substring($moveoutname;Length($moveoutname))
+
+While ($space=" ")
+$moveoutname:=Substring($moveoutname;1;Length($moveoutname)-1)
+$space:=Substring($moveoutname;Length($moveoutname))
+End while 
+
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="@Credit@"+$moveoutname+"@")
+
+Case of 
+: (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+[UnitHistory]MoveOut:=[Trxs]DateFrom-1
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]MoveOut:=[Trxs]TrxDate
+End if 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="Prorata@"+$moveoutname+"@";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt<=0)
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+[UnitHistory]MoveOut:=[Trxs]DateFrom-1
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]MoveOut:=[Trxs]TrxDate
+End if 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[UnitHistory]AgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Description="@"+$moveoutname+"@")
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+[UnitHistory]MoveOut:=[Trxs]DateTo
+If ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]MoveOut:=[Trxs]TrxDate
+End if 
+End if 
+End if 
+End case 
+
+End if 
+
+QUERY([Agreement];[Agreement]RAgreeNo=[UnitHistory]AgreeNo)
+
+If ([UnitHistory]MoveIn<[Agreement]MoveIn) | ([UnitHistory]MoveIn=!00-00-00!)
+[UnitHistory]MoveIn:=[Agreement]MoveIn
+End if 
+
+If (([UnitHistory]MoveOut>[Agreement]MoveOut) | ([UnitHistory]MoveOut=!00-00-00!)) & ([Agreement]MoveOut#!00-00-00!) & ($m#1)
+[UnitHistory]MoveOut:=[Agreement]MoveOut
+End if 
+
+If ([UnitHistory]MoveOut<[UnitHistory]MoveIn) & ([UnitHistory]MoveOut#!00-00-00!)
+[UnitHistory]MoveOut:=[UnitHistory]MoveIn
+End if 
+
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+
+
+
+If (bAdd=1)
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+
+$MoveInDate:=[UnitHistory]MoveIn
+
+For ($m;1;Records in selection([UnitHistory]))
+GOTO XY(0;2)
+MESSAGE("Processing Unit "+String($i)+" of "+String(Records in selection([Unit]))+"                    "+Char(13)+"Processing Unit History"+String($m)+" of "+String(Records in selection([UnitHistory]))+"                    ")
+
+If ($m#1)
+If ([UnitHistory]MoveOut>$MoveInDate) | ([UnitHistory]MoveOut=!00-00-00!)
+[UnitHistory]MoveOut:=$MoveInDate
+End if 
+$MoveInDate:=[UnitHistory]MoveIn
+End if 
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+
+AlertMessage (Get localized string("Unit History Fix is complete."))
+
+End if 

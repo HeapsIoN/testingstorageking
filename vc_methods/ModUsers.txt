@@ -1,0 +1,82 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: ModUsers
+// Description
+//
+// Maintenance > Modify Users & Groups
+//
+// Parameters
+// ----------------------------------------------------
+
+
+If ([Facility]CentralAddress>"") & ([Facility]SyncingOn=True) & (<>sProduct#"M@")\
+ & ([Facility]CentralAddress#"@hub.storman.com@")\
+ & ([Facility]CentralAddress#"@destroyer@")\
+ & ([Facility]CentralAddress#"@valkyrie@")//Storman Hub
+AlertMessage (Get localized string("Looking to add or edit users? Please contact your head office, as this task must be performed from there."))
+Else 
+If (PermissionsControl (23))
+If (Shift down)
+EDIT ACCESS
+Else 
+READ WRITE([Facility])
+READ WRITE([UserLogins])
+READ WRITE([Groups])
+READ WRITE([UserGroup])
+SetFacility (True)
+
+
+If (<>sHOFacility="@HUB")
+QUERY([UserLogins];[UserLogins]UserID=<>sFacility+"@")
+Else 
+ALL RECORDS([UserLogins])
+End if 
+
+ORDER BY([UserLogins];[UserLogins]Name;>)
+
+If (Locked([Facility])=True)
+AlertMessage (Get localized string("It isn't currently possible to modify users, as the system record is currently locked. Please try again shortly..."))
+Else 
+
+FORM SET INPUT([Facility];"ModUsers")
+
+If (Current user="Designer")
+ALL RECORDS([UserLogins])
+Else 
+QUERY([UserLogins];[UserLogins]Name#"AdminSupport";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"Sync";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"Server";*)
+QUERY([UserLogins]; & ;[UserLogins]Name#"Daily";*)
+//18/01/17 DM Added extra queries for the HUB and for user Manager
+If (<>sHOFacility="@HUB")
+QUERY([UserLogins]; & ;[UserLogins]UserID=<>sFacility+"@";*)
+End if 
+QUERY([UserLogins]; & ;[UserLogins]Name#"Manager")
+End if 
+
+ORDER BY([UserLogins];[UserLogins]Name;>)
+SELECTION TO ARRAY([UserLogins]Name;asUserNames)
+
+If (<>sHOFacility="@HUB")
+QUERY([Groups];[Groups]GroupID=<>sFacility+"@")
+Else 
+ALL RECORDS([Groups])
+End if 
+
+ORDER BY([Groups];[Groups]Name;>)
+
+MODIFY RECORD([Facility];*)
+
+End if 
+
+READ ONLY([Facility])
+READ ONLY([UserLogins])
+SetFacility (True)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+End if 
+End if 
+End if 

@@ -1,0 +1,177 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($xDays)
+C_BOOLEAN($1;$Silent)
+
+$Silent:=False
+
+If (Count parameters>0)
+$Silent:=$1
+End if 
+
+//LOAD RECORD([Agreement]
+//$x:=Selected record number([Agreement_OtherChgs])
+//GET HIGHLIGHTED RECORDS([Agreement_OtherChgs];"$blah")
+If ([OtherChgs]AnalysisCode="")
+AlertMessage (Get localized string("Please select the charge you wish to delete!"))
+Else 
+//READ WRITE([Agreement_OtherChgs])
+//LOAD RECORD([Agreement_OtherChgs])
+$s:=Find in array(asCharges;[OtherChgs]AnalysisCode)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility)
+Case of 
+: ($s<=0)
+If (<>sCurrentUser="AdminSupport")
+DELETE RECORD([OtherChgs])// If the charge code cannot be found then just delete it.
+Else 
+AlertMessage (Get localized string("You cannot delete this Charge!"))
+End if 
+: ([Facility]InsuranceAgentType#3) | (([Facility]InsuranceAgentType=3) & (Records in selection([InsuranceRates])>0))
+$Code:=<>sFacility+"IN"
+If ([OtherChgs]AnalysisCode=$Code) & (PermissionsControl (215;False)=False)
+AlertMessage (Get localized string("You cannot delete Insurance Charges."))
+Else 
+
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+If ([Agreement]NextBillDate#[Agreement]MoveIn)
+AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String([Agreement]LastBillDate;6)+", "+Get localized string("Next Bill Date")+" "+Get localized string("is")+" "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+End if 
+Else 
+$xDays:=[Agreement]NextBillDate-Current date-1
+If (vAgreePeriods=0) | ([Agreement]MthsAdv=0)//this shouldn't need to happen but catching the error in case this is a cause 20/4/10
+SyncRecordLog (Get localized string("Possible creation of NAN's in RemoveORC method [Agreement]RegularRent=")+String([Agreement]RegularRent)+" [Agreement]MthsAdv="+String([Agreement]MthsAdv))
+End if 
+
+$Amt:=[OtherChgs]Amount
+
+$Amt:=RoundAmt ($xDays/$yDays*$Amt*(-1))
+
+ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Removal Date for this Charge")+" = "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge to Next Bill Date")+" = "+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Trxs])
+QUERY([Analysis];[Analysis]Code=[OtherChgs]AnalysisCode)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+If (Records in selection([Analysis])=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+$Desc:=[Analysis]Description
+//$i:=Position(" ";$Desc)-1
+//If ($i<2)
+//$i:=Length($Desc)
+//End if 
+Else 
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+$Desc:="Rental Fee"
+$i:=4
+End if 
+[Trxs]Description:=$Desc+" credit"
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String(Current date)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Weekly Rate for this Charge")+" = "+String([Unit]RentedValue;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = "+String([BillPlan]PeriodstoPay+[BillPlan]FreePeriods;"##0")+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Monthly Rate for this Charge")+" = "+String([OtherChgs]Amount/([Agreement]MthsAdv+[BillPlan]FreePeriods);<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = "+String([BillPlan]PeriodstoPay+[BillPlan]FreePeriods;"##0")+Char(13)
+End if 
+[Trxs]Narration:=[Trxs]Narration+"N x M x (X / Y) = "+String($Amt;<>sFormat)+Char(13)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("You will need to manually adjust the")+" "+[OtherChgs]Description+".")
+End if 
+End if 
+
+DELETE RECORD([OtherChgs])
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+bChange:=True
+bNewChange:=True
+End if 
+Else 
+
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+If ([Agreement]NextBillDate#[Agreement]MoveIn)
+AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String([Agreement]LastBillDate;6)+", "+Get localized string("Next Bill Date")+" is "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+End if 
+Else 
+$xDays:=[Agreement]NextBillDate-Current date-1
+If (vAgreePeriods=0) | ([Agreement]MthsAdv=0)//this shouldn't need to happen but catching the error in case this is a cause 20/4/10
+SyncRecordLog (Get localized string("Possible creation of NAN's in RemoveORC method [Agreement]RegularRent=")+String([Agreement]RegularRent)+" [Agreement]MthsAdv="+String([Agreement]MthsAdv))
+End if 
+
+$Amt:=[OtherChgs]Amount
+
+$Amt:=RoundAmt ($xDays/$yDays*$Amt*(-1))
+
+ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Removal Date for this Charge")+" = "+String([Unit]MoveOut)+Char(13)+Get localized string("Create Pro-rata charge to Next Bill Date")+" = "+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Trxs])
+QUERY([Analysis];[Analysis]Code=[OtherChgs]AnalysisCode)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+If (Records in selection([Analysis])=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+$Desc:=[Analysis]Description
+$i:=Position(" ";$Desc)-1
+If ($i<2)
+$i:=Length($Desc)
+End if 
+Else 
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+$Desc:="Rental Fee"
+$i:=4
+End if 
+[Trxs]Description:=Substring($Desc;1;$i)+" credit"
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String(Current date)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]Narration:=[Trxs]Narration+Get localized string("M = Weekly Rate for this Charge")+" = "+String([Unit]RentedValue;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = "+String([BillPlan]PeriodstoPay+[BillPlan]FreePeriods;"##0")+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+Get localized string("M = Monthly Rate for this Charge")+" = "+String([OtherChgs]Amount/([Agreement]MthsAdv+[BillPlan]FreePeriods);<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = "+String([BillPlan]PeriodstoPay+[BillPlan]FreePeriods;"##0")+Char(13)
+End if 
+[Trxs]Narration:=[Trxs]Narration+"N x M x (X / Y) = "+String($Amt;<>sFormat)+Char(13)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("You will need to manually adjust the")+" "+[OtherChgs]Description+".")
+End if 
+End if 
+
+DELETE RECORD([OtherChgs])
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+bChange:=True
+bNewChange:=True
+End case 
+End if 

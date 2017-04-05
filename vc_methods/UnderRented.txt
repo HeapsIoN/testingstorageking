@@ -1,0 +1,97 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Rental Rate Variation Report started.")// records the report being started in the eventlog
+
+If (PermissionsControl (59))
+SetFacility 
+$All:=True
+$Include:=True
+$OnlySince:=False
+$Calc:=True
+$Excl:=True
+$Everything:=False
+OK:=1
+rRefund1:=1
+rRefund2:=0
+rRefund3:=0
+If (<>tBatch=False)
+Open window((Screen width/2)-213;(Screen height/2)-229;(Screen width/2)+213;(Screen height/2)+229;5;Get localized string("Rental Rate Variation Report"))
+DIALOG([Unit];"UnderRentedDialog")
+CLOSE WINDOW
+$All:=(bAdd=1)
+$Include:=(bMod=1)
+$Calc:=(bCalc=0)
+$OnlySince:=(bDelete=1)
+$Excl:=(bExcl=1)
+$Everything:=(bAll=1)
+End if 
+If (OK=1)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]LastRentIncrDate=!00-00-00!)
+APPLY TO SELECTION([Agreement];[Agreement]LastRentIncrDate:=[Agreement]MoveIn)
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+If ($Calc)
+CalcRentedValues (<>sFacility)
+End if 
+Case of 
+: ($Everything)
+QUERY([Unit];[Unit]AgreeNo#"";*)
+: ($All) & ($Include)
+QUERY([Unit];[Unit]BillPlanDisc#0;*)
+QUERY([Unit]; | ;[Unit]ExtraDisc#0;*)
+: ($All)
+QUERY([Unit];[Unit]ExtraDisc#0;*)
+: ($Include=False)
+QUERY([Unit];[Unit]ExtraDisc>0;*)
+Else 
+QUERY([Unit];[Unit]BillPlanDisc>0;*)
+QUERY([Unit]; | ;[Unit]ExtraDisc>0;*)
+End case 
+If ($Excl)
+QUERY([Unit]; & ;[Unit]IncreaseFrom=!00-00-00!;*)
+End if 
+QUERY([Unit]; & ;[Unit]RUnitNo=<>sFacility+"@")
+If ($OnlySince)
+SET AUTOMATIC RELATIONS(True;False)
+QUERY SELECTION([Unit];[Agreement]LastRentIncrDate<=vMthDate)
+SET AUTOMATIC RELATIONS(False;False)
+End if 
+If (Records in selection([Unit])>0)
+Case of 
+: (rRefund1=1)
+ORDER BY([Unit];[Unit]UnitTypeCode;>;[Unit]UnitNo;>)
+BREAK LEVEL(1)
+: (rRefund2=1)
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Unit];[Agreement]CustomerCode;>;[Unit]UnitNo;>)
+SET AUTOMATIC RELATIONS(False;False)
+BREAK LEVEL(0)
+: (rRefund3=1)
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Unit];[Agreement]LastRentIncrDate;>;[Unit]UnitNo;>)
+SET AUTOMATIC RELATIONS(False;False)
+BREAK LEVEL(0)
+Else 
+ORDER BY([Unit];[Unit]UnitTypeCode;>;[Unit]UnitNo;>)
+BREAK LEVEL(1)
+End case 
+tBoolean:=Not($Include)
+vLegend:=""
+ACCUMULATE([Unit]RentedValue;[Unit]BillPlanDisc;[Unit]ExtraDisc;vUnitBaseRate;vQty)
+FORM SET OUTPUT([Unit];"UnderRented")
+PrintSelection ("L";->[Unit])
+Else 
+If (<>tBatch=False)
+AlertMessage (Get localized string("There are no under/over rented units!"))
+End if 
+End if 
+End if 
+End if 
+LogAction (True;"Rental Rate Variation Report ended.")

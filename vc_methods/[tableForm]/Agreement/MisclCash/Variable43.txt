@@ -1,0 +1,49 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// DAM coomented the message that appear all the time when clicking the "Ok" button for cash sales
+//AlertMessage ("The balance of this cash sale must equal $0.00.")
+C_DATE($TrxDate)
+C_LONGINT($i)
+C_BOOLEAN($TrxOK)
+If (Form event=On Clicked)
+$TrxDate:=!00-00-00!
+$TrxOK:=True
+$ReceiptOK:=False
+FIRST RECORD([Trxs])
+For ($i;1;Records in selection([Trxs]))
+
+//If ([Analysis]SetBankedDate) //- 9483
+If ([Trxs]TrxDate#$TrxDate) & ($TrxDate#!00-00-00!)
+$TrxOK:=False
+End if 
+//End if 
+If ([Trxs]Charge=False) & ([Trxs]TotAmt>0)
+$ReceiptOK:=True
+End if 
+$TrxDate:=[Trxs]TrxDate
+NEXT RECORD([Trxs])
+End for 
+If ($TrxOK)
+If ($ReceiptOK)
+If ([Agreement]BalanceOwing=0)
+READ WRITE([Trxs])
+If (vCustNextMatch<=0)
+vCustNextMatch:=1
+End if 
+APPLY TO SELECTION([Trxs];[Trxs]Match:=vCustNextMatch)
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+APPLY TO SELECTION([Trxs];[Trxs]Narration:=vCustomerName+Char(17)+vMailAddress+Char(17)+vMailCity+Char(17)+vMailState+Char(17)+vMailPostZIPCode+Char(17))
+If (Modified record([Customer]))
+SAVE RECORD([Customer])
+End if 
+ACCEPT
+VALIDATE TRANSACTION
+Else 
+AlertMessage ("The balance of this cash sale must equal $0.00")
+End if 
+Else 
+AlertMessage ("There must be a receipt greater than $0.00")
+End if 
+Else 
+AlertMessage ("All transactions in a cash sale must be the same date")
+End if 
+End if 

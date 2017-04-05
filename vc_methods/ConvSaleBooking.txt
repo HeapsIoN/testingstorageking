@@ -1,0 +1,193 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//If successful
+C_LONGINT($i)
+C_POINTER($p)
+$0:=False
+$Continue:=True
+QUERY([Facility];[Facility]FacilityCode=[Contacts]Facility)
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode>"")
+If (Records in selection([Quote])>0)
+$Date:=Current date
+QUERY([Unit];[Unit]Vacant=False;*)
+QUERY([Unit]; & ;[Unit]MoveOut#!00-00-00!;*)
+QUERY([Unit]; & ;[Unit]MoveOut<$Date;*)//Extra condition added 12/6/05
+QUERY([Unit]; | ;[Unit]Vacant=True;*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail")
+QUERY SELECTION([Unit];[Unit]UnitTypeCode=[Quote]UnitTypeCode;*)
+For ($i;1;Records in selection([Quote]))
+QUERY SELECTION([Unit]; | ;[Unit]UnitTypeCode=[Quote]UnitTypeCode;*)
+NEXT RECORD([Quote])
+End for 
+QUERY SELECTION([Unit]; | ;[Unit]UnitTypeCode=[Quote]UnitTypeCode)
+If (Records in selection([Unit])<=0)
+ConfirmTwo (Get localized string("None of the quoted unit types are available, do you wish to continue?");Get localized string("Yes");Get localized string("No"))
+If (OK=0)
+$Continue:=False
+End if 
+End if 
+End if 
+If ($Continue=True)
+If (CreateSalesCustomer )
+SAVE RECORD([Customer])
+READ WRITE([Reservation])
+CREATE RECORD([Reservation])
+SET QUERY DESTINATION(3;$i)
+$Continue:=False
+If (Not(Semaphore("<>bNextResNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+
+If (<>aiNextResNo{$arraypos}>[Facility]NextReserveNo)
+ConfirmTwo (Get localized string("It appears the next reservation number of")+" "+String([Facility]NextReserveNo;"00000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+[Reservation]ReserveNo:=String(<>aiNextResNo{$arraypos};"00000000")
+[Facility]NextReserveNo:=<>aiNextResNo{$arraypos}+1
+Else 
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+End if 
+Else 
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+End if 
+<>aiNextResNo{$arraypos}:=[Facility]NextReserveNo
+$Key:=[Contacts]Facility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+End if 
+CLEAR SEMAPHORE("<>bNextResNo")
+Else 
+Repeat 
+
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+
+$Key:=[Contacts]Facility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+End if 
+[Reservation]RReserveNo:=[Contacts]Facility+[Reservation]ReserveNo
+[Reservation]TaxExempt:=[Facility]TaxFreeDefault
+SET QUERY DESTINATION(0)
+vOldUser:=[Facility]NextReserveNo
+$p:=Get pointer("vOldUser")
+UpdateSystem (107;$p;Get localized string("The next reservation number could not be incremented. You must increase the next reservation number in System Setup before proceeding!"))
+[Reservation]CustomerCode:=[Customer]CustomerCode
+[Reservation]ReservedDate:=Current date
+[Reservation]ActiveReserve:=True
+[Reservation]ExpMoveIn:=[Contacts]WhenRequired
+//QUERY([Analysis];[Analysis]Code=[Contacts]Facility+"DP")
+//[Reservation]DepositAmt:=[Analysis]DfltSellAmt
+[Reservation]ContactNo:=[Contacts]ContactNo
+[Reservation]CallTakenBy:=[Contacts]CallTakenBy
+[Reservation]KQ1:=[Contacts]KQ1
+[Reservation]KQ2:=[Contacts]KQ2
+[Reservation]KQ3:=[Contacts]KQ3
+[Reservation]KQ4:=[Contacts]KQ4
+[Reservation]KQ5:=[Contacts]KQ5
+[Reservation]KQ6:=[Contacts]KQ6
+[Reservation]KQ7:=[Contacts]KQ7
+[Reservation]KQ8:=[Contacts]KQ8
+[Reservation]KQ9:=[Contacts]KQ9
+[Reservation]KQ10:=[Contacts]KQ10
+[Reservation]KTS:=[Contacts]KTS
+[Reservation]KCN:=[Contacts]KCN
+READ WRITE([NotesHistory])
+
+// 10/08/2016 JCW Added them below, because any notes in a sales enquiry would be lost when converting to reservation
+QUERY([NotesHistory];[NotesHistory]ContactNo=[Contacts]ContactNo)
+If (Records in selection([NotesHistory])>0)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=[Customer]CustomerCode)
+SAVE RECORD([NotesHistory])
+End if 
+
+
+LOAD RECORD([NotesHistory])
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+For ($i;1;Records in selection([Quote]))
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+If ([Quote]UnitTypeCode>"")
+[NotesHistory]Note:="Unit Quote: "+[Quote]UnitTypeCode+"; Size: "+[Quote]Size+"; Price: $"+String([Quote]Price)+"; Note: "+[Quote]Note
+Else 
+[NotesHistory]Note:="Quote: "+[Quote]AnalysisCode+"; Quantity: "+[Quote]Size+"; Price: $"+String([Quote]Price)+"; Note: "+[Quote]Note
+End if 
+SAVE RECORD([NotesHistory])
+NEXT RECORD([Quote])
+End for 
+READ ONLY([NotesHistory])
+UNLOAD RECORD([NotesHistory])
+UpdateCalendar (!00-00-00!;[Contacts]FollowUpDate;"Contact "+vName+", Followup")
+[Contacts]Outcome:="Reserved"
+[Contacts]OutComeDate:=Current date
+[Contacts]FollowUpDone:=True
+[Contacts]FollowUpDate:=!00-00-00!
+[Contacts]OnWaitingList:=False
+SAVE RECORD([Contacts])
+SelectUnitContact (True)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP";*)
+QUERY([Analysis]; & ;[Analysis]DfltSellAmt#0;*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])=1)
+If ([Facility]AgreeOnlyDeposit=True)
+OK:=0
+Else 
+$Deposit:=Num(RequestMessage (Get localized string("Do you wish to charge a deposit for this Reservation?");String([Analysis]DfltSellAmt);Get localized string("Yes");Get localized string("No")))
+End if 
+If (OK=1)
+[Reservation]DepositAmt:=[Reservation]DepositAmt+$Deposit
+vOthDeposit:=$Deposit
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]Description:=[Analysis]Description
+[Trxs]TrxDate:=GetValidDate ([Reservation]ReservedDate)
+[Trxs]DateFrom:=[Reservation]ReservedDate
+[Trxs]DateTo:=[Reservation]ReservedDate
+[Reservation]DateDepPaid:=[Reservation]ReservedDate
+[Trxs]TotAmt:=RoundAmt ($Deposit)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+UNLOAD RECORD([Trxs])
+SAVE RECORD([Customer])
+vRecalc:=True
+Else 
+[Reservation]DepositAmt:=0
+vOthDeposit:=0
+End if 
+End if 
+SAVE RECORD([Reservation])
+READ ONLY([Reservation])
+LOAD RECORD([Reservation])
+$0:=True
+Else 
+AlertMessage (Get localized string("This sales contact was not converted to a reservation."))
+End if 
+End if 

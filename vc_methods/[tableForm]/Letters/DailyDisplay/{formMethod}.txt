@@ -1,0 +1,138 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$k;$Compressed)
+C_TEXT($Text;$Text2)
+
+
+
+$j:=0
+$k:=0
+$Compressed:=0
+$Text:=""
+$Text2:=""
+
+If (Form event=On Load)
+//SetColours 
+GOTO OBJECT(*;"HTMLEdit")
+tempSearchInvNo:=False
+BLOB PROPERTIES([Letters]LetterBLOB;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Letters]LetterBLOB)
+End if 
+LoadPictures 
+
+
+Case of 
+: ([Letters]SentViaEmail)
+OBJECT SET VISIBLE(veLetter;False)
+OBJECT SET VISIBLE(HTMLEdit;True)
+
+HTMLEdit_url:="http://www.storman.com/blank.html"
+
+EmailTextBlob:=Convert to text([Letters]LetterBLOB;"UTF-8")
+
+EmailID:=Record number([Letters])
+
+EmailMailpath:=""
+
+If (EmailID#0)
+If (EmailMailpath#"")
+EMail_Edit_Prepare ("HTMLEdit";"";EmailID;EmailMailpath)
+Else 
+EMail_Edit_Prepare ("HTMLEdit";EmailTextBlob;EmailID;"")
+EmailTextBlob:=""
+End if 
+Else 
+$id:=Milliseconds
+EMail_Edit_Prepare ("HTMLEdit";"";$id)
+End if 
+: ([Letters]SentViaEmail)
+OBJECT SET VISIBLE(veLetter;False)
+OBJECT SET VISIBLE(HTMLEdit;False)
+Else 
+OBJECT SET VISIBLE(veLetter;True)
+OBJECT SET VISIBLE(HTMLEdit;False)
+
+WR BLOB TO AREA (veLetter;[Letters]LetterBLOB)
+For ($i;331;334)//Turn off all toolbars
+WR GET COMMAND INFO (veLetter;$i;$j;$Text;$Text2;$k)
+If ($j=1)
+WR EXECUTE COMMAND (veLetter;$i)//Turn if off
+End if 
+End for 
+WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+If ($i=1)//($Text="Show Values") If on turn it off
+WR EXECUTE COMMAND (veLetter;wr cmd view references)
+End if 
+WR SET SELECTION (veLetter;80;81)
+WR SCROLL TO SELECTION (veLetter)
+End case 
+
+//If (Records in selection([Letters])-bCalc<20)
+//OBJECT SET VISIBLE(bCancel;False)
+//End if 
+vLegend:=Get localized string("Item")+" "+String(bCalc)+" of "+String(Records in selection([Letters]))
+End if 
+
+If ([Letters]SentViaEmail)
+
+GOTO OBJECT(*;"HTMLEdit")
+
+If (Form event=On Timer)// | ((Form event=On Resize)  DAM Commented to Stop component error. see method for "HTMLEdit"
+
+////////////////fb9125///////////////
+$k:=0
+Repeat 
+EMail_Edit_EventHandler ("HTMLEdit")
+$k:=$k+1
+Until ($k=10)
+
+//SyncRecordLog ("a on timer 1")
+//EMail_Edit_EventHandler ("HTMLEdit")
+//SyncRecordLog ("b on timer 1")
+
+End if 
+
+
+If (Form event=On Timer)
+$content:=""
+$k:=0
+Repeat 
+$content:=EMail_Edit_GetHTML ("HTMLEdit")
+$k:=$k+1
+//Until ($content#"") | ($k=10)
+//Until ($content#"") & ($k=10)
+Until (($content#"") | ($k=10))
+$content:=Replace string(Replace string(Replace string($content;Char(Line feed);"");Char(Carriage return);"");" ";"")
+
+If (Position("<body></body>";$content)>0)
+EmailTextBlob:=Convert to text([Letters]LetterBLOB;"UTF-8")
+
+EmailID:=Record number([Letters])
+
+EmailMailpath:=""
+
+If (EmailID#0)
+If (EmailMailpath#"")
+EMail_Edit_Prepare ("HTMLEdit";"";EmailID;EmailMailpath)
+Else 
+EMail_Edit_Prepare ("HTMLEdit";EmailTextBlob;EmailID;"")
+EmailTextBlob:=""
+End if 
+Else 
+$id:=Milliseconds
+EMail_Edit_Prepare ("HTMLEdit";"";$id)
+End if 
+End if 
+
+End if 
+
+
+If (Form event=On Unload)
+HTMLEdit_url:="http://www.storman.com/blank.html"
+If (EmailID#0)
+EMail_ReturnURLCleanUp (EmailID)
+End if 
+End if 
+End if 
+
+

@@ -1,0 +1,98 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 22/04/16, 15:36:04
+// ----------------------------------------------------
+// Method: SumDiscounts
+// Description
+// 
+// Triggers the Summary of Discounts report. Reports > Auditing > Summary of Discounts
+//
+// Parameters
+// ----------------------------------------------------
+C_BOOLEAN($1;$web)//call from web
+C_TEXT($WS_FacilityCode)
+$web:=False
+If (Count parameters=1)
+$web:=$1
+End if 
+
+If ($web=False)
+LogAction (False;"Summary of Discounts Report started.")// records the report being started in the eventlog
+Else 
+$WS_FacilityCode:=<>sFacility
+<>sFacility:=WS_FacilityCode
+End if 
+
+
+
+//SDD 20/10/10 For Kennards added the Merchandise Discounts to this report
+If (PermissionsControl (74))
+If ($web=False)
+If (<>tBatch=True)
+OK:=1
+Else 
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vMthDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vMthDate)
+End if 
+Else 
+ok:=1
+End if 
+
+If (OK=1)
+vSDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+vStmtDate:=GetMonthName (Month of(vMthDate))+" "+String(Year of(vMthDate))
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vSDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999;*)
+QUERY([Trxs]; & ;[Trxs]DiscAmt#0)
+If (<>sFacility="KE@")
+CREATE SET([Trxs];"Temp")
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vSDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+//QUERY([Transaction]; & ;[Transaction]AnalysisCode=<>sFacility+"MD")
+//SDD Following lines could be used instead of above line if they had a 
+//or this instead of a single AnalysisCode
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Discounts")
+ARRAY TEXT($aAnalysisCode;0)
+SELECTION TO ARRAY([Analysis]Code;$aAnalysisCode)
+
+If ($web=True)
+ARRAY TEXT(asData8;0)
+ARRAY TEXT(asData9;0)
+SELECTION TO ARRAY([Analysis]Code;asData8)
+SELECTION TO ARRAY([Analysis]Description;asData9)
+End if 
+
+QUERY SELECTION WITH ARRAY([Trxs]AnalysisCode;$aAnalysisCode)
+CREATE SET([Trxs];"More")
+UNION("Temp";"More";"Temp")
+USE SET("Temp")
+CLEAR SET("Temp")
+CLEAR SET("More")
+End if 
+SetFacility 
+vLegend:=Get localized string("For the period from")+" "+String(vSDate;6)+" "+Get localized string("to")+" "+String(vMthDate;6)
+ORDER BY([Trxs];[Trxs]AnalysisCode;>;[Trxs]TrxDate;>;[Trxs]CustomerCode;>)
+If ($web=False)
+BREAK LEVEL(1)
+ACCUMULATE([Trxs]TotAmt;[Trxs]DiscAmt)
+FORM SET OUTPUT([Trxs];"SumDiscounts")
+PrintSelection ("L";->[Trxs])
+FORM SET OUTPUT([Trxs];"Output")
+End if 
+End if 
+End if 
+If ($web=False)
+LogAction (True;"Summary of Discounts Report ended.")
+Else 
+<>sFacility:=$WS_FacilityCode
+End if 

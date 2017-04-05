@@ -1,0 +1,48 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 09/06/16, 15:31:01
+// ----------------------------------------------------
+// Method: CheckVersion_RevertCustPW
+// Description
+//
+// This method is used to create notes for customers who passphrase does not match their password
+// as we are disabling the masked customer password field for agreements and reservations.
+//
+// Parameters
+// ----------------------------------------------------
+
+ALL RECORDS([Customer])
+//30/03/17 DM Added query by formula to speed up the update process
+QUERY SELECTION BY FORMULA([Customer];[Customer]Password#[Customer]PassPhrase)
+READ WRITE([NotesHistory])
+
+$WinRef:=Open window(20;50;450;150;0)
+
+For ($a;1;Records in selection([Customer]))
+
+GOTO XY(2;2)
+MESSAGE("Processing customers "+String($a)+" of "+String(Records in selection([Customer])))
+
+If ([Customer]PassPhrase#[Customer]Password)
+
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]Note:="Storman Upgrade has unmasked the customer's password. This note has been automatically generated for your records because this customers Password did not match their Pass phrase."+Char(13)+Char(13)+"Customer's Password: "+[Customer]Password+Char(13)+"Customer's Passphrase: "+[Customer]PassPhrase
+[NotesHistory]UserLogin:="Storman"
+[NotesHistory]Category:="Storman Upgrade"
+SAVE RECORD([NotesHistory])
+
+End if 
+
+NEXT RECORD([Customer])
+
+End for 
+
+CLOSE WINDOW($WinRef)
+
+READ ONLY([NotesHistory])
+UNLOAD RECORD([NotesHistory])

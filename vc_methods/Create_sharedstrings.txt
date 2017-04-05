@@ -1,0 +1,682 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT(fieldvalue)
+C_TEXT(fieldstring)
+C_TEXT($1)//report name
+C_TEXT($2)//report legend
+C_TEXT($3)//report footer
+C_TEXT($value)
+sharedStrings.xml_Ref:="<?xml version='1.0' encoding='UTF-8' standalone='no'?>"
+sharedStrings.xml_Ref:=sharedStrings.xml_Ref+"<sst xmlns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' count = '' uniqueCount = ''/>"
+sharedStrings.xml_Ref:=DOM Parse XML variable(sharedStrings.xml_Ref)
+maintitle:=""
+$text:=""
+If ($3>"")
+$Footer:=1
+Else 
+$Footer:=0
+End if 
+$totalValues:=numOfFields*(numOfRecords+1)+2+$Footer//+numOfFields+2
+DOM SET XML ATTRIBUTE(sharedStrings.xml_Ref;"count";String($totalValues);"uniqueCount";String($totalValues))
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si/t/")
+DOM SET XML ELEMENT VALUE(xElement;$1)
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si[2]/t/")
+DOM SET XML ELEMENT VALUE(xElement;$2)
+For ($i;1;numOfFields)
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($i+2)+"]/t/")
+fieldName:=aFieldNames{$i}
+If (aFieldNames{$i}="OnDetail@")
+fieldname:=Substring(aFieldNames{$i};9)
+End if 
+If (aFieldNames{$i}="OnLoad@")
+fieldname:=Substring(aFieldNames{$i};7)
+If (executeMethod="Method@")
+executeMethod:=Substring(executeMethod;7)
+EXECUTE METHOD(executeMethod)
+Else 
+EXECUTE FORMULA(executeMethod)
+End if 
+End if 
+DOM SET XML ELEMENT VALUE(xElement;fieldName)
+End for 
+$temp:=numOfFields+3
+
+
+Case of //10782
+: (executeMethod="MethodOnLoadIncomeChargedReport")
+C_REAL($Total;$TaxTotal)
+$Total:=0
+$TaxTotal:=0
+For ($i;1;Size of array(asAnalysisCode2Excel))
+QUERY([Analysis];[Analysis]Code=asAnalysisCode2Excel{$i})
+$Pos:=asValuePosition{$i}
+If (Records in selection([Analysis])=1)
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=Substring(asAnalysisCode2Excel{$i};6)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Code
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=[Analysis]Description
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Description
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=[Analysis]KeyStatsCategory
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Category
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+
+If ([Analysis]Taxable)
+fieldstring:="Yes"
+Else 
+fieldstring:="No"
+End if 
+
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String(asAdIncomeTaxAmt{$Pos})
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String(asAdIncomeAmt{$Pos}-asAdIncomeTaxAmt{$Pos})
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String(asAdIncomeAmt{$Pos})
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+
+$TaxTotal:=$TaxTotal+asAdIncomeTaxAmt{$Pos}
+$Total:=$Total+asAdIncomeAmt{$Pos}
+End if 
+End for 
+
+//Subtotal
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="Subtotal"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($TaxTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total-$TaxTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+
+//Plus Tax Charged
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="Plus tax Charged"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//UnitNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//AgreementNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Date
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($TaxTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="0.00"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+
+//Total Income Charged
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="Total"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//UnitNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//AgreementNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Date
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+
+: (executeMethod="MethodOnLoadIncomeChargedReportDetails")
+
+USE SET("ToPrint")
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>;[Trxs]TrxDate;>)
+C_TEXT($AnalysisCode)
+C_TEXT(vAgreeNo)
+C_TEXT(vUnits)
+C_REAL($SumOfTax;$SumofTotal;$TaxTotal;$Total)
+
+$SumOfTax:=0
+$SumofTotal:=0
+$AnalysisCode:=""
+$Total:=0
+$TaxTotal:=0
+For ($i;1;Records in selection([Trxs]))
+
+//Summary
+If ($AnalysisCode#[Trxs]AnalysisCode) & ($AnalysisCode#"")
+
+QUERY([Analysis];[Analysis]Code=$AnalysisCode)
+vAgreeNo:=[Analysis]Description
+vUnits:=$AnalysisCode
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=Substring(vUnits;6)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//UnitNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=vAgreeNo
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//AgreementNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Date
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+
+If ([Analysis]Taxable)
+fieldstring:="Yes"
+Else 
+fieldstring:="No"
+End if 
+
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($SumOfTax)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($SumofTotal-$SumOfTax)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($SumofTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//InvNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Analysis Code
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//GLCode
+$temp:=$temp+1
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Months
+$temp:=$temp+1
+
+
+$SumOfTax:=0
+$SumofTotal:=0
+End if 
+
+$AnalysisCode:=[Trxs]AnalysisCode
+QUERY([Analysis];[Analysis]Code=$AnalysisCode)
+vUnits:=""
+If (Length([Trxs]AgreeNo)=14)
+QUERY([Agreement];[Agreement]RAgreeNo=[Trxs]AgreeNo)
+vAgreeNo:=[Agreement]AgreeNo
+If ([Agreement]UnitsOccup="")
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Trxs]AgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=[Trxs]TrxDate)
+QUERY SELECTION([UnitHistory];[UnitHistory]MoveOut>=[Trxs]TrxDate;*)
+QUERY SELECTION([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>)
+vUnits:=Substring([UnitHistory]UnitNo;6)
+End if 
+Else 
+vUnits:=[Agreement]UnitsOccup
+End if 
+Else 
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+vAgreeNo:=[Reservation]ReserveNo
+vUnits:=[Reservation]UnitsReserved
+End if 
+QUERY([Customer];[Customer]CustomerCode=[Trxs]CustomerCode)
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=vUnits
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//UnitNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=vAgreeNo
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//AgreementNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String([Trxs]TrxDate)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Date
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=[Customer]CustomerName
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Customer name
+
+If (bAdjIncomePre=True)
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+$Amount:=0
+$MthsAdv:=0
+$Month:=0
+$Tax:=0
+$MthsAdv:=Round(([Trxs]DateTo-[Trxs]DateFrom)/30.42;0)
+If ($MthsAdv>=1)
+$Month:=Trunc(((vMthDate)-[Trxs]DateFrom)/30.42;0)+1//THIS DOESN'T SEEM RIGHT 31days=2 30days=1?
+If ($Month<0)
+$Month:=0
+End if 
+$Amount:=Round([Trxs]TotAmt/$MthsAdv;2)
+$Tax:=Round([Trxs]TaxAmt/$MthsAdv;2)
+Else 
+$Amount:=[Trxs]TotAmt
+$Tax:=[Trxs]TaxAmt
+End if 
+
+If ($Amount#[Trxs]TotAmt)
+vAmt3:=$Amount
+vAmt1:=$Tax
+vAmt2:=vAmt3-vAmt1
+Else 
+vAmt1:=[Trxs]TaxAmt
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+vAmt3:=[Trxs]TotAmt
+End if 
+
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String(vAmt1)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String(vAmt2)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String(vAmt3)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+
+$SumOfTax:=$SumOfTax+vAmt1
+$SumofTotal:=$SumofTotal+vAmt3
+
+$TaxTotal:=$TaxTotal+vAmt1
+$Total:=$Total+vAmt3
+
+Else 
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String([Trxs]TaxAmt)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String([Trxs]TotAmt-[Trxs]TaxAmt)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String([Trxs]TotAmt)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+
+$SumOfTax:=$SumOfTax+[Trxs]TaxAmt
+$SumofTotal:=$SumofTotal+[Trxs]TotAmt
+
+$TaxTotal:=$TaxTotal+[Trxs]TaxAmt
+$Total:=$Total+[Trxs]TotAmt
+End if 
+
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+
+If ([Facility]InvStatement>0)
+fieldstring:=String([Trxs]InvNo)
+Else 
+fieldstring:=String([Trxs]SeqNo)
+End if 
+
+If ([Trxs]SeqNo<0)
+fieldstring:=String(Abs([Trxs]SeqNo)+1000000)
+End if 
+
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//InvNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=[Trxs]AnalysisCode
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Analysis Code
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=[Analysis]GLCode
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//GLCode
+$temp:=$temp+1
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+$MthsAdvString:=""
+$MthsAdvString:=String(Round(([Trxs]DateTo-[Trxs]DateFrom)/30.42;0))
+fieldstring:=$MthsAdvString
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Months
+$temp:=$temp+1
+
+NEXT RECORD([Trxs])
+End for 
+
+//Last Analysis Code
+QUERY([Analysis];[Analysis]Code=$AnalysisCode)
+vAgreeNo:=[Analysis]Description
+vUnits:=$AnalysisCode
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=Substring(vUnits;6)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//UnitNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=vAgreeNo
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//AgreementNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Date
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+If ([Analysis]Taxable)
+fieldstring:="Yes"
+Else 
+fieldstring:="No"
+End if 
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($SumOfTax)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($SumofTotal-$SumOfTax)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($SumofTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//InvNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Analysis Code
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//GLCode
+$temp:=$temp+1
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Months
+$temp:=$temp+1
+
+//Subtotal
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="Subtotal"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($TaxTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total-$TaxTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//InvNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Analysis Code
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//GLCode
+$temp:=$temp+1
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Months
+$temp:=$temp+1
+
+//  //Plus Tax Charged
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="Plus tax Charged"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//UnitNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//AgreementNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Date
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($TaxTotal)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="0.00"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//InvNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Analysis Code
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//GLCode
+$temp:=$temp+1
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Months
+$temp:=$temp+1
+
+//Total Income Charged
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:="Total"
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//UnitNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//AgreementNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Date
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//TaxAmt
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Net of Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=String($Total)
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Inc Tax
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//InvNo
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Analysis Code
+$temp:=$temp+1
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//GLCode
+$temp:=$temp+1
+
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+fieldstring:=""
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)//Months
+$temp:=$temp+1
+
+Else 
+DEFAULT TABLE(vpTable->)
+FIRST RECORD
+For ($i;1;Records in selection(vpTable->))//numOfRecords)
+$text:=""
+For ($j;1;numOfFields)
+fieldName:=aFieldNames{$j}
+If (fieldname="OnDetail@")
+fieldname:=Substring(fieldname;9)
+If (executeMethod="Method@")
+//executeMethod:=Substring(executeMethod;7)
+If ($text="")
+EXECUTE METHOD(Substring(executeMethod;7);$value)
+If ($value="Text@")
+$Pos:=Position(",";$value)
+$NumColumns:=Substring($value;5;$Pos-1)
+$Text:=Substring($value;$Pos+1)
+//For ($x;1;$NumColumns)
+//$Pos:=Position(",";$value)
+//$fieldstring:=Substring($value;1;$Pos-1)
+//DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+//$value:=Substring($value;$Pos+1)
+//end for
+End if 
+End if 
+Else 
+EXECUTE FORMULA(executeMethod)
+End if 
+End if 
+If (fieldname="OnLoad@")
+fieldname:=Substring(fieldname;7)
+End if 
+//EXECUTE FORMULA("fieldType:=Type("+fieldName+")")`we are passing everything as string currently
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+//If (fieldType#5) & (fieldType#0)  `string or text
+//EXECUTE FORMULA("fieldValue:=String("+fieldName+")")
+//DOM SET XML ELEMENT VALUE(xElement;fieldValue)
+//Else 
+Case of 
+: (fieldname="[@")
+EXECUTE FORMULA("fieldType:=Type("+fieldName+")")
+If (fieldType#5) & (fieldType#0)//string or text
+EXECUTE FORMULA("fieldstring:=String("+fieldName+")")
+Else 
+EXECUTE FORMULA("fieldstring:=substring("+fieldName+";1)")
+End if 
+Else 
+If ($text>"")
+If (Position(",";$text)>0)
+$value:=Substring($text;1;Position(",";$text)-1)
+$text:=Substring($text;(Position(",";$text)+1))
+Else 
+$value:=$text
+End if 
+End if 
+fieldstring:=$value
+End case 
+DOM SET XML ELEMENT VALUE(xElement;fieldstring)
+//End if 
+$temp:=$temp+1
+End for 
+NEXT RECORD
+End for 
+End case 
+
+
+If ($3>"")
+xElement:=DOM Create XML element(sharedStrings.xml_Ref;"/sst/si["+String($temp)+"]/t/")
+DOM SET XML ELEMENT VALUE(xElement;$3)
+End if 
+DOM EXPORT TO FILE(sharedStrings.xml_Ref;appPath+"xl"+<>pathSpacer+"sharedStrings.xml")
+DOM CLOSE XML(sharedStrings.xml_Ref)

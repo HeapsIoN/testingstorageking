@@ -1,0 +1,696 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 17/1/13 Changed parameters in CalcTaxAmt so that it does not change [Transaction]TotAmt
+//SDD 29/08/13 Fixed bug causing tax amount to be calculated incorrectly for IP discount
+C_LONGINT($i)
+
+$OK:=True
+
+If ([Trxs]TotAmt<=0)
+AlertMessage (Get localized string("To add a credit please use other credit sales"))
+$OK:=False
+End if 
+
+If (Size of array(asAnalysis)<1)
+AlertMessage (Get localized string("You must enter a charge"))
+$OK:=False
+Else 
+// Modified by: nicholas.wykes (18/06/2010)
+// Added checking to see if they have gone to the Receipt tab yet. If not, alert displays and tab is automatically changed
+If (bReceipt=False)
+AlertMessage (Get localized string("Payment method has not been changed! Please ensure the correct payment has been set."))
+aPageNo:=2
+FORM GOTO PAGE(aPageNo)
+$OK:=False
+bReceipt:=True
+End if 
+End if 
+//If ([Analysis]MinAmt#0)
+//If ([Transaction]MiscDetls'TotAmt<([Analysis]MinAmt*[Transaction]MiscDetls'Qty))
+//AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of less than")+" "+String([Analysis]MinAmt*[Transaction]MiscDetls'Qty)+".  "+Get localized string("Please re-enter!"))
+//$OK:=False
+//End if 
+//End if 
+//If ([Analysis]MaxAmt#0)
+//If ([Transaction]MiscDetls'TotAmt>([Analysis]MaxAmt*[Transaction]MiscDetls'Qty))
+//AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of more than")+" "+String([Analysis]MaxAmt*[Transaction]MiscDetls'Qty)+".  "+Get localized string("Please re-enter!"))
+//$OK:=False
+//End if 
+//End if 
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+
+If ([Trxs]AnalysisCode#(<>sFacility+"CA")) | ([Facility]DisableTender=True)
+[Trxs]CashReceived:=[Trxs]TotAmt
+Else 
+If ([Trxs]CashReceived<[Trxs]TotAmt) & ([Trxs]AnalysisCode=(<>sFacility+"CA"))
+AlertMessage (Get localized string("You cannot enter an amount tendered less than the total amount."))
+[Trxs]CashReceived:=0
+$OK:=False
+End if 
+End if 
+
+If (([Trxs]CCAuthNo="") | ([Trxs]CCTransID="")) & ([Analysis]SpecialOptions>=54) & ([Analysis]SpecialOptions<=56)
+
+If ([Trxs]OriginalReceipt="")//SNS 15/03/17
+
+
+If (PermissionsControl (203;False))
+ConfirmTwo (Get localized string("The Credit Card has not been processed. Do you wish to continue?");Get localized string("Continue Anyway"))
+If (OK=1)
+$OK:=True
+Else 
+$OK:=False
+End if 
+Else 
+AlertMessage (Get localized string("The Credit Card has not been processed."))
+$OK:=False
+End if 
+
+
+End if 
+
+End if 
+
+For ($i;1;Size of array(asAnalysis))
+$shortAnalysis:=Substring(asAnalysis{$i};1;8)
+If (Length(asAnalysis{$i})<5) | ((Find in field([Analysis]Code;asAnalysis{$i})<0) & (Find in field([MerchPlan]MerchPlanID;$shortAnalysis)<0))
+AlertMessage (Get localized string("Invalid Analysis code for one of the items sold")+" - "+adDesc{$i})
+$OK:=False
+End if 
+End for 
+
+If ($OK)
+vTotal:=vDiscount
+For ($i;1;Size of array(aTot))
+vTotal:=vTotal+aTot{$i}
+End for 
+
+If (vTotal#[Trxs]TotAmt)
+AlertMessage (Get localized string("Total Receipt Amount must equal sum of Charge Details"))
+Else 
+vDiscount:=0
+[Trxs]DiscountCalc:=True
+If (bDiscountDisable=False)
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=False)
+ORDER BY([MerchPlan];[MerchPlan]Priority;>;[MerchPlan]MerchPlanID;>)
+ARRAY TEXT(asTMAnalysisCodes;0)
+For ($i;1;Size of array(asAnalysis))
+$Array:=Find in array(asTMAnalysisCodes;asAnalysis{$i})
+If ($Array<=0)
+APPEND TO ARRAY(asTMAnalysisCodes;asAnalysis{$i})
+End if 
+End for 
+For ($i;1;Records in selection([MerchPlan]))
+$Qty:=0
+$Total:=0
+$KSSPercent:=0
+
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+For ($k;1;Size of array(asAnalysis))
+If (asAnalysis{$k}=asTMAnalysisCodes{$j})
+$Qty:=$Qty+aQuantity{$k}
+If ([Facility]TaxAddtoAmt=True)
+$Total:=$Total+aNet{$k}
+Else 
+$Total:=$Total+aTot{$k}
+End if 
+End if 
+End for 
+End if 
+End for 
+
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+For ($k;1;Size of array(asAnalysis))
+If (asAnalysis{$k}=asTMAnalysisCodes{$j})
+
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$KSSPercent:=$KSSPercent+(Round((aTot{$k}/aQuantity{$k})*((100-$Percent)/100);1)*aQuantity{$k})//SDD Changed back to 1 but could cause other problem
+Else 
+$KSSPercent:=$KSSPercent+(Round((aTot{$k}/aQuantity{$k})*((100-[MerchPlan]PercDiscount)/100);1)*aQuantity{$k})//SDD as above
+End if 
+
+End if 
+End for 
+End if 
+End for 
+
+If ([MerchPlan]ItemQuantity<=$Qty)
+If ([MerchPlan]PercDiscount>0)
+If (<>sFacility="KE@")
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$KSSPercent//Round(($Total/$Qty)*((100-$Percent)/100);1)*$Qty
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+$AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+$Description:=[MerchPlan]DiscountDescription
+If ([Facility]TaxAddtoAmt=True)
+$NetAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($NetAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;1)//Must be 1 otherwise it changes [Transaction]TotAmt
+$TotAmt:=Round($NetAmt+$TaxAmt;2)
+Else 
+$TotAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($TotAmt;$AnalysisCode)
+$NetAmt:=Round($TotAmt-$TaxAmt;2)
+End if 
+If ($TotAmt#0)
+APPEND TO ARRAY(asAnalysis;$AnalysisCode)
+APPEND TO ARRAY(adDesc;$Description)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;$TotAmt)
+APPEND TO ARRAY(aQuantity;0)
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;$NetAmt)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$KSSPercent//Round(($Total/$Qty)*((100-[MerchPlan]PercDiscount)/100);1)*$Qty
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+$AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+$Description:=[MerchPlan]DiscountDescription
+If ([Facility]TaxAddtoAmt=True)
+$NetAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($NetAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;1)//Must be 1 otherwise it changes [Transaction]TotAmt
+$TotAmt:=Round($NetAmt+$TaxAmt;2)
+Else 
+$TotAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($TotAmt;$AnalysisCode)
+$NetAmt:=Round($TotAmt-$TaxAmt;2)
+End if 
+If ($TotAmt#0)
+APPEND TO ARRAY(asAnalysis;$AnalysisCode)
+APPEND TO ARRAY(adDesc;$Description)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;$TotAmt)
+APPEND TO ARRAY(aQuantity;0)
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;$NetAmt)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total*((100-$Percent)/100)
+Case of 
+: ([Facility]Country="NZ")
+$NewTotal:=Round($NewTotal;1)
+: ([Facility]Country="AU")
+$Round:=$NewTotal-Trunc($NewTotal;1)
+Case of 
+: ($Round=0.01) | ($Round=0.02) | ($Round=0.08) | ($Round=0.09)
+$NewTotal:=Round($NewTotal;1)
+: ($Round=0.03) | ($Round=0.04) | ($Round=0.06) | ($Round=0.07)
+$NewTotal:=Trunc($NewTotal;1)+0.05
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+$AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+$Description:=[MerchPlan]DiscountDescription
+If ([Facility]TaxAddtoAmt=True)
+$NetAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($NetAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;1)//Must be 1 otherwise it changes [Transaction]TotAmt
+$TotAmt:=Round($NetAmt+$TaxAmt;2)
+Else 
+$TotAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($TotAmt;$AnalysisCode)
+$NetAmt:=Round($TotAmt-$TaxAmt;2)
+End if 
+If ($TotAmt#0)
+APPEND TO ARRAY(asAnalysis;$AnalysisCode)
+APPEND TO ARRAY(adDesc;$Description)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;$TotAmt)
+APPEND TO ARRAY(aQuantity;0)
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;$NetAmt)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total*((100-[MerchPlan]PercDiscount)/100)
+Case of 
+: ([Facility]Country="NZ")
+$NewTotal:=Round($NewTotal;1)
+: ([Facility]Country="AU")
+$Round:=$NewTotal-Trunc($NewTotal;1)
+Case of 
+: ($Round=0.01) | ($Round=0.02) | ($Round=0.08) | ($Round=0.09)
+$NewTotal:=Round($NewTotal;1)
+: ($Round=0.03) | ($Round=0.04) | ($Round=0.06) | ($Round=0.07)
+$NewTotal:=Trunc($NewTotal;1)+0.05
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+$AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+$Description:=[MerchPlan]DiscountDescription
+If ([Facility]TaxAddtoAmt=True)
+$NetAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($NetAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;1)//Must be 1 otherwise it changes [Transaction]TotAmt
+$TotAmt:=Round($NetAmt+$TaxAmt;2)
+Else 
+$TotAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($TotAmt;$AnalysisCode)
+$NetAmt:=Round($TotAmt-$TaxAmt;2)
+End if 
+If ($TotAmt#0)
+APPEND TO ARRAY(asAnalysis;$AnalysisCode)
+APPEND TO ARRAY(adDesc;$Description)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;$TotAmt)
+APPEND TO ARRAY(aQuantity;0)
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;$NetAmt)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+End if 
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]FixedDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total-$Percent
+Case of 
+: ([Facility]Country="NZ")
+$NewTotal:=Round($NewTotal;1)
+: ([Facility]Country="AU")
+$Round:=$NewTotal-Trunc($NewTotal;1)
+Case of 
+: ($Round=0.01) | ($Round=0.02) | ($Round=0.08) | ($Round=0.09)
+$NewTotal:=Round($NewTotal;1)
+: ($Round=0.03) | ($Round=0.04) | ($Round=0.06) | ($Round=0.07)
+$NewTotal:=Trunc($NewTotal;1)+0.05
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+$AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+$Description:=[MerchPlan]DiscountDescription
+If ([Facility]TaxAddtoAmt=True)
+$NetAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($NetAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;4)
+$TotAmt:=Round($NetAmt+$TaxAmt;2)
+Else 
+$TotAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($TotAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;4)
+$NetAmt:=Round($TotAmt-$TaxAmt;2)
+End if 
+If ($TotAmt#0)
+APPEND TO ARRAY(asAnalysis;$AnalysisCode)
+APPEND TO ARRAY(adDesc;$Description)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;$TotAmt)
+APPEND TO ARRAY(aQuantity;0)
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;$NetAmt)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total-[MerchPlan]FixedDiscount
+Case of 
+: ([Facility]Country="NZ")
+$NewTotal:=Round($NewTotal;1)
+: ([Facility]Country="AU")
+$Round:=$NewTotal-Trunc($NewTotal;1)
+Case of 
+: ($Round=0.01) | ($Round=0.02) | ($Round=0.08) | ($Round=0.09)
+$NewTotal:=Round($NewTotal;1)
+: ($Round=0.03) | ($Round=0.04) | ($Round=0.06) | ($Round=0.07)
+$NewTotal:=Trunc($NewTotal;1)+0.05
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+$AnalysisCode:=<>sFacility+[MerchPlan]DiscountAnalysis
+$Description:=[MerchPlan]DiscountDescription
+If ([Facility]TaxAddtoAmt=True)
+$NetAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($NetAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;1)//Must be 1 otherwise it changes [Transaction]TotAmt
+$TotAmt:=Round($NetAmt+$TaxAmt;2)
+Else 
+$TotAmt:=($Total-$NewTotal)*-1
+$TaxAmt:=CalcTaxAmt ($TotAmt;$AnalysisCode)
+$NetAmt:=Round($TotAmt-$TaxAmt;2)
+End if 
+If ($TotAmt#0)
+APPEND TO ARRAY(asAnalysis;$AnalysisCode)
+APPEND TO ARRAY(adDesc;$Description)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;$TotAmt)
+APPEND TO ARRAY(aQuantity;0)
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;$NetAmt)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Repeat 
+$k:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+$k:=1
+Case of 
+: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=False)
+For ($t;1;Size of array(asAnalysis))
+If (asAnalysis{$t}=asTMAnalysisCodes{$j})
+If ([Facility]TaxAddtoAmt=True)
+If ([MerchPlan]RepeatMP=True)
+aNet{$t}:=Round((aNet{$t}/aQuantity{$t})*((100-$Percent)/100);1)*aQuantity{$t}
+Else 
+aNet{$t}:=Round((aNet{$t}/aQuantity{$t})*((100-[MerchPlan]PercDiscount)/100);1)*aQuantity{$t}
+End if 
+
+
+Case of 
+: ([Facility]Country="NZ")
+aNet{$t}:=Round(aNet{$t};1)
+: ([Facility]Country="AU")
+$Round:=aNet{$t}-Trunc(aNet{$t};1)
+Case of 
+: ($Round=0.01) | ($Round=0.02) | ($Round=0.08) | ($Round=0.09)
+aNet{$t}:=Round(aNet{$t};1)
+: ($Round=0.03) | ($Round=0.04) | ($Round=0.06) | ($Round=0.07)
+aNet{$t}:=Trunc(aNet{$t};1)+0.05
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+aTax{$t}:=CalcTaxAmt (aNet{$t};asAnalysis{$t};[Trxs]TrxDate;[Trxs]TrxDate;4)
+aTot{$t}:=Round(aNet{$t}+aTax{$t};2)
+Else 
+If ([MerchPlan]RepeatMP=True)
+aTot{$t}:=Round((aTot{$t}/aQuantity{$t})*((100-$Percent)/100);1)*aQuantity{$t}
+Else 
+aTot{$t}:=Round((aTot{$t}/aQuantity{$t})*((100-[MerchPlan]PercDiscount)/100);1)*aQuantity{$t}
+End if 
+
+Case of 
+: ([Facility]Country="NZ")
+aTot{$t}:=Round(aTot{$t};1)
+: ([Facility]Country="AU")
+$Round:=aTot{$t}-Trunc(aTot{$t};1)
+Case of 
+: ($Round=0.01) | ($Round=0.02) | ($Round=0.08) | ($Round=0.09)
+aTot{$t}:=Round(aTot{$t};1)
+: ($Round=0.03) | ($Round=0.04) | ($Round=0.06) | ($Round=0.07)
+aTot{$t}:=Trunc(aTot{$t};1)+0.05
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+aTax{$t}:=CalcTaxAmt (aTot{$t};asAnalysis{$t};[Trxs]TrxDate;[Trxs]TrxDate;4)
+aNet{$t}:=Round(aTot{$t}-aTax{$t};2)
+End if 
+End if 
+End for 
+: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis="")
+$TotAmount:=0
+For ($t;1;Size of array(asAnalysis))
+If (asAnalysis{$t}=asTMAnalysisCodes{$j})
+$TotAmount:=$TotAmount+aTot{$t}
+End if 
+End for 
+$AnalysisCode:=asTMAnalysisCodes{$j}
+QUERY([Analysis];[Analysis]Code=asTMAnalysisCodes{$j})
+$Description:=[Analysis]Description+" Discount"
+If ([MerchPlan]RepeatMP=True)
+$DiscAmt:=$TotAmount*((100-$Percent)/100)
+Else 
+$DiscAmt:=$TotAmount*((100-[MerchPlan]PercDiscount)/100)
+End if 
+Case of 
+: ([Facility]Country="NZ")
+$DiscAmt:=Round($DiscAmt;1)
+: ([Facility]Country="AU")
+$Round:=$DiscAmt-Trunc($DiscAmt;1)
+Case of 
+: ($Round=0.01) | ($Round=0.02) | ($Round=0.08) | ($Round=0.09)
+$DiscAmt:=Round($DiscAmt;1)
+: ($Round=0.03) | ($Round=0.04) | ($Round=0.06) | ($Round=0.07)
+$DiscAmt:=Trunc($DiscAmt;1)+0.05
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+If ([Facility]TaxAddtoAmt=True)
+$NetAmt:=($Total-$DiscAmt)*-1
+$TaxAmt:=CalcTaxAmt ($NetAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;4)
+$TotAmt:=Round($NetAmt+$TaxAmt;2)
+Else 
+$TotAmt:=($TotAmount-$DiscAmt)*-1
+$TaxAmt:=CalcTaxAmt ($TotAmt;$AnalysisCode;[Trxs]TrxDate;[Trxs]TrxDate;4)
+$NetAmt:=Round($TotAmt-$TaxAmt;2)
+End if 
+
+If ($TotAmt#0)
+APPEND TO ARRAY(asAnalysis;$AnalysisCode)
+APPEND TO ARRAY(adDesc;$Description)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;$TotAmt)
+APPEND TO ARRAY(aQuantity;0)
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;$NetAmt)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+End if 
+Else 
+//Do Nothing
+End case 
+DELETE FROM ARRAY(asTMAnalysisCodes;$j)
+$j:=Size of array(asTMAnalysisCodes)+1
+End if 
+End for 
+Until ($k=0)
+End if 
+NEXT RECORD([MerchPlan])
+End for 
+vDiscount:=vDiscount*-1
+
+For ($i;1;Size of array(asAnalysis))
+If ((Length(asAnalysis{$i})=10) & (asAnalysis{$i}="@IP"))
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring(asAnalysis{$i};1;8))
+If (Records in selection([MerchPlan])#0)
+$fullValue:=0
+$taxValue:=0
+asAnalysis{$i}:=[Facility]FacilityCode+[MerchPlan]DiscountAnalysis
+adDesc{$i}:=[MerchPlan]DiscountDescription
+
+$planItems:=[MerchPlan]AnalysisCodes
+
+While (Length($planItems)>0)
+$aCode:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$aCode+",";"";1)
+$qAmount:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$qAmount+",";"";1)
+
+QUERY([Analysis];[Analysis]Code=$aCode)
+
+APPEND TO ARRAY(asAnalysis;$aCode)
+APPEND TO ARRAY(adDesc;[Analysis]Description)
+vPlus:=[Analysis]DfltSellAmt*Num($qAmount)*aQuantity{$i}
+
+$TaxAmt:=CalcTaxAmt (vPlus;$aCode;[Trxs]TrxDate;[Trxs]TrxDate;4)
+APPEND TO ARRAY(aTax;$TaxAmt)
+APPEND TO ARRAY(aTot;vPlus)
+
+$fullValue:=$fullValue+vPlus
+$taxValue:=$taxValue+$TaxAmt
+
+APPEND TO ARRAY(aQuantity;Num($qAmount)*aQuantity{$i})
+APPEND TO ARRAY(aOrigQuantity;0)
+APPEND TO ARRAY(aNet;0)
+APPEND TO ARRAY(aCost;0)
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;"")
+APPEND TO ARRAY(abPrint;False)
+APPEND TO ARRAY(aiPrimaryKey;0)
+
+
+If ([Analysis]InvItem=True)
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-(Num($qAmount)*aQuantity{$i});0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-(Num($qAmount)*aQuantity{$i});2)
+End if 
+SAVE RECORD([Analysis])
+READ ONLY([Analysis])
+LOAD RECORD([Analysis])
+End if 
+
+End while 
+
+vPlus:=aTot{$i}-$fullValue
+aTax{$i}:=CalcTaxAmt (vPlus;[MerchPlan]DiscountAnalysis;[Trxs]TrxDate;[Trxs]TrxDate;5)
+aTot{$i}:=vPlus
+End if 
+End if 
+End for 
+
+End if 
+[Trxs]Narration:=vCustomerName+Char(17)+vMailAddress+Char(17)+vMailCity+Char(17)+vMailState+Char(17)+vMailPostZIPCode+Char(17)
+vDate:=[Trxs]TrxDate
+If ([Trxs]Match=0)
+
+$Continue:=False
+If (Not(Semaphore("<>bNextCashSaleNo";1800)))
+$Continue:=True
+End if 
+
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+
+bNext:=<>aiNextCashSaleNo{$arraypos}
+<>aiNextCashSaleNo{$arraypos}:=<>aiNextCashSaleNo{$arraypos}+1
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+
+CLEAR SEMAPHORE("<>bNextCashSaleNo")
+Else 
+bNext:=vCustNextMatch
+End if 
+Else 
+bNext:=[Trxs]Match//Existing record
+End if 
+//If (vNo=Size of array(aSeqNo))
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+READ WRITE([Customer])
+RELATE ONE([Trxs]CustomerCode)
+If ([Trxs]Match=0)
+[Trxs]Match:=bNext
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+End if 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+[Trxs]Charge:=False
+
+//30/08/16 DAM Added the coditions for [Trxs] table in order to make FB FB11160
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") & (([Trxs]CCAuthNo#"") | ([Trxs]OriginalReceipt#"") | ([Trxs]CCTransID#""))
+//If ([Analysis]SetBankedDate)
+//[Trxs]Confirmed:=True
+//[Trxs]DateBanked:=Current date
+//Else 
+//[Trxs]Confirmed:=False
+//End if 
+Else 
+[Trxs]Confirmed:=True
+End if 
+If ([Trxs]TrxTime=?00:00:00?)
+[Trxs]TrxTime:=Current time
+End if 
+RELATE ONE([Trxs]AnalysisCode)
+If ([Analysis]SetBankedDate=True) & ([Trxs]DateBanked=!00-00-00!)
+[Trxs]DateBanked:=[Trxs]TrxDate
+End if 
+ACCEPT
+VALIDATE TRANSACTION
+//Else 
+//AlertMessage (Get localized string("An error occurred - Unable to save - Please send message to")+" "+<>sOEMName+" "+Get localized string("Support!"))
+//CANCEL
+//End if 
+bAbortArray:=1
+//CANCEL
+//QUERY([Transaction];[Transaction]CustomerCode=<>sFacility+"MISCL";*)
+//If (bLast=1)
+//QUERY([Transaction]; & ;[Transaction]TrxDate>Current date-31;*)
+//End if 
+//QUERY([Transaction]; & ;[Transaction]Charge=False)
+//ORDER BY([Transaction];[Transaction]TrxDate;<;[Transaction]TotAmt;>)
+End if 
+End if 

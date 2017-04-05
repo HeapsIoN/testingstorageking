@@ -1,0 +1,34 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+ConfirmTwo (Get localized string("Delete this Card. Are you sure?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+LOAD RECORD([PhotosCards])
+QUERY([Analysis];[Analysis]Code=<>sFacility+"CRD")
+If ([PhotosCards]Deposit>0) & ([Analysis]Code=(<>sFacility+"CRD"))
+ConfirmTwo (Get localized string("Credit Deposit of")+" "+String([PhotosCards]Deposit;"####.00")+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate (Current date)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" "+[PhotosCards]PINCardNo
+[Trxs]TotAmt:=RoundAmt ([PhotosCards]Deposit*(-1))
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+End if 
+End if 
+DELETE RECORD([PhotosCards])
+QUERY([PhotosCards];[PhotosCards]Code=[Agreement]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+vbUpdateGate:=True
+End if 

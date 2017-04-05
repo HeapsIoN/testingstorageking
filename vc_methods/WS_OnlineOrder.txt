@@ -1,0 +1,642 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+//
+// ----------------------------------------------------
+// User name (OS): eugene.dorokhov
+// Date and time: 
+// ----------------------------------------------------
+// Method: WS_OnlineOrder
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+//
+
+
+SOAP DECLARATION(WS_ORFacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORCustomerName;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORCustomerEmail;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORCustomerPhone;Is string var;SOAP input)
+SOAP DECLARATION(WS_StreetAddress;Is text;SOAP input;"WS_StreetAddress")
+SOAP DECLARATION(WS_StreetSuburb;Is string var;SOAP input;"WS_StreetSuburb")
+SOAP DECLARATION(WS_StreetCity;Is string var;SOAP input;"WS_StreetCity")
+SOAP DECLARATION(WS_StreetState;Is string var;SOAP input;"WS_StreetState")
+SOAP DECLARATION(WS_StreetZIPCode;Is string var;SOAP input;"WS_StreetZIPCode")
+SOAP DECLARATION(WS_CustPass;Is string var;SOAP input)
+SOAP DECLARATION(WS_CTCustType;Is text;SOAP input)
+SOAP DECLARATION(WS_CallTakenBy;Is text;SOAP input)
+
+SOAP DECLARATION(WS_asQTAnalysisCode;String array;SOAP input)//array of analysis codes
+SOAP DECLARATION(WS_asQTPrice;Real array;SOAP input)//array of analysis code prices
+SOAP DECLARATION(WS_asAnalysisQty;Real array;SOAP input)//array of analysis code quantities
+//SOAP DECLARATION(WS_asAnalysisDescription;String array;SOAP Input)
+
+SOAP DECLARATION(WS_asDiscount;Real array;SOAP input)
+SOAP DECLARATION(WS_MerchPlanID;String array;SOAP input)
+SOAP DECLARATION(WS_MerchPlanQty;LongInt array;SOAP input)
+//SOAP DECLARATION(WS_InvPack;Is Boolean;SOAP Input)
+
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")//new reservation's customer code
+SOAP DECLARATION(WS_AgreementID;Is string var;SOAP output)
+SOAP DECLARATION(WS_OrderID;Is string var;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+
+//C_DATE($def_date)
+
+C_REAL($TotalAmt;$Amt;$aprice;$pck_disc)
+C_TEXT($str_tmp;$qAmount)
+ARRAY TEXT($ToRecord;0)
+$sumAmt:=0
+$str_tmp:=""
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_OnlineOrder"+Char(13)
+$String:=$String+"WS_ORFacilityCode: "+WS_ORFacilityCode+Char(13)
+$String:=$String+"WS_ORCustomerName: "+WS_ORCustomerName+Char(13)
+$String:=$String+"WS_ORCustomerEmail: "+WS_ORCustomerEmail+Char(13)
+$String:=$String+"WS_ORCustomerPhone: "+WS_ORCustomerPhone+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+//$String:=$String+"WS_Username: "+WS_Username+Char(13)
+$String:=$String+"WS_CustPass: "+WS_CustPass+Char(13)
+$String:=$String+"WS_Locked: "+String(WS_Locked)+Char(13)
+$String:=$String+"WS_CTCustType: "+WS_CTCustType+Char(13)
+$String:=$String+"WS_CallTakenBy: "+WS_CallTakenBy+Char(13)
+
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asQTAnalysisCode)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asQTAnalysisCode("+String($vlElem)+"):"+String(WS_asQTAnalysisCode{$vlElem})+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asQTPrice)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asQTPrice("+String($vlElem)+"):"+String(WS_asQTPrice{$vlElem})+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asAnalysisQty)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asAnalysisQty("+String($vlElem)+"):"+String(WS_asAnalysisQty{$vlElem})+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asDiscount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asDiscount("+String($vlElem)+"):"+String(WS_asDiscount{$vlElem})+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_MerchPlanID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanID("+String($vlElem)+"):"+String(WS_MerchPlanID{$vlElem})+Char(13)
+End for 
+
+$vlElem:=1
+$sizeofarray:=Size of array(WS_MerchPlanQty)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanQty("+String($vlElem)+"):"+String(WS_MerchPlanQty{$vlElem})+Char(13)
+End for 
+
+
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+READ WRITE([Trxs])
+READ WRITE([Contacts])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([OnlineOrders])
+READ WRITE([Analysis])
+
+C_TEXT($CurrencySymbol)
+ARRAY TEXT(Attachments;0)
+$CurrencySymbol:=GetTextNo ([Facility]CurrencyFormat;1;";")
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sProduct:=[Facility]ProductCode
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+//<>sFacility:=WS_ORFacilityCode
+
+QUERY([Facility];[Facility]FacilityCode=WS_ORFacilityCode)
+
+If (Records in selection([Facility])=1)
+Else //Facility Record Not Found
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+WS_ORSuccess:=False
+End if 
+
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"") & (WS_ORSuccess)
+
+If (WS_ORSuccess=True) & (Length(WS_ORCustomerName)<1)//Check the Customer Name
+WS_ORErrorCode:=1003
+WS_ORErrorDescription:="Invalid customer name."
+WS_ORSuccess:=False
+End if 
+
+If (WS_ORSuccess=True)//Create the Customer
+ORName:=WS_ORCustomerName
+ORName:=RemoveSpecial (ORName)
+If (ORName#"")
+DEFAULT TABLE([Customer])
+CREATE RECORD([Customer])
+$i:=0
+$Base:=Substring(Uppercase(Replace string(Replace string(ORName;" ";"");",";""));1;6)
+Repeat 
+$j:=5-Length(String($i;"#####"))
+$Code:=[Facility]FacilityCode+Substring($Base;1;$j)+String($i;"#####")
+$i:=$i+1
+Until (Find in field([Customer]CustomerCode;$Code)<0)
+[Customer]CustomerCode:=$Code
+[Customer]CustomerName:=WS_ORCustomerName
+[Customer]EmailAddress:=WS_ORCustomerEmail
+[Customer]PhonePrivate:=WS_ORCustomerPhone
+[Customer]MarketSrce:="Web"
+[Customer]CustType:=WS_CTCustType
+
+[Customer]MailAddress:=WS_StreetAddress
+[Customer]MailSuburb:=WS_StreetSuburb
+[Customer]MailCity:=WS_StreetCity
+[Customer]MailState:=WS_StreetState
+[Customer]MailPostZIPCode:=WS_StreetZIPCode
+
+If (WS_Locked)
+[Customer]Overdue:=1
+End if 
+$i:=Position(",";[Customer]CustomerName)
+If ($i>0) & ([Facility]AutoFirstName>1)
+[Customer]FirstName:=Reverse ([Customer]CustomerName;[Facility]AutoFirstName)
+End if 
+[Customer]GateTimeZone:=[Facility]GateTimeZoneDefault
+SAVE RECORD([Customer])
+Else 
+WS_ORErrorCode:=1004
+WS_ORErrorDescription:="Customer name contains invalid characters."
+WS_ORSuccess:=False
+End if 
+End if 
+
+If (WS_ORSuccess=True)//Create Agreement
+
+DEFAULT TABLE([Agreement])
+CREATE RECORD([Agreement])
+
+[Agreement]OrderComplete:=False
+[Agreement]ActiveAgreemt:=False
+[Agreement]CustomerCode:=[Customer]CustomerCode
+[Agreement]MoveIn:=Current date
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+[Agreement]NextBillDate:=[Agreement]MoveIn
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+[Agreement]LastBillDate:=[Agreement]MoveIn
+[Agreement]BalanceOwing:=[Agreement]DepositAmt
+[Agreement]UserLogin:="Web"
+[Agreement]CallTakenBy:="Web"
+[Agreement]BillingPlanCode:=[Facility]FacilityCode+"MO"
+[Agreement]MthsAdv:=1
+If (WS_CallTakenBy#"")
+[Agreement]UserLogin:=WS_CallTakenBy
+[Agreement]CallTakenBy:=WS_CallTakenBy
+End if 
+
+[Agreement]ContactNo:=[Contacts]ContactNo
+[Agreement]BillUtilities:=<>tUtilities
+
+If ([Agreement]AgreeNo="")
+$Continue:=False
+
+If (Not(Semaphore("<>bNextCreditSaleNo";1800)))
+$Continue:=True
+End if 
+
+If ($Continue)
+//If (Application type=4D Remote Mode)
+
+GET PROCESS VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+
+//End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+
+OK:=1
+[Agreement]AgreeNo:="#"+String(<>aiNextCreditSaleNo{$arraypos};"00000000")
+[Facility]NextCreditSaleNo:=<>aiNextCreditSaleNo{$arraypos}+1
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+
+vOldUser:=[Facility]NextCreditSaleNo
+
+$Key:=[Facility]FacilityCode+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+
+VARIABLE TO VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+
+
+
+Else 
+
+Repeat 
+[Agreement]AgreeNo:="#"+String([Facility]NextCreditSaleNo;"00000000")
+[Facility]NextCreditSaleNo:=[Facility]NextCreditSaleNo+1
+vOldUser:=[Facility]NextCreditSaleNo
+
+$Key:=[Facility]FacilityCode+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+End if 
+If ($Continue)
+CLEAR SEMAPHORE("<>bNextCreditSaleNo")
+End if 
+[Agreement]RAgreeNo:=$Key
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+End if 
+
+WS_OrderID:=Generate UUID
+[Agreement]OrderID:=WS_OrderID
+SAVE RECORD([Agreement])
+
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+[Customer]Password:=[Customer]CustomerCode//johnno 16/09/2015 - for storpay to pickup
+SAVE RECORD([Customer])
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+End if 
+$aQty:=0
+If (WS_ORSuccess)
+DEFAULT TABLE([Trxs])
+$str_tmp:=""
+
+For ($jj;1;Size of array(WS_asQTAnalysisCode))
+If (WS_asQTAnalysisCode{$jj}#"0")////by eugene
+CREATE RECORD([Trxs])
+[Trxs]OrderID:=WS_OrderID
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]DateFrom:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Confirmed:=True
+
+QUERY([Analysis];[Analysis]Code=WS_asQTAnalysisCode{$jj})
+[Trxs]AnalysisCode:=WS_asQTAnalysisCode{$jj}
+[Trxs]Description:=[Analysis]Description
+
+If (WS_asAnalysisQty{$jj}>1)
+[Trxs]Description:=[Trxs]Description+" x "+String(WS_asAnalysisQty{$jj})
+End if 
+
+If (WS_asDiscount{$jj}=0)// Normal transaction
+[Trxs]Qty:=WS_asAnalysisQty{$jj}
+[Trxs]TotAmt:=Round(WS_asQTPrice{$jj}*WS_asAnalysisQty{$jj};2)
+[Trxs]TaxAmt:=CalcTaxAmt (Round(WS_asQTPrice{$jj}*WS_asAnalysisQty{$jj};2))
+If (Records in selection([Analysis])=1)
+[Trxs]Description:=[Analysis]Description
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-WS_asAnalysisQty{$jj}
+SAVE RECORD([Analysis])
+End if 
+Else //Discount transaction
+[Trxs]Qty:=1
+[Trxs]TotAmt:=WS_asDiscount{$jj}*(-1)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+End if 
+
+If (WS_CallTakenBy#"")
+[Trxs]UserLogin:=WS_CallTakenBy
+Else 
+[Trxs]UserLogin:="Web"
+End if 
+SAVE RECORD([Trxs])
+
+//  //If (WS_asDiscount{$jj}#0) & (WS_asQTAnalysisCode{$jj}#"")
+//If (WS_asDiscount{$jj}#0) & (WS_asQTAnalysisCode{$jj}#"0")  /// by eugene
+//$Result:=0
+//$Result:=Find in array($ToRecord;WS_MerchPlanID{$jj})
+//If ($Result>0)
+//Else 
+//APPEND TO ARRAY($ToRecord;WS_MerchPlanID{$jj})
+//End if 
+//End if 
+
+End if 
+End for 
+
+//For pack transactions
+For ($jj;1;Size of array(WS_MerchPlanID))
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=WS_MerchPlanID{$jj})
+If (Records in selection([MerchPlan])=1)
+
+$pck_disc:=0
+$str_tmp:=[MerchPlan]AnalysisCodes
+$aprice:=0
+$Amt:=0
+$qAmount:=""
+
+While ($str_tmp#"")
+$i:=Position(",";$str_tmp)
+If ($i>0)
+$aCode:=Substring($str_tmp;1;Position(",";$str_tmp)-1)
+$str_tmp:=Replace string($str_tmp;($aCode+",");"";1)
+$qAmount:=Substring($str_tmp;1;Position(",";$str_tmp)-1)
+$str_tmp:=Replace string($str_tmp;($qAmount+",");"";1)
+
+QUERY([Analysis];[Analysis]Code=$aCode)
+If (Records in selection([Analysis])=1)
+$aprice:=Num($qAmount)*[Analysis]DfltSellAmt
+End if 
+$Amt:=$Amt+($aprice*(WS_MerchPlanQty{$jj}))
+
+If (($aprice*(WS_MerchPlanQty{$jj})>0))
+CREATE RECORD([Trxs])
+[Trxs]OrderID:=WS_OrderID
+[Trxs]Description:=[Analysis]Description+" x "+String(Num($qAmount)*WS_MerchPlanQty{$jj})
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Qty:=(Num($qAmount)*WS_MerchPlanQty{$jj})
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TotAmt:=$aprice*(WS_MerchPlanQty{$jj})///$Amt////[MerchPlan]FixedDiscount*(WS_MerchPlanQty{$jj})
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]Qty:=Num($qAmount)*Num(WS_MerchPlanQty{$jj})
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+
+SAVE RECORD([Trxs])
+
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-(Num($qAmount)*WS_MerchPlanQty{$jj})
+SAVE RECORD([Analysis])
+
+End if 
+End if 
+End while 
+
+//discount
+CREATE RECORD([Trxs])
+[Trxs]OrderID:=WS_OrderID
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+[MerchPlan]DiscountAnalysis)
+
+If ([MerchPlan]DiscountDescription="")
+[Trxs]Description:=[Analysis]Description
+Else 
+[Trxs]Description:=[MerchPlan]DiscountDescription
+End if 
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]Qty:=Num($qAmount)*Num(WS_MerchPlanQty{$jj})
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+[Trxs]TotAmt:=([MerchPlan]FixedDiscount*(WS_MerchPlanQty{$jj}))-$Amt
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+
+End if 
+End for 
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=0
+asShowHistory:=1
+ReCalc 
+
+WS_AgreementID:=[Agreement]RAgreeNo
+WS_CustomerID:=[Agreement]CustomerCode
+SAVE RECORD([Agreement])
+[Customer]Balance:=[Agreement]BalanceOwing
+SAVE RECORD([Customer])
+
+
+//email order  /////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+QUERY([Facility];[Facility]FacilityCode=WS_CTFacility)
+$CurrencySymbol:=GetTextNo ([Facility]CurrencyFormat;1;";")
+
+If ([Facility]ResSendFacEmail=True)
+$cr:=Char(13)+Char(10)
+$MessageBody:="A new Online Order has been created:"+$cr
+$MessageBody:=$MessageBody+"Order Number: "+[Facility]FacilityCode+[Agreement]AgreeNo+$cr
+$MessageBody:=$MessageBody+"Date: "+String(Current date;5)+$cr
+$MessageBody:=$MessageBody+"Time: "+String(Current time)+$cr
+$MessageBody:=$MessageBody+"Customer Name: "+[Customer]CustomerName+";"+$cr
+$MessageBody:=$MessageBody+"Email Address: "+[Customer]EmailAddress+$cr
+$MessageBody:=$MessageBody+"Phone Number: "+WS_ORCustomerPhone+$cr
+//$MessageBody:=$MessageBody+"Sales Enquiry: "+[Contacts]ContactNo+$cr
+$MessageBody:=$MessageBody+"Facility: "+[Facility]FacilityName+$cr
+//$MessageBody:=$MessageBody+"Description: "+[UnitType]Description+$cr
+$MessageBody:=$MessageBody+"Online Order Total: "+$CurrencySymbol+String(([Agreement]BalanceOwing);"#####0.00")+$cr
+//$MessageBody:=$MessageBody+"Reservation Payment Received: "+$CurrencySymbol+String((WS_TotAmt);"#####0.00")+$cr
+//$MessageBody:=$MessageBody+"Date Required: "+WS_ORDateUnitRequired+$cr
+//If ([Reservation]Weekly=True)
+//$WeeklyMonthly:="Weekly"
+//Else 
+//$WeeklyMonthly:="Monthly"
+//End if 
+//$MessageBody:=$MessageBody+"Weekly / Monthly: "+$WeeklyMonthly+$cr
+CREATE RECORD([Message])
+[Message]Subject:=[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Your Online Reservation has been created."
+[Message]Address:=[Facility]OResFacNotifEmail
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=$MessageBody
+[Message]Attachments:=""
+[Message]Facility:=[Facility]FacilityCode
+SAVE RECORD([Message])
+WSRecordLog ("Send email to facility start")
+$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - New Online Reservation";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")//Notification Email to Facility
+WSRecordLog ("Send email to facility end")
+If ($OK=True)
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+Else 
+WS_ORErrorCode:=9
+WS_ORErrorDescription:="Facility Notification Email failed!"
+End if 
+Else 
+$SendToFacility:="Online Order Successfull. Email Facility not enabled."+Char(13)
+End if 
+
+//SET AUTOMATIC RELATIONS(True;True)
+//QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+//QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+//QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+//If ([Facility]ResSendCustEmail=True)
+//$OK:=OR_EmailCust 
+//If ($OK=False)
+//WS_ORErrorCode:=10
+//WS_ORErrorDescription:="Customer Notification Email failed!"
+//End if 
+//Else 
+//$SendToCustomer:="Online Reservation Successfull. Email Customer not enabled."+Char(13)
+//End if 
+
+//email order  /////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+//For ($jj;1;Size of array(WS_asQTAnalysisCode))
+//CREATE RECORD([Trxs])
+//[Trxs]AgreeNo:=[Agreement]RAgreeNo
+//[Trxs]CustomerCode:=[Customer]CustomerCode
+//[Trxs]TrxDate:=Current date
+//
+//
+//[Trxs]Charge:=True
+//[Trxs]AnalysisCode:=WS_asQTAnalysisCode{jj}
+//[Trxs]Qty:=WS_asAnalysisQty{jj}
+//[Trxs]TotAmt:=WS_asQTPrice{jj}
+//[Trxs]TaxAmt:=CalcTaxAmt (WS_asQTPrice{jj})
+//[Trxs]DiscAmt:=WS_asDiscount{jj}
+//
+//
+//
+//[Trxs]Confirmed:=True
+//
+//QUERY([Analysis];[Analysis]Code=WS_asQTAnalysisCode{jj})
+//If (Records in selection([Analysis])=1)
+//[Trxs]Description:=[Analysis]Description
+//
+//[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-WS_asAnalysisQty{jj}
+//
+//If ([Analysis]InvQtyonHand<0)
+//  //Need to send email to site about it
+//
+//
+//End if 
+//SAVE RECORD([Analysis])
+//
+//End if 
+//[Trxs]DateFrom:=WS_OrderDate
+//[Trxs]TrxTime:=WS_OrderTime
+//
+//If (WS_CallTakenBy#"")
+//[Trxs]UserLogin:=WS_CallTakenBy
+//Else 
+//[Trxs]UserLogin:="Web"
+//End if 
+//
+//SAVE RECORD([Trxs])
+//
+//jj:=jj+1  // do not remove !
+//End for 
+
+//WS_OrderID:=Generate UUID
+//DEFAULT TABLE([OnlineOrders])
+//CREATE RECORD([OnlineOrders])
+//[OnlineOrders]AgreeNo:=[Agreement]RAgreeNo  //agreement number of new or existing customer here
+//[OnlineOrders]CustomerCode:=[Customer]CustomerCode  //customer code of new or existing customer here
+//[OnlineOrders]Completed:=False
+//
+//$str_tmp:=""
+//jj:=1
+//For ($jj;1;Size of array(WS_asQTAnalysisCode))
+//If ($str_tmp="")
+//$str_tmp:=$str_tmp+String(WS_asQTAnalysisCode{jj})
+//Else 
+//$str_tmp:=$str_tmp+","+String(WS_asQTAnalysisCode{jj})
+//End if 
+////jj:=jj+1
+//End for 
+//[OnlineOrders]AnalysisCodes:=$str_tmp  //WS_asQTAnalysisCode  //loop through arrays and put into field separated by comma
+//
+//$str_tmp:=""
+//jj:=1
+//For ($jj;1;Size of array(WS_asAnalysisQty))
+//If ($str_tmp="")
+//$str_tmp:=$str_tmp+String(WS_asAnalysisQty{jj})
+//Else 
+//$str_tmp:=$str_tmp+","+String(WS_asAnalysisQty{jj})
+//End if 
+////jj:=jj+1
+//End for 
+//[OnlineOrders]AnalysisQtys:=$str_tmp  //WS_asAnalysisQty  //loop through arrays and put into field separated by comma
+//
+//$str_tmp:=""
+//jj:=1
+//For ($jj;1;Size of array(WS_asQTPrice))
+//If ($str_tmp="")
+//$str_tmp:=$str_tmp+String(WS_asQTPrice{jj})
+//Else 
+//$str_tmp:=$str_tmp+","+String(WS_asQTPrice{jj})
+//End if 
+////jj:=jj+1
+//End for 
+//[OnlineOrders]AnalysisPrices:=$str_tmp  //WS_asQTPrice  //loop through arrays and put into field separated by comma
+//$str_tmp:=""
+//
+//[OnlineOrders]OrderDate:=WS_OrderDate  //if passed blank, use current date?
+//[OnlineOrders]OrderTime:=WS_OrderTime  //if passed blank, use current time?
+//[OnlineOrders]OrderTotal:=WS_OrderTotal
+//[OnlineOrders]FacilityCode:="test4"  //WS_Facility
+//[OnlineOrders]OrderID:=WS_OrderID
+//SAVE RECORD([OnlineOrders])
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+
+
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+
+READ ONLY([OnlineOrders])
+UNLOAD RECORD([OnlineOrders])
+
+
+$String:="End WS_OnlineOrder"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_AgreementID: "+WS_AgreementID+Char(13)
+///$String:=$String+"WS_UnitsOccupied: "+WS_UnitsOccupied+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

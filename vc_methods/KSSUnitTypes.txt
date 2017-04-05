@@ -1,0 +1,239 @@
+//%attributes = {"publishedWeb":true,"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0)
+C_TEXT($1;$UniType;$2;$Var)
+C_TEXT($XMLResult;KSSUnitTypeCode;)
+C_TEXT($FacilityCode;$value;$Text;$name)
+C_LONGINT($k;$SortOrd)
+C_LONGINT($TCPID;$Error;$Pos;$TCP_ReceiveError)
+//C_TEXT($2;$Text)
+
+//$Text:=$2
+
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+If ([UnitType]BillPlanCode#"")
+QUERY([BillPlan];[BillPlan]Code=[UnitType]BillPlanCode)
+End if 
+
+If (Records in selection([UnitType])#0)
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+$TransactionResponse:=""
+
+$Server:="stage.kss.com.au"
+
+$Header:=$Header+"GET /api/get_unit_type/"+[Unit]UnitTypeCode+" HTTP/1.1 "+$cr
+$Header:=$Header+"Host: "+$Server+$cr+$cr
+
+$Error:=TCP_Open ($Server;80;$TCPID;0)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header)
+$Reply:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 15 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10) & (Position("</items>";$Reply)>0))
+$Message:=$Reply
+//SET TEXT TO PASTEBOARD($Message)
+$Error:=TCP_Close ($TCPID)
+If ($Message="")
+$0:="ERRTCP"
+Else 
+//Strip headers somewhere in here
+$HTTPResponseCode:=""
+Repeat //While a complete HTTP request and response is being received
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)
+If (Position("HTTP/";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else 
+
+$NewPos:=1
+Repeat 
+$NewPos:=Position("\n";$Message;$NewPos;*)
+$NextBracket:=Position("<";$Message;$NewPos)
+If (Substring($Message;$NextBracket;1)="<")
+$EndPos:=Position("\n";$Message;$NewPos+1;*)
+$XMLResult:=$XMLResult+Substring($Message;$NewPos+1;$EndPos-$NewPos)
+$NewPos:=$EndPos
+End if 
+
+Until (Position("<";$Message;$NewPos)=0)
+
+Case of 
+: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$TransactionResponse:=$Message
+Else 
+$TransactionResponse:=" "
+$Error:=Num($HTTPResponseCode)
+End case 
+End if 
+Until ($TransactionResponse#"")
+
+$XMLRef:=DOM Parse XML variable($XMLResult)
+
+$vElement:=DOM Find XML element($XMLRef;"/items/item/UnitTypeCode")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUUnitTypeCode:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/Description")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUDescription:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/MonthlyRate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUMonthlyRate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/NoTotal")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUNoTotal:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/SortOrder")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUSortOrder:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/NoVacant")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUNoVacant:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RentedValue")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURentedValue:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/DepositAmt")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUDepositAmt:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/AreaSizeTotal")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUAreaSizeTotal:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/AreaSizeOccup")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUAreaSizeOccup:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/WeeklyRate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUWeeklyRate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/NoExpMoveOut")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUNoExpMoveOut:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RentControlOn")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURentControlOn:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCFixedIncr")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCFixedIncr:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCPercentIncr")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCPercentIncr:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCIntervalDays")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCIntervalDays:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCUpperActivate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCUpperActivate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCLowerActivate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCLowerActivate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCLastModDate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCLastModDate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RUnitType")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURUnitType:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RentAnalysis")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURentAnalysis:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCUpperLimit")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSRCUpperLimit:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCLowerLimit")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCLowerLimit:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/DispOnlineReserve")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUDispOnlineReserve:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/OResHideRates")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUOResHideRates:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCFixedIncrL")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCFixedIncrL:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCPercentIncrL")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCPercentIncrL:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCOccDays")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCOccDays:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCRoundRent")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCRoundRent:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCBillPlan")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCBillPlan:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCEmailAddress")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCEmailAddress:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCDays")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCDays:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/RCSpecial")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSURCSpecial:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/BillPlanCode")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUBillPlanCode:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/UnitCategory")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUUnitCategory:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/SizeCategory")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUSizeCategory:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/UnitTypeLength")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUUnitTypeLength:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/UnitTypeWidth")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUUnitTypeWidth:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/Area")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUArea:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/MonthlySpecialRate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUMonthlySpecialRate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/updatetime")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUupdatetime:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/VariableLength")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUVariableLength:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/CTPrices")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUCTPrices:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/WeeklySpecialRate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUWeeklySpecialRate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/VariableMinimum")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUVariableMinimum:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/DailyRate")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUDailyRate:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/image")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUimage:=$value
+$vElement:=DOM Find XML element($XMLRef;"/items/item/label")
+DOM GET XML ELEMENT VALUE($vElement;$value)
+KSSUlabel:=$value
+
+ON ERR CALL("ErrorNone")
+
+ON ERR CALL("ErrorLog")
+
+End if 
+End if 
+End if 

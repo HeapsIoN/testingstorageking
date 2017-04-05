@@ -1,0 +1,74 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//True if okay
+C_TEXT($1)//Card Number supplied // needs to be CC not token
+C_LONGINT($i;$j;$Value;$Total)
+C_BOOLEAN($Double)
+$0:=False
+$j:=Length($1)-1
+$Double:=True
+
+ARRAY LONGINT(aiStartsWith;0)
+ARRAY TEXT(atDescription;0)
+ARRAY LONGINT(aiLength;2)
+aiLength{1}:=-2
+aiLength{2}:=255
+
+TextToArrays (->[Facility]ACC;->aiLength;->aiStartsWith;->atDescription)
+
+SORT ARRAY(aiStartsWith;atDescription;>)
+
+If (Size of array(aiStartsWith)>0)
+$OK:=False
+
+For ($k;1;Size of array(aiStartsWith))
+$Test:=String(aiStartsWith{$k})+"@"
+If ($1=$Test)
+$OK:=True
+End if 
+End for 
+
+Else 
+$OK:=True
+End if 
+
+If ($OK=True)
+If (Substring($1;1;4)="6009")//Bartercard
+$0:=True
+Else 
+If ($j>10)
+$Total:=0
+For ($i;$j;1;-1)
+If ($Double)
+$Value:=Num(Substring($1;$i;1))*2
+Else 
+$Value:=Num(Substring($1;$i;1))
+End if 
+If ($Value>9)
+$Value:=$Value-10
+$Total:=$Total+1
+End if 
+$Total:=$Total+$Value
+$Double:=Not($Double)
+End for 
+$Total:=(10-($Total%10))%10//if 10 then 0
+If (String($Total)=Substring($1;Length($1);1))
+$0:=True
+Else 
+If (Not(IsAWebProcess ))
+//AlertMessage ([Customer]CustomerCode+": "+Get localized string("The credit card number is invalid - Please check."))
+AlertMessage ("Invalid credit card number!")
+End if 
+End if 
+Else 
+If (Not(IsAWebProcess ))
+//AlertMessage ([Customer]CustomerCode+": "+Get localized string("The credit card number is not long enough - Please check."))
+AlertMessage ("The credit card number is not long enough, please check!")
+End if 
+End if 
+End if 
+Else 
+If (Not(IsAWebProcess ))
+//AlertMessage ([Customer]CustomerCode+": "+Get localized string("The credit card type is not accepted"))
+AlertMessage ("This credit card is not accepted!")
+End if 
+End if 

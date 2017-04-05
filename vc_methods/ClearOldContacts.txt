@@ -1,0 +1,39 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Also need to store the date when this is run and make sure that CheckACtivity nevers updates prior to this date
+If (<>sCurrentUser="AdminSupport")
+If (<>tClient)
+AlertMessage (Get localized string("Make sure that no other users are logged in with the same name")+" "+[UserLogins]Name+" "+Get localized string("while clearing Sales Contacts, otherwise activity data may be lost."))
+End if 
+$Date:=RequestDate (Get localized string("Delete sales contacts prior to")+" :";Current date-90)
+If (OK=1)
+QUERY([Contacts];[Contacts]CallDate<$Date;*)
+ConfirmTwo (Get localized string("Only delete where follow up was set to actioned?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+QUERY([Contacts]; & ;[Contacts]FollowUpDone=True;*)
+End if 
+QUERY([Contacts])
+CREATE SET([Contacts];"ToDelete")
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection([Contacts]))+" "+Get localized string("of")+" "+String(Records in table([Contacts]))+" "+Get localized string("sales contacts - Are you sure?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+//Don't record activity, otherwise all stats will disappear
+If (Records in selection([UserLogins])=1)
+READ WRITE([UserLogins])
+LOAD RECORD([UserLogins])
+[UserLogins]RecordStatus:=1//0=Record Everything, 1=Dont Log Activity, 2=Dont Create EventLog, 3=Dont do either
+SAVE RECORD([UserLogins])
+READ WRITE([Contacts])
+FIRST RECORD([Contacts])
+DELETE SELECTION([Contacts])
+READ ONLY([Contacts])
+[UserLogins]RecordStatus:=0
+SAVE RECORD([UserLogins])
+READ ONLY([UserLogins])
+LOAD RECORD([UserLogins])
+Else 
+AlertMessage (Get localized string("Must be logged in as a valid user for this procedure."))
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Please contact Storman Support about using this feature"))
+End if 

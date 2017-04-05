@@ -1,0 +1,26 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//[Transaction]Analysis
+C_DATE($2)//[Transaction]DateBanked
+C_TEXT($Code)
+QUERY([Analysis];[Analysis]Code=$1)
+If ([Analysis]GLCode>"")
+$Code:=Substring([Analysis]GLCode;1;5)//This should be set to BANKG, EFT, AP, etc
+Else 
+$Code:="BANKG"
+End if 
+QUERY([CashBook];[CashBook]CustSuppCode=$Code;*)
+QUERY([CashBook]; & ;[CashBook]RecPmt=True;*)
+QUERY([CashBook]; & ;[CashBook]InvDate=$2)
+If (Records in selection([CashBook])=0)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")//Primary Bank acct
+CREATE RECORD([CashBook])
+[CashBook]CustSuppCode:=$Code
+[CashBook]RecPmt:=True
+[CashBook]TrxLinkNo:=Sequence number([CashBook])
+[CashBook]InvDate:=$2
+[CashBook]CashDate:=$2
+[CashBook]BankAcct:=[ChartAccts]AcctNo
+[CashBook]Paid:=True
+SAVE RECORD([CashBook])
+End if 
+RELATE MANY([CashBook]TrxLinkNo)

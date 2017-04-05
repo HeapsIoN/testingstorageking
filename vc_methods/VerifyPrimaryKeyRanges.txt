@@ -1,0 +1,129 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Check that no Primary Key Ranges Overlap by cycling through the Facility records comparing to the last range used, if already used then error
+C_BOOLEAN($0)
+$0:=True
+C_LONGINT($CurrentPrimaryKeyMax;$CurrentPrimaryKeyMin;$NewPrimaryKeyMax;$NewPrimaryKeyMin;$FoundRecords)
+
+$FoundRecords:=0
+$CurrentPrimaryKeyMax:=Old([Facility]PrimaryKeyMax)
+$CurrentPrimaryKeyMin:=Old([Facility]PrimaryKeyMin)
+$NewPrimaryKeyMax:=[Facility]PrimaryKeyMax
+$NewPrimaryKeyMin:=[Facility]PrimaryKeyMin
+$ProductCode:=[Facility]ProductCode
+
+If (<>sProduct="M@")
+Case of 
+: ($NewPrimaryKeyMin>$NewPrimaryKeyMax) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0)) & ($ProductCode#"M@")
+$0:=False
+AlertMessage (Get localized string("Primary Key Minimum value must be less than the Primary Key Maximum value"))
+: ($NewPrimaryKeyMin<$NewPrimaryKeyMax) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0)) & ($ProductCode="M@")
+$0:=False
+AlertMessage (Get localized string("Primary Key Minimum value must be greater than the Primary Key Maximum value in the case of MV"))
+: ($NewPrimaryKeyMax#0) | ($NewPrimaryKeyMin#0)
+SET QUERY DESTINATION(Into variable;$FoundRecords)
+QUERY([Facility];[Facility]PrimaryKeyMax#$CurrentPrimaryKeyMax;*)
+QUERY([Facility]; & ;[Facility]PrimaryKeyMin#$CurrentPrimaryKeyMin;*)
+QUERY([Facility]; & ;[Facility]PrimaryKeyMin<=$NewPrimaryKeyMax;*)
+QUERY([Facility]; & ;[Facility]PrimaryKeyMax>=$NewPrimaryKeyMax)
+If ($FoundRecords>0)
+$0:=False
+Else 
+SET QUERY DESTINATION(Into variable;$FoundRecords)
+QUERY([Facility];[Facility]PrimaryKeyMax#$CurrentPrimaryKeyMax;*)
+QUERY([Facility]; & ;[Facility]PrimaryKeyMin#$CurrentPrimaryKeyMin;*)
+QUERY([Facility]; & ;[Facility]PrimaryKeyMax>=$NewPrimaryKeyMin;*)
+QUERY([Facility]; & ;[Facility]PrimaryKeyMin<=$NewPrimaryKeyMin)
+If ($FoundRecords>0)
+$0:=False
+End if 
+End if 
+If ($0=False)
+AlertMessage (Get localized string("The Primary Key range conflicts with another Facility - please check and correct!"))
+End if 
+End case 
+Else 
+Case of 
+: ($NewPrimaryKeyMin>$NewPrimaryKeyMax) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0))
+$0:=False
+AlertMessage (Get localized string("Primary Key Minimum value must be less than the Primary Key Maximum value"))
+
+//: ($NewPrimaryKeyMax<0) | ($NewPrimaryKeyMin<0) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0))
+//$0:=False
+//AlertMessage (Get localized string("Primary Keys must have values greater than '0'"))
+Else 
+//Do Nothing
+End case 
+End if 
+SET QUERY DESTINATION(Into current selection)
+
+
+
+//  `SDD Back to 8.1.2
+//  `Check that no Primary Key Ranges Overlap by cycling through the Facility records comparing to the last range used, if already used then error
+//C_BOOLEAN($0)
+//$0:=True
+//C_LONGINT($CurrentPrimaryKeyMax;$CurrentPrimaryKeyMin;$NewPrimaryKeyMax;$NewPrimaryKeyMin)
+//
+//  `Ensure that if a Facility record is currently loaded that it is restored after this process.
+//If (Records in selection([Facility])>0)
+//$CurrentPrimaryKeyMax:=Old([Facility]PrimaryKeyMax)
+//$CurrentPrimaryKeyMin:=Old([Facility]PrimaryKeyMin)
+//$NewPrimaryKeyMax:=[Facility]PrimaryKeyMax
+//$NewPrimaryKeyMin:=[Facility]PrimaryKeyMin
+//$ProductCode:=[Facility]ProductCode
+//COPY NAMED SELECTION([Facility];"CurrentFacility")
+//If (Modified record([Facility])=False)
+//LOAD RECORD([Facility])
+//End if 
+//PUSH RECORD([Facility])
+//
+//  `Get the Facilities and sort by PrimaryKeyMin (Ascending)
+//QUERY([Facility];[Facility]PrimaryKeyMax#$CurrentPrimaryKeyMax;*)
+//QUERY([Facility]; & ;[Facility]PrimaryKeyMin#$CurrentPrimaryKeyMin)
+//
+//If (◊sProduct="M@")
+//Case of 
+//: ($NewPrimaryKeyMin>$NewPrimaryKeyMax) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0)) & ($ProductCode#"M@")
+//$0:=False
+//AlertMessage ("Primary Key Minimum value must be less than the Primary Key Maximum value")
+//: ($NewPrimaryKeyMin<$NewPrimaryKeyMax) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0)) & ($ProductCode="M@")
+//$0:=False
+//AlertMessage ("Primary Key Minimum value must be greater than the Primary Key Maximum value in the case of MV")
+//: ($NewPrimaryKeyMax#0) | ($NewPrimaryKeyMin#0)
+//CREATE SET([Facility];"ToCheckAgainst")
+//QUERY SELECTION([Facility];[Facility]PrimaryKeyMin<=$NewPrimaryKeyMax;*)
+//QUERY SELECTION([Facility]; & ;[Facility]PrimaryKeyMax>=$NewPrimaryKeyMax)
+//If (Records in selection([Facility])>0)
+//$0:=False
+//Else 
+//USE SET("ToCheckAgainst")
+//QUERY SELECTION([Facility];[Facility]PrimaryKeyMax>=$NewPrimaryKeyMin)
+//QUERY SELECTION([Facility];[Facility]PrimaryKeyMin<=$NewPrimaryKeyMin)
+//If (Records in selection([Facility])>0)
+//$0:=False
+//End if 
+//End if 
+//CLEAR SET("ToCheckAgainst")
+//If ($0=False)
+//AlertMessage ("The Primary Key range conflicts with Facility '"+[Facility]FacilityCode+"', (Min: "+String([Facility]PrimaryKeyMin)+",  Max: "+String([Facility]PrimaryKeyMax)+") - please correct!")
+//End if 
+//Else 
+//  `Do nothing
+//End case 
+//Else 
+//Case of 
+//: ($NewPrimaryKeyMin>$NewPrimaryKeyMax) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0))
+//$0:=False
+//AlertMessage ("Primary Key Minimum value must be less than the Primary Key Maximum value")
+//
+//: ($NewPrimaryKeyMax<-1500000000) | ($NewPrimaryKeyMin<-1500000000) & (($NewPrimaryKeyMin#0) & ($NewPrimaryKeyMax#0))
+//$0:=False
+//AlertMessage ("Primary Keys must have values greater than '-1,500,000,000'")
+//Else 
+//  `Do Nothing
+//End case 
+//End if 
+//USE NAMED SELECTION("CurrentFacility")
+//CLEAR NAMED SELECTION("CurrentFacility")
+//POP RECORD([Facility])
+//End if 

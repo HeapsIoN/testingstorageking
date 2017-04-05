@@ -1,0 +1,150 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 27/02/12, 17:26:12
+// ----------------------------------------------------
+// Method: SVG_ShowResize
+// Description
+// This method is to move the resize handles to the correct positions on the SVG, or hide if no value is passed
+//
+// Parameters
+// $1 - Pointer to array containing attribute names
+// $2 - Pointer to array containing attribute values
+// ----------------------------------------------------
+
+C_POINTER($1;$2)
+$resizable:=False
+$rotated:=False
+
+If (Size of array($1->)>0)
+$rotated:=False
+$loc:=Find in array($1->;"transform")
+If ($loc>0)
+If ($2->{$loc}#"rotate(0 @")
+$rotated:=True
+End if 
+End if 
+
+
+//If (Not($rotated))
+$loc:=Find in array($1->;"type")
+If ($loc>0)
+$resizable:=True
+Case of 
+: ($2->{$loc}="rect")
+$x:=Find in array($1->;"x")
+$y:=Find in array($1->;"y")
+$widthvar:=Find in array($1->;"width")
+$heightvar:=Find in array($1->;"height")
+: ($2->{$loc}="circle")
+$x:=Find in array($1->;"cx")
+$y:=Find in array($1->;"cy")
+$widthvar:=Find in array($1->;"r")
+$heightvar:=Find in array($1->;"r")
+: ($2->{$loc}="ellipse")
+$x:=Find in array($1->;"cx")
+$y:=Find in array($1->;"cy")
+$widthvar:=Find in array($1->;"rx")
+$heightvar:=Find in array($1->;"ry")
+: ($2->{$loc}="image")
+$x:=Find in array($1->;"x")
+$y:=Find in array($1->;"y")
+$widthvar:=Find in array($1->;"width")
+$heightvar:=Find in array($1->;"height")
+: ($2->{$loc}="line")
+$x:=Find in array($1->;"x1")
+$y:=Find in array($1->;"y1")
+$widthvar:=Find in array($1->;"x2")
+$heightvar:=Find in array($1->;"y2")
+: ($2->{$loc}="text")
+Else 
+$resizable:=False
+End case 
+
+$x1:=$2->{$x}
+$y1:=$2->{$y}
+$widthval:=$2->{$widthvar}
+$heightval:=$2->{$heightvar}
+
+Case of 
+: ($2->{$loc}="circle") | ($2->{$loc}="ellipse")
+$x1:=String(Num($x1)-Num($widthval))
+$y1:=String(Num($y1)-Num($heightval))
+$widthval:=String(Num($widthval)*2)
+$heightval:=String(Num($heightval)*2)
+: ($2->{$loc}="line")
+$widthval:=String(Num($widthval)-Num($x1))
+$heightval:=String(Num($heightval)-Num($y1))
+End case 
+
+
+
+
+$x2:=String(Num($x1)+Round((Num($widthval)/2);0))
+$y2:=String(Num($y1)+Round((Num($heightval)/2);0))
+$x3:=String(Num($x1)+(Num($widthval)))
+$y3:=String(Num($y1)+(Num($heightval)))
+//$x4:=$x1+String(Round((Int($widthval)/2)))
+//$y4:=$y1+String(Round((Int($heightval)/2)))
+Case of 
+: ($2->{$loc}="text")
+//Do nothing for text
+: ($2->{$loc}="line")
+SVG_SET_ATTRIBUTES (resizeHandles{1};"visibility";"visible";"cx";$x1;"cy";$y1)//Top Left
+SVG_SET_ATTRIBUTES (resizeHandles{8};"visibility";"visible";"cx";$x3;"cy";$y3)//Bottom Right
+Else 
+SVG_SET_ATTRIBUTES (resizeHandles{1};"visibility";"visible";"cx";$x1;"cy";$y1)//Top Left
+SVG_SET_ATTRIBUTES (resizeHandles{2};"visibility";"visible";"cx";$x2;"cy";$y1)//Top Middle
+SVG_SET_ATTRIBUTES (resizeHandles{3};"visibility";"visible";"cx";$x3;"cy";$y1)//Top Right
+
+
+SVG_SET_ATTRIBUTES (resizeHandles{4};"visibility";"visible";"cx";$x1;"cy";$y2)//Middle Left
+SVG_SET_ATTRIBUTES (resizeHandles{5};"visibility";"visible";"cx";$x3;"cy";$y2)//Middle Right
+
+SVG_SET_ATTRIBUTES (resizeHandles{6};"visibility";"visible";"cx";$x1;"cy";$y3)//Bottom Left
+SVG_SET_ATTRIBUTES (resizeHandles{7};"visibility";"visible";"cx";$x2;"cy";$y3)//Bottom Middle
+SVG_SET_ATTRIBUTES (resizeHandles{8};"visibility";"visible";"cx";$x3;"cy";$y3)//Bottom Right
+
+$loc1:=Find in array($1->;"transform")
+If ($loc1>0)
+$Pos:=Position(" ";$2->{$loc1})
+$No:=$Pos-8
+$angle:=Substring($2->{$loc1};8;$No)
+
+If (Num($angle)=0) | (Num($angle)=90) | (Num($angle)=180) | (Num($angle)=270) | (Num($angle)=360)
+Else 
+SVG_SET_ATTRIBUTES (resizeHandles{1};"visibility";"hidden")//Top Left
+SVG_SET_ATTRIBUTES (resizeHandles{3};"visibility";"hidden")//Top Right
+SVG_SET_ATTRIBUTES (resizeHandles{6};"visibility";"hidden")//Bottom Left
+SVG_SET_ATTRIBUTES (resizeHandles{8};"visibility";"hidden")//Bottom Right
+End if 
+
+End if 
+End case 
+
+For ($q;1;Size of array(resizeHandles))
+$lot:=Find in array($1->;"transform")
+If ($lot>0)
+SVG_SET_ATTRIBUTES (resizeHandles{$q};"transform";$2->{$lot})
+End if 
+End for 
+
+End if 
+
+//End if 
+End if 
+
+If (Not($resizable))
+For ($i;1;Size of array(resizeHandles))
+SVG_SET_ATTRIBUTES (resizeHandles{$i};"visibility";"hidden";"cx";"0";"cy";"0")//Bottom Right
+If ($rotated)
+$loc:=Find in array($1->;"transform")
+If ($loc>0)
+If ($2->{$loc}#"rotate(0 @")
+SVG_SET_ATTRIBUTES (resizeHandles{$i};"transform";$2->{$loc})
+End if 
+End if 
+End if 
+End for 
+End if 

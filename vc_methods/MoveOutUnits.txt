@@ -1,0 +1,32 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+///MoveOutUnits fb11246
+C_LONGINT($1;$2;$i;$x;$OK;$xDays;$yDays)
+C_REAL($0;$Amt;$TotAmt;$MonthlyRate)
+
+For ($vlElem;1;Records in selection([Unit]))//Size of array($Units))
+$xDays:=$1//[Agreement]NextBillDate-vMoveOutDate-1
+$yDays:=$2//[Agreement]NextBillDate-[Agreement]LastBillDate
+
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+//20/06/13 DAM added it to be able to move out units if the billing plan is changed. Added for weekly as well
+If ([Agreement]MoveOut>[Agreement]BillPlanValidTo)
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]LastMthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+End if 
+$Mths:=Round($yDays/30;0)
+
+$MonthlyRate:=CalculateBaseRate (0;0)
+
+$Rate:=$MonthlyRate*(1-([BillPlan]DiscPercentage/100))
+
+$Amt:=$xDays/$yDays*$Amt*(-1)*(1-([BillPlan]DiscPercentage/100))
+$TotAmt:=$TotAmt+$Amt
+
+NEXT RECORD([Unit])
+End for 
+
+$0:=RoundAmt ($TotAmt)

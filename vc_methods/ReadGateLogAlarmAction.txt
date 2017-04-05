@@ -1,0 +1,54 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 26/10/11 Separate method to handle alarm action as it is the same in all ReadGateLog methods  InitArrays
+C_LONGINT($x;$i)
+If ([GateLog]GateActionText="@Alarm@") & (<>iPlatform=3)
+PLAY(<>sResourcesPath+"Alarm.wav";1)
+End if 
+$x:=1
+While (Current time>=Time(<>asTimeIntervals{$x})) & ($x<Size of array(<>asTimeIntervals))
+$x:=$x+1
+End while 
+If ($x>1)
+$x:=$x-1
+End if 
+Case of 
+: (Day number(Current date)=Sunday)
+$p:=Get pointer("<>asSun")
+: (Day number(Current date)=Monday)
+$p:=Get pointer("<>asMon")
+: (Day number(Current date)=Tuesday)
+$p:=Get pointer("<>asTue")
+: (Day number(Current date)=Wednesday)
+$p:=Get pointer("<>asWed")
+: (Day number(Current date)=Thursday)
+$p:=Get pointer("<>asThu")
+: (Day number(Current date)=Friday)
+$p:=Get pointer("<>asFri")
+: (Day number(Current date)=Saturday)
+$p:=Get pointer("<>asSat")
+End case 
+If ([GateLog]GateActionText="@Alarm@") & (Length([Facility]SmtpHostName)>5) & (Length([Facility]EmailAddress)>5) & ([Facility]InternetConnection=True)
+If ($p->{$x}=True) & (GetEmailSendTo ("@G")>"")
+
+CREATE RECORD([Message])
+[Message]Address:=GetEmailSendTo ("@G")
+[Message]Subject:=[GateLog]GateActionText+" Unit: "+[GateLog]UnitNo+" at "+[Facility]BusinessName+", "+[Facility]FacilityName+", "+String([GateLog]GateDate)+" "+String([GateLog]GateTime)
+[Message]MsgBody:=[GateLog]GateActionText+" Unit: "+[GateLog]UnitNo+" at "+[Facility]BusinessName+", "+[Facility]FacilityName+", "+String([GateLog]GateDate)+" "+String([GateLog]GateTime)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=[Facility]FacilityCode
+SAVE RECORD([Message])
+
+SendMail 
+End if 
+End if 
+If ([GateLog]GateActionText="@Alarm@") & (Length([Facility]SMSAcctDetails)>1) & ([Facility]InternetConnection=True)
+If ($p->{$x}=True)
+For ($i;1;Size of array(<>asEmailSendToCode))
+If (<>asEmailSendToCode{$i}="@S")
+SendSMS (<>asEmailSendToAddress{$i};Substring(([GateLog]GateActionText+"Unit:"+[GateLog]UnitNo+"at"+[Facility]BusinessName+","+[Facility]FacilityName+","+String([GateLog]GateDate)+" "+String([GateLog]GateTime));1;160);[GateLog]UnitNo;False)
+End if 
+End for 
+End if 
+End if 

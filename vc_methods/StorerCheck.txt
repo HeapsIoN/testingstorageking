@@ -1,0 +1,188 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)
+
+
+If (Application type#4D Server)//Do not allow this to run on Server
+
+//Get details from Customer record (if selected) and connect to Storer Check website using Customer record details as search criteria
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+
+C_TEXT(vtStorerCheckTokenID;vtStorerCheckCountry;vtStorerCheckLastname;vtStorerCheckFirstname;vtStorerCheckMiddlename;vtStorerCheckNickname;vtStorerCheckAddress;vtStorerCheckCompanyname;vtStorerCheckCompanynumber;vtStorerCheckDob)
+C_BLOB(vbStorerCheckXMLBlob)
+C_TIME($vhDocRef)
+
+
+vtStorerCheckTokenID:=""
+vtStorerCheckCountry:=""
+vtStorerCheckLastname:=""
+vtStorerCheckFirstname:=""
+vtStorerCheckMiddlename:=""
+vtStorerCheckNickname:=""
+vtStorerCheckAddress:=""
+vtStorerCheckCompanyname:=""
+vtStorerCheckCompanynumber:=""
+vtStorerCheckDob:=""
+
+$cr:=Char(Carriage return)
+$lf:=Char(Line feed)
+$q:=Char(Quote)
+
+$LoggingLevel:=GetTextNo ([Facility]MerchantDetails;5;",")
+$username:=GetTextNo ([Facility]SCAccountDetails;1;",")//"test@storercheck.com.au"
+$password:=GetTextNo ([Facility]SCAccountDetails;2;",")//"password"
+$timeout:=Num(GetTextNo ([Facility]SCAccountDetails;3;","))//"timeout"
+If ($timeout=0)
+$timeout:=15
+End if 
+
+
+If ($Username#"") & ($Password#"") & (Records in selection([Facility])=1) & (<>tStorerCheck#"")//If the Username and Password and Licenced are all true then continue, otherwise display Dialog box to go to Storer Check -  & ([Facility]UseStorerCheck=True) 
+
+//Determine which server to use
+$ServerURL:=<>tStorerCheck
+
+
+//Check whether Storer Check was called by the Menu item or from the Agreement Screen
+$MenuSelected:=Get menu item(Menu selected/65536;Menu selected%65536)
+If ($MenuSelected="Storer Check")
+REDUCE SELECTION([Customer];0)
+REDUCE SELECTION([Contacts];0)
+End if 
+
+
+
+//Call the VerifyReturn Web Service and get a login token
+$Error:=IT_SetTimeOut ($timeout)
+WEB SERVICE SET PARAMETER("username";$username)
+WEB SERVICE SET PARAMETER("password";$password)
+WEB SERVICE CALL($ServerURL+"/services/IntegrationHandler";"";"verifyLogin";"urn:IntegrationHandler";Web Service manual out)
+If (OK=1)
+WEB SERVICE GET RESULT(vbStorerCheckXMLBlob;"verifyReturn";*)// Memory clean-up on the final return value.
+vsStorerCheckXMLRootRef:=DOM Parse XML variable(vbStorerCheckXMLBlob)
+$AutoLoginTokenElementRef:=DOM Find XML element(vsStorerCheckXMLRootRef;"ns1:verifyLoginResponse/verifyLoginReturn")
+DOM GET XML ELEMENT VALUE($AutoLoginTokenElementRef;vtStorerCheckTokenID)
+DOM CLOSE XML(vsStorerCheckXMLRootRef)
+End if 
+
+
+
+If (Count parameters=1)
+Case of 
+: ($1="SalesInq")
+//If a Customer record is selected (from the Agreement Screen) then get the information to use as Search criteria
+//If no Customer record is selected then Storer Check was selected from the Storman Menubar - search criteria will be blank
+If (Records in selection([Contacts])#0)
+vtStorerCheckCountry:="All Countries"
+vtStorerCheckCompanynumber:=""
+If ([Contacts]Organization=False)//Individual
+$Pos:=Position(",";[Contacts]ContactName)//If they have used a ',' then assume LastName, FirstName - otherwise FirstName LastName
+If ($Pos#0)
+vtStorerCheckLastname:=Substring([Contacts]ContactName;1;2)//The first 2 characters of LastName
+Else 
+vtStorerCheckLastname:=Substring([Contacts]ContactName;(Position(" ";[Contacts]ContactName)+1);2)
+End if 
+vtStorerCheckCompanyName:=""
+Else //A Company
+vtStorerCheckCompanyName:=[Contacts]ContactName
+vtStorerCheckLastname:=""
+End if 
+vtStorerCheckFirstname:=[Contacts]Firstname
+vtStorerCheckAddress:=[Contacts]MailAddress
+End if 
+Else 
+//Do nothing 
+End case 
+
+
+Else 
+//If a Customer record is selected (from the Agreement Screen) then get the information to use as Search criteria
+//If no Customer record is selected then Storer Check was selected from the Storman Menubar - search criteria will be blank
+If (Records in selection([Customer])=1)
+vtStorerCheckCountry:="All Countries"
+vtStorerCheckCompanynumber:=""
+If ([Customer]Organization=False)//Individual
+$Pos:=Position(",";[Customer]CustomerName)//If they have used a ',' then assume LastName, FirstName - otherwise FirstName LastName
+If ($Pos#0)
+vtStorerCheckLastname:=Substring([Customer]CustomerName;1;2)//The first 2 characters of LastName
+Else 
+vtStorerCheckLastname:=Substring([Customer]CustomerName;(Position(" ";[Customer]CustomerName)+1);2)
+End if 
+vtStorerCheckCompanyName:=""
+Else //A Company
+vtStorerCheckCompanyName:=[Customer]CustomerName
+vtStorerCheckLastname:=""
+End if 
+vtStorerCheckFirstname:=[Customer]FirstName
+vtStorerCheckAddress:=[Customer]StreetAddress
+If ([Customer]DateofBirth#!00-00-00!)
+vtStorerCheckDob:=String(Day of([Customer]DateofBirth);"00")+"-"+String(Month of([Customer]DateofBirth);"00")+"-"+String(Year of([Customer]DateofBirth);"0000")
+End if 
+End if 
+End if 
+
+
+C_LONGINT($iPlatform)
+PLATFORM PROPERTIES($iPlatform)
+$StorerCheckDocumentPath:=Get 4D folder(Database folder)+"StorerCheck.html"
+
+//Remove previous StorerCheck.html POST file and generate a new one based on Search Criteria selected above
+$ErrorMethod:=Method called on error
+ON ERR CALL("ErrorNone")
+If (Test path name($StorerCheckDocumentPath)=Is a document)
+DELETE DOCUMENT($StorerCheckDocumentPath)
+End if 
+If (OK=1)
+$vhDocRef:=Create document($StorerCheckDocumentPath)
+If (OK=1)
+$HTML:="<!DOCTYPE html PUBLIC"+$q+"-//W3C//DTD HTML 4.01 Transitional//EN"+$q+">"+$cr
+$HTML:=$HTML+"<html>"+$cr
+$HTML:=$HTML+"<head>"+$cr
+$HTML:=$HTML+"<meta http-equiv="+$q+"content-type"+$q+" content="+$q+"text/html;charset=ISO-8859-1"+$q+">"+$cr
+$HTML:=$HTML+"<title>Storer Check Login</title>"+$cr
+$HTML:=$HTML+"</head>"+$cr
+$HTML:=$HTML+"<body>"+$cr
+$HTML:=$HTML+"<p><span class="+$q+"text_heading"+$q+">Logging you in to Storer Check now...</span></p>"+$cr
+$HTML:=$HTML+"<form action="+$q+$ServerURL+"/auto-login.jsp"+$q+" method="+$q+"post"+$q+" name="+$q+"Search"+$q+" target="+$q+"_self"+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"submit"+$q+" name="+$q+"submitButtonName"+$q+" value="+$q+"Go to Storer Check..."+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"tokenId"+$q+" value="+$q+vtStorerCheckTokenID+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"country"+$q+" value="+$q+vtStorerCheckCountry+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"lastname"+$q+" value="+$q+vtStorerCheckLastname+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"firstname"+$q+" value="+$q+vtStorerCheckFirstname+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"middlename"+$q+" value="+$q+vtStorerCheckMiddlename+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"nickname"+$q+" value="+$q+vtStorerCheckNickname+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"address"+$q+" value="+$q+vtStorerCheckAddress+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"companyname"+$q+" value="+$q+vtStorerCheckCompanyname+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"companynumber"+$q+" value="+$q+vtStorerCheckCompanynumber+$q+">"+$cr
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"dob"+$q+" value="+$q+vtStorerCheckDob+$q+">"+$cr
+$HTML:=$HTML+"</form>"+$cr
+$HTML:=$HTML+"<SCRIPT LANGUAGE="+$q+"JavaScript"+$q+">"+$cr
+$HTML:=$HTML+"setTimeout('document.Search.submit()',1);"+$cr
+$HTML:=$HTML+"//--></SCRIPT>"+$cr
+$HTML:=$HTML+"</body>"+$cr
+$HTML:=$HTML+"</html>"+$cr
+SEND PACKET($vhDocRef;$HTML)
+CLOSE DOCUMENT($vhDocRef)
+
+If (OK=1)
+//Open the Default Web Browser and automatically navigate to Storer Check's website to execute the search
+$BrowserURL:="file:///"+Get 4D folder(Database folder UNIX syntax)+"StorerCheck.html"
+OPEN URL($BrowserURL;*)// translated
+Else 
+AlertMessage (Get localized string("Storer Check - Could not generate file:")+" "+$StorerCheckDocumentPath)
+End if 
+Else 
+AlertMessage (Get localized string("Storer Check - Could not create file:")+" "+$StorerCheckDocumentPath)
+End if 
+Else 
+AlertMessage (Get localized string("Storer Check - Could not delete file:")+" "+$StorerCheckDocumentPath)
+End if 
+ON ERR CALL($ErrorMethod)
+Else 
+FORM SET INPUT([Customer];"StorerCheck";*)
+$WinRef:=Open window(100;100;-1;-1;5;"")
+DIALOG([Customer];"StorerCheck")
+If (OK=1)
+CLOSE WINDOW($WinRef)
+End if 
+End if 
+End if 

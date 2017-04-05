@@ -1,0 +1,215 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: Start";"UpdateLog")
+// ----------------------------------------------------
+// User name (OS): Johnno
+// Date and time: 16/10/16, 11:22:43
+// ----------------------------------------------------
+// Method: AU_CheckForUpdates
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+//
+
+If (<>iPlatform=3)
+
+C_BOOLEAN($Silent;$1)
+$Silent:=False
+
+//  //  //If (<>sProduct#"MV") | (<>sFacility#"ST@")
+
+If (Count parameters=1)
+//this has come login screen so we want to be silent
+$Silent:=True
+End if 
+
+If (Count parameters=2)
+//this has come logmonloop overnight so we want to be silent and force
+$Silent:=True
+$Overnight:=True
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: Overnight";"UpdateLog")
+
+End if 
+
+
+If (Records in selection([Facility])=0)
+If (<>sFacility="ST@")
+QUERY([Facility];[Facility]FacilityCode="STHOF")
+Else 
+SetFacility 
+End if 
+
+End if 
+
+If ([Facility]FacilityCode#"SSCTY")
+
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: [AutoUpdates]UpdateStatus: "+String([AutoUpdates]UpdateStatus);"UpdateLog")
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: [AutoUpdates]FacilityCode: "+String([AutoUpdates]FacilityCode);"UpdateLog")
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: [AutoUpdates]NextVersion: "+String([AutoUpdates]NextVersion);"UpdateLog")
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: [AutoUpdates]OldVersion: "+String([AutoUpdates]OldVersion);"UpdateLog")
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: [AutoUpdates]UpdateReady: "+String([AutoUpdates]UpdateReady);"UpdateLog")
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: [AutoUpdates]UpdateFile: "+String([AutoUpdates]UpdateFile);"UpdateLog")
+
+If (Records in selection([AutoUpdates])=0)
+
+$WinRef:=Open window(20;50;450;150;0;"Please wait")
+GOTO XY(2;2)
+MESSAGE("Checking for new Version...")
+
+If (WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Check";"";[Facility]Version;[Facility]VersionDate;$Silent))//;[Facility]ODBCPassword))
+//Success
+Else 
+
+If ($Silent=False)
+AlertMessage ("You are using the latest version of Storman.")
+End if 
+
+End if 
+
+CLOSE WINDOW($WinRef)
+End if 
+
+
+
+If ([AutoUpdates]UpdateStatus=3)
+
+If ($Overnight=True)
+OK:=1
+
+Else 
+
+If ([AutoUpdates]EnforceUpdates=True)
+AlertMessage ("A new version of Storman is available, please wait while Storman downloads and installs the update.")
+OK:=1
+Else 
+ConfirmTwo ("A new version of Storman is available, would you like to download it now?";"Yes";"No")
+End if 
+
+End if 
+
+
+If (OK=1)
+
+If (<>tClient)
+
+$WinRef:=Open window(20;50;450;150;0;"Please wait")
+GOTO XY(2;2)
+MESSAGE("Downloading update...")
+
+UNLOAD RECORD([AutoUpdates])
+
+If ($Overnight=False)
+AlertMessage ("Please wait while the update is downloaded to Storman Server.")
+End if 
+TRACE
+$Q:=Execute on server("AU_DownloadInstallServer";400000;"AU_DownloadInstallServer")
+
+//$Downloaded:=False
+
+//Repeat 
+//$Ticks:=Tickcount
+//Repeat 
+//IDLE
+//Until (Tickcount>($Ticks+180))
+
+//$Downloaded:=WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Get";"";[Facility]Version;[Facility]VersionDate;True)  //[Facility]ODBCPassword)
+
+//If ([AutoUpdates]EnforceUpdates=True)
+//AlertMessage ("Please wait while the update is downloaded to Storman Server.")
+//Else 
+//ConfirmTwo ("Please wait while the update is downloaded to Storman Server.";"Wait";"Abort")
+//End if 
+
+//SyncRecordLog ("Downloading. OK= "+String(OK);"UpdateLog")
+
+//Until (OK=0) | ($Downloaded=True)
+
+CLOSE WINDOW($WinRef)
+
+If ($Overnight=True)
+//AU_UpdateReady (True)
+Else 
+AU_UpdateReady 
+End if 
+
+
+
+Else 
+
+If ($Overnight=True)
+Else 
+AlertMessage ("Storman will now download the latest version, this may take some time depending on your internet connection.")
+End if 
+
+
+AU_Download 
+OK:=1
+End if 
+
+Else 
+//do nothing
+End if 
+
+End if 
+
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+Case of 
+
+: ([AutoUpdates]UpdateStatus=0)//no update
+
+
+: ([AutoUpdates]UpdateStatus=1) & ([AutoUpdates]UpdateReady=True)
+
+
+If ($Overnight=True) & (<>tClient=False)
+AU_UpdateReady (True)
+Else 
+AU_UpdateReady (False)
+End if 
+
+
+: ([AutoUpdates]UpdateStatus=2)//update has been installed
+
+If (String([AutoUpdates]OldVersion)#String(<>iVersion))
+
+AlertMessage ("Thank you! Storman has been updated from Version "+String([AutoUpdates]OldVersion)+" to "+String(<>iVersion)+"!")
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: Updated from "+String([AutoUpdates]OldVersion)+" to "+String(<>iVersion);"UpdateLog")
+
+If ([AutoUpdates]CustomURL#"")
+OPEN URL([AutoUpdates]CustomURL;*)
+Else 
+OPEN URL("https://ftp.storman.com/Releasenotes/v"+String(<>iVersion)+"/";*)
+End if 
+
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Installed";[Facility]Version;[Facility]VersionDate;True)//;[Facility]ODBCPassword)
+
+If (<>tClient)
+$Q:=Execute on server("AU_AutoCleanUpServer";400000;"AU_AutoCleanUpServer")
+Else 
+AU_AutoCleanUp 
+End if 
+
+Else 
+
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: UPDATE FAILED!";"UpdateLog")
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: UPDATE FAILED! Storman should have been updated from "+String([AutoUpdates]OldVersion)+" to "+String([AutoUpdates]NextVersion);"UpdateLog")
+
+End if 
+
+: ([AutoUpdates]UpdateStatus=3)//update ready to download
+
+
+End case 
+
+SyncRecordLog ("Storman Update: AU_CheckForUpdates: End";"UpdateLog")
+
+End if 
+
+End if 

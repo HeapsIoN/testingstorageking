@@ -1,0 +1,83 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 02/03/17, 10:38:44
+// ----------------------------------------------------
+// Method: ExportCreditClear
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+ConfirmTwo ("Would you like to export for all sites or just "+[Facility]ShortName+"?";"All Sites";[Facility]ShortName)
+
+If (OK=1)
+QUERY([Facility];[Facility]SortOrder>=0)
+Else 
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+End if 
+
+
+$Doc:=Create document("";"csv")
+
+$WinRef:=Open window(20;50;450;150;0)
+For ($a;1;Records in selection([Facility]))
+
+SEND PACKET($Doc;[Facility]ShortName+Char(13)+Char(13))
+
+QUERY([Agreement];[Agreement]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing>0)
+
+SEND PACKET($Doc;"CustomerCode,CustomerName,Mobile,EmailAddress,Address,Suburb,City,State,PostZip,LastTrx,Balance,ArrearsComment"+Char(13))
+
+For ($b;1;Records in selection([Agreement]))
+
+GOTO XY(2;2)
+MESSAGE("Exporting overdue Agreements "+String($b)+" of "+String(Records in selection([Agreement]))+" for "+[Facility]ShortName)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+
+$Date:=!00-00-00!
+
+Repeat 
+
+If ([Trxs]Charge=True) & ([Trxs]TotAmt>0)
+$Date:=[Trxs]TrxDate
+Else 
+NEXT RECORD([Trxs])
+End if 
+
+Until ($Date#!00-00-00!)
+
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+
+
+$MailAddress:=Replace string([Customer]MailAddress;",";" ")
+$MailAddress:=Replace string($MailAddress;Char(Carriage return);" ";*)
+$MailAddress:=Replace string($MailAddress;Char(Line feed);" ";*)
+$MailCity:=Replace string(Replace string(Replace string([Customer]MailCity;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$MailSuburb:=Replace string(Replace string(Replace string([Customer]MailSuburb;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+$CustName:=Replace string(Replace string(Replace string([Customer]CustomerName;",";" ");Char(Carriage return);" ";*);Char(Line feed);" ";*)
+
+
+
+SEND PACKET($Doc;[Agreement]CustomerCode+","+$CustName+","+[Customer]MobilePhone+","+[Customer]EmailAddress+","+$MailAddress+","+[Customer]MailSuburb+","+[Customer]MailCity+","+[Customer]MailState+","+[Customer]MailPostZIPCode+","+String($date)+","+String([Agreement]BalanceOwing)+","+[Customer]ArrearsComment+Char(13))
+
+NEXT RECORD([Agreement])
+
+End for 
+
+SEND PACKET($Doc;Char(13)+Char(13))
+
+NEXT RECORD([Facility])
+
+End for 
+
+CLOSE WINDOW($WinRef)
+CLOSE DOCUMENT($Doc)
+
+AlertMessage ("Export complete!")

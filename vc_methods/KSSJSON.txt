@@ -1,0 +1,115 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Json;$2;$3)
+C_BOOLEAN($Res;$1)
+
+QUERY([Facility];[Facility]FacilityCode=$3)
+
+$Res:=$1
+$Json:=$2
+
+If ($Res)
+SyncRecordLog ("PHP Reservation: "+$Json;"JSONLog")
+Else 
+SyncRecordLog ("PHP Quote: "+$Json;"JSONLog")
+End if 
+
+
+$Username:=""
+$Password:=""
+$Result:=""
+$File:=<>sExportPath+"KSSPhP.php"
+$Doc:=Create document(<>sExportPath+"KSSPhP.php")
+$cr:=Char(13)
+SEND PACKET($Doc;"<?php"+$cr)
+
+$Country:=[Facility]Country
+
+
+If (Test path name(<>sPreferencesPath+"KSStest.xml")=Is a document)//STAGE TESTING
+If ($Res)
+Case of 
+: ($Country="AU")
+SEND PACKET($Doc;"$url='https://stage.kss.com.au/api/create_reservation/format/json';"+$cr)
+: ($Country="NZ")
+SEND PACKET($Doc;"$url='https://stage.kennards.co.nz/api/create_reservation/format/json';"+$cr)
+End case 
+Else 
+Case of 
+: ($Country="AU")
+SEND PACKET($Doc;"$url='https://stage.kss.com.au/api/send_quote/format/json';"+$cr)
+: ($Country="NZ")
+SEND PACKET($Doc;"$url='https://stage.kennards.co.nz/api/send_quote/format/json';"+$cr)
+End case 
+End if 
+
+Else //WWW LIVE
+
+If ($Res)
+Case of 
+: ($Country="AU")
+SEND PACKET($Doc;"$url='https://www.kss.com.au/api/create_reservation/format/json';"+$cr)
+: ($Country="NZ")
+SEND PACKET($Doc;"$url='https://www.kennards.co.nz/api/create_reservation/format/json';"+$cr)
+End case 
+
+Else 
+Case of 
+: ($Country="AU")
+SEND PACKET($Doc;"$url='https://www.kss.com.au/api/send_quote/format/json';"+$cr)
+: ($Country="NZ")
+SEND PACKET($Doc;"$url='https://www.kennards.co.nz/api/send_quote/format/json';"+$cr)
+End case 
+End if 
+End if 
+
+SEND PACKET($Doc;"$username='storman';"+$cr)
+SEND PACKET($Doc;"$password='NA8ecaZ7wa';"+$cr)
+SEND PACKET($Doc;"$Json='"+$Json+"';"+$cr)
+SEND PACKET($Doc;"$curl_handle=curl_init();"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_URL,$url);"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_RETURNTRANSFER, 1);"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_POST, 1);"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_SSL_VERIFYPEER, false);"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_SSL_VERIFYHOST, false);"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_POSTFIELDS,$Json);"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_USERPWD,$username . ':' .$password);"+$cr)
+SEND PACKET($Doc;"curl_setopt($curl_handle, CURLOPT_HTTPHEADER, array("+$cr)
+SEND PACKET($Doc;"'Content-type: application/json',"+$cr)
+SEND PACKET($Doc;"'Content-Length: ' . strlen($Json),"+$cr)
+SEND PACKET($Doc;"));"+$cr)
+SEND PACKET($Doc;"$buffer=curl_exec($curl_handle);"+$cr)
+SEND PACKET($Doc;"$err=curl_errno($curl_handle);"+$cr)
+SEND PACKET($Doc;"curl_close($curl_handle);"+$cr)
+//SEND PACKET($Doc;"var_dump(json_decode($buffer));"+$cr)
+SEND PACKET($Doc;"echo $buffer;"+$cr)
+SEND PACKET($Doc;"?>"+$cr)
+CLOSE DOCUMENT($Doc)
+
+$Success:=PHP Execute($File;"";$Result)
+
+
+If ($Res)
+SyncRecordLog ("PHP Result Reservation - "+$Result;"JSONLog")
+Else 
+SyncRecordLog ("PHP Result Quote - "+$Result;"JSONLog")
+End if 
+
+$Success1:=PHP Execute("";"quit_4d_php")
+
+If ($Success)
+//Read the response -> Bring it up + create a note
+C_TEXT($txt)
+If ($Result#"")
+$StatusPos:=Position("status";$Result)
+If ($StatusPos>0)// Read Status
+$Pos34:=Position(Char(34);$Result;$StatusPos+10)
+$length:=$Pos34-$StatusPos-9
+$Status:=Substring($Result;$StatusPos+9;$length)
+
+$StatusPos:=Position("message";$Result)
+$Pos34:=Position(Char(34);$Result;$StatusPos+10)
+$length:=$Pos34-$StatusPos-9
+$message:=Substring($Result;$StatusPos+10;$length)
+End if 
+End if 
+End if 

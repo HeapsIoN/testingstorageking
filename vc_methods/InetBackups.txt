@@ -1,0 +1,134 @@
+//%attributes = {"executedOnServer":true,"lang":"en"} comment added and reserved by 4D.
+//Determine whether the Backup Preferences file was found, Backups are activated, a backup has been done, there were no errors during the backup
+//Perform the Internet Backup and log the response
+
+//InetBackups
+C_BOOLEAN($0)
+C_TEXT($1;$2;$3)
+
+C_TEXT($FacilityCode;$BusinessName;$UploadResponse;$BackupServerHost;$vtBackupStatus;$FailReason)
+ARRAY TEXT(vtaFilenames;0)
+C_LONGINT($FacilityID;$viBackupStatus)
+C_DATE($CurrentDate;vdDate)
+C_TIME($CurrentTime)
+C_BOOLEAN($SuccessFail;tBoolean)
+
+QUERY([Facility];[Facility]UserCode=$1;*)
+QUERY([Facility]; & ;[Facility]FacilityCode=$2;*)
+QUERY([Facility]; & ;[Facility]BusinessName=$3)
+
+tBoolean:=False
+$viBackupStatus:=0
+$vtBackupStatus:=""
+$FacilityID:=Num([Facility]UserCode)
+$FacilityCode:=[Facility]FacilityCode
+$BusinessName:=[Facility]BusinessName
+$CurrentDate:=Current date
+$CurrentTime:=Current time
+$SuccessFail:=False
+$FailReason:=""
+vdDate:=!00-00-00!
+$vtTime:=Time(Substring([Facility]BackupInfo;7;2)+":"+String(Random%59;"00")+":00")
+
+FloatMessage ("AutoBackup")
+
+If (LoadBackupPrefs )//Load the Backup Preferences 
+If (vbBackupActive)//Check if Backups are enabled
+GET BACKUP INFORMATION(Last backup status;$viBackupStatus;$vtBackupStatus)//Find out the status of the last backup
+If ($viBackupStatus=0)//No Errors with Last Backup
+DOCUMENT LIST(vtLastBackupDestinationFolder;vtaFilenames)//Get the Backup Files to Backup Via Internet
+//Select only the files from the most recent Backup
+For ($Counter;Size of array(vtaFilenames);1;-1)
+If (Position(GetFile (vtBackupFilename);vtaFilenames{$Counter})=0)
+DELETE FROM ARRAY(vtaFilenames;$Counter;1)
+Else 
+vtaFilenames{$Counter}:=vtLastBackupDestinationFolder+vtaFilenames{$Counter}
+End if 
+End for 
+
+If (Size of array(vtaFilenames)>0)//Last Backup Files found
+$UploadResponse:=InetBackups_Upload ($FacilityID;$FacilityCode;$BusinessName;$BackupServerHost;$BackupServerPort;->vtaFilenames)//Upload the Actual Backup file(s)
+$UploadResponseCode:=GetSeparatedText ($UploadResponse;";";1)
+$UploadResponseDescription:=GetSeparatedText ($UploadResponse;";";2)
+If ($UploadResponseCode="500")//Upload Complete
+$SuccessFail:=True
+$FailReason:=""
+Else 
+$SuccessFail:=False
+$FailReason:=$UploadResponseDescription
+End if 
+Else //Last Backup files not found
+$SuccessFail:=False
+$FailReason:=Get localized string("Internet Backup - Storman Backup Files Not Found")
+End if 
+Else //There were errors with the last backup
+$SuccessFail:=False
+$FailReason:=Get localized string("Internet Backup - An Error Occured During Last Storman Backup. Please Check")
+End if 
+Else //Backups are inactive
+$SuccessFail:=False
+$FailReason:=Get localized string("Internet Backup - Storman Backups are Inactive. Please Activate Backups in System Setup")
+End if 
+Else //Backup preference file missing
+$SuccessFail:=False
+$FailReason:=Get localized string("Internet Backup - Unable to Load Backup Preferences File - Check Backups enabled")
+End if 
+
+If ($FailReason#"")
+$FailReason:=" - "+Get localized string("Error")+":"+$FailReason+"."
+End if 
+$LogMessage:=Get localized string("Internet Backup Attempted On")+" "+String($CurrentDate)+" "+Get localized string("at")+" "+String($CurrentTime)+" - "+Get localized string("Backup")+" "+BooleanToString ($SuccessFail;"Succeeded";"Failed")+$FailReason
+SyncRecordLog ($LogMessage)
+
+
+If ($SuccessFail=True)
+//Create a Message
+READ WRITE([Message])
+CREATE RECORD([Message])
+[Message]Subject:=Get localized string("Internet Backup Successful")+" - "+String([Facility]BackupNextDate)+" "+Get localized string("at")+" "+String($vtTime)
+[Message]Address:=[Facility]EmailAddress
+[Message]OutIn:=False
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=Get localized string("The Automatic Backup for scheduled for")+" "+String([Facility]BackupNextDate)+" "+Get localized string("at")+" "+String($vtTime)+" was completed successfully."
+[Message]Attachments:=""
+[Message]Facility:=[Facility]FacilityCode
+SAVE RECORD([Message])
+READ ONLY([Message])
+
+
+//Advance Next Backup Date to the next scheduled time
+Case of 
+: (Substring([Facility]BackupInfo;4;1)="2")//Set Next Backup time for today + 1 Week
+vdDate:=Current date+1
+While (Day number(vdDate)#Num(Substring([Facility]BackupInfo;5;2))) & (vdDate<=(Current date+7))
+vdDate:=vdDate+1
+End while 
+: (Substring([Facility]BackupInfo;4;1)="3")//Set Next Backup time for today + 1 Month
+vdDate:=Add to date(Current date;0;1;0)
+vdDate:=GetDate (Num(Substring([Facility]BackupInfo;5;2));Month of(vdDate);Year of(vdDate))
+Else 
+vdDate:=Current date+1//Set Next Backup time for today + 1 Day
+End case 
+Else //Backup Unsuccessful
+vdDate:=Current date+1//Set Next Backup time for today + 1 Day - to try again
+SendEmail ("urgent@storman.com";Get localized string("Internet Backup Failure for Facility")+" "+[Facility]FacilityCode;Get localized string("The Automatic Backup for Facility")+" "+[Facility]FacilityCode+" "+Get localized string("scheduled for")+" "+String([Facility]BackupNextDate)+" "+Get localized string("at")+" "+String($vtTime)+" "+Get localized string("Failed! Please contact site to find out what went wrong."))
+
+//Create a Message
+READ WRITE([Message])
+CREATE RECORD([Message])
+[Message]Subject:=Get localized string("Internet Backup Failed")+" - "+String([Facility]BackupNextDate)+" "+Get localized string("at")+" "+String($vtTime)
+[Message]Address:=[Facility]EmailAddress
+[Message]OutIn:=False
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=Get localized string("The Automatic Backup for scheduled for")+" "+String([Facility]BackupNextDate)+" "+Get localized string("at")+" "+String($vtTime)+" "+Get localized string("Failed. A Backup will be attempted tomorrow at the same time, please leave your computer on tonight. Please contact Storman Support if you would like to force another backup sooner.")
+[Message]Attachments:=""
+[Message]Facility:=[Facility]FacilityCode
+SAVE RECORD([Message])
+READ ONLY([Message])
+End if 
+
+UpdateSystem (149;->vdDate;"";True)
+
+$0:=$SuccessFail

@@ -1,0 +1,361 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD Called from On Web Connection - formerly part of SUV
+//USE StormanUpdate2 which uses Facility
+C_LONGINT($Pos)
+C_TEXT($0;$1;$2;$Message;$Location;$cr)
+C_TEXT($PaidUpTo)
+C_LONGINT($Error;$i;$x;$y;$z;$Index;$Key)
+C_BOOLEAN($ValidFacilityID;$ValidBusinessName)
+C_LONGINT($Version)
+ARRAY TEXT($atMsgParam;40)//Number of parameters * 2
+C_LONGINT($Index)
+ARRAY TEXT(Attachments;0)
+
+$Error:=0
+$cr:=Char(13)
+
+//LoadSystemRecord(False)
+
+If ($Error=0)
+$Message:=Substring($1;20)
+$Message:=Substring($Message;1;Position("HTTP";$Message)-2)
+$Message:=EncodeIt ($Message;False)
+
+//Read the passed values into the array
+For ($i;1;Size of array($atMsgParam))
+$Pos:=Position(":";$Message)
+$atMsgParam{$i}:=Substring($Message;1;$Pos-1)
+$Message:=Substring($Message;$Pos+1)
+End for 
+$ValidBusinessName:=False
+$ValidFacilityID:=False
+READ WRITE([Unit])//Determine whether they have a valid Facility ID (UserCode)
+
+$Key:=Num($atMsgParam{2})
+$Index:=Find in field([Unit]SUFacilityID;$Key)
+If ($Index#-1)
+GOTO RECORD([Unit];$Index)
+End if 
+
+If (Records in selection([Unit])=1)//Facility Found 
+//InvoiceNo=BusinessName, DoorSize[1]=UpdateLicence, BldgLocation=StormanModel,  Comments[19]=NewBusinessName
+If ([Unit]InvoiceNo=$atMsgParam{11}) | (([Unit]DoorSize="Y@") & ($atMsgParam{11}=GetTextNo ([Unit]Comments;19;Char(9)))) | ($Key=10000)//Business Name Match    
+//If ([Unit]BldgLocation="M@") & ([Facility]LastIPAddress#Substring($2;1;20)) & ([Facility]DisableStormanUpdateIPCheck=False)
+//End if 
+If (Locked([Unit])=True)
+LOAD RECORD([Unit])
+End if 
+//SAVE THESE BACK INTO THE FIELD - REQUIRE NEW METHOD CALLED SaveTextNo
+$LastIPAddress:=Substring($2;1;20)//The IPAddress of the Facility Computer
+$LastUpdateDate:=Current date
+$LastUpdateTime:=Current time
+$Version:=Num($atMsgParam{3})
+$BuildDate:=Date($atMsgParam{20})
+$UnitsInUse:=Num($atMsgParam{21})
+$ValidBusinessName:=True
+Else 
+$Message:="BusinessName mismatch:"+$Message
+$Error:=1
+End if 
+$ValidFacilityID:=True
+Else 
+$Message:="Facility not found:"+$atMsgParam{2}
+$Error:=1
+End if 
+End if 
+
+If ($Error=0)
+Case of 
+: ($atMsgParam{1}="NEW")//NEW, CHK, UPD 
+//New code to be added
+: ($atMsgParam{1}="UPD")//Record differences between StormanUsers and Storman licence details
+//[Facility]UpdateLicence:=False
+[Unit]DoorSize:="N"+Substring([Unit]DoorSize;2)
+SAVE RECORD([Unit])
+RELATE ONE([Unit]AgreeNo)
+$Message:="Success"
+LogSUVEvent ("Facility "+String([Unit]SUFacilityID;"00000")+" License Details Updated!";False;"LIC";0;"";"";"";[Agreement]PaidToDate;[Unit]UnitNumeric)
+
+: ($atMsgParam{1}="CHK")
+//Array Details for MsgParam
+//1=Control = CHK, NEW, UPD
+//2=User Code
+//3=Version
+//4=Storman Product  MV03N0N or SP01Y5N     was Max Units
+//5=Max Sites    was Modules
+//6=Max Units   was Expiry Date below all offset by one
+//7=Expiry Date
+//8=Rented
+//9=Upgrades Paid To Date
+
+//10=Facility Code
+//11=Business Name
+//12=Facility Name
+//13=Company Name
+//14=Country Code
+//15=Email Address
+//16=Phone Number
+//17=Fax Number
+//18=OS Platform Details = Platform,OpSys,Computer
+//19=Computer Date  
+//20=Build Date
+$LicenceExpiry:=!00-00-00!//DATE HERE
+$BackupNextDate:=!00-00-00!//BackupNextDate
+If (Num($atMsgParam{3})>=350)
+//If (Length([Facility]FacilityCode)<5)  NOT USED ANYMORE
+//[Facility]FacilityCode:=[Facility]CompanySpecificCode+[Facility]FacilityCode
+//[Facility]CompanySpecificCode:=""
+//End if 
+$Message:="UPD"+":"+String([Unit]SUFacilityID;"00000")+":"+String([Unit]MuxController)+":"+[Unit]BldgLocation+String([Unit]UnitSection;"00")//Version,Model,Users
+$Message:=$Message+Substring([Unit]DoorSize;10;1)+String([Unit]ChannelInput;"0")+Substring([Unit]DoorSize;12;1)+Substring([Unit]DoorSize;9;1)//UseGate, GateSysType, Cashbook & Webserver
+$Message:=$Message+":"+String([Unit]UnitLetter;"00000")+":"+String([Unit]UnitNumeric;"000000")+":"//MaxSites, MaxUnits
+$Message:=$Message+GetDateString ($LicenceExpiry)+":"+Substring([Unit]DoorSize;2;1)+":"//LicenceExpiry & LicenceRental
+If (GetTextNo ([Unit]Comments;6;Char(9))="Y")//PaybyAP
+$Message:=$Message+GetDateString (Add to date([Agreement]PaidToDate;0;1;0))
+Else 
+$Message:=$Message+GetDateString ([Agreement]PaidToDate)
+End if 
+$Message:=$Message+":"+[Unit]InsureCertNo+":"+[Unit]InvoiceNo+":"+[Unit]UnitSize+":"+GetTextNo ([Unit]Comments;2;Char(9))+":"//FacilityCode,BusinessName,FacilityName,CompanyName
+If (Num($atMsgParam{3})<8200)
+$Message:=$Message+GetTextNo ([Unit]Comments;4;Char(9))+":"//SHOULD BE CountryNumber?
+Else 
+$Message:=$Message+GetTextNo ([Unit]Comments;4;Char(9))+":"//CountryCode
+End if 
+If (Num($atMsgParam{3})>425)
+$Message:=$Message+Substring([Unit]DoorSize;11;1)+GetTextNo ([Unit]Comments;29;Char(9))+GetTextNo ([Unit]Comments;30;Char(9))+GetTextNo ([Unit]Comments;31;Char(9))+":"+String($BackupNextDate;7)+":"//UseAutoBackups,BackupFreq,BackupDay,BackupHour,BackupNextDate
+End if 
+If (Num($atMsgParam{3})>800)
+$Message:=$Message+Substring([Unit]DoorSize;13;1)+":"//UseOnlineReservations
+$Message:=$Message+GetTextNo ([Unit]Comments;40;Char(9))+":"//WebPaymentHostName
+End if 
+Else 
+$Message:="UPD"+":"+String([Unit]SUFacilityID;"00000")+":"+String([Unit]MuxController)+":"//Version
+$Message:=$Message+String([Unit]UnitNumeric;"000000")+":"+"N"+BooleanToString ([Facility]UseWebServer;"Y";"N")//MaxUnits
+$Message:=$Message+Substring([Unit]DoorSize;10;3)//UseGate, UsePhoto, Cashbook
+$Message:=$Message+GetDateString ($LicenceExpiry)+":"+Substring([Unit]DoorSize;2;1)+":"//LicenceExpiry & LicenceRental
+If (GetTextNo ([Unit]Comments;6;Char(9))="Y")//PaybyAP
+$Message:=$Message+GetDateString (Add to date([Agreement]PaidToDate;0;1;0))
+Else 
+$Message:=$Message+GetDateString ([Agreement]PaidToDate)
+End if 
+$Message:=$Message+":"+Substring([Unit]InsureCertNo;1;3)//FacilityCode
+$Message:=$Message+":"+GetTextNo ([Unit]Comments;3;Char(9))+":"+[Unit]InvoiceNo+":"+[Unit]UnitSize+":"+GetTextNo ([Unit]Comments;2;Char(9))+":"//CompanySpecific,BusinessName,FacilityName,CompanyName
+If (Num($atMsgParam{3})<8200)
+$Message:=$Message+GetTextNo ([Unit]Comments;4;Char(9))//SHOULD BE CountryNumber?
+Else 
+$Message:=$Message+GetTextNo ([Unit]Comments;4;Char(9))//CountryCode
+End if 
+End if 
+
+If ([Unit]DoorSize="Y@") & ($ValidBusinessName=True) & ($ValidFacilityID=True)//Generate the new licence details to return to Storman
+$Incoming:="INC:"
+For ($ParamCounter;1;Size of array($atMsgParam))
+$Incoming:=$Incoming+$atMsgParam{$ParamCounter}+":"
+End for 
+$Incoming:=$Incoming+"2000"
+
+$Outgoing:="OUT"+Substring($Message;4)//This should copy it as it is above
+
+If ([Agreement]PaidToDate>=Current date)
+LogSUVEvent ("Facility "+String([Unit]SUFacilityID;"00000")+" - Check Licence:"+$cr+$cr+$Incoming+$cr+$Outgoing;False;"LIC";0;"";"";"";[Agreement]PaidToDate;[Unit]UnitNumeric)
+End if 
+
+PLATFORM PROPERTIES($x;$y;$z)
+$Message:=$Message+":"+String($x)+","+String($z)+":"+GetDateString (Current date)+":"
+
+//SAVE RECORD([Facility])  NO point to save as nothing has changed
+Else 
+//$Incoming:="INC"+":"+String(Num($atMsgParam{2});"00000")+":"+$atMsgParam{3}+":"+$atMsgParam{4}+":"+$atMsgParam{5}+":"+$atMsgParam{6}+":"
+//$Incoming:=$Incoming+$atMsgParam{7}+":"+$atMsgParam{8}+":"+$atMsgParam{9}+":"+$atMsgParam{10}
+//$Incoming:=$Incoming+":"+$atMsgParam{11}+":"+$atMsgParam{12}+":"+$atMsgParam{13}+":"+$atMsgParam{14}
+
+$Incoming:="INC:"
+For ($ParamCounter;1;Size of array($atMsgParam))
+$Incoming:=$Incoming+$atMsgParam{$ParamCounter}+":"
+End for 
+$Incoming:=$Incoming+"3000"
+
+$Outgoing:="OUT"+Substring($Message;4)//This should copy it as it is above
+
+If ([Agreement]PaidToDate>=Current date)
+LogSUVEvent ("Facility "+String([Unit]SUFacilityID;"00000")+" - Check Licence:"+$cr+$cr+$Incoming+$cr+$Outgoing;False;"LIC";0;"";"";"";[Agreement]PaidToDate;[Unit]UnitNumeric)
+End if 
+
+[Unit]ChannelInput:=Num(Substring($atMsgParam{4};6;1))//GateSysType
+If (Date($atMsgParam{19})<(Current date-1)) | (Date($atMsgParam{19})>(Current date))
+If ([Agreement]PaidToDate>=Current date)
+LogSUVEvent ("Storman Update Date Mismatch - Facility "+String(Num($atMsgParam{2});"00000")+" - Current date = "+String(Current date)+", Reported date = "+String(Date($atMsgParam{19}));False;"LIC";0;"";"";"";[Agreement]PaidToDate;[Unit]UnitNumeric)
+End if 
+$Message:="Your computer's date appears to be incorrect, please check."
+$Error:=1
+End if 
+
+If ($Error=0)
+$PaidUpTo:=GetDateString ([Agreement]PaidToDate)
+
+//Get the latest version of the storman model that they have
+//Calculate the details for the downloaded update file
+//Determine the product name
+Case of 
+: ([Unit]BldgLocation="SP") & ([Unit]UnitSection=1)//StormanModel and MaxUsers
+$Version:=<>iVersion
+$Product:="Storman"
+$UpdateMessage:=""//This pointed to a field in SUV that contained a message but I couldn't find it
+: ([Unit]BldgLocation="MV") | ([Unit]UnitSection>1)
+$Version:=<>iVersion
+$Product:="Server"
+$UpdateMessage:=""
+: ([Unit]BldgLocation="SL")
+$Version:=<>iVersion
+$Product:="Storman"
+$UpdateMessage:=""
+Else //If StormanModel not defined then default to Storman (SP)
+$Version:=<>iVersion
+$Product:="Storman"
+$UpdateMessage:=""
+End case 
+$Version:=8114//SDD 24/4/11 This should be updated from a file on the disk
+
+$UpdateMessage:=""
+//Case of 
+//: (Trunc([Facility]Version/10;0)=Trunc($Version/10;0))  `Same first 2 numbers of version
+//$Upgrade:="U"
+//Else 
+//If (Trunc([Facility]Version/10;0)=40) & (Trunc($Version/10;0)=41)
+//$Upgrade:="U"
+//Else 
+$Upgrade:=""
+//End if 
+//End case 
+
+If (GetTextNo ([Unit]Comments;37;Char(9))>"")//UpdateMessage
+$Message:=GetTextNo ([Unit]Comments;37;Char(9))
+If (GetTextNo ([Unit]Comments;38;Char(9))>"  ")//UpdateFilename
+$Message:="Filename:"+GetTextNo ([Unit]Comments;38;Char(9))+","+$Message
+End if 
+Else 
+//DOES ANY OF THIS WORK ANYMORE??
+//Mac or Win    
+$Platform:=Num(Substring($atMsgParam{18};1;1))
+$System:=0
+$Machine:=0
+
+$vtPlatform:=""
+$vtSystem:=""
+$vtMachine:=""
+
+$TempPlatform:=$atMsgParam{18}
+$Timeout:=Tickcount+60//1 Seconds
+Repeat 
+$Pos:=Position(",";$TempPlatform)
+If ($Pos#0)
+$Var:=Substring($TempPlatform;1;$Pos-1)
+Else 
+$Var:=$TempPlatform
+$TempPlatform:=""
+End if 
+Case of 
+: ($vtPlatform="")
+$vtPlatform:=$Var
+: ($vtPlatform#"") & ($vtSystem="")
+$vtSystem:=$Var
+: ($vtPlatform#"") & ($vtSystem#"") & ($vtMachine="")
+$vtMachine:=$Var
+Else 
+//Do nothing
+End case 
+$TempPlatform:=Substring($TempPlatform;$Pos+1)
+Until ((Position(",";$TempPlatform)=0) & (Length($TempPlatform)=0)) | (Tickcount>$Timeout)
+
+//This method to maintain compatibility with old versions of Storman
+//Old versions only passed two paramters, #1 and #3
+If ($vtMachine="") & ($vtSystem#"")
+$vtMachine:=$vtSystem
+$vtSystem:=""
+End if 
+
+$Platform:=Num($vtPlatform)
+$System:=Num($vtSystem)
+$Machine:=Num($vtMachine)
+
+If (($Platform<1) | (3<$Platform))
+$vsPlatformOS:=0
+Else 
+If ($Platform=3)//3 = windows
+$vsPlatformOS:=0
+If ($System<0)
+$winMajVers:=((2^31)+$System)%256
+$winMinVers:=(((2^31)+$System)\256)%256
+If ($winMinVers=0)
+$vsPlatformOS:=3
+$vsPlatformVersion:="95"
+Else 
+$vsPlatformOS:=3
+$vsPlatformVersion:="98"
+End if 
+Else 
+$winMajVers:=$System%256
+$winMinVers:=($System\256)%256
+If ($winMajVers=4)
+$vsPlatformOS:=3
+$vsPlatformVersion:="NT4"
+Else 
+$vsPlatformOS:=3
+$vsPlatformVersion:="2000"
+End if 
+End if 
+If ($winMajVers#0) & ($winMinVers#0)
+$vsPlatformVersion:=String($winMajVers)+"."+String($winMinVers)
+End if 
+Else //1 & 2 = Macintosh
+$vsPlatformOS:=1
+$vsPlatformVersion:=String($System\256)+"."+String(($System\16)%16)+(("."+String($System%16))*Num(($System%16)#0))
+End if 
+End if 
+
+If (Num(GetTextNo ([Unit]Comments;17;Char(9)))#0)//AuthVersion
+$Version:=Num(GetTextNo ([Unit]Comments;17;Char(9)))//Get latest authorised version
+End if 
+
+If ($Platform<3)//If Macintosh
+If ($Version>=330)
+If ($Version>=700)
+$Extension:=".dmg"
+Else 
+$Extension:=".sit"
+End if 
+$Upgrade:=""
+Else 
+$Extension:=".bin"
+End if 
+Else //If Windows
+$Extension:=".exe"
+End if 
+If (Num(GetTextNo ([Unit]Comments;22;Char(9)))#$vsPlatformOS)//Update [facility]Operatingsystem
+//[unit]comments[22]:=$vsPlatformOS // This line to be fixed
+End if 
+
+$Filename:=$Product+$Upgrade+String($Version)+$Extension
+If (Num($atMsgParam{3})>=350) & (Length([Unit]InsureCertNo)<5)//FacilityCode
+[Unit]InsureCertNo:=GetTextNo ([Unit]Comments;3;Char(9))+[Unit]InsureCertNo//CompanySpecific+FacilityCode
+//[unit]comments[3]:="" // This line to be fixed
+End if 
+SAVE RECORD([Facility])
+$Location:=Replace string(Substring(GetTextNo ([Unit]Comments;35;Char(9));2);"updates/";"")//FTPUpdatePath
+If (Substring($Location;Length($Location))#"/")
+$Location:=$Location+"/"
+End if 
+$Message:="Latest:"+String($Version)+":"+$PaidUpTo+":"+$Filename+":"+[Unit]InsureCertNo+":"+$UpdateMessage+$Location+":"+Substring([Unit]DoorSize;11;1)+GetTextNo ([Unit]Comments;29;Char(9))+GetTextNo ([Unit]Comments;30;Char(9))+GetTextNo ([Unit]Comments;31;Char(9))+":"+GetTextNo ([Unit]Comments;32;Char(9))+":"
+End if 
+End if 
+If ([Agreement]PaidToDate>=Current date)
+LogSUVEvent ("Facility "+String([Unit]SUFacilityID;"00000")+" Storman Update Checked!"+$cr+$Message;False;"LIC";0;"";"";"";[Agreement]PaidToDate;[Unit]UnitNumeric)
+End if 
+End if 
+Else 
+//Do nothing
+End case 
+End if 
+WEB SEND TEXT(EncodeIt ($Message;True))
+READ ONLY([Unit])
+LOAD RECORD([Unit])

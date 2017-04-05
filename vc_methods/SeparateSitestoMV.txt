@@ -1,0 +1,150 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+//$Facility1:=RequestMessage ("Please enter 1st facility code")
+//
+//$Facility2:=RequestMessage ("Please enter 2nd facility code")
+READ WRITE([Unit])
+READ WRITE([UnitType])
+READ WRITE([Customer])
+READ WRITE([Agreement])
+READ WRITE([Analysis])
+READ WRITE([BillPlan])
+READ WRITE([Letters])
+READ WRITE([GateLog])
+READ WRITE([NotesHistory])
+READ WRITE([Notices])
+READ WRITE([MarketingTypes])
+READ WRITE([OtherChgs])
+READ WRITE([PhotosCards])
+READ WRITE([Reservation])
+READ WRITE([Trxs])
+READ WRITE([UnitHistory])
+READ WRITE([PromotionHistory])
+READ WRITE([UnitStatusTrx])
+READ WRITE([Activity])
+
+
+QUERY([Unit];[Unit]UnitNo="@B@")
+Open window(20;50;300;150;0;Get localized string("Progress"))
+
+For ($i;1;Records in selection([Unit]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Unit B")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Unit]))+"     ")
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo)
+
+//UnitHistory
+For ($i;1;Records in selection([UnitHistory]))
+[UnitHistory]UnitNo:=$Facility1+Substring([UnitHistory]UnitNo;6)
+[UnitHistory]AgreeNo:=$Facility1+Substring([UnitHistory]AgreeNo;6)
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+
+//UnitStatusTrx
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=[Unit]RUnitNo)
+APPLY TO SELECTION([UnitStatusTrx];[UnitStatusTrx]UnitNo:=$Facility+Substring([UnitStatusTrx]UnitNo;6))
+APPLY TO SELECTION([UnitStatusTrx];[UnitStatusTrx]OldNo:=$Facility+Substring([UnitStatusTrx]OldNo;6))
+
+//Unit
+[Unit]RUnitNo:=$Facility1+[Unit]UnitNo
+
+If ([Unit]AgreeNo>"")
+[Unit]AgreeNo:=$Facility1+Substring([Unit]AgreeNo;6)
+QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+
+//Letters
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$Facility1+Substring([Letters]AgreeNo;6))
+
+//ORC
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]AgreeNo)
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AnalysisCode:=$Facility1+Substring([OtherChgs]AnalysisCode;6))
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AgreeNo:=$Facility1+Substring([OtherChgs]AgreeNo;6))
+
+//Trxs
+$OldFacility:=Substring([Agreement]RAgreeNo;1;5)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Transaction")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs]))+"     ")
+[Trxs]AgreeNo:=$Facility1+Substring([Trxs]AgreeNo;6)
+[Trxs]CustomerCode:=$Facility1+Substring([Trxs]CustomerCode;6)
+[Trxs]AnalysisCode:=$Facility1+Substring([Trxs]AnalysisCode;6)
+[Trxs]MiscDetls:=Replace string([Trxs]MiscDetls;$OldFacility;$Facility1;*)
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([PromotionHistory]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("PromotionHistory")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([PromotionHistory]))+"     ")
+[PromotionHistory]AgreeNo:=$Facility1+Substring([PromotionHistory]AgreeNo;6)
+[PromotionHistory]RefAgreeNo:=$Facility1+Substring([PromotionHistory]RefAgreeNo;6)
+SAVE RECORD([PromotionHistory])
+NEXT RECORD([PromotionHistory])
+End for 
+
+//Agreement
+[Agreement]RAgreeNo:=$Facility1+[Agreement]AgreeNo
+[Agreement]BillingPlanCode:=$Facility1+Substring([Agreement]BillingPlanCode;6)
+[Agreement]ContactNo:=$Facility1+Substring([Agreement]ContactNo;6)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+[Agreement]CustomerCode:=$Facility1+Substring([Agreement]CustomerCode;6)
+
+//Photocards
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=$Facility1+Substring([PhotosCards]Code;6))
+
+//Noteshistory
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$Facility1+Substring([NotesHistory]CustomerCode;6))
+
+//Customer
+[Customer]CustomerCode:=$Facility1+Substring([Customer]CustomerCode;6)
+
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+End if 
+If ([Unit]ReservedTo>"")
+[Unit]ReservedTo:=$Facility1+Substring([Unit]ReservedTo;6)
+QUERY([Reservation];[Reservation]RReserveNo=[Unit]ReservedTo)
+[Reservation]RReserveNo:=$Facility1+[Reservation]ReserveNo
+[Reservation]ContactNo:=$Facility1+Substring([Reservation]ContactNo;6)
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+[Reservation]CustomerCode:=$Facility1+Substring([Reservation]CustomerCode;6)
+[Customer]CustomerCode:=$Facility1+Substring([Customer]CustomerCode;6)
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+End if 
+
+
+QUERY([Quote];[Quote]UnitTypeCode=[Unit]UnitTypeCode)
+APPLY TO SELECTION([Quote];[Quote]ContactNo:=$Facility+Substring([Quote]ContactNo;6))
+APPLY TO SELECTION([Quote];[Quote]AnalysisCode:=$Facility+Substring([Quote]AnalysisCode;6))
+APPLY TO SELECTION([Quote];[Quote]UnitTypeCode:=$Facility+Substring([Quote]UnitTypeCode;6))
+
+[Unit]UnitTypeCode:=$Facility1+Substring([Unit]UnitTypeCode;6)
+
+//UnitType
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+APPLY TO SELECTION([UnitType];[UnitType]RUnitType:=$Facility1+[UnitType]UnitTypeCode)
+
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+CLOSE WINDOW
+
+
+// Set the facility next agreement number and arrays
+
+
+//Delete all activity table
+ALL RECORDS([Activity])
+DELETE SELECTION([Activity])
+
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=$OldFacility)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]Facility:=$Facility)
+
+CLOSE WINDOW

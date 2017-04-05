@@ -1,0 +1,177 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$x;$TotIn;$TotOut)
+C_PICTURE(pictGraph1;pictGraph2)
+ARRAY LONGINT($aWeeks;0)
+If (Form event=On Printing Detail)
+//ARRAY LONGINT(aLongint;2)
+//aLongint{1}:=19
+//aLongint{2}:=20
+//CT SET DISPLAY (pGraph1;1;0)
+//CT SET DISPLAY (pGraph1;2;0)
+//CT SET DISPLAY (pGraph1;3;0)
+//CT SET DISPLAY (pGraph1;6;0)
+//CT SET DISPLAY (pGraph1;9;0)
+Case of 
+: (sUnit=1)//Monthly
+DISTINCT VALUES([Activity]ActivityMonth;$aWeeks)
+$p:=->[Activity]ActivityMonth
+: (sCust=1)//Weekly
+DISTINCT VALUES([Activity]ActivityWeek;$aWeeks)
+$p:=->[Activity]ActivityWeek
+Else //Daily
+//vGraph:=CT Chart selection (pGraph1;2;2;1;10;1;aLongint)
+//CT SET LABEL ATTRIBUTES (pGraph1;vGraph;0;3;3;"Short";7)
+SELECTION TO ARRAY([Activity]ActivityDate;$aTempDates;[Activity]MoveIns;$aTempValues;[Activity]MoveOuts;$aTempOutValues)
+
+$i:=Round(((bSingle2-bSingle1)/10)+1;0)
+
+ARRAY DATE($aDates;0)
+ARRAY LONGINT($aValues;0)
+ARRAY LONGINT($aOutValues;0)
+
+$j:=1
+
+For ($j;1;Size of array($aTempDates))
+If ($j<=Size of array($aTempDates))
+APPEND TO ARRAY($aDates;$aTempDates{$j})
+APPEND TO ARRAY($aValues;$aTempValues{$j})
+APPEND TO ARRAY($aOutValues;$aTempOutValues{$j})
+End if 
+$j:=$j+$i-1
+End for 
+
+End case 
+If (sCust=1) | (sUnit=1)
+$x:=Size of array($aWeeks)
+ARRAY DATE($aTempDates;$x)
+//ARRAY TEXT($aSeries;2)
+//$aSeries{1}:=Get localized string("Move-Ins")
+//$aSeries{2}:=Get localized string("Move-Outs")
+ARRAY LONGINT($aTempValues;$x)
+ARRAY LONGINT($aTempOutValues;$x)
+CREATE SET([Activity];"Graph")
+For ($i;1;$x)
+QUERY([Activity];[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;$p->=$aWeeks{$i})
+ORDER BY([Activity];[Activity]ActivityDate;<)
+$aTempDates{$i}:=[Activity]ActivityDate
+$TotIn:=0
+$TotOut:=0
+Repeat 
+$TotIn:=$TotIn+[Activity]MoveIns
+$TotOut:=$TotOut+[Activity]MoveOuts
+NEXT RECORD([Activity])
+Until (End selection([Activity]))
+$aTempValues{$i}:=$TotIn//Sum([Activity]MoveIns)
+$aTempOutValues{$i}:=$TotOut//Sum([Activity]MoveOuts)
+If ($TotIn>bSingle)
+bSingle:=$TotIn
+End if 
+If ($TotOut>bSingle)
+bSingle:=$TotOut
+End if 
+End for 
+
+$i:=Round((Size of array($aTempDates)/12);0)
+
+ARRAY DATE($aDates;0)
+ARRAY LONGINT($aValues;0)
+ARRAY LONGINT($aOutValues;0)
+
+$j:=1
+
+For ($j;1;Size of array($aTempDates))
+If ($j<=Size of array($aTempDates))
+APPEND TO ARRAY($aDates;$aTempDates{$j})
+APPEND TO ARRAY($aValues;$aTempValues{$j})
+APPEND TO ARRAY($aOutValues;$aTempOutValues{$j})
+End if 
+$j:=$j+$i-1
+End for 
+
+//$i:=Trunc(Size of array($aWeeks)/9;0)+1
+//vGraph:=CT Chart arrays (pGraph1;2;2;$aDates;$aSeries;$aValues)
+//CT SET LABEL ATTRIBUTES (pGraph1;vGraph;0;3;3;"Short";$i)
+USE SET("Graph")
+ORDER BY([Activity];[Activity]ActivityDate;>)
+CLEAR SET("Graph")
+End if 
+
+GRAPH(pictGraph1;1;$aDates;$aValues;$aOutValues)
+GRAPH SETTINGS(pictGraph1;0;0;0;0;False;False;True;Get localized string("Move-Ins");Get localized string("Move-Outs"))
+
+$svgRef:=SVG_Open_picture (pictGraph1)
+SVG EXPORT TO PICTURE($svgRef;pictGraph1)
+SVG_CLEAR ($svgRef)
+
+//$i:=Round(bSingle/10;0)+1
+//CT SET REAL SCALE (pGraph1;vGraph;0;0;0;0;0;bSingle;$i;$i/5)
+//CT SET LEGEND ATTRIBUTES (pGraph1;vGraph;1;0;0;0;7;0;0)
+//CT SET TITLE ATTRIBUTES (pGraph1;vGraph;2;2;3;Get localized string("No of Units"))
+//$i:=CT Font number ("Helvetica")
+//CT SET CHART TEXT ATTRIBUTES (pGraph1;vGraph;2;0;$i;10;-1;-1)  //Legend
+//CT SET CHART TEXT ATTRIBUTES (pGraph1;vGraph;3;0;$i;10;-1;-1)
+//CT SET CHART TEXT ATTRIBUTES (pGraph1;vGraph;3;2;$i;10;-1;-1)
+//CT SET CHART TEXT ATTRIBUTES (pGraph1;vGraph;4;0;$i;10;-1;-1)  //Category Text
+//CT SET CHART TEXT ATTRIBUTES (pGraph1;vGraph;4;2;$i;10;-1;-1)  //Values Text
+//If (vbColourGraphs=True)
+//CT SET CHART FILL ATTRIBUTES (pGraph1;vGraph;8;100;-1;CT Index to color (7))
+//CT SET CHART FILL ATTRIBUTES (pGraph1;vGraph;8;200;-1;CT Index to color (10))
+//Else 
+//CT SET CHART FILL ATTRIBUTES (pGraph1;vGraph;8;100;5;CT Index to color (16))
+//CT SET CHART FILL ATTRIBUTES (pGraph1;vGraph;8;200;4;CT Index to color (16))
+//End if 
+
+SELECTION TO ARRAY([Activity]ActivityDate;$aTempDates;[Activity]OccupUnitNo;$aTempValues)
+
+//ARRAY LONGINT(aLongint;1)
+//aLongint{1}:=22
+//CT SET DISPLAY (pGraph2;1;0)
+//CT SET DISPLAY (pGraph2;2;0)
+//CT SET DISPLAY (pGraph2;3;0)
+//CT SET DISPLAY (pGraph2;6;0)
+//CT SET DISPLAY (pGraph2;9;0)
+//vGraph:=CT Chart selection (pGraph2;1;1;1;10;1;aLongint)
+$i:=Round(((bSingle2-bSingle1)/10)+1;0)
+
+ARRAY DATE($aDates;0)
+ARRAY LONGINT($aValues;0)
+
+$j:=1
+
+For ($j;1;Size of array($aTempDates))
+If ($j<=Size of array($aTempDates))
+APPEND TO ARRAY($aDates;$aTempDates{$j})
+APPEND TO ARRAY($aValues;$aTempValues{$j})
+End if 
+$j:=$j+$i-1
+End for 
+
+//CT SET REAL SCALE (pGraph2;vGraph;0;0;0;0;bSingle1;bSingle2;$i;1)
+//CT SET LEGEND ATTRIBUTES (pGraph2;vGraph;0;0;0;0;7;0;0)
+//ARRAY TEXT($aLegend;1)
+//$aLegend{1}:=Get localized string("No of Occupied Units")
+//CT SET LEGEND TEXT (pGraph2;vGraph;1;$aLegend{1})
+//CT SET TITLE ATTRIBUTES (pGraph2;vGraph;2;2;3;Get localized string("No of Units"))
+//CT SET LABEL ATTRIBUTES (pGraph2;vGraph;0;-1;-1;"Short";7)
+//$i:=CT Font number ("Helvetica")
+//CT SET CHART TEXT ATTRIBUTES (pGraph2;vGraph;2;0;$i;10;-1;-1)
+//CT SET CHART TEXT ATTRIBUTES (pGraph2;vGraph;3;0;$i;10;-1;-1)
+//CT SET CHART TEXT ATTRIBUTES (pGraph2;vGraph;3;2;$i;10;-1;-1)
+//CT SET CHART TEXT ATTRIBUTES (pGraph2;vGraph;4;0;$i;10;-1;-1)
+//CT SET CHART TEXT ATTRIBUTES (pGraph2;vGraph;4;2;$i;10;-1;-1)
+//If (vbColourGraphs=True)
+//CT SET CHART FILL ATTRIBUTES (pGraph2;vGraph;8;100;-1;CT Index to color (10))
+//Else 
+//CT SET CHART FILL ATTRIBUTES (pGraph2;vGraph;8;100;5;CT Index to color (16))
+//End if 
+
+GRAPH(pictGraph2;5;$aDates;$aValues)
+GRAPH SETTINGS(pictGraph2;0;0;0;0;False;False;True;Get localized string("No of Occupied Units"))
+
+$svgRef:=SVG_Open_picture (pictGraph2)
+SVG EXPORT TO PICTURE($svgRef;pictGraph2)
+SVG_CLEAR ($svgRef)
+
+SetFooter 
+End if 

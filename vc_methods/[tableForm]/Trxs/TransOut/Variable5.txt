@@ -1,0 +1,249 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//PrintReceipt 
+CREATE SET([Trxs];"$TransList")
+USE SET("UserSet")
+READ WRITE([Facility])
+//11/10/13 DAM added for Fiscal printer
+If ([Facility]Country="PA")
+ARRAY LONGINT(arMatchNo;0)
+ARRAY TEXT(arAnalysisCode;0)
+ARRAY REAL(arTotalAmt;0)
+C_BOOLEAN(tempSearchInvNo)
+SELECTION TO ARRAY([Trxs]Match;arMatchNo;[Trxs]AnalysisCode;arAnalysisCode;[Trxs]TotAmt;arTotalAmt)
+End if 
+USE SET("UserSet")
+READ WRITE([Facility])
+tempSearchInvNo:=False//Added by Hamid - 22/04/2015 - 8846
+If (vMisc=True)
+USE SET("UserSet")
+If ([Trxs]AgreeNo#"")
+//CREATE EMPTY SET([Transaction];"PrintAll")
+//ADD TO SET([Transaction];"PrintAll")
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//ARRAY LONGINT(aSeqNo;Records in subselection([Transaction]MiscDetls))
+vAddr1:=""
+$Narration:=[Trxs]Narration
+For ($i;1;5)
+$Pos:=Position(Char(17);$Narration;*)
+$String:=Substring($Narration;1;$Pos-1)
+$Narration:=Substring($Narration;$Pos+1)
+Case of 
+
+: ($i=1)
+vAddr2:=$String//[Transaction]MiscDetls'CustName
+: ($i=2)
+vAddr3:=$String//[Transaction]MiscDetls'MailAddress
+: ($i=3)
+vAddr4:=$String//[Transaction]MiscDetls'MailCity
+: ($i=4)
+vAddr5:=$String//[Transaction]MiscDetls'MailState
+: ($i=5)
+vAddr6:=$String//[Transaction]MiscDetls'MailPostZIPCode
+Else 
+//do nothing 
+End case 
+End for 
+vAddr7:=""
+$Match:=[Trxs]Match
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+QUERY([Trxs];[Trxs]CustomerCode=$Facility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match)
+CREATE SET([Trxs];"PrintAll")
+REDUCE SELECTION([Unit];0)
+REDUCE SELECTION([Agreement];0)
+USE SET("PrintAll")
+vReprintCopy:=False
+If ([Facility]InvStatement>0)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+//CREATE SET("PrintAll")
+If ([Trxs]InvNo=0)
+CREATE SET([Trxs];"SearchInvNo")
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+CLEAR SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+Else 
+vReprintCopy:=True
+End if 
+End if 
+USE SET("PrintAll")
+CLEAR SET("PrintAll")
+ORDER BY([Trxs];[Trxs]CustomerCode;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+RELATE ONE([Trxs]CustomerCode)
+[Customer]BalFwdDate:=[Trxs]TrxDate-1
+
+PrintInvRecCode (2;"";True)
+Else 
+AlertMessage (Get localized string("Please highlight the transaction to print an invoice for"))
+End if 
+Else //Print normal invoices
+If (Records in selection>0)
+CREATE SET([Trxs];"PrintAll")
+For ($i;1;Records in selection([Trxs]))
+GOTO SELECTED RECORD([Trxs];$i)
+RELATE ONE([Trxs]AgreeNo)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+If (<>tUtilities)
+<>tUtilities:=False// to disable read from LogMonLookCode
+//To read PULS before creating transaction 
+$AgreeNo:=[Agreement]RAgreeNo
+If (Application type=4D Remote mode)
+$Q:=Execute on server("UtilitiesAction";400000;"UtilitiesAction";9;$AgreeNo)
+Else 
+UtilitiesAction (9)
+End if 
+
+$Tickcount:=Tickcount// 1 sec before read
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+60))
+
+If (Application type=4D Remote mode)
+$Q:=Execute on server("ReadPULS";400000;"ReadPULS")
+Else 
+ReadPULS 
+End if 
+<>tUtilities:=True
+End if 
+If ([Agreement]BalanceOwing<0) & ([Agreement]NextBillDate<(Current date+14))
+RELATE ONE([Agreement]CustomerCode)
+ConfirmTwo (Get localized string("Customer")+":"+Substring([Trxs]CustomerCode;6)+Char(13)+Get localized string("Next Bill Date")+":"+String([Agreement]NextBillDate)+Char(13)+Get localized string("Bal owing")+":"+<>sCurrency+String([Agreement]BalanceOwing;<>sFormat)+Char(13)+Get localized string("Bill Next Charge")+"?")
+If (OK=1)
+RELATE ONE([Trxs]CustomerCode)//This line may not be required
+UpdateNewRent 
+If ([BillPlan]CasualBilling)
+DoBillCasual 
+Else 
+DoBillNext 
+End if 
+End if 
+End if 
+USE SET("PrintAll")
+End for 
+USE SET("PrintAll")
+CREATE EMPTY SET([Trxs];"ToPrint")
+For ($i;1;Records in selection)
+GOTO SELECTED RECORD([Trxs];$i)
+RELATE ONE([Trxs]AgreeNo)
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+If ([Facility]InvUseAgrBalFwd)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode)
+End if 
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+vReprintCopy:=False
+If ([Facility]InvStatement>0)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+If ([Trxs]InvNo=0)
+CREATE SET([Trxs];"SearchInvNo")
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+tempSearchInvNo:=True//Added by Hamid - 22/04/2015 - 8846
+CLEAR SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+Else 
+vReprintCopy:=True
+tempSearchInvNo:=True//Added by Hamid - 22/04/2015 - 8846
+//CREATE SET([Trxs];"SearchInvNo")  //Added by Hamid - 22/04/2015 - 8846
+End if 
+End if 
+PrintInvRecCode (1)
+tempSearchInvNo:=False//Added by Hamid - 22/04/2015 - 8846
+USE SET("PrintAll")
+End for 
+USE SET("ToPrint")
+If ([Facility]InvUseAgrBalFwd)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+Else 
+ORDER BY([Trxs];[Trxs]CustomerCode;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+End if 
+If ([Facility]InvStatement>0)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+End if 
+PrintInvRecCode (2)
+Else 
+//AlertMessage (Get localized string("Please select transactions to print invoices/receipts for, first"))
+AlertMessage ("Please select a transaction!")
+End if 
+End if 
+tBoolean:=False
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+USE SET("$TransList")
+CLEAR SET("$TransList")
+UNLOAD RECORD([Customer])
+ORDER BY([Trxs]TrxDate;<;[Trxs]AnalysisCode;>;[Trxs]TotAmt;>)

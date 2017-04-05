@@ -1,0 +1,141 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$2;$3;$4;$5;$6)
+C_TEXT($Message;$Header;$Response;$Buffer)
+C_LONGINT($TCPID;$Error;$Pos;$TCP_ReceiveError)
+C_TIME($vhDocRef;$WaitTime)
+C_TEXT($t)
+C_LONGINT($Status)
+
+$AA:=$1
+$OID:=$2
+$OPW:=$3
+$AC:=$4
+$t:=Char(9)
+$TransactionResponse:=""
+$Batch:=""
+$Content:=""
+$Hash:=""
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+
+//Server Details
+$PrimaryServer:="ftp.advam.com"
+$TestServer:="demo-ftp.advam.com"
+$RequestURL:="/batch/post.php"
+$ServerPort:="443"
+
+If (Substring($AA;1;4)="test")
+$ServerAddress:=$TestServer
+$AA:=Substring($AA;5)
+Else 
+$ServerAddress:=$PrimaryServer
+End if 
+
+If (Count parameters>4)
+$Batch:=$5
+End if 
+If (Count parameters=6)
+Case of 
+: ($AC="S")
+$Content:=$6
+: ($AC="C")
+$Hash:=$6
+Else 
+//Do nothing
+End case 
+End if 
+
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+
+SetFacility 
+
+//Build the transaction message
+$Message:="AA="+$AA
+$Message:=$Message+"&OID="+$OID
+$Message:=$Message+"&OPW="+$OPW
+$Message:=$Message+"&AC="+$AC
+
+
+If (Count parameters>4)
+$Message:=$Message+"&BATCH="+$BATCH
+End if 
+If (Count parameters=6)
+Case of 
+: ($AC="S")
+$Message:=$Message+"&CONTENT="+$CONTENT
+: ($AC="C")
+$Message:=$Message+"&MD5="+$HASH
+Else 
+//Do nothing
+End case 
+End if 
+
+$Message:=Replace string($Message;"+";"%20")
+
+$Header:=$Header+"POST "+"https://"+$ServerAddress+$RequestURL+" HTTP/1.0"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr//+":"+$ServerPort+$cr
+$Header:=$Header+"Accept: "+"*/*"+$cr
+$Header:=$Header+"Content-type: application/x-www-form-urlencoded"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr+$cr
+$Header:=$Header+$Message+$cr+$cr
+
+SyncRecordLog ("Advam DD header: "+$Header)
+
+$Error:=TCP_Open ($ServerAddress;Num($ServerPort);$TCPID;2)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header)
+$Reply:=""
+$WaitTime:=Current time+?00:01:30?//Timeout after 90 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10) & (Position($Reply;"result")>0))
+$Message:=$Reply
+
+SyncRecordLog ("Advam DD response: "+$Message)
+
+$Error:=TCP_Close ($TCPID)
+If ($Message="")
+$0:="ERRTCP"
+Else 
+$HTTPResponseCode:=""
+Repeat //While a complete HTTP request and response is being received
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else //If not an HTTPResponse Header then must be the Verisign Payment Response message content
+Case of 
+: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$TransactionResponse:=$Message
+Else 
+$TransactionResponse:=" "//To Break out of the Until loop
+$Error:=Num($HTTPResponseCode)
+End case 
+End if 
+Until ($TransactionResponse#"")
+End if 
+
+
+If ($TransactionResponse="")//Problem with the response
+$0:="ERR:Invalid HTTP Response"+$t
+Else 
+$0:=GetXMLResults ($TransactionResponse;$AC)
+End if 
+
+$Error:=TCP_Close ($TCPID)
+
+Else 
+$0:="ERRTCP"
+End if 

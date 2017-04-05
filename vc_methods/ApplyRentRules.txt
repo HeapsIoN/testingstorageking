@@ -1,0 +1,382 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$From)
+C_LONGINT($j;$k;$Date;$Mths;$NoticePlan;$BillPlan;$Notices;$t)
+C_TEXT($Sign1;$Sign2;$Sign3)
+C_TEXT($Plans)
+C_TEXT($String1;$String2;$String3)
+C_POINTER($FieldDate;$FieldNotice;$FieldBill)
+C_REAL($NewAgreeTot;$UnitTot)
+C_BOOLEAN($FixedInc;$PCentInc)
+$UnitTot:=0
+$From:=$1
+If ($From#"Preview")
+$Date:=Num(GetTextNo ([Notices]SMSMessage;1;","))
+$Sign1:=GetTextNo ([Notices]SMSMessage;2;",")
+$Sign2:=GetTextNo ([Notices]SMSMessage;5;",")
+$Sign3:=GetTextNo ([Notices]SMSMessage;8;",")
+$Mths:=(Num(GetTextNo ([Notices]SMSMessage;3;","))*-1)
+$NoticePlan:=Num(GetTextNo ([Notices]SMSMessage;4;","))
+$BillPlan:=Num(GetTextNo ([Notices]SMSMessage;7;","))
+$Notices:=Num(GetTextNo ([Notices]SMSMessage;6;","))
+$Plans:=GetTextNo ([Notices]SMSMessage;9;",")
+If ($From="Daily") & ([Notices]DateFrom<vDateFrom)
+[Notices]DateFrom:=vDateFrom
+SAVE RECORD([Notices])
+End if 
+Else 
+$Date:=[Notices]RefDateField
+$Sign1:=asSigns1{asSigns1}
+$Sign2:=asSigns2{asSigns2}
+$Sign3:=asSigns3{asSigns3}
+$Mths:=vSrchMths*(-1)
+$NoticePlan:=47
+$BillPlan:=13
+$Notices:=vSrchNotice
+$Plans:=vSrchBillPlan
+End if 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]DisableAutoIncr=False)
+
+If ($Date>0)
+If ([Notices]SendToAll)
+$FieldDate:=Field(4;$Date)
+Else 
+$FieldDate:=Field(3;$Date)
+End if 
+$DteField:=Field name($FieldDate)
+//Case of   `need to change the signs when searching for the dates `Removed due to not making sense after screen redesign
+//: ($Sign1=">")
+//$Sign1:="<"
+//: ($Sign1="<")
+//$Sign1:=">"
+//: ($Sign1=">=")
+//$Sign1:="<="
+//: ($Sign1="<=")
+//$Sign1:=">="
+//Else 
+//  `Do nothing
+//End case 
+
+
+
+If ([Notices]SendToAll=True)//if true, search by agreement table, false = search unit dates
+$String1:="QUERY SELECTION([Agreement];[Agreement]"+$DteField+$Sign1+"!"+String(Add to date(Current date;0;$Mths;0))+"!)"
+EXECUTE FORMULA($String1)
+
+End if 
+End if 
+If ($NoticePlan>0)//& ([Notices]SendToAll=True)
+$FieldNotice:=Field(4;47)
+$NtceField:=Field name($FieldNotice)
+$String2:="QUERY SELECTION([Agreement];[Agreement]"+$NtceField+$Sign2+String($Notices)+")"
+EXECUTE FORMULA($String2)
+End if 
+If ($BillPlan>0)//& ([Notices]SendToAll=True)
+If ($Plans#"All")
+$FieldBill:=Field(4;$BillPlan)
+$BillField:=Field name($FieldBill)
+$String3:="QUERY SELECTION([Agreement];[Agreement]"+$BillField+$Sign3+Char(34)+$Plans+Char(34)+")"
+EXECUTE FORMULA($String3)
+End if 
+End if 
+If (Records in selection([Agreement])>0)
+CREATE EMPTY SET([Unit];"ToPrint")
+If ($From#"Preview")
+READ WRITE([Unit])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+End if 
+Open window(20;50;350;150;0;Get localized string("Progress"))
+For ($j;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing")+" : "+[Agreement]RAgreeNo+": "+String($j)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"    ")
+$NewAgreeTot:=0
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+RELATE MANY([Agreement]RAgreeNo)
+If ([Notices]SendToAll=False)
+$FieldDate:=Field(3;[Notices]RefDateField)
+$DteField:=Field name($FieldDate)
+$String1:="QUERY SELECTION([Unit];[Unit]"+$DteField+$Sign1+"!"+String(Add to date(Current date;0;$Mths;0))+"!)"
+EXECUTE FORMULA($String1)
+End if 
+For ($k;1;Records in selection([Unit]))
+If ([Notices]UseAgrDaysPrior)//if true UseUnitPrice
+RELATE ONE([Unit]UnitTypeCode)
+Case of 
+: ([BillPlan]CasualBilling)
+If (CalculateBaseRate (2;0)>[Unit]DailyNewRent)
+[Unit]DailyNewRent:=CalculateBaseRate (2;0)
+End if 
+$UnitRate:=[Unit]DailyNewRent
+: ([BillPlan]PlanPeriod="Week")
+If (CalculateBaseRate (2;0)>[Unit]WeeklyNewRentAmt)
+[Unit]WeeklyNewRentAmt:=CalculateBaseRate (2;0)
+End if 
+$UnitRate:=[Unit]WeeklyNewRentAmt
+Else 
+If (CalculateBaseRate (2;0)>[Unit]NewRentAmt)
+[Unit]NewRentAmt:=CalculateBaseRate (2;0)
+End if 
+$UnitRate:=[Unit]NewRentAmt
+End case 
+End if 
+$UnitTot:=0
+If ([BillPlan]PlanPeriod="Week")
+$UnitFixed:=[Unit]WeeklyRentedValue+[Notices]MinimumCharge// Fixed increase amt
+$UnitPerc:=[Unit]WeeklyRentedValue*(1+([Notices]MinimumPCent/100))//% increase)
+Else 
+$UnitFixed:=[Unit]RentedValue+[Notices]MinimumCharge// Fixed increase amt
+$UnitPerc:=[Unit]RentedValue*(1+([Notices]MinimumPCent/100))//% increase)
+End if 
+If ([Notices]MinimumCharge=0)
+$FixedInc:=False
+Else 
+$FixedInc:=True
+End if 
+If ([Notices]MinimumPCent=0)
+$PCentInc:=False
+Else 
+$PCentInc:=True
+End if 
+Case of 
+: ($FixedInc=True)
+If ($PCentInc=True)
+If ([Notices]BillNextRent)//if take the highest value of % and fixed
+If ($UnitFixed>=$UnitPerc)
+$UnitTot:=$UnitFixed
+Else 
+$UnitTot:=$UnitPerc
+End if 
+Else //take the lowest value
+If ($UnitFixed<=$UnitPerc)
+$UnitTot:=$UnitFixed
+Else 
+$UnitTot:=$UnitPerc
+End if 
+End if 
+Else 
+$UnitTot:=$UnitFixed
+End if 
+: ($PCentInc=True)
+$UnitTot:=$UnitPerc
+Else 
+//Do nothing
+End case 
+If ([Notices]UseAgrDaysPrior)//if checking the unit rate
+If ([Notices]BillNextRent)
+If ($UnitRate>$UnitTot)
+$UnitTot:=$UnitRate
+End if 
+Else 
+If ($UnitRate<$UnitTot)
+$UnitTot:=$UnitRate
+End if 
+End if 
+End if 
+$UnitTot:=RoundAmt ($UnitTot)
+$t:=1
+If ($UnitTot>0) & ($UnitTot#[Unit]RentedValue) & ([Unit]IncreaseFrom=!00-00-00!)//do not overwrite an existing rent increase!
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Unit]DailyNewRent:=RoundAmt ($UnitTot;<>iRoundMethod;[Notices]DaysAfter)
+: ([BillPlan]PlanPeriod="Week")
+[Unit]WeeklyNewRentAmt:=RoundAmt ($UnitTot;<>iRoundMethod;[Notices]DaysAfter)
+Else 
+[Unit]NewRentAmt:=RoundAmt ($UnitTot;<>iRoundMethod;[Notices]DaysAfter)
+End case 
+Repeat 
+Case of 
+: ($t=1)
+[Unit]IncreaseFrom:=[Agreement]NextBillDate
+: ($t>2)
+[Unit]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv*($t-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+[Unit]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End case 
+$t:=$t+1
+Until ([Unit]IncreaseFrom>=[Notices]DateFrom) | ($t>100)
+If ($t>100)
+AlertMessage (Get localized string("Check units for")+" "+[Agreement]RAgreeNo+" "\
++Get localized string("rent increase not recorded but may be due for a rent increase! Next Bill Date =")\
++" "+String([Agreement]NextBillDate))
+End if 
+Case of 
+: ([BillPlan]CasualBilling=True)
+$NewAgreeTot:=$NewAgreeTot+[Unit]DailyNewRent
+: ([BillPlan]PlanPeriod="Week")
+$NewAgreeTot:=$NewAgreeTot+[Unit]WeeklyNewRentAmt
+Else 
+$NewAgreeTot:=$NewAgreeTot+[Unit]NewRentAmt
+End case 
+ADD TO SET([Unit];"ToPrint")
+Case of 
+: ([BillPlan]CasualBilling=True)
+[Unit]WeeklyRentedValue:=Round([Unit]DailyRentedValue*7;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]DailyNewRent*7;2)
+[Unit]RentedValue:=Round([Unit]DailyRentedValue*7/0.2308;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]DailyNewRent*7/0.2308;2)
+: ([BillPlan]PlanPeriod="Week")
+//*****************************************************
+[Unit]RentedValue:=Round([Unit]WeeklyRentedValue/0.2308;2)//--- Commented by Hamid 17 Oct 2014
+//**added by Hamid
+//$UnitFixed:=Round([Unit]WeeklyRentedValue;2)+[Notices]MinimumCharge  // Fixed increase amt
+//$UnitPerc:=Round([Unit]WeeklyRentedValue;2)*(1+([Notices]MinimumPCent/100))  //% increase)
+//**
+[Unit]NewRentAmt:=Round([Unit]WeeklyNewRentAmt/0.2308;2)// --- Commented by Hamid 17 Oct 2014
+//*****************************************************
+[Unit]DailyRentedValue:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]DailyNewRent:=Round([Unit]WeeklyNewRentAmt/7;2)
+Else 
+[Unit]WeeklyRentedValue:=Round([Unit]RentedValue*0.2308;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]NewRentAmt*0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]RentedValue*0.2308/7;2)
+[Unit]DailyNewRent:=Round([Unit]NewRentAmt*0.2308/7;2)
+End case 
+If ($From#"Preview")
+SAVE RECORD([Unit])
+End if 
+Else 
+If ([Unit]IncreaseFrom>!00-00-00!)
+Case of 
+: ([BillPlan]CasualBilling=True)
+$NewAgreeTot:=$NewAgreeTot+[Unit]DailyNewRent
+: ([BillPlan]PlanPeriod="Week")
+$NewAgreeTot:=$NewAgreeTot+[Unit]WeeklyNewRentAmt
+Else 
+$NewAgreeTot:=$NewAgreeTot+[Unit]NewRentAmt
+End case 
+Else 
+Case of 
+: ([BillPlan]CasualBilling=True)
+$NewAgreeTot:=$NewAgreeTot+[Unit]DailyRentedValue
+: ([BillPlan]PlanPeriod="Week")
+$NewAgreeTot:=$NewAgreeTot+[Unit]WeeklyRentedValue
+Else 
+$NewAgreeTot:=$NewAgreeTot+[Unit]RentedValue
+End case 
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+RELATE MANY([Agreement]RAgreeNo)
+Case of 
+: ([BillPlan]CasualBilling=True)
+$NewAgreeTot:=Sum([Unit]DailyNewRent)
+: ([BillPlan]PlanPeriod="Week")
+$NewAgreeTot:=Sum([Unit]WeeklyNewRentAmt)
+Else 
+$NewAgreeTot:=Sum([Unit]NewRentAmt)
+End case 
+If ($NewAgreeTot>0) & ($NewAgreeTot#[Agreement]RentAmt) & ($From#"Preview") & ($t>1)//$t - if the unit was actually changed
+[Agreement]NewRegularRent:=RoundAmt ($NewAgreeTot)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+Else 
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+
+If ([Agreement]NewRentAmt#[Agreement]RegularRent)
+[Agreement]NewDiscAmt:=Round($NewAgreeTot-[Agreement]NewRegularRent;2)
+//[Agreement]NewRentFrom:=[Agreement]NextBillDate
+//If ([Agreement]NewRentFrom<[Notices]DateFrom)
+//Repeat 
+//[Agreement]NewRentFrom:=CalcNxtBillDate ([Agreement]NewRentFrom;[Agreement]MthsAdv;[Agreement]DaytoBill;[BillPlan]WeeksMonths)
+//Until ([Agreement]NewRentFrom>=[Notices]DateFrom)
+//End if 
+Else 
+[Agreement]NewRentAmt:=0
+[Agreement]NewDiscAmt:=0
+//[Agreement]NewRentFrom:=!00/00/00!
+End if 
+
+RELATE MANY([Agreement]RAgreeNo)
+QUERY SELECTION([Unit];[Unit]IncreaseFrom#!00-00-00!)
+If (Records in selection([Unit])>0)
+ORDER BY([Unit];[Unit]IncreaseFrom;>)
+FIRST RECORD([Unit])
+[Agreement]NewRentFrom:=[Unit]IncreaseFrom
+Else 
+[Agreement]NewRentFrom:=!00-00-00!
+End if 
+
+// Modified by: nicholas.wykes (11/04/2011)
+// Automatically add note for KSS during Daily
+If ($From="Daily") & ([Agreement]NewRegularRent#[Agreement]RegularRent)
+READ WRITE([NotesHistory])
+CREATE RECORD([NotesHistory])
+
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]UserLogin:="System"
+[NotesHistory]Category:="Rent Increase"
+[NotesHistory]Note:="Current rate: "+String([Agreement]RegularRent;<>sFormat)
+[NotesHistory]Note:=[NotesHistory]Note+" "+"New rate: "+String([Agreement]NewRegularRent;<>sFormat)
+[NotesHistory]Note:=[NotesHistory]Note+" "+"Increase Date: "+String([Agreement]NewRentFrom;<>sFormat)
+
+SAVE RECORD([NotesHistory])
+READ ONLY([NotesHistory])
+End if 
+
+SAVE RECORD([Agreement])
+End if 
+NEXT RECORD([Agreement])
+End for 
+CLOSE WINDOW
+Else 
+If (Records in selection([Unit])>0) & ($From="Preview")
+REDUCE SELECTION([Unit];0)
+End if 
+End if 
+If ($From#"Preview") & (Records in set("ToPrint")<=0)
+AlertMessage (Get localized string("There are no records to apply the rent rule to."))
+End if 
+USE SET("ToPrint")
+If (Records in set("ToPrint")>0)
+
+If ($From#"Preview")
+vFrom:=0
+If ($From="RunRule")
+vFrom:=3
+End if 
+vTotNetInc:=0
+USE SET("ToPrint")
+FORM SET OUTPUT([Unit];"DailyRentIncrease")
+BREAK LEVEL(2)
+ACCUMULATE([Unit]RentedValue;[Unit]NewRentAmt)
+ORDER BY([Unit];[Unit]IncreaseFrom;>;[Unit]RentedValue;>;[Unit]NewRentAmt;>)
+PRINT SELECTION([Unit])
+UNLOAD RECORD([Unit])
+End if 
+End if 

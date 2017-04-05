@@ -1,0 +1,95 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 05/02/14 Method taken from RentinAdvance so that can be used by WS_GetReportData
+
+C_TEXT($1)//FacilityCode
+C_DATE($2)//vMthDate - month end date to run the report
+C_BOOLEAN($3)//Rent in Advance Method  Daily or Whole Month
+C_BOOLEAN($4)//If True create arrays for WS_GetReportDate
+C_LONGINT($i;$j)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; | ;[Agreement]MoveOut>$2;*)
+QUERY([Agreement]; | ;[Agreement]BalanceOwing<0;*)//New condition to fix last column 3.5.4
+QUERY([Agreement]; | ;[Customer]LatestTrxDate>($2-32);*)//New condition 3.5.4
+QUERY([Agreement]; & ;[Agreement]MoveIn<=$2;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=$1+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#$1+"PETTY")
+
+SET AUTOMATIC RELATIONS(False;False)
+CREATE SET([Agreement];"ToPrint")
+QUERY SELECTION([Agreement]NoticeAmtToBill#0)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=0)
+USE SET("ToPrint")
+//Calculate
+MESSAGES OFF
+CREATE EMPTY SET([Agreement];"ToPrint")
+If ($4=False)
+Open window(20;50;300;150;0;Get localized string("Progress"))
+End if 
+ARRAY TEXT(aPrepaidAnalysis;0)
+ARRAY REAL(aOBal;0)
+FIRST RECORD
+For ($i;1;Records in selection([Agreement]))
+If ($4=False)
+GOTO XY(2;2)
+MESSAGE("Calculating Prepaid Agreements "+String($i)+" of "+String(Records in selection([Agreement])))
+End if 
+If (Locked([Agreement])) & ($4=False)
+//LOCKED ATTRIBUTES([Agreement];$Proc;$User;$Comp;$ProcName)
+//If (Application type#4D Server )
+//ALERT("Locked Agreement Record for "+[Agreement]AgreeNo+" by process "+String($Proc)+":"+$ProcName+".  Unable to Print!")
+//End if 
+vLeg:=Get localized string("Prepaid Report for ")+<>sFacility+Get localized string(" could not be printed due to locked records!")
+FORM SET OUTPUT([Facility];"LockedRpt")
+If (<>tBatch=False)
+PRINT RECORD([Facility])
+Else 
+PRINT RECORD([Facility];*)
+End if 
+ABORT
+Else 
+If (([Agreement]ActiveAgreemt=True) | ([Agreement]MoveOut>$2)) & ([Agreement]MoveIn<=$2)
+[Agreement]NoticeAmtToBill:=CalcRentAdvance ($2;$3;False;False;(<>sCurrentUser="AdminSupport"))
+SAVE RECORD([Agreement])
+End if 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>$2)
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([Agreement]BalanceOwing#0) | ([Agreement]NoticeAmtToBill>0)
+ADD TO SET([Agreement];"ToPrint")
+End if 
+End if 
+If ($4=True)//WS_GetReportData
+APPEND TO ARRAY(asData1;[Agreement]AgreeNo)
+APPEND TO ARRAY(asData2;[Agreement]UnitsOccup)
+APPEND TO ARRAY(aCustName;[Customer]CustomerName)
+APPEND TO ARRAY(asData3;String([Agreement]LastBillAmt;"###,###.00"))
+APPEND TO ARRAY(asData4;String([Agreement]LastBillDate;System date short))
+APPEND TO ARRAY(asData5;String([Agreement]NextBillDate;System date short))
+APPEND TO ARRAY(asData6;String([Agreement]NoticeAmtToBill;"###,###.00"))
+APPEND TO ARRAY(asData7;String([Agreement]BalanceOwing;"###,###.00"))
+End if 
+NEXT RECORD([Agreement])
+End for 
+If ($4=True)
+QUERY SELECTION([Agreement]NoticeAmtToBill#0)
+APPLY TO SELECTION([Agreement];[Agreement]NoticeAmtToBill:=0)
+End if 
+CLOSE WINDOW
+MESSAGES ON
+USE SET("ToPrint")
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+If (bAdd=1)//To take out zero balances on Whole Month Basis
+QUERY SELECTION([Agreement];[Agreement]NoticeAmtToBill#0)//SDD added this back at Adrian's request on 18/3/04
+End if 

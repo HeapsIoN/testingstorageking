@@ -1,0 +1,151 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//06/03/14 DAM Added for KSS eQuote generation
+If ([Facility]EmailAddress#"")
+If ([Facility]FacilityCode="KE@") & ((Test path name(<>sPreferencesPath+"Training.xml")#Is a document))
+//05/08/14 DAM Added KSS Check
+$Failed:=False
+$Message:=""
+If ([Contacts]ContactName="")
+$Failed:=True
+$Message:="Contact Name"
+End if 
+
+If ([Contacts]WhenRequired<Current date)
+If ($Failed=True)
+$Message:=$Message+", When Required date"
+Else 
+$Message:="When Required Date"
+End if 
+$Failed:=True
+End if 
+
+If ([Contacts]Firstname="")
+If ($Failed=True)
+$Message:=$Message+", Contact First Name"
+Else 
+$Message:="Contact First Name"
+End if 
+$Failed:=True
+End if 
+
+If ([Contacts]EmailAddress="")
+If ($Failed=True)
+$Message:=$Message+", Contact Email Address"
+Else 
+$Message:="Contact Email Address"
+End if 
+$Failed:=True
+End if 
+
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+If (Records in selection([Quote])=0)
+If ($Failed=True)
+$Message:=$Message+", Quoted Units"
+Else 
+$Message:="Quoted Units"
+End if 
+$Failed:=True
+Else 
+//Check for UnitType in quotes, if empty -> not allow to do the call 9751
+For ($z;1;Records in selection([Quote]))
+
+If ([Quote]UnitTypeCode="")
+$Message:="Quoted UnitTypes"
+$Failed:=True
+End if 
+
+NEXT RECORD([Quote])
+End for 
+
+End if 
+
+If ($Failed=False)
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+SAVE RECORD([Contacts])
+VALIDATE TRANSACTION
+KSScurl (False)
+If (<>sProduct#"M@")
+AlertMessage ("Your eQuote to "+[Contacts]ContactName+" is being processed, a copy of the eQuote will be available for reference in Notice History once the sale enquiry has synced with Central")
+Else 
+AlertMessage ("Your eQuote to "+[Contacts]ContactName+" is being processed, once you OK and close a copy of the eQuote will be available for reference in Notice History")
+End if 
+OBJECT SET ENABLED(bCancel;False)
+QUERY([Letters];[Letters]ContactNo=[Contacts]ContactNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+Else 
+AlertMessage ("To send this eQuote, you must complete/correct the following customer information: "+$Message)
+End if 
+
+Else 
+
+If ([Contacts]EmailAddress>"")
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode#"")
+[Contacts]Quote_UnitType:=""
+For ($i;1;Records in selection([Quote]))
+[Contacts]Quote_UnitType:=[Contacts]Quote_UnitType+Substring([Quote]Size;12)+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Quote]Price;"###,##0.00")+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+[Quote]Note+Char(13)
+NEXT RECORD([Quote])
+End for 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode="")
+[Contacts]Quote_Other:=""
+For ($i;1;Records in selection([Quote]))
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+[Contacts]Quote_Other:=[Contacts]Quote_Other+[Analysis]Description+" x "+[Quote]Size+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Quote]Price;"###,##0.00")+Char(9)+Char(9)+Char(9)+Char(9)+Char(9)+[Quote]Note+Char(13)
+NEXT RECORD([Quote])
+End for 
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+FORM SET INPUT([Letters];"EmailIn")
+CREATE RECORD([Letters])
+[Letters]ContactNo:=[Contacts]ContactNo
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]Description="Default";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+If (Records in selection([Notices])=1)
+[Letters]LetterBLOB:=[Notices]Email
+[Letters]LetterDesc:=[Notices]Description
+
+If ([Notices]EmailSubject#"")
+[Letters]Custom1:=[Notices]EmailSubject
+Else 
+[Letters]Custom1:=[Letters]LetterDesc
+End if 
+Else 
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; | ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]EmailBlank=False;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+ORDER BY([Notices];[Notices]DaysAfter;>;[Notices]Description;>)
+LOAD RECORD([Notices])
+[Letters]LetterBLOB:=[Notices]Email
+[Letters]LetterDesc:=[Notices]Description
+
+If ([Notices]EmailSubject#"")
+[Letters]Custom1:=[Notices]EmailSubject
+Else 
+[Letters]Custom1:=[Letters]LetterDesc
+End if 
+End if 
+[Letters]DateSent:=Current date
+SAVE RECORD([Letters])
+vboolOld:=False
+Test_TextBlob:=Convert to text([Letters]LetterBLOB;"UTF-8")
+Test_TheID:=Record number([Letters])
+Test_Mailpath:=""
+$WinRef:=Open window((Screen width/2)-425;(Screen height/2)-325;(Screen width/2)+425;(Screen height/2)+325;4096;Get localized string("Email"))
+MODIFY RECORD([Letters];*)//No scroll bars
+If (bCancel=1)
+DELETE RECORD([Letters])
+End if 
+QUERY([Letters];[Letters]ContactNo=[Contacts]ContactNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo)
+Else 
+AlertMessage (Get localized string("You need to enter the contacts email address"))
+End if 
+End if 
+Else 
+AlertMessage ("Please enter the facility email address into Maintenance, Email and Event Log Setup and then try again.")
+End if 

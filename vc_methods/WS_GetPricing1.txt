@@ -1,0 +1,390 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 03/03/11, 16:36:37
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_GetPricing
+// Description
+// Generates arrays of pricing and calculates any applicable discounts
+//
+// Parameters
+// ----------------------------------------------------
+
+
+SOAP DECLARATION(WS_asAnalysis;Text array;SOAP input)
+SOAP DECLARATION(WS_aQuantity;Real array;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_asAnalysisOut;Text array;SOAP output)
+SOAP DECLARATION(WS_aQuantityOut;Real array;SOAP output)
+SOAP DECLARATION(WS_aTotAmt;Real array;SOAP output)
+SOAP DECLARATION(WS_aTaxAmt;Real array;SOAP output)
+SOAP DECLARATION(WS_asDescription;Text array;SOAP output)
+SOAP DECLARATION(WS_aQuantityOnHand;Real array;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_GetPricing"+Char(13)
+$sizeofarray:=Size of array(WS_asAnalysis)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asAnalysis("+String($vlElem)+"):"+WS_asAnalysis{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aQuantity)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aQuantity("+String($vlElem)+"):"+String(WS_aQuantity{$vlElem})+Char(13)
+End for 
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+//06/11/15 DAM Added for discount calculation
+ARRAY TEXT($LocalasAnalysisOut;0)
+
+//WS_OLD=WS_Edit:=False
+$CalcDiscount:=True
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_asAnalysis{1};1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+For ($i;1;Size of array(WS_asAnalysis))
+QUERY([Analysis];[Analysis]Code=WS_asAnalysis{$i})
+If (Records in selection([Analysis])=1)
+$TotAmt:=[Analysis]DfltSellAmt*WS_aQuantity{$i}
+$TaxAmt:=CalcTaxAmt ($TotAmt;[Analysis]Code)
+APPEND TO ARRAY(WS_asAnalysisOut;[Analysis]Code)
+
+//06/11/15 DAM Added for discount calculation
+APPEND TO ARRAY($LocalasAnalysisOut;[Analysis]Code)
+
+APPEND TO ARRAY(WS_aQuantityOut;WS_aQuantity{$i})
+APPEND TO ARRAY(WS_aTotAmt;$TotAmt)
+APPEND TO ARRAY(WS_aTaxAmt;$TaxAmt)
+If ([Analysis]InvItem)
+APPEND TO ARRAY(WS_aQuantityOnHand;[Analysis]InvQtyonHand-WS_aQuantity{$i})
+Else 
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+End if 
+
+Else 
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring(WS_asAnalysis{$i};1;8);*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=True)
+If (Records in selection([MerchPlan])=1)
+$CalcDiscount:=False
+
+$planItems:=[MerchPlan]AnalysisCodes
+$fullValue:=0
+While (Length($planItems)>0)
+$aCode:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$aCode+",";"";1)
+$qAmount:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$qAmount+",";"";1)
+
+QUERY([Analysis];[Analysis]Code=$aCode)
+
+$TotAmt:=[Analysis]DfltSellAmt*WS_aQuantity{$i}*Num($qAmount)
+$TaxAmt:=CalcTaxAmt ($TotAmt;[Analysis]Code)
+APPEND TO ARRAY(WS_asAnalysisOut;[Analysis]Code)
+APPEND TO ARRAY(WS_aQuantityOut;(Num($qAmount)*WS_aQuantity{$i}))
+APPEND TO ARRAY(WS_aTotAmt;$TotAmt)
+APPEND TO ARRAY(WS_aTaxAmt;$TaxAmt)
+APPEND TO ARRAY(WS_asDescription;[Analysis]Description)
+$fullValue:=$fullValue+$TotAmt
+If ([Analysis]InvItem)
+APPEND TO ARRAY(WS_aQuantityOnHand;[Analysis]InvQtyonHand-(WS_aQuantity{$i}*Num($qAmount)))
+Else 
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+End if 
+
+End while 
+
+$TotAmt:=([MerchPlan]FixedDiscount*WS_aQuantity{$i})-$fullValue
+$TaxAmt:=CalcTaxAmt ($TotAmt;[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_aQuantityOut;WS_aQuantity{$i})
+APPEND TO ARRAY(WS_aTotAmt;$TotAmt)
+APPEND TO ARRAY(WS_aTaxAmt;$TaxAmt)
+APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+
+Else 
+APPEND TO ARRAY(WS_asAnalysisOut;[Analysis]Code+":INVALID")
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTotAmt;0)
+APPEND TO ARRAY(WS_aTaxAmt;0)
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1013
+WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+End if 
+End if 
+End for 
+$i:=0
+$Valid:=False
+
+Repeat 
+$i:=$i+1
+If (WS_asAnalysisOut{$i}#"@:INVALID")
+$Valid:=True
+End if 
+Until ($i=Size of array(WS_asAnalysisOut)) | ($Valid=True)
+
+
+//06/11/15 DAM Added for discount calculation
+If (Size of array($LocalasAnalysisOut)>0)
+$CalcDiscount:=True
+End if 
+
+
+
+If (($Valid=True) & ($CalcDiscount))
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_asAnalysis{$i};1;5))
+
+If (Records in selection([Facility])=1)
+vDiscount:=0
+//WS_OLD=WS_Edit:=True
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=[Facility]FacilityCode+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=False;*)//04/11/15 DAM Added to do the calculations only for Bulk transactions
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False)
+ORDER BY([MerchPlan];[MerchPlan]Priority;>;[MerchPlan]MerchPlanID;>)
+ARRAY TEXT(asTMAnalysisCodes;0)
+
+For ($i;1;Size of array($LocalasAnalysisOut))
+$Find:=Find in array(asTMAnalysisCodes;$LocalasAnalysisOut{$i})
+$Invalid:=Position(":INVALID";$LocalasAnalysisOut{$i})
+If ($Find<=0) & ($Invalid<=0)
+APPEND TO ARRAY(asTMAnalysisCodes;$LocalasAnalysisOut{$i})
+End if 
+End for 
+
+
+For ($i;1;Records in selection([MerchPlan]))
+$Qty:=0
+$Total:=0
+$KSSPercent:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+For ($k;1;Size of array($LocalasAnalysisOut))
+If (WS_asAnalysisOut{$k}=$LocalasAnalysisOut{$j})
+$Qty:=$Qty+WS_aQuantityOut{$k}
+$Total:=$Total+WS_aTotAmt{$k}
+End if 
+End for 
+End if 
+End for 
+
+
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+$aQty:=0
+$aTotal:=0
+For ($k;1;Size of array($LocalasAnalysisOut))
+If ($LocalasAnalysisOut{$k}=asTMAnalysisCodes{$j})
+$aQty:=$aQty+WS_aQuantityOut{$k}
+$aTotal:=$aTotal+WS_aTotAmt{$k}
+End if 
+End for 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-$Percent)/100);1)*$aQty)
+Else 
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-[MerchPlan]PercDiscount)/100);1)*$aQty)
+End if 
+End if 
+End for 
+
+If ([MerchPlan]ItemQuantity<=$Qty)
+If ([MerchPlan]PercDiscount>0)
+If ([Facility]FacilityCode="KE@")
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$KSSPercent//Round(($Total/$Qty)*((100-$Percent)/100);1)*$Qty
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+APPEND TO ARRAY(WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+APPEND TO ARRAY(WS_aTotAmt;($Total-$NewTotal)*-1)
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTaxAmt;CalcTaxAmt (($Total-$NewTotal)*-1;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis))
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$KSSPercent//Round(($Total/$Qty)*((100-[MerchPlan]PercDiscount)/100);1)*$Qty
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+APPEND TO ARRAY(WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+APPEND TO ARRAY(WS_aTotAmt;($Total-$NewTotal)*-1)
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTaxAmt;CalcTaxAmt (($Total-$NewTotal)*-1;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis))
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total*((100-$Percent)/100)
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+APPEND TO ARRAY(WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+APPEND TO ARRAY(WS_aTotAmt;($Total-$NewTotal)*-1)
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTaxAmt;CalcTaxAmt (($Total-$NewTotal)*-1;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis))
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total*((100-[MerchPlan]PercDiscount)/100)
+If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+APPEND TO ARRAY(WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+APPEND TO ARRAY(WS_aTotAmt;($Total-$NewTotal)*-1)
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTaxAmt;CalcTaxAmt (($Total-$NewTotal)*-1;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis))
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]FixedDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total-$Percent
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+APPEND TO ARRAY(WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+APPEND TO ARRAY(WS_aTotAmt;($Total-$NewTotal)*-1)
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTaxAmt;CalcTaxAmt (($Total-$NewTotal)*-1;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis))
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total-[MerchPlan]FixedDiscount
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+APPEND TO ARRAY(WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+APPEND TO ARRAY(WS_aTotAmt;($Total-$NewTotal)*-1)
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTaxAmt;CalcTaxAmt (($Total-$NewTotal)*-1;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis))
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Repeat 
+$k:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+$k:=1
+Case of 
+: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=False)
+
+For ($t;1;Size of array(WS_asAnalysisOut))
+If (WS_asAnalysisOut{$t}=asTMAnalysisCodes{$j})
+If ([MerchPlan]RepeatMP=True)
+WS_aTotAmt{$t}:=WS_aTotAmt{$t}*((100-$Percent)/100)
+Else 
+WS_aTotAmt{$t}:=WS_aTotAmt{$t}*((100-[MerchPlan]PercDiscount)/100)
+End if 
+WS_aTaxAmt{$t}:=CalcTaxAmt (WS_aTotAmt{$t};WS_asAnalysisOut{$t})
+End if 
+End for 
+
+: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis="")
+$TotAmt:=0
+For ($t;1;Size of array(WS_asAnalysisOut))
+If (WS_asAnalysisOut{$t}=asTMAnalysisCodes{$j})
+$TotAmt:=$TotAmt+WS_aTotAmt{$t}
+End if 
+End for 
+APPEND TO ARRAY(WS_asAnalysisOut;asTMAnalysisCodes{$j})
+QUERY([Analysis];[Analysis]Code=asTMAnalysisCodes{$j})
+APPEND TO ARRAY(WS_asDescription;[Analysis]Description+" Discount")
+If ([MerchPlan]RepeatMP=True)
+$DiscAmt:=$TotAmt*((100-$Percent)/100)
+Else 
+$DiscAmt:=$TotAmt*((100-[MerchPlan]PercDiscount)/100)
+End if 
+APPEND TO ARRAY(WS_aTotAmt;($TotAmt-$DiscAmt)*-1)
+APPEND TO ARRAY(WS_aQuantityOut;0)
+APPEND TO ARRAY(WS_aTaxAmt;CalcTaxAmt (($TotAmt-$DiscAmt)*-1;WS_asAnalysisOut{$t}))
+APPEND TO ARRAY(WS_aQuantityOnHand;0)
+Else 
+//Do Nothing
+End case 
+DELETE FROM ARRAY(asTMAnalysisCodes;$j)
+$j:=Size of array(asTMAnalysisCodes)+1
+End if 
+End for 
+Until ($k=0)
+End if 
+NEXT RECORD([MerchPlan])
+End for 
+vDiscount:=vDiscount*-1
+
+End if 
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+$String:="End WS_GetPricing"+Char(13)
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asAnalysisOut)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asAnalysisOut("+String($vlElem)+"):"+WS_asAnalysisOut{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aQuantityOut)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aQuantityOut("+String($vlElem)+"):"+String(WS_aQuantityOut{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aTotAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aTotAmt("+String($vlElem)+"):"+String(WS_aTotAmt{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aTaxAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aTaxAmt("+String($vlElem)+"):"+String(WS_aTaxAmt{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asDescription("+String($vlElem)+"):"+WS_asDescription{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aQuantityOnHand)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aQuantityOnHand("+String($vlElem)+"):"+String(WS_aQuantityOnHand{$vlElem})+Char(13)
+End for 
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

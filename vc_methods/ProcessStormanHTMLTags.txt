@@ -1,0 +1,118 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 15/12/11, 10:52:56
+// ----------------------------------------------------
+// Method: ProcessStormanHTMLTags
+// Description
+// Added functionality to the PROCESS HTML TAGS 4D Command - namely adding <br> in line breaks
+//
+// Parameters
+// $0 - Text output
+// $1 - Text input
+// ----------------------------------------------------
+
+C_TEXT($0;$1;$converted;$out)
+
+$converted:=$1
+
+$Posit:=Position("]]]";$converted)
+While ($Posit>0)
+$converted:=Replace string($converted;"]]]";"]-->")
+$Posit:=Position($converted;"]]]")
+End while 
+
+$converted:=Replace string($converted;"[[";"<!--#")
+$converted:=Replace string($converted;"]]";"-->")
+
+//14/07/14 DAM Added to use interprocess variables in emails
+$Posit:=Position("&lt;&gt;";$converted)
+While ($Posit>0)
+$converted:=Replace string($converted;"&lt;&gt;";"<>")
+$Posit:=Position($converted;"&lt;&gt;")
+End while 
+
+//01/08/14 DAM Added to use 4DIF statements
+$Posit:=Position("4DIF";$converted)
+If ($Posit>0)
+$converted:=Replace string($converted;"&gt;";">")
+$converted:=Replace string($converted;"&lt;";"<")
+End if 
+
+
+//Date formats
+$converted:=Replace string($converted;"\"System date short\"";"1")
+$converted:=Replace string($converted;"\"System date abbreviated\"";"2")
+$converted:=Replace string($converted;"\"System date long\"";"3")
+$converted:=Replace string($converted;"\"Internal date short special\"";"4")
+$converted:=Replace string($converted;"\"Internal date long\"";"5")
+$converted:=Replace string($converted;"\"Internal date abbreviated\"";"6")
+$converted:=Replace string($converted;"\"Internal date short\"";"7")
+$converted:=Replace string($converted;"\"ISO Date\"";"8")
+
+If (<>sFacility="KE@")
+$Pos:=Position("KSSTag[";$converted)
+If ($Pos>0)
+$converted:=KSSXMLCentre (<>sFacility;$converted)
+End if 
+End if 
+
+//SET TEXT TO PASTEBOARD($converted)
+
+[Facility]LetterSignOff:=Replace string([Facility]LetterSignOff;Char(Carriage return);"\\~~")//fb9773 by eugene
+
+
+PROCESS 4D TAGS($converted;$converted)
+
+[Facility]LetterSignOff:=Replace string([Facility]LetterSignOff;"\\~~";Char(Carriage return))//fb9773 by eugene
+
+//SET TEXT TO PASTEBOARD($converted)
+$converted:=Replace string($converted;"&amp;amp;";"&amp;")
+$converted:=Replace string($converted;"&amp;#39;";"&#39;")
+$converted:=Replace string($converted;"&amp;quot;";"&quot;")
+
+
+$converted:=Replace string($converted;Char(Carriage return);"<br>")
+
+
+$photoPos:=Position("\"/4DImgField/";$converted)
+While ($photoPos>0)
+$photoReplace:=Substring($converted;$photoPos;Position("\"";$converted;$photoPos+1)-$photoPos+1)
+$photoRecord:=Substring($photoReplace;14;Position("-";$photoReplace)-14)
+$photoTable:=GetTextNo ($photoRecord;1;".")
+$photoField:=GetTextNo ($photoRecord;2;".")
+$photoRecord:=GetTextNo ($photoRecord+".";3;".")
+$photoInsert:=""
+$docPath:=<>sAttachPath+"Pic"+String($photoPos)+".png"
+$tblPoint:=Table(Num($photoTable))
+GOTO RECORD($tblPoint->;Num($photoRecord))
+
+$fieldPoint:=Field(Num($photoTable);Num($photoField))
+
+WRITE PICTURE FILE($docPath;$fieldPoint->)
+
+If (<>IPLATFORM=3)
+$docPath:=Replace string($docPath;"\\";"/")
+$docPath:=Char(Double quote)+$docPath+Char(Double quote)
+Else 
+VOLUME LIST($asVolumes)
+$docPath:=Replace string($docPath;$asVolumes{1};"")
+$docPath:=Replace string(Replace string($docPath;" ";"\\ ");":";"/")
+$docPath:=Replace string($docPath;" ";"%20")
+$docPath:=Char(Double quote)+$docPath+Char(Double quote)
+End if 
+
+$converted:=Replace string($converted;$photoReplace;$docPath)
+$photoPos:=Position("\"/4DImgField/";$converted)
+
+End while 
+
+//Find any multiple spaces and convert them to &nbsp;
+$converted:=Replace string($converted;"  ";" ";*)//&nbsp;
+
+$converted:=Replace string($converted;"<br>";" ";*)
+
+$converted:=Replace string($converted;"\\~~";"<br>")//fb9773 by eugene
+
+$0:=$converted

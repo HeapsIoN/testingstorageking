@@ -1,0 +1,454 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): Hamid.Zarei
+// Date and time: 03/09/2015
+// ----------------------------------------------------
+// Method: WS_AnalysisDetails
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is string var;SOAP input)
+
+SOAP DECLARATION(WS_AnalysisCodeArray;String array;SOAP output)//Analysis Code
+SOAP DECLARATION(WS_AnalysisDescription;String array;SOAP output)// Analysis Description
+SOAP DECLARATION(WS_AnalysisQTYonHand;Real array;SOAP output)// Analysis Inv Qty on Hand
+SOAP DECLARATION(WS_AnalysisPrice;Real array;SOAP output)// Analysis Price
+SOAP DECLARATION(WS_AnalysisMinAmt;Real array;SOAP output)//Analysis Min Amt
+SOAP DECLARATION(WS_AnalysisMaxAmt;Real array;SOAP output)//Analysis Max Amt
+SOAP DECLARATION(WS_MerchPlanID;String array;SOAP output)//MerchPlan ID
+SOAP DECLARATION(WS_MerchPlanDescription;String array;SOAP output)//MerchPlan Description
+SOAP DECLARATION(WS_MerchPlanAnalysisCodes;String array;SOAP output)// MerchPlan Analysis Codes
+SOAP DECLARATION(WS_MerchPlanInventoryPack;Boolean array;SOAP output)//MerchPlan Inventory Pack     - False: Bulk Discounts
+SOAP DECLARATION(WS_MerchPlanRepeatMP;Boolean array;SOAP output)//Merch Plan RepeatMP
+SOAP DECLARATION(WS_MerchPlanPercDiscount;Real array;SOAP output)//Merch Plan Perc Discount
+SOAP DECLARATION(WS_MerchPlanItemQuantity;Real array;SOAP output)//Merch Plan Item Quantity
+SOAP DECLARATION(WS_MerchPlanFixedDiscount;Real array;SOAP output)//Merch Plan Fixed Discount
+//SOAP DECLARATION(WS_asDescription;Text array;SOAP Output)
+//SOAP DECLARATION(WS_aQuantityOnHand;Real array;SOAP Output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+
+
+
+
+
+
+ARRAY TEXT(WS_AnalysisCodeArray;0)
+ARRAY TEXT(WS_AnalysisDescription;0)
+ARRAY REAL(WS_AnalysisQTYonHand;0)
+ARRAY REAL(WS_AnalysisPrice;0)
+
+ARRAY REAL(WS_AnalysisMinAmt;0)
+ARRAY REAL(WS_AnalysisMaxAmt;0)
+
+ARRAY TEXT($WS_asAnalysisOut;0)
+
+ARRAY TEXT(WS_asDescription;0)
+//ARRAY REAL(WS_aQuantityOnHand;0)
+ARRAY TEXT(WS_MerchPlanID;0)
+ARRAY TEXT(WS_MerchPlanDescription;0)
+ARRAY TEXT(WS_MerchPlanAnalysisCodes;0)
+ARRAY BOOLEAN(WS_MerchPlanInventoryPack;0)
+
+ARRAY BOOLEAN(WS_MerchPlanRepeatMP;0)
+ARRAY REAL(WS_MerchPlanPercDiscount;0)
+ARRAY REAL(WS_MerchPlanItemQuantity;0)
+ARRAY REAL(WS_MerchPlanFixedDiscount;0)
+ARRAY REAL(WS_MerchPlanPercDiscount;0)
+C_TEXT($String)
+
+$String:="Start WS_AnalysisDetails:"+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+" "+Char(13)
+WSRecordLog ($String)
+
+
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True
+$CalcDiscount:=True
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+TRACE
+
+If (Records in selection([Facility])=1)
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+//QUERY([Analysis]; & ;[Analysis]OnLine=True;*)
+QUERY([Analysis]; & ;[Analysis]OnlineSale=True;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+ORDER BY([Analysis]SortOrder;>;[Analysis]AnalysisCategory;>;[Analysis]Code;>)
+
+FIRST RECORD([Analysis])
+For ($H;1;Records in selection([Analysis]))
+APPEND TO ARRAY(WS_AnalysisCodeArray;[Analysis]Code)
+APPEND TO ARRAY(WS_AnalysisDescription;[Analysis]Description)
+APPEND TO ARRAY(WS_AnalysisQTYonHand;[Analysis]InvQtyonHand)
+APPEND TO ARRAY(WS_AnalysisPrice;[Analysis]DfltSellAmt)
+
+APPEND TO ARRAY(WS_AnalysisMinAmt;[Analysis]MinAmt)
+APPEND TO ARRAY(WS_AnalysisMaxAmt;[Analysis]MaxAmt)
+
+NEXT RECORD([Analysis])
+End for 
+
+If (Records in selection([Analysis])>0)
+
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=[Facility]FacilityCode+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False)
+ORDER BY([MerchPlan];[MerchPlan]Priority;>;[MerchPlan]MerchPlanID;>)
+
+FIRST RECORD([MerchPlan])
+For ($K;1;Records in selection([MerchPlan]))
+APPEND TO ARRAY(WS_MerchPlanID;[MerchPlan]MerchPlanID)
+APPEND TO ARRAY(WS_MerchPlanDescription;[MerchPlan]Description)
+APPEND TO ARRAY(WS_MerchPlanAnalysisCodes;[MerchPlan]AnalysisCodes)
+APPEND TO ARRAY(WS_MerchPlanInventoryPack;[MerchPlan]InventoryPack)
+APPEND TO ARRAY(WS_MerchPlanRepeatMP;[MerchPlan]RepeatMP)
+APPEND TO ARRAY(WS_MerchPlanPercDiscount;[MerchPlan]PercDiscount)
+APPEND TO ARRAY(WS_MerchPlanItemQuantity;[MerchPlan]ItemQuantity)
+APPEND TO ARRAY(WS_MerchPlanFixedDiscount;[MerchPlan]FixedDiscount)
+
+NEXT RECORD([MerchPlan])
+End for 
+
+End if 
+NEXT RECORD([Facility])
+End for 
+//  //** From WS_GetPricing
+//For ($i;1;Size of array(WS_AnalysisCodeArray))
+//QUERY([Analysis];[Analysis]Code=WS_AnalysisCodeArray{$i})
+//If (Records in selection([Analysis])=1)
+//$TotAmt:=[Analysis]DfltSellAmt*WS_AnalysisQTY{$i}
+//$TaxAmt:=CalcTaxAmt ($TotAmt;[Analysis]Code)
+//APPEND TO ARRAY($WS_asAnalysisOut;[Analysis]Code)
+//
+//If ([Analysis]InvItem)
+//APPEND TO ARRAY(WS_aQuantityOnHand;[Analysis]InvQtyonHand-WS_AnalysisQTY{$i})
+//Else 
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//End if 
+//
+//Else 
+//QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring(WS_AnalysisCodeArray{$i};1;8);*)
+//QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+//QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=True)
+//If (Records in selection([MerchPlan])=1)
+//$CalcDiscount:=False
+//
+//$planItems:=[MerchPlan]AnalysisCodes
+//$fullValue:=0
+//While (Length($planItems)>0)
+//$aCode:=Substring($planItems;1;Position(",";$planItems)-1)
+//$planItems:=Replace string($planItems;$aCode+",";"";1)
+//$qAmount:=Substring($planItems;1;Position(",";$planItems)-1)
+//$planItems:=Replace string($planItems;$qAmount+",";"";1)
+//
+//QUERY([Analysis];[Analysis]Code=$aCode)
+//
+//$TotAmt:=[Analysis]DfltSellAmt*WS_AnalysisQTY{$i}*Num($qAmount)
+//$TaxAmt:=CalcTaxAmt ($TotAmt;[Analysis]Code)
+//APPEND TO ARRAY($WS_asAnalysisOut;[Analysis]Code)
+//
+//APPEND TO ARRAY(WS_asDescription;[Analysis]Description)
+//$fullValue:=$fullValue+$TotAmt
+//If ([Analysis]InvItem)
+//APPEND TO ARRAY(WS_aQuantityOnHand;[Analysis]InvQtyonHand-(WS_AnalysisQTY{$i}*Num($qAmount)))
+//Else 
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//End if 
+//
+//End while 
+//
+//$TotAmt:=([MerchPlan]FixedDiscount*WS_AnalysisQTY{$i})-$fullValue
+//$TaxAmt:=CalcTaxAmt ($TotAmt;[MerchPlan]DiscountAnalysis)
+//APPEND TO ARRAY($WS_asAnalysisOut;[MerchPlan]DiscountAnalysis)
+//
+//APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//
+//Else 
+//APPEND TO ARRAY($WS_asAnalysisOut;[Analysis]Code+":INVALID")
+//
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1013
+//WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+//End if 
+//End if 
+//End for 
+//$i:=0
+//$Valid:=False
+//
+//Repeat 
+//$i:=$i+1
+//If ($WS_asAnalysisOut{$i}#"@:INVALID")
+//$Valid:=True
+//End if 
+//Until ($i=Size of array($WS_asAnalysisOut)) | ($Valid=True)
+//
+//If (($Valid=True) & ($CalcDiscount))
+//QUERY([Facility];[Facility]FacilityCode=Substring(WS_AnalysisCodeArray{$i};1;5))
+//
+//If (Records in selection([Facility])=1)
+//vDiscount:=0
+//
+//
+//WS_ORSuccess:=True
+//WS_ORErrorCode:=0
+//WS_ORErrorDescription:=""
+//
+//QUERY([MerchPlan];[MerchPlan]MerchPlanID=[Facility]FacilityCode+"@";*)
+//QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False)
+//ORDER BY([MerchPlan];[MerchPlan]Priority;>;[MerchPlan]MerchPlanID;>)
+//ARRAY TEXT(asTMAnalysisCodes;0)
+//
+//For ($i;1;Size of array($WS_asAnalysisOut))
+//$Find:=Find in array(asTMAnalysisCodes;$WS_asAnalysisOut{$i})
+//$Invalid:=Position(":INVALID";$WS_asAnalysisOut{$i})
+//If ($Find<=0) & ($Invalid<=0)
+//APPEND TO ARRAY(asTMAnalysisCodes;$WS_asAnalysisOut{$i})
+//End if 
+//End for 
+//
+//
+//For ($i;1;Records in selection([MerchPlan]))
+//$Qty:=0
+//$Total:=0
+//$KSSPercent:=0
+//For ($j;1;Size of array(asTMAnalysisCodes))
+//$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+//If ([MerchPlan]AnalysisCodes=$MerchString)
+//For ($k;1;Size of array($WS_asAnalysisOut))
+//If ($WS_asAnalysisOut{$k}=asTMAnalysisCodes{$j})
+//$Qty:=$Qty  //+WS_aQuantityOut{$k}
+//$Total:=$Total  //+WS_aTotAmt{$k}
+//End if 
+//End for 
+//End if 
+//End for 
+//
+//
+//For ($j;1;Size of array(asTMAnalysisCodes))
+//$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+//If ([MerchPlan]AnalysisCodes=$MerchString)
+//$aQty:=0
+//$aTotal:=0
+//For ($k;1;Size of array($WS_asAnalysisOut))
+//If ($WS_asAnalysisOut{$k}=asTMAnalysisCodes{$j})
+//$aQty:=$aQty  //+WS_aQuantityOut{$k}
+//$aTotal:=$aTotal  //+WS_aTotAmt{$k}
+//End if 
+//End for 
+//If ([MerchPlan]RepeatMP=True)
+//$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+//$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-$Percent)/100);1)*$aQty)
+//Else 
+//$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-[MerchPlan]PercDiscount)/100);1)*$aQty)
+//End if 
+//End if 
+//End for 
+//
+//If ([MerchPlan]ItemQuantity<=$Qty)
+//If ([MerchPlan]PercDiscount>0)
+//
+//If ([MerchPlan]RepeatMP=True)
+//$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+//$NewTotal:=$Total*((100-$Percent)/100)
+//If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+//APPEND TO ARRAY($WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+//APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+//
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//End if 
+//vDiscount:=vDiscount+($Total-$NewTotal)
+//Else 
+//$NewTotal:=$Total*((100-[MerchPlan]PercDiscount)/100)
+//If ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis>"")
+//APPEND TO ARRAY($WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+//APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+//
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//End if 
+//vDiscount:=vDiscount+($Total-$NewTotal)
+//End if 
+//
+//Else 
+//If ([MerchPlan]RepeatMP=True)
+//$Percent:=[MerchPlan]FixedDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+//$NewTotal:=$Total-$Percent
+//If ($NewTotal<0)
+//$NewTotal:=0
+//End if 
+//APPEND TO ARRAY($WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+//APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+//
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//vDiscount:=vDiscount+($Total-$NewTotal)
+//Else 
+//$NewTotal:=$Total-[MerchPlan]FixedDiscount
+//If ($NewTotal<0)
+//$NewTotal:=0
+//End if 
+//APPEND TO ARRAY($WS_asAnalysisOut;[Facility]FacilityCode+[MerchPlan]DiscountAnalysis)
+//APPEND TO ARRAY(WS_asDescription;[MerchPlan]DiscountDescription)
+//
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//vDiscount:=vDiscount+($Total-$NewTotal)
+//End if 
+//End if 
+//Repeat 
+//$k:=0
+//For ($j;1;Size of array(asTMAnalysisCodes))
+//$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+//If ([MerchPlan]AnalysisCodes=$MerchString)
+//$k:=1
+//Case of 
+//: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=False)
+//
+//: ([MerchPlan]PercDiscount>0) & ([MerchPlan]ShowDiscount=True) & ([MerchPlan]DiscountAnalysis="")
+//$TotAmt:=0
+//For ($t;1;Size of array($WS_asAnalysisOut))
+//If ($WS_asAnalysisOut{$t}=asTMAnalysisCodes{$j})
+//$TotAmt:=$TotAmt  //+WS_aTotAmt{$t}
+//End if 
+//End for 
+//APPEND TO ARRAY($WS_asAnalysisOut;asTMAnalysisCodes{$j})
+//QUERY([Analysis];[Analysis]Code=asTMAnalysisCodes{$j})
+//APPEND TO ARRAY(WS_asDescription;[Analysis]Description+" Discount")
+//If ([MerchPlan]RepeatMP=True)
+//$DiscAmt:=$TotAmt*((100-$Percent)/100)
+//Else 
+//$DiscAmt:=$TotAmt*((100-[MerchPlan]PercDiscount)/100)
+//End if 
+//
+//APPEND TO ARRAY(WS_aQuantityOnHand;0)
+//Else 
+//  //Do Nothing
+//End case 
+//DELETE FROM ARRAY(asTMAnalysisCodes;$j)
+//$j:=Size of array(asTMAnalysisCodes)+1
+//End if 
+//End for 
+//Until ($k=0)
+//End if 
+//NEXT RECORD([MerchPlan])
+//End for 
+//vDiscount:=vDiscount*-1
+//
+//End if 
+//End if 
+//  //**
+Else 
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+WS_ORSuccess:=False
+End if 
+Else 
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+WS_ORSuccess:=False
+End if 
+
+$String:="End WS_AnalysisDetails:"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+
+
+$sizeofarray:=Size of array(WS_AnalysisCodeArray)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AnalysisCodeArray("+String($vlElem)+"):"+WS_AnalysisCodeArray{$vlElem}+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_AnalysisDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AnalysisDescription("+String($vlElem)+"):"+WS_AnalysisDescription{$vlElem}+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_AnalysisQTYonHand)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AnalysisQTYonHand("+String($vlElem)+"):"+String(WS_AnalysisQTYonHand{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_AnalysisPrice)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AnalysisPrice("+String($vlElem)+"):"+String(WS_AnalysisPrice{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanID("+String($vlElem)+"):"+WS_MerchPlanID{$vlElem}+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanDescription("+String($vlElem)+"):"+WS_MerchPlanDescription{$vlElem}+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanAnalysisCodes)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanAnalysisCodes("+String($vlElem)+"):"+String(WS_MerchPlanAnalysisCodes{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanInventoryPack)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanInventoryPack("+String($vlElem)+"):"+String(WS_MerchPlanInventoryPack{$vlElem})+Char(13)
+End for 
+
+//$sizeofarray:=Size of array(WS_asDescription)
+//For ($vlElem;1;$sizeofarray)
+//$String:=$String+"WS_asDescription("+String($vlElem)+"):"+WS_asDescription{$vlElem}+Char(13)
+//End for 
+
+//$sizeofarray:=Size of array(WS_aQuantityOnHand)
+//For ($vlElem;1;$sizeofarray)
+//$String:=$String+"WS_aQuantityOnHand("+String($vlElem)+"):"+String(WS_aQuantityOnHand{$vlElem})+Char(13)
+//End for 
+
+$sizeofarray:=Size of array(WS_AnalysisMinAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AnalysisMinAmt("+String($vlElem)+"):"+String(WS_AnalysisMinAmt{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_AnalysisMaxAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AnalysisMaxAmt("+String($vlElem)+"):"+String(WS_AnalysisMaxAmt{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanRepeatMP)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanRepeatMP("+String($vlElem)+"):"+String(WS_MerchPlanRepeatMP{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanPercDiscount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanPercDiscount("+String($vlElem)+"):"+String(WS_MerchPlanPercDiscount{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanItemQuantity)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanItemQuantity("+String($vlElem)+"):"+String(WS_MerchPlanItemQuantity{$vlElem})+Char(13)
+End for 
+
+$sizeofarray:=Size of array(WS_MerchPlanFixedDiscount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_MerchPlanFixedDiscount("+String($vlElem)+"):"+String(WS_MerchPlanFixedDiscount{$vlElem})+Char(13)
+End for 
+
+
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

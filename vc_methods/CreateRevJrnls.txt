@@ -1,0 +1,333 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 5/11/13 - 2 corrections for KSS to fix lines with no descriptions - added #239 & #267-269
+
+C_DATE($1;$StDate;$EdDate)//Date range for journals
+C_LONGINT($2)//Mode 0=Regular client selects all facilities exc HOF 1=Kennards select only sites with GLCodeExt
+C_LONGINT($i;$j;$Repeat)
+READ WRITE([Journal])
+READ WRITE([CashBookTrxs])
+$StDate:=GetDate (1;Month of($1);Year of($1))
+$EdDate:=Add to date($StDate;0;1;-1)
+QUERY([Journal];[Journal]PeriodNo=GetPeriod ($StDate);*)
+QUERY([Journal]; & ;[Journal]JrnlType="REV")
+For ($i;1;Records in selection([Journal]))
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+DELETE SELECTION([CashBookTrxs])
+NEXT RECORD([Journal])
+End for 
+DELETE SELECTION([Journal])
+QUERY([Journal];[Journal]PeriodNo=GetPeriod ($StDate);*)
+QUERY([Journal]; & ;[Journal]JrnlType="PRE")
+For ($i;1;Records in selection([Journal]))
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+DELETE SELECTION([CashBookTrxs])
+NEXT RECORD([Journal])
+End for 
+DELETE SELECTION([Journal])
+$Repeat:=4
+$Prefix:=""
+Repeat 
+If (<>sProduct="M@") | ([Facility]FacilityCode=<>sHOFacility)
+Case of 
+: ($2=1)
+QUERY([Facility];[Facility]GLCodeExt>"")
+Case of 
+: ([Facility]FacilityCode="KE@") & ($Repeat=4)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="100";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt<"200")
+$Repeat:=3
+$Prefix:="KVSI NZ - "
+: ([Facility]FacilityCode="KE@") & ($Repeat=3)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="200";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt<"500")
+$Repeat:=2
+$Prefix:="Kennards - "
+: ([Facility]FacilityCode="KE@") & ($Repeat=2)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="500";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt<"800")
+$Repeat:=1
+$Prefix:="KVSI - "
+: ([Facility]FacilityCode="KE@") & ($Repeat=1)
+QUERY([Facility];[Facility]GLCodeExt>"";*)
+QUERY([Facility]; & ;[Facility]GLCodeExt>="800")
+$Repeat:=0
+$Prefix:="Managed - "
+Else 
+$Repeat:=0
+$Prefix:=""
+End case 
+ORDER BY([Facility];[Facility]GLCodeExt;>)
+Else 
+QUERY([Facility];[Facility]FacilityCode#<>sHOFacility)
+ORDER BY([Facility];[Facility]SortOrder;>)
+$Repeat:=0
+End case 
+Else 
+$Repeat:=0
+ALL RECORDS([Facility])
+End if 
+If ([Facility]FacilityCode#"KE@") & (<>sProduct="M@") & (($2=4) | ($2=5))//$2=3 means is from GL report or Trial Balance
+CONFIRM(Get localized string("Create one file for all facilities, or create one file for each facility?");Get localized string("One file only");Get localized string("Separate files"))
+If (OK=1)
+vSeparateFiles:=False
+Else 
+vSeparateFiles:=True
+End if 
+Else 
+vSeparateFiles:=False
+End if 
+If (vSeparateFiles=False)
+SCAN INDEX([Journal]JournalNo;1;<)
+FIRST RECORD([Journal])
+$j:=[Journal]JournalNo+1
+CREATE RECORD([Journal])
+[Journal]JournalNo:=$j
+[Journal]JrnlDate:=$EdDate
+[Journal]JrnlType:="REV"
+[Journal]PeriodNo:=GetPeriod ($StDate)
+[Journal]Narration:=$Prefix+Get localized string("Storman Receipts Journal for")+" "+GetMonthName ([Journal]PeriodNo)+" "+String(Year of($StDate))
+SAVE RECORD([Journal])
+End if 
+For ($i;1;Records in selection([Facility]))
+If (vSeparateFiles=True)
+SCAN INDEX([Journal]JournalNo;1;<)
+FIRST RECORD([Journal])
+$j:=[Journal]JournalNo+1
+CREATE RECORD([Journal])
+[Journal]JournalNo:=$j
+[Journal]JrnlDate:=$EdDate
+[Journal]JrnlType:="REV"
+[Journal]PeriodNo:=GetPeriod ($StDate)
+[Journal]Narration:=$Prefix+Get localized string("Storman Receipts Journal for")+" "+GetMonthName ([Journal]PeriodNo)+" "+String(Year of($StDate))
+SAVE RECORD([Journal])
+End if 
+QUERY([Trxs];[Trxs]TrxDate>=$StDate;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EdDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Facility]FacilityCode+"@")
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>)
+$LastAnalysis:=[Trxs]AnalysisCode
+RELATE ONE([Trxs]AnalysisCode)
+$Total:=0
+$TaxAmt:=0
+$GrsAmt:=0
+$TotGross:=0
+For ($j;1;Records in selection([Trxs]))
+$Total:=Round($Total+[Trxs]TotAmt-[Trxs]TaxAmt;2)
+$TaxAmt:=Round($TaxAmt+[Trxs]TaxAmt;2)
+$GrsAmt:=Round($GrsAmt+[Trxs]TotAmt;2)
+NEXT RECORD([Trxs])
+If ([Trxs]AnalysisCode#$LastAnalysis)
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$EdDate
+[CashBookTrxs]AcctNo:=[Analysis]GLCode
+If ($2=1)
+[CashBookTrxs]AcctNo:=[CashBookTrxs]AcctNo+[Facility]GLCodeExt
+End if 
+[CashBookTrxs]Amount:=Round($Total*(-1);2)
+[CashBookTrxs]GrossAmt:=Round($GrsAmt*(-1);2)
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" "+[Analysis]Description;1;50)
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+If ([CashBookTrxs]Amount#0) | ([CashBookTrxs]GrossAmt#0)
+SAVE RECORD([CashBookTrxs])
+End if 
+$Total:=0
+$TotGross:=$TotGross+Round($GrsAmt;2)
+$GrsAmt:=0
+RELATE ONE([Trxs]AnalysisCode)
+$LastAnalysis:=[Trxs]AnalysisCode
+End if 
+End for 
+QUERY([ChartAccts];[ChartAccts]AcctType="T")
+If (Records in selection([ChartAccts])>0)
+If (Records in selection([ChartAccts])>1)
+If ([Facility]FacilityCode="KE@")
+QUERY SELECTION BY FORMULA([ChartAccts];Position($Prefix;[ChartAccts]Description)>0)
+Else 
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=[Facility]FacilityCode)
+End if 
+End if 
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$EdDate
+If ($Prefix="M@") | ($Prefix="KVSI@")
+[CashBookTrxs]AcctNo:=Substring([ChartAccts]ReportName;1;15)//No extension for GST acct
+Else 
+[CashBookTrxs]AcctNo:=[ChartAccts]AcctNo//No extension for GST acct
+End if 
+[CashBookTrxs]Amount:=Round($TaxAmt*(-1);2)
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" "+[ChartAccts]Description;1;50)
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+SAVE RECORD([CashBookTrxs])
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+If (Records in selection([ChartAccts])>1)//NMS
+If ([Facility]FacilityCode="KE@")
+QUERY SELECTION BY FORMULA([ChartAccts];Position($Prefix;[ChartAccts]Description)>0)
+Else 
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=[Facility]FacilityCode)
+End if 
+End if 
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$EdDate
+Case of 
+: ($Prefix="M@") | ($Prefix="KVSI@")
+[CashBookTrxs]AcctNo:=Substring([ChartAccts]ReportName+[Facility]GLCodeExt;1;15)
+: ($Prefix="K@")
+[CashBookTrxs]AcctNo:=Substring([ChartAccts]AcctNo+[Facility]GLCodeExt;1;15)
+Else 
+[CashBookTrxs]AcctNo:=[ChartAccts]AcctNo
+End case 
+[CashBookTrxs]Amount:=Round($TotGross;2)
+[CashBookTrxs]GrossAmt:=Round($TotGross;2)
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" "+[ChartAccts]Description;1;50)
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+SAVE RECORD([CashBookTrxs])
+NEXT RECORD([Facility])
+End for 
+//Create Prepaid Journal
+If (vSeparateFiles=False)
+SCAN INDEX([Journal]JournalNo;1;<)
+FIRST RECORD([Journal])
+$j:=[Journal]JournalNo+1
+CREATE RECORD([Journal])
+[Journal]JournalNo:=$j
+[Journal]JrnlDate:=$EdDate
+[Journal]JrnlType:="PRE"
+[Journal]PeriodNo:=GetPeriod ($StDate)
+[Journal]Narration:=$Prefix+Get localized string("Storman Receipts Journal for")+" "+GetMonthName ([Journal]PeriodNo)+" "+String(Year of($StDate))
+SAVE RECORD([Journal])
+End if 
+
+FIRST RECORD([Facility])
+For ($i;1;Records in selection([Facility]))
+If (vSeparateFiles=True)
+SCAN INDEX([Journal]JournalNo;1;<)
+FIRST RECORD([Journal])
+$j:=[Journal]JournalNo+1
+CREATE RECORD([Journal])
+[Journal]JournalNo:=$j
+[Journal]JrnlDate:=$EdDate
+[Journal]JrnlType:="PRE"
+[Journal]PeriodNo:=GetPeriod ($StDate)
+[Journal]Narration:=$Prefix+Get localized string("Storman Receipts Journal for")+" "+GetMonthName ([Journal]PeriodNo)+" "+String(Year of($StDate))
+SAVE RECORD([Journal])
+End if 
+QUERY([Activity];[Activity]ActivityDate=$EdDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=[Facility]FacilityCode)
+vTax:=GetTaxRate ($EdDate)//SDD 16/1/11 To ensure new rate could be used
+$TaxMult:=1+(vTax/100)
+If ([Facility]TaxAddtoAmt=False)
+$TaxMult:=1/(1+(vTax/100))
+End if 
+$PPTax:=$TaxMult
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"RF")
+$x:=0
+$Complete:=False
+Repeat 
+$x:=$x+1
+If ([Facility]FacilityCode="KE@")
+Case of 
+: ($x=1)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"RF")
+$AdvVal:=[Activity]AdvBillRntValue
+: ($x=2)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"IN")
+$AdvVal:=[Activity]AdvBillInsValue
+Else 
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Other")
+$AdvVal:=[Activity]AdvanceBillOtherValue
+$Complete:=True
+End case 
+Else 
+$AdvVal:=[Activity]AdvBillRntValue
+$Complete:=True
+End if 
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$EdDate
+[CashBookTrxs]AcctNo:=[Analysis]GLCode
+If ($2=1)
+[CashBookTrxs]AcctNo:=[CashBookTrxs]AcctNo+[Facility]GLCodeExt
+End if 
+[CashBookTrxs]Amount:=Round(($AdvVal*$PPTax);2)
+[CashBookTrxs]GrossAmt:=Round($AdvVal;2)
+If ([Facility]FacilityCode="KE@")
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=[Facility]FacilityCode)
+If (Records in selection([ChartAccts])=0)
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+End if 
+End if 
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+[ChartAccts]Description;1;50)
+Else 
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" Prepaid Rent";1;50)
+End if 
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+SAVE RECORD([CashBookTrxs])
+Until ($Complete=True)
+
+QUERY([ChartAccts];[ChartAccts]AcctType="A")
+$x:=0
+$Complete:=False
+Repeat 
+$x:=$x+1
+If (Records in selection([ChartAccts])>1)//NMS
+If ([Facility]FacilityCode="KE@")
+QUERY SELECTION BY FORMULA([ChartAccts];Position($Prefix;[ChartAccts]Description)>0)
+Else 
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=[Facility]FacilityCode)
+End if 
+End if 
+If ([Facility]FacilityCode="KE@")
+Case of 
+: ($x=1)
+$AdvVal:=[Activity]AdvBillRntValue
+: ($x=2)
+QUERY([ChartAccts];[ChartAccts]AcctType="A2")
+$AdvVal:=[Activity]AdvBillInsValue
+Else 
+QUERY([ChartAccts];[ChartAccts]AcctType="A3")
+$AdvVal:=[Activity]AdvanceBillOtherValue
+$Complete:=True
+End case 
+Else 
+$AdvVal:=[Activity]AdvBillRntValue
+$Complete:=True
+End if 
+CREATE RECORD([CashBookTrxs])
+[CashBookTrxs]JournalNo:=[Journal]JournalNo
+[CashBookTrxs]TrxDate:=$EdDate
+Case of 
+: ($Prefix="M@") | ($Prefix="KVSI@")
+[CashBookTrxs]AcctNo:=Substring([ChartAccts]ReportName+[Facility]GLCodeExt;1;15)
+: ($Prefix="K@")
+[CashBookTrxs]AcctNo:=Substring([ChartAccts]AcctNo+[Facility]GLCodeExt;1;15)
+Else 
+[CashBookTrxs]AcctNo:=[ChartAccts]AcctNo
+End case 
+[CashBookTrxs]Amount:=Round(($AdvVal*(-1)*$PPTax);2)
+[CashBookTrxs]GrossAmt:=Round($AdvVal*(-1);2)
+[CashBookTrxs]Description:=Substring([Facility]ShortName+","+[Facility]FacilityCode+" "+[ChartAccts]Description;1;50)
+[CashBookTrxs]SiteID:=[Facility]GLCodeExt
+SAVE RECORD([CashBookTrxs])
+
+Until ($Complete=True)
+
+NEXT RECORD([Facility])
+End for 
+Until ($Repeat=0)
+READ ONLY([Journal])
+READ ONLY([CashBookTrxs])
+UNLOAD RECORD([Journal])
+UNLOAD RECORD([CashBookTrxs])

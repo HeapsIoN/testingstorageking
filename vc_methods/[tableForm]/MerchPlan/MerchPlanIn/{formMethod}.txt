@@ -1,0 +1,205 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+ARRAY TEXT(asAnDisplay;0)
+ARRAY REAL(arAnQty;0)
+ARRAY TEXT(asAnDisplayDesc;0)
+ARRAY TEXT(asAnalysisCategoryDesc;0)
+
+If ([MerchPlan]MerchPlanID="")
+If (asMerchView=2)
+[MerchPlan]InventoryPack:=True
+[MerchPlan]ShowDiscount:=True
+End if 
+End if 
+
+If ([MerchPlan]InventoryPack)
+FORM GOTO PAGE(2)
+End if 
+
+
+If (Records in selection([MarketingTypes])#0)
+ARRAY POINTER($ArrHierarch;2)
+$ArrHierarch{1}:=->asAnDisplay//First break level
+$ArrHierarch{2}:=->asAnDisplayDesc//Second break level
+LISTBOX SET HIERARCHY(*;"listPack";True;$ArrHierarch)
+LISTBOX COLLAPSE(*;"listPack";True)
+
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asAnalysisCategoryDesc)
+INSERT IN ARRAY(asAnalysisCategoryDesc;1)
+asAnalysisCategoryDesc{1}:="<None>"
+asAnalysisCategoryDesc:=Find in array(asAnalysisCategoryDesc;[MerchPlan]AnalysisCategory)
+If ([MerchPlan]AnalysisCategory="")
+asAnalysisCategoryDesc:=1
+End if 
+End if 
+
+
+
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<50)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asAnCodes;Records in selection([Analysis]))
+ARRAY TEXT(asAnalysisCodes;Records in selection([Analysis]))
+ARRAY TEXT(asDots;Size of array(asAnCodes))
+For ($i;1;Records in selection([Analysis]))
+
+
+asAnCodes{$i}:=[Analysis]Description
+asAnalysisCodes{$i}:=[Analysis]Code
+If ([MerchPlan]InventoryPack=False)
+asDots{$i}:=""
+If (Position((asAnalysisCodes{$i}+",");[MerchPlan]AnalysisCodes)>0)
+asDots{$i}:="•"
+End if 
+Else 
+//Build Inventory Pack display if no marketing types
+If (Records in selection([MarketingTypes])=0)
+APPEND TO ARRAY(asAnDisplay;[Analysis]Description)
+
+$startPos:=Position(([Analysis]Code+",");[MerchPlan]AnalysisCodes)
+If ($startPos>0)
+$startPos:=$startPos+Length([Analysis]Code+",")
+$endQty:=Position(",";[MerchPlan]AnalysisCodes;$startPos+1)
+APPEND TO ARRAY(arAnQty;Num(Substring([MerchPlan]AnalysisCodes;$startPos;$endQty-$startPos)))
+Else 
+APPEND TO ARRAY(arAnQty;0)
+End if 
+End if 
+End if 
+
+NEXT RECORD([Analysis])
+End for 
+
+$Count:=0
+For ($i;1;Size of array(asDots))
+If (asDots{$i}#"")
+$Count:=$Count+1
+End if 
+End for 
+
+
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asBillingPlanInit;0)
+ARRAY TEXT(asBillingPlanDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asBillingPlanInit;[Analysis]Description;asBillingPlanDesc)
+INSERT IN ARRAY(asBillingPlanDesc;1)
+asBillingPlanDesc{1}:="<None>"
+INSERT IN ARRAY(asBillingPlanInit;1)
+asBillingPlanInit{1}:="<None>"
+asBillingPlanInit:=Find in array(asBillingPlanInit;<>sFacility+[MerchPlan]DiscountAnalysis)
+If (asBillingPlanInit>0)
+asBillingPlanDesc:=asBillingPlanInit
+End if 
+If ([MerchPlan]DiscountAnalysis="")
+asBillingPlanInit:=1
+asBillingPlanDesc:=1
+End if 
+hlList:=New list
+
+//If inventory pack, clear asAnalysisCodes for us to use
+If ([MerchPlan]InventoryPack) & (Records in selection([MarketingTypes])>0)
+ARRAY TEXT(asAnalysisCodes;0)
+End if 
+
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+For ($i;1;Records in selection([MarketingTypes]))
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]AnalysisCategory=[MarketingTypes]Description;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If (Records in selection([Analysis])>0)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+$hSubList:=New list
+$Expand:=0
+For ($j;1;Records in selection([Analysis]))
+
+If ([MerchPlan]InventoryPack=False)
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+APPEND TO LIST($hSubList;[Analysis]Description;$k)
+$l:=Find in array(asAnCodes;[Analysis]Description)
+If ($l>0)
+If (asDots{$l}="•")
+SET LIST ITEM PROPERTIES($hSubList;$k;False;Bold+Italic;0)
+$Expand:=1
+End if 
+End if 
+
+Else 
+//Build Inventory Pack arrays
+APPEND TO ARRAY(asAnDisplay;[MarketingTypes]Description)
+APPEND TO ARRAY(asAnDisplayDesc;[Analysis]Description)
+APPEND TO ARRAY(asAnalysisCodes;[Analysis]Code)
+$arrayPos:=Size of array(asAnalysisCodes)
+
+$startPos:=Position(([Analysis]Code+",");[MerchPlan]AnalysisCodes)
+If ($startPos>0)
+$startPos:=$startPos+Length([Analysis]Code+",")
+$endQty:=Position(",";[MerchPlan]AnalysisCodes;$startPos+1)
+APPEND TO ARRAY(arAnQty;Num(Substring([MerchPlan]AnalysisCodes;$startPos;$endQty-$startPos)))
+LISTBOX EXPAND(*;"listPack";False;Listbox break row;$arrayPos;1)
+Else 
+APPEND TO ARRAY(arAnQty;0)
+End if 
+End if 
+NEXT RECORD([Analysis])
+End for 
+If ($Expand=1)
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;True)
+Else 
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+End if 
+End if 
+NEXT RECORD([MarketingTypes])
+End for 
+SELECT LIST ITEMS BY POSITION(hlList;1)
+If ([MerchPlan]ShowDiscount)
+OBJECT SET VISIBLE(*;"Line4";True)
+OBJECT SET VISIBLE(*;"Line5";True)
+OBJECT SET VISIBLE(*;"Text8";True)
+OBJECT SET VISIBLE(*;"Variable4";True)
+OBJECT SET VISIBLE(*;"Text5";True)
+OBJECT SET VISIBLE(*;"Field11";True)
+
+End if 
+If ([MerchPlan]MerchPlanID="")
+[MerchPlan]MerchPlanID:=<>sFacility
+End if 
+If ([MerchPlan]PercDiscount#0)
+bPercent:=1
+bFixed:=0
+OBJECT SET VISIBLE(*;"@Percent";True)
+OBJECT SET VISIBLE(*;"@Fixed";False)
+Else 
+bPercent:=0
+bFixed:=1
+OBJECT SET VISIBLE(*;"@Percent";False)
+OBJECT SET VISIBLE(*;"@Fixed";True)
+End if 
+
+
+If ([MerchPlan]InventoryPack)
+$sumAmt:=0
+For ($i;1;Size of array(asAnDisplay))
+If (arAnQty{$i}#0)
+QUERY([Analysis];[Analysis]Code=asAnalysisCodes{$i})
+$sumAmt:=$sumAmt+([Analysis]DfltSellAmt*arAnQty{$i})
+End if 
+End for 
+$saveAmt:=Round($sumAmt-[MerchPlan]FixedDiscount;2)
+$percDisc:=$saveAmt/$sumAmt*100
+OBJECT SET TITLE(*;"lbCalcedValue";Get localized string("This will give the customer a discount of")+" "+String($percDisc;"###0.00")\
++"% for a saving of "+<>sCurrency+String($saveAmt;"###,##0.00"))
+End if 
+End if 

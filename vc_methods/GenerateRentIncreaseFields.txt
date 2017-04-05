@@ -1,0 +1,79 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 16/03/10, 11:37:43
+// ----------------------------------------------------
+// Method: GenerateRentIncreaseFields
+// Description
+// Updates the values of the various rent increase fields for notices
+//
+// Parameters
+//$1 = Whether it needs to correct for weekly values
+// ----------------------------------------------------
+
+C_REAL($OldRentAmt;$NewRentAmt)
+
+
+//If ($1=True)
+RELATE ONE([Agreement]BillingPlanCode)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Unit]; & ;[Unit]IncreaseFrom=[Agreement]NewRentFrom)
+[Agreement]RentIncreaseUnits:=""
+[Agreement]RentIncreaseUnitsNew:=""
+$OldRentAmt:=0
+$NewRentAmt:=0
+For ($i;1;Records in selection([Unit]))
+If ([BillPlan]PlanPeriod="Week")
+[Agreement]RentIncreaseUnits:=[Agreement]RentIncreaseUnits+[Unit]UnitNo+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Unit]WeeklyRentedValue;"###,##0.00")+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Unit]WeeklyNewRentAmt;"###,##0.00")+Char(13)
+[Agreement]RentIncreaseUnitsNew:=[Agreement]RentIncreaseUnitsNew+[Unit]UnitNo+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Unit]WeeklyNewRentAmt;"###,##0.00")+Char(9)+Char(9)+Char(9)+String([Unit]IncreaseFrom;"###,##0.00")+Char(13)
+$OldRentAmt:=$OldRentAmt+[Unit]WeeklyRentedValue
+$NewRentAmt:=$NewRentAmt+[Unit]WeeklyNewRentAmt
+Else 
+[Agreement]RentIncreaseUnits:=[Agreement]RentIncreaseUnits+[Unit]UnitNo+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Unit]RentedValue;"###,##0.00")+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Unit]NewRentAmt;"###,##0.00")+Char(13)
+[Agreement]RentIncreaseUnitsNew:=[Agreement]RentIncreaseUnitsNew+[Unit]UnitNo+Char(9)+Char(9)+Char(9)+<>sCurrency+String([Unit]NewRentAmt;"###,##0.00")+Char(9)+Char(9)+Char(9)+String([Unit]IncreaseFrom;"###,##0.00")+Char(13)
+$OldRentAmt:=$OldRentAmt+[Unit]RentedValue
+$NewRentAmt:=$NewRentAmt+[Unit]NewRentAmt
+End if 
+NEXT RECORD([Unit])
+End for 
+FIRST RECORD([Unit])
+[Agreement]RegRentIncrease:=[Agreement]RegularRent-$OldRentAmt+$NewRentAmt
+$OldRentAmt:=$OldRentAmt*[Agreement]MthsAdv*((100-[BillPlan]DiscPercentage)/100)
+$NewRentAmt:=$NewRentAmt*[Agreement]MthsAdv*((100-[BillPlan]DiscPercentage)/100)
+[Agreement]RentAmtIncrease:=[Agreement]RentAmt-$OldRentAmt+$NewRentAmt
+
+//07/11/14 DAM Added for SIMI
+If ([Agreement]NextBillDate=[Agreement]NewRentFrom)
+[Agreement]RentAmtIncreaseNew:=[Agreement]RentAmt-$OldRentAmt+$NewRentAmt
+Else 
+[Agreement]RentAmtIncreaseNew:=[Agreement]RentAmt
+End if 
+
+If ([BillPlan]PlanPeriod="Week")
+[Agreement]TotalIncreaseUnits:=Round(Sum([Unit]WeeklyNewRentAmt);2)
+Else 
+[Agreement]TotalIncreaseUnits:=Sum([Unit]NewRentAmt)
+End if 
+FIRST RECORD([Unit])
+
+[Agreement]ORCIncrease:=""
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]IncreaseFrom#!00-00-00!)
+For ($i;1;Records in selection([OtherChgs]))
+[Agreement]ORCIncrease:=[Agreement]ORCIncrease+[OtherChgs]Description+Char(9)+Char(9)+Char(9)+<>sCurrency+String([OtherChgs]Amount;"###,##0.00")+Char(9)+Char(9)+Char(9)+<>sCurrency+String([OtherChgs]NewAmount;"###,##0.00")+Char(9)+Char(9)+Char(9)+String([OtherChgs]IncreaseFrom)+Char(13)
+NEXT RECORD([OtherChgs])
+End for 
+
+//07/11/14 DAM Added code for SIMI
+[Agreement]ORCIncreaseNew:=0
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([OtherChgs]))
+If ([OtherChgs]IncreaseFrom=[Agreement]NewRentFrom)
+[Agreement]ORCIncreaseNew:=[Agreement]ORCIncreaseNew+[OtherChgs]NewAmount
+Else 
+[Agreement]ORCIncreaseNew:=[Agreement]ORCIncreaseNew+[OtherChgs]Amount
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)// 18/07/12 DAM Added to be able calculate values for OtherChrg table, because previous query breaks ORC and they do not show after it

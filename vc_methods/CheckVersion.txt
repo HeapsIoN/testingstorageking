@@ -1,0 +1,1218 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 9/6/10 Fixed up this method so that it only checks against the version number and not the version date
+//SDD Also fixed up so that everything is in the correct order.  It should run in order except for the removing of the indexes with respect to the primary keys which has to be at the beginning
+//NOTE If you are adding something new it will be at around line 1300
+
+If (Application type#4D Remote mode)//None of this should run when using 4D Remote Mode
+
+C_LONGINT($i;$j;$Version;$TCPID)
+C_TEXT($Correct;$Password;$FacilityCode)
+$BuildKeys:=False
+$TCPID:=0
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+If ([Facility]Version><>iVersion)
+Case of 
+: (Position("0";String([Facility]Version))=3) & (Position("0";String(<>iVersion))=3)
+AlertMessage (Get localized string("This datafile")+" "+Data file+" "+Get localized string("has been used with a later version of")+" "+<>sOEMName+" "+Insert string(Insert string(Substring(String([Facility]Version);1;2)+Substring(String([Facility]Version);4);".";2);".";4)+" "+Get localized string("than what you are using now which is")+" "+Insert string(Insert string(Substring(String(<>iVersion);1;2)+Substring(String(<>iVersion);4);".";2);".";4)+".  "+Get localized string("Please upgrade your")+" "+<>sOEMName+" "+Get localized string("program or contact Technical Support for further information."))
+: (Position("0";String([Facility]Version))=3)
+AlertMessage (Get localized string("This datafile")+" "+Data file+" "+Get localized string("has been used with a later version of")+" "+<>sOEMName+" "+Insert string(Insert string(Substring(String([Facility]Version);1;2)+Substring(String([Facility]Version);4);".";2);".";4)+" than what you are using now which is "+Insert string(Insert string(String(<>iVersion);".";2);".";4)+".  "+Get localized string("Please upgrade your")+" "+<>sOEMName+" "+Get localized string("program or contact Technical Support for further information."))
+: (Position("0";String(<>iVersion))=3)
+AlertMessage (Get localized string("This datafile")+" "+Data file+" "+Get localized string("has been used with a later version of")+" "+<>sOEMName+" "+Insert string(String([Facility]Version/10;"00.0");".";2)+" "+Get localized string("than what you are using now which is")+" "+Insert string(Insert string(Substring(String(<>iVersion);1;2)+Substring(String(<>iVersion);4);".";2);".";4)+".  "+Get localized string("Please upgrade your")+" "+<>sOEMName+" "+Get localized string("program or contact Technical Support for further information."))
+: (Num(Substring(String([Facility]Version);1;2))>9) & (Num(Substring(String(<>iVersion);1;1))<=9)
+AlertMessage (Get localized string("This datafile")+" "+Data file+" "+Get localized string("has been used with a later version of")+" "+<>sOEMName+" "+Insert string(Insert string(String([Facility]Version);".";3);".";5)+" "+Get localized string("than what you are using now which is")+" "+Insert string(Insert string(String(<>iVersion);".";2);".";4)+".  "+Get localized string("Please upgrade your")+" "+<>sOEMName+" "+Get localized string("program")+"!")
+: (Num(Substring(String([Facility]Version);1;2))>9)//i.e. 2010 and later
+AlertMessage (Get localized string("This datafile")+" "+Data file+" "+Get localized string("has been used with a later version of")+" "+<>sOEMName+" "+Insert string(Insert string(String([Facility]Version);".";3);".";5)+" "+Get localized string("than what you are using now which is")+" "+Insert string(Insert string(String(<>iVersion);".";3);".";5)+".  "+Get localized string("Please upgrade your")+" "+<>sOEMName+" "+Get localized string("program")+"!")
+: (Num(Substring(String([Facility]Version);1;1))<=9)//It's a single digit year i.e. 2009 or before, versions released in 2010 will begin with 10
+AlertMessage (Get localized string("This datafile")+" "+Data file+" "+Get localized string("has been used with a later version of")+" "+<>sOEMName+" "+Insert string(Insert string(String([Facility]Version);".";2);".";4)+" "+Get localized string("than what you are using now which is")+" "+Insert string(Insert string(String(<>iVersion);".";2);".";4)+".  "+Get localized string("Please upgrade your")+" "+<>sOEMName+" "+Get localized string("program")+"!")
+Else 
+AlertMessage (Get localized string("This datafile")+" "+Data file+" "+Get localized string("has been used with a later version of")+" "+<>sOEMName+" "+Insert string(String([Facility]Version/10;"00.0");".";2)+" "+Get localized string("than what you are using now which is")+" "+Insert string(Insert string(String(<>iVersion);".";2);".";4)+".  "+Get localized string("Please upgrade your")+" "+<>sOEMName+" "+Get localized string("program or contact Technical Support for further information."))
+End case 
+If (Shift down)
+UpdateSystem (33;-><>iVersion;"")
+End if 
+End if 
+
+If ([Facility]Version<<>iVersion)
+$Win:=Open window(20;100;400;200;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Upgrading to new version. Please wait")+"..."+"    ")
+$Paid:=False
+If ([Facility]UpgradesPaidTo>Current date) & ([Facility]LastDaily<(Current date+5)) & ([Facility]LastBanking<(Current date+2))//This to ensure they haven't set computer date back!
+$Paid:=True
+End if 
+If ([Facility]Version<<>iVersion) & ([Facility]TutorialData=False) & ($Paid=False)//A paid upgrade - Must enter password
+AlertMessage (Get localized string("This is a new version of")+" "+<>sOEMName+" "+Get localized string("and a password is required. If you are on the Upgrades program this is free. Visit www.storman.com for details."))
+If (Length([Facility]UserCode)<5)
+vLeg1:=RequestMessage (Get localized string("Your 5 digit User Code is invalid. Please enter:"))
+If (OK=1) & (Length(vLeg1)=5)
+If (UpdateSystem (126;->vLeg1;Get localized string("Unable to save User Code!"))#True)
+QUIT 4D
+End if 
+Else 
+AlertMessage (Get localized string("UserCode")+":"+[Facility]UserCode+" "+Get localized string("is invalid. Quitting program!"))
+QUIT 4D
+End if 
+End if 
+//NEW VERSION  E4A5S2F3+length(BusinessName) 
+//e.g. Safe Store with Support UserCode 01234  500 Units
+Case of 
+: ([Facility]MaxUnits<=100)
+$i:=1
+: ([Facility]MaxUnits<=250)
+$i:=2
+: ([Facility]MaxUnits<=500)
+$i:=5
+: ([Facility]MaxUnits<=32000)
+$i:=9
+Else 
+$i:=8
+End case 
+$Correct:=Replace string(Substring([Facility]BusinessName;1;7);" ";"")
+$Correct:=Substring($Correct;4;1)+Substring([Facility]UserCode;5;1)+Substring($Correct;2;1)+String($i)+Substring($Correct;3;1)+Substring([Facility]UserCode;3;1)+Substring($Correct;1;1)+Substring([Facility]UserCode;4;1)+String(Length([Facility]BusinessName))
+$i:=0
+Repeat 
+$i:=$i+1
+$Password:=RequestMessage (Get localized string("Please enter the upgrade password provided:"))
+If ($Password="FixUser@")
+vLeg1:=RequestMessage (Get localized string("Your 5 digit User Code is invalid. Please enter:"))
+If (OK=1) & (Length(vLeg1)=5)
+If (UpdateSystem (126;->vLeg1;Get localized string("Unable to save User Code!"))#True)
+QUIT 4D
+End if 
+Else 
+AlertMessage (Get localized string("UserCode")+":"+[Facility]UserCode+" "+Get localized string("is invalid. Quitting program!"))
+QUIT 4D
+End if 
+Else 
+If ($Password#$Correct) & ($Password#"7four7")//temporary access password
+If (OK#1) | ($i>3)
+AlertMessage (Get localized string("Unable to continue. Quitting program!"))
+QUIT 4D
+Else 
+AlertMessage (Get localized string("The password you have entered is incorrect. You may need to advise")+" "+<>sOEMName+" "+Get localized string("Support of the following details:")+[Facility]UserCode+":"+String(Length([Facility]BusinessName))+":"+String([Facility]MaxUnits))
+End if 
+End if 
+End if 
+Until ($Password=$Correct) | ($Password="7four7")
+End if 
+//Update code here 
+//If upgrading from V7 or any version that will result in records being written, then disabling the indexes will allow writing to unique fields without erroring , when Primary Key ranges have been defined the indexes will be regenerated
+
+If ([Facility]Version<8200)
+AlertMessage ("Please restore backup and upgrade to version 8.2.0 first before continuing")
+QUIT 4D
+End if 
+
+
+If ([Facility]Version<8901)
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+"@")
+READ WRITE([RCHistory])
+For ($i;1;Records in selection([UnitType]))
+QUERY([RCHistory];[RCHistory]NotUsed=[UnitType]RCHistory)
+For ($j;1;Records in selection([RCHistory]))
+If ([RCHistory]PrimaryKey=0)
+[RCHistory]PrimaryKey:=<>aliPrimaryKeys{Table(->[RCHistory])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[RCHistory])}:=<>aliPrimaryKeys{Table(->[RCHistory])}-1
+Else 
+<>aliPrimaryKeys{Table(->[RCHistory])}:=<>aliPrimaryKeys{Table(->[RCHistory])}+1
+End if 
+End if 
+SAVE RECORD([RCHistory])
+NEXT RECORD([RCHistory])
+End for 
+APPLY TO SELECTION([RCHistory];[RCHistory]UnitType:=[UnitType]RUnitType)
+NEXT RECORD([UnitType])
+End for 
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+READ WRITE([OtherChgs])
+For ($i;1;Records in selection([Agreement]))
+QUERY([OtherChgs];[OtherChgs]MonthAmt=[Agreement]OtherChgs)
+For ($j;1;Records in selection([OtherChgs]))
+If ([OtherChgs]PrimaryKey=0)
+[OtherChgs]PrimaryKey:=<>aliPrimaryKeys{Table(->[OtherChgs])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[OtherChgs])}:=<>aliPrimaryKeys{Table(->[OtherChgs])}-1
+Else 
+<>aliPrimaryKeys{Table(->[OtherChgs])}:=<>aliPrimaryKeys{Table(->[OtherChgs])}+1
+End if 
+End if 
+SAVE RECORD([OtherChgs])
+NEXT RECORD([OtherChgs])
+End for 
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AgreeNo:=[Agreement]RAgreeNo)
+NEXT RECORD([Agreement])
+End for 
+READ WRITE([StaffPINS])
+QUERY([StaffPINS];[StaffPINS]NotUsed=[Facility]StaffPINS)
+For ($j;1;Records in selection([StaffPINS]))
+If ([StaffPINS]PrimaryKey=0)
+[StaffPINS]PrimaryKey:=<>aliPrimaryKeys{Table(->[StaffPINS])}
+If (<>sProduct="M@")
+<>aliPrimaryKeys{Table(->[StaffPINS])}:=<>aliPrimaryKeys{Table(->[StaffPINS])}-1
+Else 
+<>aliPrimaryKeys{Table(->[StaffPINS])}:=<>aliPrimaryKeys{Table(->[StaffPINS])}+1
+End if 
+End if 
+SAVE RECORD([StaffPINS])
+NEXT RECORD([StaffPINS])
+End for 
+APPLY TO SELECTION([StaffPINS];[StaffPINS]FacilityCode:=[Facility]FacilityCode)
+//The following arrays are defined in InitArrays
+ARRAY TEXT(<>asEmailSendToCode;0)
+ARRAY TEXT(<>asEmailSendToName;0)
+ARRAY TEXT(<>asEmailSendToAddress;0)
+ARRAY LONGINT($aType;3)
+$aType{1}:=2
+$aType{2}:=30
+$aType{3}:=120
+ALL RECORDS([OLDFacility_SendToList])
+SELECTION TO ARRAY([OLDFacility_SendToList]SendCode;<>asEmailSendToCode;[OLDFacility_SendToList]Name;<>asEmailSendToName;[OLDFacility_SendToList]EmailAddr;<>asEmailSendToAddress)
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]SendToList:=ArraysToText (->$aType;-><>asEmailSendToCode;-><>asEmailSendToName;-><>asEmailSendToAddress)
+SAVE RECORD([Facility])
+
+//Assumes InitArrays has already been called
+READ WRITE([AutoUpdates])
+ALL RECORDS([AutoUpdates])
+For ($i;1;Records in selection([AutoUpdates]))
+$x:=Find in array(<>asPrintSettingsDesc;[AutoUpdates]UpdateFile)
+If ($x>0)
+<>asPrintSettingsPrint{$x}:=[AutoUpdates]UpdateReady
+End if 
+NEXT RECORD([AutoUpdates])
+End for 
+DELETE SELECTION([AutoUpdates])
+ARRAY LONGINT($aType;1)
+$aType{1}:=-4
+[Facility]PrintLogSettings:=ArraysToText (->$aType;-><>asPrintSettingsPrint)
+SAVE RECORD([Facility])
+
+ARRAY BOOLEAN(<>asSun;48)
+ARRAY BOOLEAN(<>asMon;48)
+ARRAY BOOLEAN(<>asTue;48)
+ARRAY BOOLEAN(<>asWed;48)
+ARRAY BOOLEAN(<>asThu;48)
+ARRAY BOOLEAN(<>asFri;48)
+ARRAY BOOLEAN(<>asSat;48)
+ARRAY TEXT(<>asTimeIntervals;0)
+For ($i;0;23)
+APPEND TO ARRAY(<>asTimeIntervals;String($i;"00")+":00")
+APPEND TO ARRAY(<>asTimeIntervals;String($i;"00")+":30")
+End for 
+For ($i;1;48)
+<>asSun{$i}:=False
+<>asMon{$i}:=False
+<>asTue{$i}:=False
+<>asWed{$i}:=False
+<>asThu{$i}:=False
+<>asFri{$i}:=False
+<>asSat{$i}:=False
+End for 
+QUERY([OLDFacility_GateTimeZones];[OLDFacility_GateTimeZones]PrimaryKey=1000)
+For ($i;1;Records in selection([OLDFacility_GateTimeZones]))
+$exists:=Find in array(<>asTimeIntervals;Substring(String([OLDFacility_GateTimeZones]WeekDayOpen);1;5))
+If ($exists>0) & ($exists<=48)
+<>asSun{$exists}:=True
+End if 
+NEXT RECORD([OLDFacility_GateTimeZones])
+End for 
+QUERY([OLDFacility_GateTimeZones];[OLDFacility_GateTimeZones]PrimaryKey=1001)
+For ($i;1;Records in selection([OLDFacility_GateTimeZones]))
+$exists:=Find in array(<>asTimeIntervals;Substring(String([OLDFacility_GateTimeZones]WeekDayOpen);1;5))
+If ($exists>0) & ($exists<=48)
+<>asMon{$exists}:=True
+End if 
+NEXT RECORD([OLDFacility_GateTimeZones])
+End for 
+QUERY([OLDFacility_GateTimeZones];[OLDFacility_GateTimeZones]PrimaryKey=1002)
+For ($i;1;Records in selection([OLDFacility_GateTimeZones]))
+$exists:=Find in array(<>asTimeIntervals;Substring(String([OLDFacility_GateTimeZones]WeekDayOpen);1;5))
+If ($exists>0) & ($exists<=48)
+<>asTue{$exists}:=True
+End if 
+NEXT RECORD([OLDFacility_GateTimeZones])
+End for 
+QUERY([OLDFacility_GateTimeZones];[OLDFacility_GateTimeZones]PrimaryKey=1003)
+For ($i;1;Records in selection([OLDFacility_GateTimeZones]))
+$exists:=Find in array(<>asTimeIntervals;Substring(String([OLDFacility_GateTimeZones]WeekDayOpen);1;5))
+If ($exists>0) & ($exists<=48)
+<>asWed{$exists}:=True
+End if 
+NEXT RECORD([OLDFacility_GateTimeZones])
+End for 
+QUERY([OLDFacility_GateTimeZones];[OLDFacility_GateTimeZones]PrimaryKey=1004)
+For ($i;1;Records in selection([OLDFacility_GateTimeZones]))
+$exists:=Find in array(<>asTimeIntervals;Substring(String([OLDFacility_GateTimeZones]WeekDayOpen);1;5))
+If ($exists>0) & ($exists<=48)
+<>asThu{$exists}:=True
+End if 
+NEXT RECORD([OLDFacility_GateTimeZones])
+End for 
+QUERY([OLDFacility_GateTimeZones];[OLDFacility_GateTimeZones]PrimaryKey=1005)
+For ($i;1;Records in selection([OLDFacility_GateTimeZones]))
+$exists:=Find in array(<>asTimeIntervals;Substring(String([OLDFacility_GateTimeZones]WeekDayOpen);1;5))
+If ($exists>0) & ($exists<=48)
+<>asFri{$exists}:=True
+End if 
+NEXT RECORD([OLDFacility_GateTimeZones])
+End for 
+QUERY([OLDFacility_GateTimeZones];[OLDFacility_GateTimeZones]PrimaryKey=1006)
+For ($i;1;Records in selection([OLDFacility_GateTimeZones]))
+$exists:=Find in array(<>asTimeIntervals;Substring(String([OLDFacility_GateTimeZones]WeekDayOpen);1;5))
+If ($exists>0) & ($exists<=48)
+<>asSat{$exists}:=True
+End if 
+NEXT RECORD([OLDFacility_GateTimeZones])
+End for 
+READ WRITE([OLDFacility_GateTimeZones])
+ALL RECORDS([OLDFacility_GateTimeZones])
+DELETE SELECTION([OLDFacility_GateTimeZones])
+READ ONLY([OLDFacility_GateTimeZones])
+READ WRITE([TrxsHistorical])
+ALL RECORDS([TrxsHistorical])
+DELETE SELECTION([TrxsHistorical])
+READ ONLY([TrxsHistorical])
+ARRAY LONGINT($aType;7)
+$aType{1}:=-4
+$aType{2}:=-4
+$aType{3}:=-4
+$aType{4}:=-4
+$aType{5}:=-4
+$aType{6}:=-4
+$aType{7}:=-4
+[Facility]AlarmAlerts:=ArraysToText (->$aType;-><>asSun;-><>asMon;-><>asTue;-><>asWed;-><>asThu;-><>asFri;-><>asSat)
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+READ WRITE([Agreement])
+READ WRITE([Authenticate])
+READ WRITE([Letters])
+READ WRITE([OtherChgs])
+READ WRITE([PromotionHistory])
+READ WRITE([Reservation])
+READ WRITE([Trxs])
+READ WRITE([Unit])
+READ WRITE([UnitHistory])
+READ WRITE([Facility])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+[Facility]GraphiconInv:=False
+[Facility]CustomInvFooter:=False
+[Facility]UseCustomReceipt:=False
+
+
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Agreement];[Agreement]AgreeNo:="0000"+[Agreement]AgreeNo)
+APPLY TO SELECTION([Agreement];[Agreement]RAgreeNo:=[Facility]FacilityCode+"0000"+Substring([Agreement]RAgreeNo;6))
+
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Agreement];[Agreement]AgreeNo:="#0000"+Substring([Agreement]AgreeNo;2))
+APPLY TO SELECTION([Agreement];[Agreement]RAgreeNo:=[Facility]FacilityCode+"#0000"+Substring([Agreement]RAgreeNo;7))
+
+QUERY([Authenticate];[Authenticate]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Authenticate]; & ;[Authenticate]RAgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Authenticate]; & ;[Authenticate]RAgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Authenticate]; & ;[Authenticate]RAgreeNo#[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Authenticate];[Authenticate]RAgreeNo:=[Facility]FacilityCode+"0000"+Substring([Authenticate]RAgreeNo;6))
+
+QUERY([Authenticate];[Authenticate]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Authenticate]; & ;[Authenticate]RAgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Authenticate]; & ;[Authenticate]RAgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Authenticate]; & ;[Authenticate]RAgreeNo=[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Authenticate];[Authenticate]RAgreeNo:=[Facility]FacilityCode+"#0000"+Substring([Authenticate]RAgreeNo;7))
+
+QUERY([Letters];[Letters]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Letters]; & ;[Letters]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Letters]; & ;[Letters]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Letters]; & ;[Letters]AgreeNo#[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=[Facility]FacilityCode+"0000"+Substring([Letters]AgreeNo;6))
+
+QUERY([Letters];[Letters]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Letters]; & ;[Letters]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Letters]; & ;[Letters]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Letters]; & ;[Letters]AgreeNo=[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=[Facility]FacilityCode+"#0000"+Substring([Letters]AgreeNo;7))
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([OtherChgs]; & ;[OtherChgs]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([OtherChgs]; & ;[OtherChgs]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([OtherChgs]; & ;[OtherChgs]AgreeNo#[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AgreeNo:=[Facility]FacilityCode+"0000"+Substring([OtherChgs]AgreeNo;6))
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([OtherChgs]; & ;[OtherChgs]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([OtherChgs]; & ;[OtherChgs]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([OtherChgs]; & ;[OtherChgs]AgreeNo=[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([OtherChgs];[OtherChgs]AgreeNo:=[Facility]FacilityCode+"#0000"+Substring([OtherChgs]AgreeNo;7))
+
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo=[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]AgreeNo:=[Facility]FacilityCode+"0000"+Substring([PromotionHistory]AgreeNo;6))
+
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]AgreeNo#[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]AgreeNo:=[Facility]FacilityCode+"#0000"+Substring([PromotionHistory]AgreeNo;7))
+
+QUERY([PromotionHistory];[PromotionHistory]RefAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RefAgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RefAgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RefAgreeNo#[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]RefAgreeNo:=[Facility]FacilityCode+"0000"+Substring([PromotionHistory]RefAgreeNo;6))
+
+QUERY([PromotionHistory];[PromotionHistory]RefAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RefAgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RefAgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]RefAgreeNo=[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([PromotionHistory];[PromotionHistory]RefAgreeNo:=[Facility]FacilityCode+"#0000"+Substring([PromotionHistory]RefAgreeNo;7))
+
+QUERY([Reservation];[Reservation]RReserveNo=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([Reservation];[Reservation]ReserveNo:="0000"+[Reservation]ReserveNo)
+APPLY TO SELECTION([Reservation];[Reservation]RReserveNo:=[Facility]FacilityCode+"0000"+Substring([Reservation]RReserveNo;6))
+
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo#[Facility]FacilityCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo#[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=[Facility]FacilityCode+"0000"+Substring([Trxs]AgreeNo;6))
+
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo#[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo#[Facility]FacilityCode+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo#[Facility]FacilityCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Facility]FacilityCode+"#@")
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=[Facility]FacilityCode+"#0000"+Substring([Trxs]AgreeNo;7))
+
+QUERY([Unit];[Unit]AgreeNo=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([Unit];[Unit]AgreeNo:=[Facility]FacilityCode+"0000"+Substring([Unit]AgreeNo;6))
+
+QUERY([Unit];[Unit]ReservedTo=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([Unit];[Unit]ReservedTo:=[Facility]FacilityCode+"0000"+Substring([Unit]ReservedTo;6))
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([UnitHistory];[UnitHistory]AgreeNo:=[Facility]FacilityCode+"0000"+Substring([UnitHistory]AgreeNo;6))
+
+[Facility]MoveOutDays:=28
+[Facility]InsuranceAdminFee:=1.5
+
+If ([Facility]LastSyncDate#!00-00-00!)
+[Facility]LastSyncDate:=UTCDate ([Facility]LastSyncTime;True;[Facility]LastSyncDate)
+[Facility]LastSyncTime:=UTCTime ([Facility]LastSyncTime;True)
+End if 
+
+$Letter:=WR New offscreen area 
+
+READ WRITE([Notices])
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode)
+For ($x;1;Records in selection([Notices]))
+BLOB PROPERTIES([Notices]Email;$comp)
+If ($comp#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+
+WR BLOB TO AREA ($Letter;[Notices]Email)
+
+
+WR GET COMMAND INFO ($Letter;wr cmd view references;$i;$Text;$Text2;$j)
+If ($i=0)
+WR EXECUTE COMMAND ($Letter;wr cmd view references)
+End if 
+
+$noticePath:=<>sTutPath+"EmailContent"+String(Record number([Notices]))
+
+WR SAVE DOCUMENT ($Letter;$noticePath;wr HTML 3 document)
+$vhDocRef:=Open document($noticePath)
+
+CLOSE DOCUMENT($vhDocRef)
+DOCUMENT TO BLOB($noticePath;$Blob74)
+//DELETE DOCUMENT($noticePath)
+$textContent:=Convert to text($Blob74;"UTF-8")
+$textContent:=Replace string($textContent;"<p>";"<br>")
+$textContent:=Replace string($textContent;"</p>";"</br>")
+$textContent:=Replace string($textContent;"&#171;";"«")
+$textContent:=Replace string($textContent;"&#187;";"»")
+
+$lastPos:=Position("<p ";$textContent)
+
+While ($lastPos>0)
+$endPos:=Position(Char(13);$textContent;$lastPos)
+$tempContent:=Substring($textContent;1;$endPos-1)+"</p>"+Substring($textContent;$endPos)
+$textContent:=$tempContent
+
+$lastPos:=Position("<p ";$textContent;$lastPos+1)
+End while 
+
+
+If (<>iPlatform=3)
+$tutPath:=Replace string(<>sTutPath;"\\";"/")
+Else 
+$tutPath:=Replace string(<>sTutPath;":";"/")
+End if 
+$textContent:=Replace string($textContent;"./images/";$tutPath+"images/")
+
+$Buf_T:=$textContent
+$Pat_T:="(«[^»\\r\\n]*»)"
+
+ARRAY TEXT($Fold_aT;0)
+$Start_L:=1
+$FoundAt_L:=0
+$Length_L:=0
+$Bool_B:=Match regex($Pat_T;$Buf_T;$Start_L;$FoundAt_L;$Length_L)
+While ($Bool_B)
+APPEND TO ARRAY($Fold_aT;Substring($Buf_T;$FoundAt_L;$Length_L))
+$Start_L:=$FoundAt_L+$Length_L
+$Bool_B:=Match regex($Pat_T;$Buf_T;$Start_L;$FoundAt_L;$Length_L)
+End while 
+
+For ($i;1;Size of array($Fold_aT))
+$toUpdate:=""
+$methodPos:=Position("Reverse";$Fold_aT{$i})
+$methodPos:=$methodPos+Position("RequestInput";$Fold_aT{$i})
+$methodPos:=$methodPos+Position("CalcTaxAmt";$Fold_aT{$i})
+If ($methodPos>0)//Check for methods
+
+$bracketPos:=Position("(";$Fold_aT{$i})
+$bracketClosePos:=Position(")";$Fold_aT{$i})
+
+$parameterPos:=Position(";";$Fold_aT{$i})
+If ($parameterPos>0)
+$toUpdate:="<!--#4DSCRIPT/Web"+Substring($Fold_aT{$i};2;$bracketPos-3)+"/"+Substring($Fold_aT{$i};$bracketPos+1;$parameterPos-$bracketPos-1)+"/"
+
+While ($parameterPos>0)
+$nextParamPos:=Position(";";$Fold_aT{$i};$parameterPos+1)
+
+If ($nextParamPos>0)
+$toUpdate:=$toUpdate+Substring($Fold_aT{$i};$parameterPos+1;$nextParamPos-$parameterPos-1)+"/"
+Else 
+$toUpdate:=$toUpdate+Substring($Fold_aT{$i};$parameterPos+1;$bracketClosePos-$parameterPos-1)+"/"
+End if 
+$parameterPos:=$nextParamPos
+End while 
+
+Else 
+$toUpdate:="<!--#4DSCRIPT/Web"+Substring($Fold_aT{$i};2;$bracketPos-3)+"/"+Substring($Fold_aT{$i};$bracketPos+1;$bracketClosePos-$bracketPos-1)+"/"
+End if 
+
+
+$formatPos:=Position(":";$Fold_aT{$i})
+If ($formatPos>0)
+$toUpdate:=$toUpdate+Substring($Fold_aT{$i};$formatPos+1;Length($Fold_aT{$i})-$formatPos-1)+"/"
+End if 
+
+$toUpdate:=$toUpdate+"-->"
+Else 
+$formatPos:=Position(":";$Fold_aT{$i})
+If ($formatPos>0)//Check if any formatting
+$toUpdate:="<!--#4DTEXT String("+Substring($Fold_aT{$i};2;$formatPos-2)+";\""+Substring($Fold_aT{$i};$formatPos+1)
+$toUpdate:=Replace string($toUpdate;"»";"\")-->")
+Else 
+$toUpdate:="<!--#4DTEXT "+Substring($Fold_aT{$i};2;Length($Fold_aT{$i})-2)+"-->"
+End if 
+End if 
+
+If ($toUpdate#"")
+$textContent:=Replace string($textContent;$Fold_aT{$i};$toUpdate)
+End if 
+End for 
+
+$textContent:=Replace string($textContent;"<!--#4DTEXT Date and Time-->";"<!--#4DTEXT String(Current Date;3)-->")
+$textContent:=Replace string($textContent;"<br>&nbsp;</br>";"&nbsp;")
+$textContent:=Replace string($textContent;"<dir>";"")
+$textContent:=Replace string($textContent;"</dir>";"")
+
+
+CONVERT FROM TEXT($textContent;"UTF-8";[Notices]Email)
+COMPRESS BLOB([Notices]Email)
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+WR DELETE OFFSCREEN AREA ($Letter)
+
+READ WRITE([Notices])
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=True)
+
+APPLY TO SELECTION([Notices];[Notices]DaysAfter:=[Notices]InvoiceFee)
+
+SAVE RECORD([Facility])
+If ([Facility]FacilityCode="KE@")
+KSSUpgrade 
+End if 
+NEXT RECORD([Facility])
+End for 
+SetFacility 
+End if 
+
+If ([Facility]Version<9102)
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+READ WRITE([Notices])
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode)
+
+For ($i;1;Records in selection([Notices]))
+
+DecompressBlob (->[Notices]Email)
+$converted:=Convert to text([Notices]Email;"windows-1252")
+$converted:=Replace string($converted;"windows-1252";"utf-8")
+CONVERT FROM TEXT($converted;"UTF-8";[Notices]Email)
+COMPRESS BLOB([Notices]Email)
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+
+NEXT RECORD([Facility])
+End for 
+SetFacility 
+
+CalcBalance (True;False;False;True;True)
+
+End if 
+
+If ([Facility]Version<9103)
+If ([Facility]CentralAddress>"")
+READ WRITE([UserLogins])
+ALL RECORDS([UserLogins])
+DELETE SELECTION([UserLogins])
+
+READ WRITE([UserGroup])
+ALL RECORDS([UserGroup])
+DELETE SELECTION([UserGroup])
+
+READ WRITE([Groups])
+ALL RECORDS([Groups])
+DELETE SELECTION([Groups])
+End if 
+End if 
+
+If ([Facility]Version<9105)
+READ WRITE([Facility])
+READ WRITE([NotesHistory])
+READ WRITE([Reservation])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"Thinc";"NAB")
+[Facility]MerchantDetails2:=Replace string([Facility]MerchantDetails2;"Thinc";"NAB")
+[Facility]DDAccountDetails:=Replace string([Facility]DDAccountDetails;"Thinc";"NAB")
+[Facility]SMSAcctDetails:=Replace string([Facility]SMSAcctDetails;"Thinc";"Storman SMS")
+SAVE RECORD([Facility])
+
+QUERY([Reservation];[Reservation]RReserveNo=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([Reservation];[Reservation]BoxnStore:="")
+
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([NotesHistory]; | ;[NotesHistory]ContactNo=[Facility]FacilityCode+"@";*)
+QUERY([NotesHistory]; & ;[NotesHistory]Category="Thinc")
+APPLY TO SELECTION([NotesHistory];[NotesHistory]Category:="Storman SMS")
+
+READ WRITE([BillPlan])//Update [BillPlan]PlanPeriod field to include 4 options
+QUERY([BillPlan];[BillPlan]Code=[Facility]FacilityCode+"@")
+For ($k;1;Records in selection([BillPlan]))
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+: ([BillPlan]PlanPeriod="Week")
+: ([BillPlan]PlanPeriod="Month")
+: ([BillPlan]PlanPeriod="Year")
+Else 
+If ([BillPlan]PlanPeriod="t@")//Formerly True - Weekly
+[BillPlan]PlanPeriod:="Week"
+Else 
+[BillPlan]PlanPeriod:="Month"
+End if 
+SAVE RECORD([BillPlan])
+End case 
+NEXT RECORD([BillPlan])
+End for 
+
+READ WRITE([Agreement])
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+For ($k;1;Records in selection([Agreement]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+
+SELECTION TO ARRAY([Trxs]TrxDate;$adTrxDateUnpaid;[Trxs]TotAmt;$arTotAmtUnpaid)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+
+ARRAY TEXT($atAnalysisUnpaid;0)
+
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AnalysisCode)
+APPEND TO ARRAY($atAnalysisUnpaid;[Analysis]KeyStatsCategory)
+NEXT RECORD([Trxs])
+End for 
+
+ARRAY LONGINT($aType;3)
+$aType{1}:=-5
+$aType{2}:=-3
+$aType{3}:=8
+
+[Agreement]FutureTrxs:=ArraysToText (->$aType;->$adTrxDateUnpaid;->$arTotAmtUnpaid;->$atAnalysisUnpaid)
+
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+
+NEXT RECORD([Facility])
+End for 
+
+End if 
+
+If ([Facility]Version<9106)
+READ WRITE([Facility])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+[Facility]MirrorSendLogEveryMins:=0
+[Facility]GateTimeZoneDefault:=1
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+
+If ([Facility]Version<9107)
+READ WRITE([Facility])
+READ WRITE([Analysis])
+READ WRITE([InsuranceRates])
+READ WRITE([Contacts])
+READ WRITE([Agreement])
+READ WRITE([UnitType])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=[Facility]FacilityCode)
+APPLY TO SELECTION([InsuranceRates];[InsuranceRates]Rounding:=1)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=[Facility]FacilityCode;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+APPLY TO SELECTION([InsuranceRates];[InsuranceRates]RepeatValue:=[InsuranceRates]EndValue)
+APPLY TO SELECTION([InsuranceRates];[InsuranceRates]StartValue:=0)
+If ([Facility]FacilityCode="SK@")
+APPLY TO SELECTION([InsuranceRates];[InsuranceRates]EndValue:=50000)
+Else 
+APPLY TO SELECTION([InsuranceRates];[InsuranceRates]EndValue:=[InsuranceRates]EndValue*[InsuranceRates]EndValue)
+End if 
+
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate#!00-00-00!;*)
+QUERY([Contacts]; & ;[Contacts]FollowUpDate#!00-00-00!)
+
+APPLY TO SELECTION([Contacts];[Contacts]FollowUpDate:=!00-00-00!)
+APPLY TO SELECTION([Contacts];[Contacts]FollowUpDone:=True)
+
+If ([Facility]FacilityCode="KE@")
+QUERY([Agreement];[Agreement]RAgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]LastBillAmt#0;*)
+QUERY([Agreement]; & ;[Agreement]BillingPlanCode=[Facility]FacilityCode+"MO";*)
+QUERY([Agreement]; & ;[Agreement]LastBillPlan=[Facility]FacilityCode+"MO")
+
+APPLY TO SELECTION([Agreement];[Agreement]LastDiscAmt:=0)
+
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([UnitType];[UnitType]DailyRate:=Round([UnitType]MonthlyRate*12/365;2))
+APPLY TO SELECTION([UnitType];[UnitType]RentAnalysis:="RF")
+APPLY TO SELECTION([UnitType];[UnitType]OrgAnalysis:="RF")
+APPLY TO SELECTION([UnitType];[UnitType]Description:=String([UnitType]UnitTypeLength;"###,###0.0")+" X "+String([UnitType]UnitTypeWidth;"###,###0.0"))
+
+[Facility]FieldSettings:="21111111111111111112111111111111111111111111111111111111211333311111111111111111111111311111133"
+
+End if 
+[Facility]NewSync:=True
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<50)
+
+APPLY TO SELECTION([Analysis];[Analysis]DontShowBank:=True)
+
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+
+SetFacility 
+
+If (<>sProduct#"M@")
+If ([Facility]Version>=9102)
+CalcBalance (True;False;False;True;True)
+End if 
+FixCustCodeInvalidChar ("'";True)//For KSS but may as well be for everyone!
+FixCustCodeInvalidChar (Char(Double quote);True)
+FixCustCodeInvalidChar ("&";True)
+FixCustCodeInvalidChar (" ";True)
+FixCustCodeInvalidChar ("*";True)
+FixCustCodeInvalidChar ("!";True)
+FixCustCodeInvalidChar ("`";True)
+FixCustCodeInvalidChar ("~";True)
+FixCustCodeInvalidChar ("#";True)
+FixCustCodeInvalidChar ("$";True)
+FixCustCodeInvalidChar ("%";True)
+FixCustCodeInvalidChar ("^";True)
+FixCustCodeInvalidChar ("(";True)
+FixCustCodeInvalidChar (")";True)
+FixCustCodeInvalidChar ("-";True)
+FixCustCodeInvalidChar ("_";True)
+FixCustCodeInvalidChar ("=";True)
+FixCustCodeInvalidChar ("+";True)
+FixCustCodeInvalidChar ("[";True)
+FixCustCodeInvalidChar ("]";True)
+FixCustCodeInvalidChar ("{";True)
+FixCustCodeInvalidChar ("}";True)
+FixCustCodeInvalidChar ("|";True)
+FixCustCodeInvalidChar (";";True)
+FixCustCodeInvalidChar (":";True)
+FixCustCodeInvalidChar (",";True)
+FixCustCodeInvalidChar (".";True)
+FixCustCodeInvalidChar ("<";True)
+FixCustCodeInvalidChar (">";True)
+FixCustCodeInvalidChar ("/";True)
+FixCustCodeInvalidChar ("?";True)
+FixCustCodeInvalidChar (Char(Carriage return);True)
+FixCustCodeInvalidChar (Char(Line feed);True)
+FixCustCodeInvalidChar (Char(45);True)
+End if 
+End if 
+
+If ([Facility]Version<9108)
+READ WRITE([UnitType])
+READ WRITE([Notices])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([UnitType];[UnitType]OnlineMonthlyRate:=[UnitType]MonthlyRate)
+APPLY TO SELECTION([UnitType];[UnitType]OnlineWeeklyRate:=[UnitType]WeeklyRate)
+APPLY TO SELECTION([UnitType];[UnitType]OnlineDailyRate:=[UnitType]DailyRate)
+
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode)
+For ($m;1;Records in selection([Notices]))
+EXPAND BLOB([Notices]Email)
+$EmailText:=Convert to text([Notices]Email;"UTF-8")
+$EmailText:=Replace string($EmailText;"[BillPlan]FreeMths";"[BillPlan]FreePeriods")
+$EmailText:=Replace string($EmailText;"[Transaction]";"[Trxs]")
+CONVERT FROM TEXT($EmailText;"UTF-8";[Notices]Email)
+COMPRESS BLOB([Notices]Email)
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+
+NEXT RECORD([Facility])
+End for 
+SetFacility 
+End if 
+
+If ([Facility]Version<9109) | ([Facility]Version=9200)
+READ WRITE([Facility])
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+If (<>sProduct="M@")
+[Facility]NextAgreeNo:=500000000
+[Facility]NextReserveNo:=50000000
+[Facility]NextCreditSaleNo:=50000000
+[Facility]NextContactNo:=1000000000
+SAVE RECORD([Facility])
+End if 
+SetFacility 
+End if 
+
+If ([Facility]Version<9201)
+
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+$EmailBody:=""
+
+For ($k;1;Records in selection([Facility]))
+
+SpacerRemover 
+
+$EmailBody:=$EmailBody+[Facility]FacilityCode+": "+[Facility]MerchantDetails+": "+[Facility]MerchantDetails2+": "+[Facility]DDAccountDetails+": "+[Facility]SMSAcctDetails+"; "
+
+$Date:=GetDate (1;Month of(Current date);Year of(Current date))-1
+$StartDate:=GetDate (1;Month of($Date);Year of($Date))
+
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$StartDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$Date;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]CCAuthNo#"")
+
+CREATE SET([Trxs];"Autopay")
+
+DISTINCT VALUES([Trxs]AnalysisCode;$atCode)
+
+
+For ($l;1;Size of array($atCode))
+USE SET("Autopay")
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=$atCode{$l})
+
+$EmailBody:=$EmailBody+$atCode{$l}+": "+String(Sum([Trxs]TotAmt))+": "+String(Records in selection([Trxs]))+"; "
+
+End for 
+
+CLEAR SET("Autopay")
+
+QUERY([Letters];[Letters]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Letters]; | ;[Letters]ContactNo=[Facility]FacilityCode+"@";*)
+QUERY([Letters]; & ;[Letters]DateSent>=$StartDate;*)
+QUERY([Letters]; & ;[Letters]DateSent<=$Date;*)
+QUERY([Letters]; & ;[Letters]SMSMessage>"")
+
+$EmailBody:=$EmailBody+"SMS: "+String(Records in selection([Letters]))+"; "
+
+$EmailBody:=$EmailBody+Char(13)
+
+NEXT RECORD([Facility])
+End for 
+
+SetFacility 
+
+SendEmail ("reports@storman.com";"Report from facility: "+[Facility]FacilityCode;$EmailBody)
+
+If (<>sProduct#"M@")
+FixEventLogTable (True)
+End if 
+
+End if 
+
+If ([Facility]Version<9202)
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+For ($k;1;Records in selection([Facility]))
+[Facility]DailyHideWeb:=False
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+[Facility]MerchantDetails:=[Facility]MerchantDetails+"False,False,"
+End if 
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+
+If (<>sProduct#"M@")
+READ WRITE([Message])
+ALL RECORDS([Message])
+APPLY TO SELECTION([Message];[Message]Facility:=<>sFacility)
+READ ONLY([Message])
+
+//12/11/14 DAM Added code to clear 0 values
+READ WRITE([Customer])
+QUERY([Customer];[Customer]customerProfileID="0")
+
+If (Records in selection([Customer])#0)
+APPLY TO SELECTION([Customer];[Customer]customerProfileID:="")
+APPLY TO SELECTION([Customer];[Customer]custPaymentProfID:="")
+End if 
+
+GetEziDebitCustID (True)
+
+READ ONLY([Customer])
+End if 
+End if 
+
+If ([Facility]Version<9300)
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+For ($k;1;Records in selection([Facility]))
+READ WRITE([Customer])
+
+QUERY([Customer];[Customer]BSB="0";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Facility]FacilityCode+"@")
+APPLY TO SELECTION([Customer];[Customer]BSB:="")
+
+NEXT RECORD([Facility])
+End for 
+
+End if 
+
+If ([Facility]Version<9302)
+//1/7/2015 Hamid - Fix Periodic Reporting issue
+READ WRITE([Facility])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+For ($k;1;Records in selection([Facility]))
+[Facility]DailyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]WeeklyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]MonthlyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+[Facility]YearlyBatchOrder:="101020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+SetFacility 
+End if 
+
+If ([Facility]Version<9402)
+//Set Photo ID Type to be Driving Licence for customers with Licence No not "" + Create new record for 
+READ WRITE([Facility])//-10269
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+For ($k;1;Records in selection([Facility]))
+READ WRITE([MarketingTypes])
+CREATE RECORD([MarketingTypes])
+[MarketingTypes]Facility:=[Facility]FacilityCode
+[MarketingTypes]Description:="Drivers Licence"
+[MarketingTypes]ListCode:="FI"
+[MarketingTypes]CustType:="ALL"
+[MarketingTypes]SortOrder:=1
+SAVE RECORD([MarketingTypes])
+
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]LicenceNo#"")
+
+If (Records in selection([Customer])>0)
+READ WRITE([Customer])
+APPLY TO SELECTION([Customer];[Customer]IDType:="Drivers Licence")
+End if 
+
+//If (GetTextNo ([Facility]MerchantDetails;1;",")="Advam") | (GetTextNo ([Facility]MerchantDetails;1;",")="AuthorizeNet") | (GetTextNo ([Facility]MerchantDetails;1;",")="Cheq") | (GetTextNo ([Facility]MerchantDetails;1;",")="CTel") | (GetTextNo ([Facility]MerchantDetails;1;",")="Payment Express") | (GetTextNo ([Facility]MerchantDetails;1;",")="NAB") | (GetTextNo ([Facility]MerchantDetails;1;",")="Verisign")
+//AlertMessage (Get localized string("WARNING! Storman has detected you are using a Credit Card merchant that is no longer supported."))
+
+//Case of 
+//: (GetTextNo ([Facility]MerchantDetails;1;",")="Advam")
+//[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"Advam";"None")
+//: (GetTextNo ([Facility]MerchantDetails;1;",")="AuthorizeNet")
+//[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"AuthorizeNet";"None")
+//: (GetTextNo ([Facility]MerchantDetails;1;",")="Cheq")
+//[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"Cheq";"None")
+//: (GetTextNo ([Facility]MerchantDetails;1;",")="CTel")
+//[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"CTel";"None")
+//: (GetTextNo ([Facility]MerchantDetails;1;",")="Payment Express")
+//[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"Payment Express";"None")
+//: (GetTextNo ([Facility]MerchantDetails;1;",")="NAB")
+//[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"NAB";"None")
+//: (GetTextNo ([Facility]MerchantDetails;1;",")="Verisign")
+//[Facility]MerchantDetails:=Replace string([Facility]MerchantDetails;"Verisign";"None")
+//End case 
+//SAVE RECORD([Facility])
+//End if 
+
+//09/02/16 DAM Added for KSS Insurance
+If ([Facility]FacilityCode="KE@")
+READ WRITE([InsuranceRates])
+ALL RECORDS([InsuranceRates])
+APPLY TO SELECTION([InsuranceRates];[InsuranceRates]Rounding:=50)
+READ ONLY([InsuranceRates])
+End if 
+
+NEXT RECORD([Facility])
+End for 
+SetFacility 
+End if 
+
+
+If ([Facility]Version<10003)
+CheckVersion_EncryptPasswords 
+READ WRITE([Facility])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+For ($k;1;Records in selection([Facility]))
+CheckVersion_CustWebID 
+NEXT RECORD([Facility])
+End for 
+
+SetFacility 
+End if 
+
+
+If ([Facility]Version<10008)
+//If (<>sFacility="KE@") & (<>sProduct#"M@")
+//READ WRITE([Notices])
+//QUERY([Notices];[Notices]Description="AutoCCFailure")
+//If (Records in selection([Notices])=1)
+//EXPAND BLOB([Notices]Email)
+//$EmailText:=Convert to text([Notices]Email;"UTF-8")
+//$EmailText:=Replace string($EmailText;"[Agreement]NoticeAmtToBill";"[Trxs]TotAmt")
+//CONVERT FROM TEXT($EmailText;"UTF-8";[Notices]Email)
+//COMPRESS BLOB([Notices]Email)
+//SAVE RECORD([Notices])
+//End if 
+//End if 
+End if 
+
+
+If ([Facility]Version<10009)
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+READ WRITE([Facility])
+For ($k;1;Records in selection([Facility]))
+//CheckVersion_CustWebPassword 
+
+[Facility]InactiveRefundDays:=30
+[Facility]DeleteLogDays:=0
+SAVE RECORD([Facility])
+
+NEXT RECORD([Facility])
+End for 
+READ ONLY([Facility])
+
+SetFacility 
+
+End if 
+
+
+//19-01-17 DM Disabled data encrypt
+//If ([Facility]Version<10024)
+//QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+//QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+//For ($k;1;Records in selection([Facility]))
+//CheckVersion_EncryptCCs   //FB11185
+//NEXT RECORD([Facility])
+//End for 
+//End if 
+
+
+If ([Facility]Version<10034)
+
+If (<>sProduct#"M@")
+CheckVersion_AutoUpdatePath 
+End if 
+
+If ([Facility]Version=10030) | ([Facility]Version=10031) | ([Facility]Version=10032)
+AU_CryptoPlugin 
+End if 
+
+
+//19-01-17 DM Added code below to decrypt all credit card data from basic encryption
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+For ($k;1;Records in selection([Facility]))
+If ([Facility]Version>10024)
+READ WRITE([Customer])
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@";*)
+QUERY([Customer]; & ;[Customer]CCNo#"")
+
+SyncRecordLog ("Facility Version: "+String([Facility]Version)+" SM will decrypt "+String(Records in selection([Customer]))+" CCs for Facility - "+[Facility]FacilityCode)
+APPLY TO SELECTION([Customer];[Customer]CCNo:=Tokenizer ([Customer]CCNo;False))
+
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+NEXT RECORD([Facility])
+End for 
+
+
+SetFacility 
+End if 
+
+
+If ([Facility]Version<10035)
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+READ WRITE([Facility])
+For ($k;1;Records in selection([Facility]))
+
+If (<>sFacility="KE@")
+UpdateUnitUUID 
+End if 
+
+NEXT RECORD([Facility])
+End for 
+READ ONLY([Facility])
+
+SetFacility 
+
+End if 
+
+
+If ([Facility]Version<10038)
+
+If (<>sProduct#"M@")
+ALL RECORDS([Facility])
+
+For ($z;1;Records in selection([Facility]))
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="FI")
+
+If (Records in selection([MarketingTypes])=0)
+DemoCreateMarketingTypes (False;[Facility]FacilityCode)
+End if 
+
+End for 
+
+End if 
+
+SetFacility 
+End if 
+
+If ([Facility]Version<10040)
+
+If (<>sProduct#"M@")
+//30/03/17 DM Only need to do it when Facility is >10009 otherwise not all pathphrases are ""
+If ([Facility]Version>10009)
+CheckVersion_RevertCustPW 
+End if 
+End if 
+
+End if 
+
+
+If (Test path name(<>sTutPath+"TableDef"+<>sSeparator+"System.4SI")=Is a document)
+If (Test path name(<>sTutPath+"TableDef"+<>sSeparator+"Facility.4SI")=Is a document)
+DELETE DOCUMENT(<>sTutPath+"TableDef"+<>sSeparator+"System.4SI")
+Else 
+MOVE DOCUMENT(<>sTutPath+"TableDef"+<>sSeparator+"System.4SI";<>sTutPath+"TableDef"+<>sSeparator+"Facility.4SI")
+End if 
+End if 
+
+CLOSE WINDOW($Win)
+
+READ WRITE([Facility])
+QUERY([Facility];[Facility]NonSyncingSiteMV=True;*)
+QUERY([Facility]; | ;[Facility]FacilityCode=<>sFacility)
+
+APPLY TO SELECTION([Facility];[Facility]Version:=<>iVersion)
+APPLY TO SELECTION([Facility];[Facility]VersionDate:=<>dCompileDate)
+
+SAVE RECORD([Facility])
+READ ONLY(*)
+UnloadAll 
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+ALL RECORDS([Facility])
+TRACE
+
+//For (1;$g;Records in selection([Facility]))
+//WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"CallBack";"";[Facility]Version;[Facility]VersionDate;$Silent)
+//End for 
+
+//check version finished!
+
+
+
+
+//If (Application type#4D Remote mode)
+//OPEN URL("https://ftp.storman.com/Releasenotes/v"+String(<>iVersion)+"/";*)  //points to support.storman.com knowledgebase
+//End if 
+
+
+
+
+End if 
+End if 

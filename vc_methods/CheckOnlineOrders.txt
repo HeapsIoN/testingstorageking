@@ -1,0 +1,59 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 10/09/15, 10:59:50
+// ----------------------------------------------------
+// Method: CheckOnlineOrders
+// Description
+//
+// This method is used to check for any Online Boxshop Orders
+// that have not yet been set to compeleted. And is triggered 
+// at the start of daily, for "SK@" facilities.
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($0)
+C_TEXT($1)//Facility Code
+vtFormula:=""
+
+QUERY([Facility];[Facility]FacilityCode=$1)
+
+If (([Facility]OnlineReserveIncl))
+QUERY([Agreement];[Agreement]RAgreeNo=$1+"@#@";*)
+//QUERY([Agreement]; & ;[Agreement]UserLogin="@boxshop@";*)
+QUERY([Agreement]; & ;[Agreement]OrderID>"";*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing>0;*)
+QUERY([Agreement]; & ;[Agreement]OrderComplete=False)
+
+FIRST RECORD([Agreement])
+$Progress:=Open window(20;150;400;250;0;Get localized string("Progress"))
+
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE("Searching Online Orders "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement])))
+
+RELATE ONE([Agreement]CustomerCode)
+vtFormula:=vtFormula+("Credit Sale: ")+[Agreement]AgreeNo+("  Order date: ")+String([Agreement]MoveIn)+Char(13)
+vtFormula:=vtFormula+("Customer Name: ")+[Customer]CustomerName+("  Balance: ")+String([Agreement]BalanceOwing;"###,###.00")+Char(13)+Char(13)
+NEXT RECORD([Agreement])
+
+End for 
+CLOSE WINDOW($Progress)
+
+
+If (vtFormula>"")
+vTitle:=("Incomplete Online Orders")
+vtFormula:=("The following Online Orders have not yet been completed, please follow up:")+Char(13)+Char(13)+vtFormula
+$OnlineOrders:=Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;("Incomplete Online Orders"))
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW($OnlineOrders)
+vtFormula:=""
+$0:=False
+Else 
+$0:=True
+End if 
+End if 

@@ -1,0 +1,230 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 00/00/00, 00:00:00 (old)
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_GetAgreementInfo1
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_vtStorerName;Is text;SOAP output)
+SOAP DECLARATION(WS_vdLastBillDate;Is date;SOAP output)
+SOAP DECLARATION(WS_vdNextDueDate;Is date;SOAP output)
+SOAP DECLARATION(WS_vrDueNowAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrNextDueAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrTotalDueAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrLastBillAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vtEmailAddress;Is text;SOAP output)
+SOAP DECLARATION(WS_vtError;Is text;SOAP output)//Only used for Storpay
+SOAP DECLARATION(WS_viRestrictions;Is integer;SOAP output)//Only used for Storpay
+SOAP DECLARATION(WS_vtAllowPartPayment;Is text;SOAP output)//Only used for Storpay
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+C_TEXT(WS_vtAgreementNumber;WS_vtPassword)
+C_TEXT(WS_vtStorerName;WS_vtEmailAddress;WS_vtError)
+C_DATE(WS_vdLastBillDate;WS_vdNextDueDate)
+C_REAL(WS_vrDueNowAmt;WS_vrNextDueAmt;WS_vrTotalDueAmt;WS_vrLastBillAmt)
+C_LONGINT(WS_viRestrictions)//1=Accept any partial payment, 2=Accept only DueNowAmt, 3=No payment allowed - call at office
+C_TEXT(WS_vtAllowPartPayment)//"1"=Allow, "0"=Block
+
+WS_vtStorerName:=""
+WS_vdLastBillDate:=!00-00-00!
+WS_vdNextDueDate:=!00-00-00!
+WS_vrDueNowAmt:=0
+WS_vrNextDueAmt:=0
+WS_vrTotalDueAmt:=0
+WS_vrLastBillAmt:=0
+WS_vtEmailAddress:=""
+WS_vtError:=""
+WS_viRestrictions:=0
+WS_vtAllowPartPayment:=""
+
+$String:="Start WS_GetAgreementInfo1"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+$FacilityCode:=Substring(WS_vtAgreementNumber;1;5)
+QUERY([Facility];[Facility]FacilityCode=$FacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If ((WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#""))
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+WS_viRestrictions:=1
+WS_vtAllowPartPayment:="0"
+
+Case of 
+: (Records in selection([Agreement])=0)
+WS_vtError:="4"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+
+: (Records in selection([Agreement])=1)
+RELATE ONE([Agreement]CustomerCode)
+
+Case of 
+: ([Customer]Password<"  ")
+WS_vtError:="1"//1 - No password available at site - Still return customer details as may have "No password" set in Storpay
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Agreement details successfully retrieved from database Storman."
+
+WS_vtStorerName:=[Customer]CustomerName
+WS_vdNextDueDate:=[Agreement]NextBillDate
+WS_vdLastBillDate:=[Agreement]LastBillDate
+WS_vrLastBillAmt:=[Agreement]LastBillAmt//
+WS_vrDueNowAmt:=Round([Agreement]BalanceOwing;2)//Balance Owing
+
+If ([Agreement]NextBillDate>=[Agreement]NewRentFrom)
+WS_vrNextDueAmt:=[Agreement]NewRentAmt
+Else 
+WS_vrNextDueAmt:=[Agreement]RentAmt
+End if 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+For ($k;1;Records in selection([OtherChgs]))
+If ([Agreement]NextBillDate>=[OtherChgs]IncreaseFrom)
+WS_vrNextDueAmt:=WS_vrNextDueAmt+[OtherChgs]NewAmount
+Else 
+WS_vrNextDueAmt:=WS_vrNextDueAmt+[OtherChgs]Amount
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+WS_vrNextDueAmt:=Round(WS_vrNextDueAmt;2)
+WS_vrTotalDueAmt:=Round([Agreement]BalanceOwing;2)//Balance Owing
+WS_vtEmailAddress:=[Customer]EmailAddress
+
+: (WS_vtPassword<"  ")
+WS_vtError:="2"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1045
+WS_ORErrorDescription:="No password entered by customer."
+
+: ([Customer]Password=WS_vtPassword)
+WS_vtError:="0"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Agreement details successfully retrieved from database Storman."
+
+WS_vtStorerName:=[Customer]CustomerName
+WS_vdNextDueDate:=[Agreement]NextBillDate
+WS_vdLastBillDate:=[Agreement]LastBillDate
+WS_vrLastBillAmt:=[Agreement]LastBillAmt
+
+//21/08/13 DAM Added for Kinitek MO
+QUERY([Authenticate];[Authenticate]RAgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress="BnS")
+If (Records in selection([Authenticate])=1)
+WS_vrDueNowAmt:=Round(Num(GetTextNo ([Authenticate]SessionID;1;","));2)//Balance Owing
+Else 
+WS_vrDueNowAmt:=Round([Agreement]BalanceOwing;2)//Balance Owing
+End if 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]NextBillDate>=[Agreement]NewRentFrom)
+WS_vrNextDueAmt:=[Agreement]NewRentAmt
+Else 
+WS_vrNextDueAmt:=[Agreement]RentAmt
+End if 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+For ($k;1;Records in selection([OtherChgs]))
+If ([Agreement]NextBillDate>=[OtherChgs]IncreaseFrom)
+WS_vrNextDueAmt:=WS_vrNextDueAmt+[OtherChgs]NewAmount
+Else 
+WS_vrNextDueAmt:=WS_vrNextDueAmt+[OtherChgs]Amount
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+WS_vrNextDueAmt:=Round(WS_vrNextDueAmt;2)
+WS_vrTotalDueAmt:=Round([Agreement]BalanceOwing;2)//Balance Owing
+WS_vtEmailAddress:=[Customer]EmailAddress
+
+Else 
+WS_vtError:="3"//3 - Entered Incorrect Password
+WS_ORSuccess:=False
+WS_ORErrorCode:=1029
+WS_ORErrorDescription:="Invalid Customer password."
+End case 
+
+: (Records in selection([Agreement])>1)
+WS_vtError:="5"//5 - Duplicate Agreements
+WS_ORSuccess:=False
+WS_ORErrorCode:=9998
+WS_ORErrorDescription:="Duplicate record for Agreement in database Storman."
+Else 
+//do nothing
+End case 
+
+//Check whether this Facility permits Part Payment = 1=Allow, 0=Block, -1=Error (Block)
+WS_vtAllowPartPayment:=BooleanToString (Not([Facility]BlockStorpayPartPay);"1";"0")
+
+Else 
+WS_vtError:="7"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_vtError:="6"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+//18/03/15 DAM Added to relesae records
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+
+$String:="End WS_GetAgreementInfo1"+Char(13)
+$String:=$String+"WS_vtStorerName: "+WS_vtStorerName+Char(13)
+$String:=$String+"WS_vdLastBillDate: "+String(WS_vdLastBillDate)+Char(13)
+$String:=$String+"WS_vdNextDueDate: "+String(WS_vdNextDueDate)+Char(13)
+$String:=$String+"WS_vrDueNowAmt: "+String(WS_vrDueNowAmt)+Char(13)
+$String:=$String+"WS_vrNextDueAmt: "+String(WS_vrNextDueAmt)+Char(13)
+$String:=$String+"WS_vrTotalDueAmt: "+String(WS_vrTotalDueAmt)+Char(13)
+$String:=$String+"WS_vrLastBillAmt: "+String(WS_vrLastBillAmt)+Char(13)
+$String:=$String+"WS_vtEmailAddress: "+WS_vtEmailAddress+Char(13)
+$String:=$String+"WS_vtError: "+WS_vtError+Char(13)
+$String:=$String+"WS_viRestrictions: "+String(WS_viRestrictions)+Char(13)
+$String:=$String+"WS_vtAllowPartPayment: "+WS_vtAllowPartPayment+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

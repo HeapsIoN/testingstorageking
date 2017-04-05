@@ -1,0 +1,137 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Success)
+C_BOOLEAN($Print)
+C_LONGINT($TotAgree)
+$Print:=False
+If (Form event=On Clicked)
+SET AUTOMATIC RELATIONS(True;True)
+If (Records in selection([Notices])#0) | (vSMSMessage#"")
+Case of 
+: (vrbCustomers=1)
+$RecNo:=Records in selection([Customer])
+: (vrbContacts=1)
+$RecNo:=Records in selection([Contacts])
+End case 
+ConfirmTwo (Get localized string("Send")+" "+String($RecNo)+" "+"SMS?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ACCEPT
+READ WRITE([Letters])
+$Print:=True
+Case of 
+: (vrbCustomers=1)
+FIRST RECORD([Customer])
+<>ProgressInd:=1
+
+Open window(20;50;400;150;0)
+$TotAgree:=Records in selection([Customer])
+For ($i;1;Records in selection([Customer]))
+GOTO XY(2;2)
+MESSAGE("Sending SMS message: "+String($i))//Johnno
+Case of 
+: (asCusFilter=4)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True)
+FIRST RECORD([Reservation])
+$Ref:=[Reservation]RReserveNo
+REDUCE SELECTION([Agreement];0)
+: (asCusFilter=5)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=False)
+FIRST RECORD([Reservation])
+$Ref:=[Reservation]RReserveNo
+REDUCE SELECTION([Agreement];0)
+Else 
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+FIRST RECORD([Agreement])
+$Ref:=[Agreement]RAgreeNo
+End case 
+
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+$vSMSMessage:=Replace string(vSMSMessage;"{balance}";String([Customer]Balance;"#######0.00"))
+$vSMSMessage:=Replace string($vSMSMessage;"{agreebalance}";String([Agreement]BalanceOwing;"#######0.00"))
+$vSMSMessage:=Replace string($vSMSMessage;"{rentamt}";String([Agreement]RentAmt;"#######0.00"))
+$vSMSMessage:=Replace string($vSMSMessage;"{nextbill}";String([Agreement]NextBillDate))
+$vSMSMessage:=Replace string($vSMSMessage;"{lastbill}";String([Agreement]LastBillDate))
+$vSMSMessage:=Replace string($vSMSMessage;"{firstname}";[Customer]FirstName)
+$vSMSMessage:=Replace string($vSMSMessage;"{facilityphone}";[Facility]Phone)
+$vSMSMessage:=ProcessStormanHTMLTags ($vSMSMessage)
+
+If (asCusFilter=8) | (asCusFilter=7) | (asCusFilter=6)
+$PhoneNum:=Num([Customer]AltMobile)
+Else 
+$PhoneNum:=Num([Customer]MobilePhone)
+End if 
+
+$Phone:=String($PhoneNum)
+$Success:=SendSMS ($Phone;$vSMSMessage;$Ref;False;False;True)
+
+INSERT IN ARRAY(arContacts;$i)
+INSERT IN ARRAY(arContacts{$i};1;4)
+arContacts{$i}{1}:=[Customer]CustomerCode
+arContacts{$i}{2}:=[Customer]CustomerName
+arContacts{$i}{3}:=[Customer]MobilePhone
+If ($Success="T")
+arContacts{$i}{4}:="Yes"
+Else 
+arContacts{$i}{4}:="No"
+End if 
+NEXT RECORD([Customer])
+End for 
+<>ProgressInd:=100
+: (vrbContacts=1)
+FIRST RECORD([Contacts])
+<>ProgressInd:=1
+
+Open window(20;50;400;150;0)
+$TotAgree:=Records in selection([Contacts])
+For ($i;1;Records in selection([Contacts]))
+GOTO XY(2;2)
+MESSAGE("Sending SMS message: "+String($i))//Johnno
+<>ProgressInd:=Trunc(($i/$TotAgree)*100;0)
+vSMSMessage:=Replace string(vSMSMessage;"{balance}";String([Customer]Balance;"#######0.00"))
+vSMSMessage:=Replace string(vSMSMessage;"{agreebalance}";String([Agreement]BalanceOwing;"#######0.00"))
+vSMSMessage:=Replace string(vSMSMessage;"{rentamt}";String([Agreement]RentAmt;"#######0.00"))
+vSMSMessage:=Replace string(vSMSMessage;"{nextbill}";String([Agreement]NextBillDate))
+vSMSMessage:=Replace string(vSMSMessage;"{lastbill}";String([Agreement]LastBillDate))
+vSMSMessage:=Replace string(vSMSMessage;"{firstname}";[Customer]FirstName)
+vSMSMessage:=Replace string(vSMSMessage;"{facilityphone}";[Facility]Phone)
+vSMSMessage:=ProcessStormanHTMLTags (vSMSMessage)
+
+$PhoneNum:=Num([Contacts]MobilePhone)
+$Phone:=String($PhoneNum)
+$Success:=SendSMS ($Phone;vSMSMessage;[Contacts]ContactNo;False;False;True)
+INSERT IN ARRAY(arContacts;$i)
+INSERT IN ARRAY(arContacts{$i};1;4)
+arContacts{$i}{1}:=[Contacts]ContactNo
+arContacts{$i}{2}:=[Contacts]ContactName
+arContacts{$i}{3}:=[Contacts]MobilePhone
+If ($Success="T")
+arContacts{$i}{4}:="Yes"
+Else 
+arContacts{$i}{4}:="No"
+End if 
+NEXT RECORD([Contacts])
+End for 
+<>ProgressInd:=100
+End case 
+READ ONLY([Letters])
+End if 
+End if 
+
+SET AUTOMATIC RELATIONS(False;False)
+If (vrbCustomers=1)
+vTitle:=Get localized string("List of Customers")
+vCTitle:=Get localized string("Customer Code")
+Else 
+vTitle:=Get localized string("List of Contacts")
+vCTitle:=Get localized string("Contact No")
+ALL RECORDS([Customer])
+REDUCE SELECTION([Customer];Size of array(arContacts))
+End if 
+If ($Print)
+vTtl:="Mobile Phone"
+rowNumber:=1
+FORM SET OUTPUT([Customer];"MailMergeReport")
+PrintSelection ("P")
+End if 
+End if 

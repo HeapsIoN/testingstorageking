@@ -1,0 +1,203 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 23/12/09, 15:04:33
+// ----------------------------------------------------
+// Method: LoadAnlsChgArray
+// Description
+// This method is to load the Charge Analysis codes for the array-based charges system.
+//
+// Parameters
+// ----------------------------------------------------
+
+
+C_BOOLEAN($1;$2)//True for Charges;False for Receipts / $2 = True for Transactions;False for Other
+C_LONGINT($i;$j;$k;$m;$r)
+C_LONGINT(hlList;$hSubList)
+If ($1)//Charges
+QUERY([MarketingTypes];[MarketingTypes]ListCode="AC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+If (Records in selection([MarketingTypes])>0) & ($2)
+hlList:=New list
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+For ($i;1;Records in selection([MarketingTypes]))
+$addToList:=False
+If (bIsCashSale=True)
+//QUERY([Analysis];[Analysis]KeyStatsCategory=Get localized string("Merchandise");*)
+End if 
+If (Length([Agreement]RAgreeNo)>=5) | (Length([Reservation]RReserveNo)>=5)
+
+If ([Reservation]RReserveNo>"")
+QUERY([Analysis]; & ;[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"@";*)
+Else 
+QUERY([Analysis]; & ;[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+"@";*)
+End if 
+Else 
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]AnalysisCategory=[MarketingTypes]Description;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+If ([Reservation]RReserveNo>"")
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#1;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#5)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#2;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#6)
+End if 
+If (Records in selection([Analysis])>0)
+$addToList:=True
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+$hSubList:=New list
+For ($j;1;Records in selection([Analysis]))
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+APPEND TO LIST($hSubList;[Analysis]Description;$k)
+NEXT RECORD([Analysis])
+End for 
+End if 
+
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=True;*)
+QUERY([MerchPlan]; & ;[MerchPlan]AnalysisCategory=[MarketingTypes]Description)
+If (Records in selection([MerchPlan])>0)
+If ($addToList=False)
+$hSubList:=New list
+End if 
+$addToList:=True
+For ($j;1;Records in selection([MerchPlan]))
+$k:=Record number([MerchPlan])
+//If ($k=0)
+//$k:=32000
+//Else 
+$k:=$k+270000//Based on the theory they will not have more than 27000 Analysis Codes
+//End if 
+APPEND TO LIST($hSubList;[MerchPlan]Description;$k)
+NEXT RECORD([MerchPlan])
+End for 
+End if 
+
+If ($addToList)
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+End if 
+
+NEXT RECORD([MarketingTypes])
+End for 
+QUERY([Analysis];[Analysis]Code=vAnalysisCode)
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+SELECT LIST ITEMS BY REFERENCE(hlList;$k)
+OBJECT SET VISIBLE(*;"Field8";True)
+OBJECT SET VISIBLE(*;"Field82";False)
+$r:=List item position(hlList;$k)
+If ($r<=0)
+READ ONLY([Trxs])
+LOAD RECORD([Trxs])
+OBJECT SET ENTERABLE(vQtyMinus;False)
+OBJECT SET ENTERABLE(vQtyPlus;False)
+OBJECT SET ENTERABLE(vPlus;False)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET VISIBLE(aDesc;False)
+OBJECT SET ENABLED(bSet;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bAccept;False)
+OBJECT SET VISIBLE(*;"Field8";False)
+Else 
+OBJECT SET VISIBLE([Analysis]Description;False)
+End if 
+Else 
+If ($2)
+OBJECT SET VISIBLE(*;"Field82";True)
+OBJECT SET VISIBLE(*;"Field8";False)
+End if 
+If (bIsCashSale=True)
+//QUERY([Analysis];[Analysis]KeyStatsCategory=Get localized string("Merchandise");*)
+End if 
+If ((Length([Agreement]RAgreeNo)>=5) & ($2)) | ((Length([Reservation]RReserveNo)>=5) & ($2))
+If ([Reservation]RReserveNo>"")
+QUERY([Analysis]; & ;[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"@";*)
+Else 
+QUERY([Analysis]; & ;[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+"@";*)
+End if 
+Else 
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+If ([Reservation]RReserveNo>"")
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#1;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#5)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#2;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#6)
+End if 
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asCharges;0)
+ARRAY TEXT(asChargeDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asCharges;[Analysis]Description;asChargeDesc)
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=True)
+
+For ($i;1;Records in selection([MerchPlan]))
+APPEND TO ARRAY(asCharges;[MerchPlan]MerchPlanID+"IP")
+APPEND TO ARRAY(asChargeDesc;[MerchPlan]Description)
+
+NEXT RECORD([MerchPlan])
+End for 
+
+If ($2)
+asCharges:=Find in array(asCharges;vAnalysisCode)
+If (asCharges>0)
+asChargeDesc:=asCharges
+Else 
+OBJECT SET VISIBLE(asChargeDesc;False)
+READ ONLY([Trxs])
+LOAD RECORD([Trxs])
+OBJECT SET ENTERABLE(vQtyMinus;False)
+OBJECT SET ENTERABLE(vQtyPlus;False)
+OBJECT SET ENTERABLE(vPlus;False)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET VISIBLE(aDesc;False)
+OBJECT SET ENABLED(bSet;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bAccept;False)
+End if 
+End if 
+QUERY([Analysis];[Analysis]Code=vAnalysisCode)
+End if 
+End if 

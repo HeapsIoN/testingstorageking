@@ -1,0 +1,98 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($1)//Date range for journals
+C_LONGINT($i;$j)
+C_TEXT($t;$Ext)
+C_TEXT($AcctNo)
+QUERY([Journal];[Journal]JrnlType="REV";*)
+QUERY([Journal]; | ;[Journal]JrnlType="PRE";*)
+QUERY([Journal]; & ;[Journal]PeriodNo=GetPeriod ($1))
+ORDER BY([Journal];[Journal]JournalNo;>)
+$j:=Position("-";[Journal]Narration)
+$Prefix:=""
+If ($j>5)
+$Prefix:=Substring([Journal]Narration;1;$j-2)
+End if 
+$t:=Char(9)
+$Filename:="GreatPlainsRevenue"+GetDateString ([Journal]JrnlDate;7)+$Prefix+".txt"
+$Doc1:=Create document(<>sExportPath+$Filename;"TEXT")
+$Doc2:=Create document(<>sExportPath+Replace string($Filename;"Revenue";"RevenueDetail");"TEXT")
+SEND PACKET($Doc1;"JrnlNo"+$t+"PeriodNo"+$t+"TrxDate"+$t+"Narration"+$t+"Type"+$t+"RevDate"+Char(13))
+SEND PACKET($Doc2;"JrnlNo"+$t+"AcctNo"+$t+"Amount"+$t+"TaxCode"+$t+"GrossAmt"+$t+"Description"+Char(13))
+For ($i;1;Records in selection([Journal]))
+$j:=Position("-";[Journal]Narration)
+If ($j>5)
+If ($Prefix#Substring([Journal]Narration;1;$j-2))
+$Prefix:=Substring([Journal]Narration;1;$j-2)
+CLOSE DOCUMENT($Doc1)
+CLOSE DOCUMENT($Doc2)
+$Filename:="GreatPlainsRevenue"+GetDateString ([Journal]JrnlDate;7)+$Prefix+".txt"
+$Doc1:=Create document(<>sExportPath+$Filename;"TEXT")
+$Doc2:=Create document(<>sExportPath+Replace string($Filename;"Revenue";"RevenueDetail");"TEXT")
+SEND PACKET($Doc1;"JrnlNo"+$t+"PeriodNo"+$t+"TrxDate"+$t+"Narration"+$t+"Type"+$t+"RevDate"+Char(13))
+SEND PACKET($Doc2;"JrnlNo"+$t+"AcctNo"+$t+"Amount"+$t+"TaxCode"+$t+"GrossAmt"+$t+"Description"+Char(13))
+End if 
+[Journal]Narration:=Substring([Journal]Narration;$j+2)
+$Mth:=Position("for";[Journal]Narration)
+$JnlDte:=Substring([Journal]Narration;$Mth+2;3)+" "+Substring(String(Year of([Journal]JrnlDate));3)
+Case of //need to truncate narration for Great Plains, as has a 20 char limit
+: ([Journal]JrnlType="REV")
+[Journal]Narration:="Storman Rev "+$JnlDte
+: ([Journal]JrnlType="PRE")
+[Journal]Narration:="Storman PPaid "+$JnlDte
+Else 
+//do nothing
+End case 
+End if 
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]GrossAmt#0)
+If (Records in selection([CashBookTrxs])>0)
+SEND PACKET($Doc1;String([Journal]JournalNo)+$t+String([Journal]PeriodNo)+$t+String([Journal]JrnlDate)+$t+[Journal]Narration+$t+GetStringfromBoolean ([Journal]JrnlType="PRE";"2";"1"))
+//Always send reversal date even if not a reversing journal due to bug in Integration Manager
+//If ([Journal]JrnlType="PRE")
+SEND PACKET($Doc1;$t+String([Journal]JrnlDate+1))
+//End if 
+SEND PACKET($Doc1;Char(13))
+ORDER BY([CashBookTrxs];[CashBookTrxs]Description;>;[CashBookTrxs]Amount;>)
+For ($j;1;Records in selection([CashBookTrxs]))
+If (Length([CashBookTrxs]AcctNo)>9)
+$AcctNo:=String(Num([CashBookTrxs]AcctNo);"#-#######-###")
+Else 
+$AcctNo:=String(Num([CashBookTrxs]AcctNo);"#-####-###")
+End if 
+$Ext:=Substring($AcctNo;Length($AcctNo)-2)//Last 3 digits
+If ([Journal]JrnlType#"PRE")//condition added 5/4/06 NLT
+SEND PACKET($Doc2;String([CashBookTrxs]JournalNo)+$t+$AcctNo+$t+String([CashBookTrxs]GrossAmt)+$t)
+Else 
+SEND PACKET($Doc2;String([CashBookTrxs]JournalNo)+$t+$AcctNo+$t+String([CashBookTrxs]Amount)+$t)
+End if 
+$Taxable:=0
+If ([CashBookTrxs]Amount#0)
+$Taxable:=([CashBookTrxs]GrossAmt-[CashBookTrxs]Amount)/[CashBookTrxs]Amount
+End if 
+If ([Journal]JrnlType#"PRE")//condition added 5/4/06
+If (Abs($Taxable)<=0.01)
+SEND PACKET($Doc2;"N"+$t+"0.00")
+Else 
+Case of 
+: ($Ext<"500")//Original Kennards
+SEND PACKET($Doc2;"T"+$t+String(Abs([CashBookTrxs]GrossAmt)))
+: ($Ext<"800")//New Millers Sites
+QUERY([Facility];[Facility]GLCodeExt=$Ext)
+SEND PACKET($Doc2;"SI-GSTTS-KVSI"+$t+String(Abs([CashBookTrxs]GrossAmt)))
+Else //Managed Millers Sites
+QUERY([Facility];[Facility]GLCodeExt=$Ext)
+SEND PACKET($Doc2;"SI-GSTTS-"+Substring([Facility]FacilityCode;3;3)+$t+String(Abs([CashBookTrxs]GrossAmt)))
+End case 
+End if 
+SEND PACKET($Doc2;$t+GetKeyNo ([CashBookTrxs]Description;2)+Char(13))
+Else 
+SEND PACKET($Doc2;"N"+$t+"0.00"+$t+GetKeyNo ([CashBookTrxs]Description;2)+Char(13))
+End if 
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+NEXT RECORD([Journal])
+End for 
+CLOSE DOCUMENT($Doc1)
+CLOSE DOCUMENT($Doc2)
+AlertMessage (Get localized string("Export Complete!"))

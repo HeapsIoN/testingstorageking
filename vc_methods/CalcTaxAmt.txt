@@ -1,0 +1,135 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// SDD 17/6/10 Changes to allow for NZ GST rate change on 1/10/10
+C_REAL($0;$1;$TaxPortion;$TaxRate)//$0=TaxAmt,$1=Amount to calc on
+// Assume that [System] record is always active
+C_TEXT($2;$Analysis)// Analysis Code
+C_DATE($3;$4;$DateFrom;$DateTo;vDsDateTo;vDsDateFrom)// Date From Date To
+C_LONGINT($5;$Action)// See below
+C_BOOLEAN($6;$NoTax;$Taxable)// if True then no Tax calced
+// Action to take as follows:
+// TaxAddtoAmt=True                 TaxAddtoAmt=False
+// If 0 then$0=Amt x TaxRate$0=Amt/(1+TaxRate/100)
+// Also TotAmt:=TotAmt+$0
+// (as Trx rec is present)
+// If 1 then$0=Amt x TaxRate          Zero(Called by InvRecCode & ReCalcUnpaid )
+// if 2 then always$0=Amt/(1+TaxRate/100)(Only called by MatchTrx & MiscReceipt and now CreateTrxMoveOut
+// If 3 then always$0=Amt x TaxRate(Only called by MiscReceipts NetAmt)
+// If 4 then same as for 0 but uses vPlus instead of [Transaction]TotAmt as there is
+//  If 5 then is for Stock Valuation report - don't re-query the analysis table
+
+// RULES
+// Set the tax rate from [Facility]TaxRate or if zero then [Analysis]TaxRate
+// If [Agreement]TaxExempt then return zero
+// If Germany then Tax is zero only on Individual with Rent otherwise normal rules apply
+
+If (Count parameters>=5)
+$Action:=$5
+Else 
+$Action:=0
+End if 
+If ([Reservation]RReserveNo>"")
+$NoTax:=[Reservation]TaxExempt
+Else 
+$NoTax:=[Agreement]TaxExempt// If no Agreement rec present then$NoTax=False
+End if 
+If (Count parameters>1)
+$Analysis:=$2
+If ($Action=5)//do nothing - retain current selection
+Else 
+QUERY([Analysis];[Analysis]Code=$Analysis)
+End if 
+If (Count parameters>=4)
+$DateFrom:=$3
+$DateTo:=$4
+If (Count parameters>=6)
+$NoTax:=$6
+End if 
+End if 
+Else 
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+End if 
+If (Records in selection([Analysis])=0)// Added in v3.3.2
+$Taxable:=True
+Else 
+$Taxable:=[Analysis]Taxable
+End if 
+If ($DateFrom=!00-00-00!)
+$DateFrom:=[Trxs]TrxDate
+End if 
+
+$TaxRate:=GetTaxRate ($DateFrom)// CalcTaxAmtArray 
+If ($Taxable) & ($TaxRate>0)
+If ($Action=0)
+If ([Trxs]DateFrom=!00-00-00!)
+[Trxs]DateFrom:=[Trxs]TrxDate
+End if 
+If ([Trxs]DateTo=!00-00-00!)
+[Trxs]DateTo:=[Trxs]TrxDate
+End if 
+If ([Trxs]DateTo<[Trxs]DateFrom)
+[Trxs]DateTo:=[Trxs]DateFrom
+End if 
+End if 
+If ($DateFrom=!00-00-00!) | ($DateFrom=[Trxs]TrxDate)
+$DateFrom:=[Trxs]DateFrom
+End if 
+If ($DateTo=!00-00-00!)
+$DateTo:=[Trxs]DateTo
+End if 
+// SDD 17/6/10 The following lines are commented out and relate to the Australian implementa/10/10
+// If ($DateTo>=[Facility]TaxFromDate) | (vDsDateTo>=[Facility]TaxFromDate)
+// If ($DateFrom>=[Facility]TaxFromDate) | (vDsDateFrom>=[Facility]TaxFromDate)
+// $TaxPortion:=$1
+// Else 
+// If (($DateTo-$DateFrom)=0)  `this shouldn't happen but catching error in case it is 20/4/10
+// SyncRecordLog ("Possible creation of NAN's in CalcTaxAmt - DateFrom is "+String($DateFrom)+" and DateTo is "+String($DateTo))
+// End if 
+// $TaxPortion:=$1*($DateTo-[Facility]TaxFromDate)/($DateTo-$DateFrom)
+// End if 
+// Else 
+// $TaxPortion:=0
+// End if 
+$TaxPortion:=$1// SDD Added 17/6/10
+If ($NoTax=True)
+$0:=0
+If ([Facility]TaxAddtoAmt) & ($Action=0)
+// [Transaction]TotAmt:=RoundFive ([Transaction]TotAmt)
+// Was$0:=RoundFive ([Transaction]TotAmt)which doesn't make sense-changed 2.6.1
+End if 
+Else 
+If ($Action=3)
+$0:=Round($TaxPortion*$TaxRate/100;2)
+Else 
+If ([Facility]TaxAddtoAmt) & (($Action<2) | ($Action=4))
+// $0:=RoundFive ($TaxPortion*$TaxRate/100)
+$0:=Round($TaxPortion*$TaxRate/100;2)
+If ($Action=0)
+//12/12/12 DAM Added for Germany if the [Facility]TaxAddtoAmt=True
+//If ([Facility]Country="DE") & ([Transaction]AnalysisCode="@RF") & ([Customer]Organization=False)
+//$0:=0
+//End if 
+[Trxs]TotAmt:=Round([Trxs]TotAmt+$0;2)
+End if 
+If ($Action=4)
+vPlus:=Round(vPlus+$0;2)
+End if 
+Else 
+If ($Action=1)// This only appears to be used by InvRecCode
+$0:=0// was set to same code as for false below but breaks InvRecCode
+Else 
+$0:=Round($TaxPortion/(1+(100/$TaxRate));2)
+End if 
+End if 
+End if 
+End if 
+Else 
+$0:=0
+End if 
+//If ([Facility]Country="DE") & ([Transaction]AnalysisCode="@RF") & ([Customer]Organization=False)
+//$0:=0
+//End if 
+If (Count parameters>1) & ($Action=0) & (Records in selection([Trxs])#0)// SDD Not to be used when Action=4
+RELATE ONE([Trxs]AnalysisCode)
+End if 

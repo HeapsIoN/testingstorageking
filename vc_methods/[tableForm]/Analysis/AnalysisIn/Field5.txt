@@ -1,0 +1,87 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+If (aAnalysis=1)
+ARRAY TEXT(asChargeDescSP;0)
+//asChargeDescSP{1}:="<None>"
+APPEND TO ARRAY(asChargeDescSP;"<None>")
+If (<>bEnglishSpelling=False)
+APPEND TO ARRAY(asChargeDescSP;"Check Return Charge")
+Else 
+APPEND TO ARRAY(asChargeDescSP;Get localized string("Check Return Charge"))
+End if 
+
+APPEND TO ARRAY(asChargeDescSP;Get localized string("Default for Credit"))
+APPEND TO ARRAY(asChargeDescSP;Get localized string("Default for")+" "+"Power")
+APPEND TO ARRAY(asChargeDescSP;Get localized string("Default for")+" "+"Water")
+APPEND TO ARRAY(asChargeDescSP;Get localized string("Default for")+" "+"Shipping")
+
+//asChargeDescSP{2}:=Get localized string("Check Return Charge")
+//asChargeDescSP{3}:=Get localized string("Default for Credit")
+//asChargeDescSP{4}:=Get localized string("Default for")+"Electricity"
+asChargeDescSP:=1
+If ([Analysis]SpecialOptions>0)
+asChargeDescSP:=[Analysis]SpecialOptions
+End if 
+Else 
+ARRAY TEXT(asChargeDescSP;12)
+asChargeDescSP{1}:="<"+Get localized string("None")+">"
+asChargeDescSP:=1
+If (<>bEnglishSpelling=False)
+asChargeDescSP{2}:="Default for Check Return"
+Else 
+asChargeDescSP{2}:=Get localized string("Default for Cheque Return")
+End if 
+asChargeDescSP{3}:=Get localized string("Default for Refund")
+asChargeDescSP{4}:=GetTextNo ([Facility]MerchantDetails;1;",")+" "+Get localized string("Default")
+asChargeDescSP{5}:=GetTextNo ([Facility]MerchantDetails;1;",")+" "+Get localized string("Amex")
+asChargeDescSP{6}:=GetTextNo ([Facility]MerchantDetails;1;",")+" "+Get localized string("Diners")
+asChargeDescSP{7}:=Get localized string("Default for Direct Debit")
+asChargeDescSP{8}:=GetTextNo ([Facility]MerchantDetails;1;",")+" "+Get localized string("Webpmnt Dflt")
+asChargeDescSP{9}:=GetTextNo ([Facility]MerchantDetails;1;",")+" "+Get localized string("Webpmnt Amex")
+asChargeDescSP{10}:=GetTextNo ([Facility]MerchantDetails;1;",")+" "+Get localized string("Webpmnt Dnrs")
+asChargeDescSP{11}:=Get localized string("Default for")+" "+GetTextNo ([Facility]MerchantDetails;1;",")+" "+Get localized string("Refund")
+asChargeDescSP{12}:=Get localized string("Default for")+" BPAY"//10781
+If ([Analysis]SpecialOptions>50)
+
+If ([Analysis]SpecialOptions=63)//10781
+asChargeDescSP:=12
+Else 
+asChargeDescSP:=[Analysis]SpecialOptions-50
+End if 
+End if 
+End if 
+Else 
+If (aAnalysis=1)
+SET QUERY DESTINATION(3;$q)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=asChargeDescSP)
+If ($q=0) | (asChargeDescSP=[Analysis]SpecialOptions) | (asChargeDescSP=Old([Analysis]SpecialOptions)) | (asChargeDescSP=1)
+[Analysis]SpecialOptions:=asChargeDescSP
+Else 
+AlertMessage (Get localized string("There is already a special option for")+" "+asChargeDescSP{asChargeDescSP})
+asChargeDescSP:=1
+End if 
+SET QUERY DESTINATION(0)
+Else 
+C_TEXT($DBPAY)
+SET QUERY DESTINATION(3;$q)
+$DBPAY:=Get localized string("Default for")+" BPAY"
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+If (asChargeDescSP{asChargeDescSP}=$DBPAY)//10781
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=asChargeDescSP+51)
+Else 
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=asChargeDescSP+50)
+End if 
+If ($q=0) | (asChargeDescSP+50=[Analysis]SpecialOptions) | (asChargeDescSP+50=Old([Analysis]SpecialOptions)) | (asChargeDescSP=1)
+If (asChargeDescSP{asChargeDescSP}=$DBPAY)//10781
+[Analysis]SpecialOptions:=asChargeDescSP+51
+Else 
+[Analysis]SpecialOptions:=asChargeDescSP+50
+End if 
+Else 
+AlertMessage (Get localized string("There is already a special option for")+" "+asChargeDescSP{asChargeDescSP})
+asChargeDescSP:=1
+End if 
+SET QUERY DESTINATION(0)
+End if 
+End if 

@@ -1,0 +1,191 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 30/9/11 Changes to include Billing KeyStatsCategories
+//SDD 13/08/13 Modified at line 165 to avoid divide by zero error
+C_REAL($0)//Amount in advance  CalcRentAdvanceOld
+C_DATE($1)//Date to calculate as at
+C_BOOLEAN($2;$3;$4;$RentAdvMethod;$NoErrors;$RentOnly)//True is Daily Basis
+C_BOOLEAN($5;$Set)//Create sets
+C_LONGINT($i)
+$0:=0
+$RentAdvMethod:=$2
+$NoErrors:=$3
+$RentOnly:=True
+$Set:=False
+If (Count parameters>3)
+$RentOnly:=$4
+If (Count parameters>4)
+$Set:=$5
+End if 
+End if 
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+GetAnalysis (False;True)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]DateFrom<=$1;*)
+QUERY([Trxs]; & ;[Trxs]DateTo>$1)
+
+Case of 
+: (Records in selection([Trxs])>0)
+If (Records in selection([Trxs])>1)
+ORDER BY([Trxs];[Trxs]TotAmt;<)//Put the largest amt first
+End if 
+[Agreement]BalFwd:=Record number([Trxs])//Store rec location for use by report
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]AnalysisCode)
+If ((([Analysis]KeyStatsCategory=Get localized string("Rent")) | ([Analysis]KeyStatsCategory="Support") | ([Analysis]KeyStatsCategory=Get localized string("Discounts"))) & ([Facility]PrepaidAnalysisCat=False)) | ($RentOnly=False) | (([Analysis]AnalysisCategory=Get localized string("Rental Fees")) & ([Facility]PrepaidAnalysisCat=True))
+$Amount:=0
+If ($RentAdvMethod)
+//Calculate using daily basis  
+If ([Trxs]DateFrom#[Trxs]DateTo)
+$MthsAdv:=Round([Trxs]DateTo-[Trxs]DateFrom;0)
+Case of 
+: ($MthsAdv>=28) & ($MthsAdv<=31)
+$Amount:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/30.42;2)
+: ($MthsAdv>=59) & ($MthsAdv<=62)
+$Amount:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/60.8;2)
+: ($MthsAdv>=89) & ($MthsAdv<=92)
+$Amount:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/91.2;2)
+: ($MthsAdv>=181) & ($MthsAdv<=183)
+$Amount:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/182.4;2)
+: ($MthsAdv>=365) & ($MthsAdv<=366)
+$Amount:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/364.8;2)
+Else 
+$Amount:=Round([Trxs]TotAmt*([Trxs]DateTo-$1-1)/([Trxs]DateTo-[Trxs]DateFrom);2)
+End case 
+End if 
+Else 
+//Calculate using whole months basis    
+$MthsAdv:=Round(([Trxs]DateTo-[Trxs]DateFrom)/30.42;0)
+If ($MthsAdv>=1)
+$Month:=Trunc(($1-[Trxs]DateFrom)/30.42;0)+1//THIS DOESN'T SEEM RIGHT 31days=2 30days=1?
+If ($Month<0)
+$Month:=0
+End if 
+$Amount:=Round([Trxs]TotAmt*($MthsAdv-$Month)/$MthsAdv;2)
+End if 
+End if 
+$0:=$0+$Amount
+If ([Facility]PrepaidAnalysisCat=True)
+$x:=Find in array(aPrepaidAnalysis;[Analysis]AnalysisCategory)
+If ($x<1)
+INSERT IN ARRAY(aPrepaidAnalysis;Size of array(aPrepaidAnalysis)+1)
+INSERT IN ARRAY(aOBal;Size of array(aOBal)+1)
+$x:=Size of array(aOBal)
+aPrepaidAnalysis{$x}:=[Analysis]AnalysisCategory
+aOBal{$x}:=0
+//If ([Analysis]AnalysisCategory#"Rent") & ($Set)
+//CREATE EMPTY SET([Transaction];"Set"+String($x))
+//End if 
+End if 
+aOBal{$x}:=aOBal{$x}+$Amount
+Case of 
+: ([Analysis]AnalysisCategory=Get localized string("Rent")) | ([Analysis]KeyStatsCategory="@Support")
+vAmt1:=vAmt1+$Amount
+: ([Analysis]AnalysisCategory=Get localized string("Other"))
+vAmt2:=vAmt2+$Amount
+: ([Analysis]AnalysisCategory=Get localized string("Late Fees")) | ([Analysis]KeyStatsCategory="@Hosting")
+vAmt3:=vAmt3+$Amount
+: ([Analysis]AnalysisCategory=Get localized string("Insurance"))
+vAmt4:=vAmt4+$Amount
+Else 
+//vAmt5:=vAmt5+$Amount
+//If ($Set)
+//ADD TO SET([Transaction];"Set"+String($x))
+//End if 
+End case 
+Else 
+$x:=Find in array(aPrepaidAnalysis;[Analysis]KeyStatsCategory)
+If ($x<1)
+INSERT IN ARRAY(aPrepaidAnalysis;Size of array(aPrepaidAnalysis)+1)
+INSERT IN ARRAY(aOBal;Size of array(aOBal)+1)
+$x:=Size of array(aOBal)
+aPrepaidAnalysis{$x}:=[Analysis]KeyStatsCategory
+aOBal{$x}:=0
+//If ([Analysis]KeyStatsCategory#"Rent") & ($Set)
+//CREATE EMPTY SET([Transaction];"Set"+String($x))
+//End if 
+End if 
+aOBal{$x}:=aOBal{$x}+$Amount
+Case of 
+: ([Analysis]KeyStatsCategory=Get localized string("Rent")) | ([Analysis]KeyStatsCategory=Get localized string("Discounts")) | ([Analysis]KeyStatsCategory="@Support")
+vAmt1:=vAmt1+$Amount
+: ([Analysis]KeyStatsCategory=Get localized string("Other"))
+vAmt2:=vAmt2+$Amount
+: ([Analysis]KeyStatsCategory=Get localized string("Late Fees")) | ([Analysis]KeyStatsCategory="@Hosting")
+vAmt3:=vAmt3+$Amount
+: ([Analysis]KeyStatsCategory=Get localized string("Insurance"))
+vAmt4:=vAmt4+$Amount
+Else 
+//vAmt5:=vAmt5+$Amount
+//If ($Set)
+//ADD TO SET([Transaction];"Set"+String($x))
+//End if 
+End case 
+End if 
+End if 
+NEXT RECORD([Trxs])
+End for 
+//If ($0<0)
+//$0:=0
+//End if 
+: ([Agreement]LastBillDate<=$1) & ([Agreement]NextBillDate>$1) & (([Agreement]MoveOut=!00-00-00!) | ([Agreement]MoveOut>$1))
+[Agreement]BalFwd:=-1
+If (([Agreement]NextBillDate-[Agreement]LastBillDate)=0)
+SyncRecordLog (Get localized string("Possible creation of NAN's")+[Agreement]AgreeNo+" [Agreement]NextBillDate="+String([Agreement]NextBillDate)+" [Agreement]LastBillDate="+String([Agreement]LastBillDate))
+End if 
+If ($RentAdvMethod)
+//Calculate using daily basis    
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/([Agreement]NextBillDate-[Agreement]LastBillDate);2)
+//Modification by SDD on 9/8/05 to avoid slightly changing denominators between 30 & 31 day months.
+$MthsAdv:=Round([Agreement]NextBillDate-[Agreement]LastBillDate;0)
+Case of 
+: ($MthsAdv>=28) & ($MthsAdv<=31)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/30.42;2)
+: ($MthsAdv>=59) & ($MthsAdv<=62)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/60.8;2)
+: ($MthsAdv>=89) & ($MthsAdv<=92)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/91.2;2)
+: ($MthsAdv>=181) & ($MthsAdv<=183)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/182.4;2)
+: ($MthsAdv>=365) & ($MthsAdv<=366)
+$0:=Round([Agreement]LastBillAmt*([Agreement]NextBillDate-$1-1)/364.8;2)
+Else 
+//Do nothing
+End case 
+Else 
+//Calculate using whole months basis    
+$MthsAdv:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30.42;0)
+If ($MthsAdv>=1)//SDD 13/08/13 Added this line to prevent divide by zero error
+$Month:=Trunc(($1-[Agreement]LastBillDate)/30.42;0)+1//THIS DOESN'T SEEM RIGHT 31days=2 30days=1?
+If ($Month<0)
+$Month:=0
+End if 
+$0:=Round([Agreement]LastBillAmt*($MthsAdv-$Month)/$MthsAdv;2)
+Else 
+$0:=0
+End if 
+If ($0<0)
+$0:=0
+End if 
+End if 
+$x:=Find in array(aPrepaidAnalysis;Get localized string("Rent"))
+If ($x<1)
+INSERT IN ARRAY(aPrepaidAnalysis;Size of array(aPrepaidAnalysis)+1)
+INSERT IN ARRAY(aOBal;Size of array(aOBal)+1)
+$x:=Size of array(aOBal)
+aPrepaidAnalysis{$x}:=Get localized string("Rent")
+aOBal{$x}:=0
+End if 
+aOBal{$x}:=aOBal{$x}+$0
+vAmt1:=vAmt1+$0
+: (([Agreement]LastBillDate>$1) & ([Agreement]NextBillDate>$1)) | (([Agreement]ActiveAgreemt=False) & ([Agreement]MoveOut>$1))
+$0:=-2//Not billed for the period in question
+Else 
+$0:=-1//Not billed up to date or has moved out
+End case 
+If ($NoErrors) & (($0=-1) | ($0=-2))
+$0:=0
+End if 

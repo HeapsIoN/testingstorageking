@@ -1,0 +1,254 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+//SDD 23/08/13 Modified to report IP Address of incoming machine and respond to 301, 302, etc delay requests
+//SDD 01/10/13 Fixed to Update WS_VersionDate successfully
+//SDD 17/11/13 Fixed to only Update Facility rec with LastUpdateDate & Time when it is actually successful
+//SDD 25/02/13 Change so that it sends error 300 while server is still starting up and delays for 10 minutes after sync mismatch or wrong record count
+
+// ----------------------------------------------------
+// User name (OS): SDD
+// Date and time: 17/03/11, 15:21:08
+// ----------------------------------------------------
+// Method: WS_Sync
+// Description
+// When a site requests events to send this method checks if there are any and returns them
+// This is also used by SHOF to receive events from all Storman's everywhere
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_RequestType;Is string var;SOAP input)//SND,RCV,+poss others
+SOAP DECLARATION(WS_SeqNo;Is longint;SOAP input)
+SOAP DECLARATION(WS_VersionDate;Is date;SOAP input)
+SOAP DECLARATION(WS_EventCountIn;Is integer;SOAP input)
+SOAP DECLARATION(WS_EventBlobIn;Is BLOB;SOAP input)
+
+SOAP DECLARATION(WS_SuccessMsg;Is string var;SOAP output)
+SOAP DECLARATION(WS_ConnectAgainInterval;Is integer;SOAP output)
+SOAP DECLARATION(WS_EventCountOut;Is longint;SOAP output)//SDD 17/11/13 Changed to LongInt so that it can be used for MV SeqNo when out of whack
+SOAP DECLARATION(WS_EventBlobOut;Is BLOB;SOAP output)
+
+C_LONGINT($FacilityRecNo;$Pos;$SeqNo;$i)
+C_BOOLEAN($SHOF;$UpdateSuccess;$EventlogReadState)
+
+$SHOF:=False
+ALL RECORDS([Facility])
+If ([Facility]FacilityCode="STHOF")
+$SHOF:=True
+End if 
+bConfirm:=[Facility]PrefixPIN
+//If ([Facility]PrefixPIN)  //True for Debug mode
+//BLOB TO DOCUMENT("BlobIn"+Replace string(String(Current time);":";"")+".txt";WS_EventBlobIn)
+//End if 
+WS_SuccessMsg:=""
+$UpdateSuccess:=False
+SET BLOB SIZE(WS_EventBlobOut;0)
+SET BLOB SIZE(vbEventContent;0)
+vErrors:=""
+vDate:=[Facility]VersionDate
+If ([Facility]SyncError>"300") | ([Facility]SyncError="151")
+vErrors:=[Facility]SyncError
+If (vErrors="301")
+vErrors:=vErrors+"-"+[Facility]CentralAddress
+End if 
+End if 
+
+$FacilityRecNo:=-1
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+If (Records in selection([Facility])>0)
+$FacilityRecNo:=Record number([Facility])
+End if 
+
+If (vErrors="")
+If ([Facility]SyncError>"300") | ([Facility]SyncError="151")
+vErrors:=[Facility]SyncError
+If (vErrors="301")
+vErrors:=vErrors+"-"+[Facility]CentralAddress
+End if 
+End if 
+End if 
+
+If ($SHOF=False)
+$Pos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+If ($Pos>0)
+$SeqNo:=<>aiEventSeqNo{$Pos}+1
+End if 
+Case of //Test if server is too busy
+: (<>iLoopCodeSecs>20)//Server is really struggling
+WS_ConnectAgainInterval:=300//Wait 5 mins
+: (<>iLoopCodeSecs>15)//Server is still struggling
+WS_ConnectAgainInterval:=180//Wait 3 mins
+: (<>iLoopCodeSecs>10)//Server is struggling
+WS_ConnectAgainInterval:=120//Wait 2 mins
+: (<>iLoopCodeSecs>8)//Server is slowing down
+WS_ConnectAgainInterval:=60//Wait 1 mins
+: (<>iLoopCodeSecs>5)//Server is starting to slow
+WS_ConnectAgainInterval:=45//Wait 3450 secs
+: (<>iLoopCodeSecs>3)//Server is starting to slow
+WS_ConnectAgainInterval:=30//Wait 30 secs
+Else 
+WS_ConnectAgainInterval:=10//Wait 10 secs
+End case 
+End if 
+
+Case of 
+//: (vErrors="40@")
+//Case of 
+//: (vErrors="405@")  //Tell site to export datafile and upload to FTP server, then send instruction to import when finished
+//$ErrorCode:=vErrors
+//$ErrorDescription:="Site Export - "+vErrors
+//
+//: (vErrors="406@")  //Tell site to export datafile and upload to FTP server, do Not sent instruction to MV to import when finished
+//$ErrorCode:=vErrors
+//$ErrorDescription:="Site Export - "+vErrors
+//End case 
+//SyncRecordLog ("Sent Site Export Code - "+vErrors)
+: (vErrors="3@") | (<>tWebServer=False)
+If (vErrors="301@")
+$ErrorCode:="301"
+$ErrorDescription:=Substring(vErrors;5)//IP Address
+Else 
+$ErrorCode:=vErrors
+$ErrorDescription:="Server Generated Delay"
+End if 
+Case of 
+: (<>tWebServer=False)//Server has not yet started up
+WS_ConnectAgainInterval:=600//Wait 10 minutes
+vErrors:="300"//300 Code means that server has not yet started up or webserver is not turned on
+
+: ($ErrorCode="302")//302 - Don't connect for 15 mins
+WS_ConnectAgainInterval:=900//Wait 15 mins
+
+: ($ErrorCode="303")//303 - Don't connect for 60 mins
+WS_ConnectAgainInterval:=3600//Wait 60 mins
+
+: ($ErrorCode="304")//304 - Don't connect for 240 mins
+WS_ConnectAgainInterval:=14400//Wait 4 hrs
+
+: ($ErrorCode="305@")//305 - Server specified time
+WS_ConnectAgainInterval:=Num(Substring(vErrors;5))//Wait specified time
+
+Else 
+//Do Nothing
+End case 
+WS_SuccessMsg:=vErrors
+SyncRecordLog (Get localized string("WSS")+" - "+"Sent Server Generated Code - "+vErrors+" - IP:"+WS_vtIPAddr)
+: (Records in selection([Facility])#1) & ($SHOF=False)
+WS_SuccessMsg:=Get localized string("Facility Code")+" "+WS_FacilityCode+" from IP:"+WS_vtIPAddr+" - "+Get localized string("not recognised by MV Server ")
+SyncRecordLog (Get localized string("WSS")+" - "+WS_SuccessMsg)
+: ([Facility]CentralAddress#WS_vtIPAddr) & ([Facility]CheckIPValid)
+WS_SuccessMsg:="Invalid IP Address - IP:"+WS_vtIPAddr
+SyncRecordLog (Get localized string("WSS")+" - "+"Attempted to Receive from site "+$FacilityCode+". - Invalid IP Address - IP:"+WS_vtIPAddr)
+: (WS_SeqNo#$SeqNo) & ($SeqNo-WS_SeqNo<=100) & ($SeqNo-WS_SeqNo>0)//HO is 1 greater than site then send again or reduce EventSeqNo by one
+$SeqNo:=$SeqNo-1//Bring HOF back to equal site
+QUERY([EventLog];[EventLog]FacilityCode=WS_FacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]SeqNo=$SeqNo)
+If (Records in selection([EventLog])>0)
+If ($SeqNo=WS_SeqNo)
+SyncGetEvents ($SeqNo)
+WS_EventCountOut:=Records in selection([EventLog])
+WS_EventBlobOut:=vbEventContent
+WS_SuccessMsg:=Get localized string("Resent")+" "+String(WS_EventCountOut)+" "+Get localized string("Events for")+" "+WS_FacilityCode+" - "+Get localized string("Seq No")+" "+String($SeqNo)
+Else 
+$EventlogReadState:=Read only state([EventLog])
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]SeqNo:=0)
+APPLY TO SELECTION([EventLog];[EventLog]SyncStatus:=0)
+If ($EventlogReadState=True)
+READ ONLY([EventLog])
+FIRST RECORD([EventLog])
+End if 
+WS_SuccessMsg:=WS_FacilityCode+" - "+"Correctable SeqNo Mismatch"+" Site:"+String(WS_SeqNo)+" & MV:"+" was "+String($SeqNo+1)+" now "+String($SeqNo)
+<>aiEventSeqNo{$Pos}:=$SeqNo-1
+End if 
+SyncRecordLog (Get localized string("WSS")+" - "+WS_SuccessMsg)
+Else //SDD If no records to send, then need to decrement HOF as the site will not increment because there are no records
+If ($Pos>0) & ($SHOF=False)
+<>aiEventSeqNo{$Pos}:=$SeqNo-1
+End if 
+WS_SuccessMsg:=WS_FacilityCode+" - "+"Correctable SeqNo Mismatch"+" Site:"+String(WS_SeqNo)+" & MV:"+" was "+String($SeqNo+1)+" now "+String($SeqNo)
+SyncRecordLog (Get localized string("WSS")+" - "+WS_SuccessMsg)
+End if 
+: (WS_SeqNo#$SeqNo) & (WS_SeqNo-$SeqNo<=100) & (WS_SeqNo-$SeqNo>0)//HO is 1 greater than site then send again or reduce EventSeqNo by one
+WS_EventCountOut:=$SeqNo
+WS_SuccessMsg:=WS_FacilityCode+" - "+Get localized string("Sequence No Mismatch Site")+" = "+String(WS_SeqNo)+", MV = "+String($SeqNo)
+SyncRecordLog (Get localized string("WSS")+" - "+WS_SuccessMsg)
+: ($SeqNo#WS_SeqNo) & (WS_SeqNo>0) & ($SeqNo>0) & ($SHOF=False)
+WS_EventCountOut:=$SeqNo
+WS_ConnectAgainInterval:=600//Wait 10 minutes where sync mismatch
+WS_SuccessMsg:=WS_FacilityCode+" - "+Get localized string("Sequence No Mismatch Site")+" = "+String(WS_SeqNo)+", MV = "+String($SeqNo)
+SyncRecordLog (Get localized string("WSS")+" - "+WS_SuccessMsg)
+
+//If (vErrors="151") & ($NextSeqNo>$SeqNo) & ($NextSeqNo>3) & ($SeqNo>3)
+//$ErrorCode:="151"  //Get Site to reset past events and resend them - This would be set after restore from backup.
+//Else 
+//$ErrorCode:="150"  //Site will report mismatch error.
+//End if 
+//$ErrorDescription:="Sequence Number Mismatch Site:"+String($NextSeqNo)+" & MV:"+String($SeqNo)
+//SyncRecordLog ("Attempted to Receive from site "+$FacilityCode+" - "+$ErrorDescription+" - IP:"+$1)
+: (WS_RequestType="RCV")
+QUERY([EventLog];[EventLog]FacilityCode=WS_FacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]SyncStatus=0)
+If (Records in selection([EventLog])>0)
+SyncGetEvents ($SeqNo)
+WS_EventCountOut:=Records in selection([EventLog])
+WS_EventBlobOut:=vbEventContent
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+For ($i;1;Records in selection([EventLog]))
+[EventLog]SyncStatus:=1
+[EventLog]SeqNo:=$SeqNo
+SET BLOB SIZE([EventLog]LogBlob;0)
+SAVE RECORD([EventLog])
+NEXT RECORD([EventLog])
+End for 
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+If ($Pos>0) & ($SHOF=False)
+<>aiEventSeqNo{$Pos}:=$SeqNo
+End if 
+WS_SuccessMsg:=Get localized string("Sent")+" "+String(WS_EventCountOut)+" "+Get localized string("Events for")+" "+WS_FacilityCode+" - "+Get localized string("Seq No")+" "+String($SeqNo)
+SyncRecordLog (Get localized string("WSS")+" - "+WS_SuccessMsg)
+Else 
+WS_SuccessMsg:="None"
+End if 
+$UpdateSuccess:=True
+: (WS_RequestType="SND")
+vbEventContent:=WS_EventBlobIn
+If (SyncDecode (WS_EventCountIn;WS_FacilityCode;String(WS_SeqNo-$SeqNo;"###"))="000")
+If ($Pos>0) & ($SHOF=False)
+<>aiEventSeqNo{$Pos}:=$SeqNo
+End if 
+WS_SuccessMsg:=Get localized string("Received")+" "+String(WS_EventCountIn)+" "+Get localized string("Events for")+" "+WS_FacilityCode+" - "+Get localized string("Seq No")+" "+String($SeqNo)
+SyncRecordLog (Get localized string("WSS")+" - "+WS_SuccessMsg)
+WS_SuccessMsg:=Get localized string("Confirmed Received")
+$UpdateSuccess:=True
+Else 
+WS_SuccessMsg:=Get localized string("Wrong Record Count")
+WS_ConnectAgainInterval:=600//Wait 10 minutes where wrong record count
+End if 
+Else 
+WS_SuccessMsg:="Unspecified error"
+End case 
+If ($FacilityRecNo>=0) & ($UpdateSuccess)
+READ WRITE([Facility])
+GOTO RECORD([Facility];$FacilityRecNo)
+If (Locked([Facility])=False)
+If ([Facility]VersionDate#WS_VersionDate)
+[Facility]VersionDate:=WS_VersionDate
+End if 
+[Facility]LastSyncDate:=UTCDate (Current time;True;Current date)
+[Facility]LastSyncTime:=UTCTime (Current time;True)
+[Facility]CentralAddress:=Substring(WS_vtIPAddr;1;50)//SDD This variable is declared in On Web Authentication and should pass through to here StructureArray2
+SAVE RECORD([Facility])
+Else 
+LOCKED BY([Facility];$Process;$4DUser;$SessionUser;$ProcessName)
+SyncRecordLog (Get localized string("WSS")+" - "+Get localized string("Facility record")+" "+[Facility]FacilityCode+" "+Get localized string("is locked by process")+" "+$ProcessName+":"+String($Process)+":"+$4DUser+":"+$SessionUser+".  "+Get localized string("Unable to update LastSyncDate & Time."))
+End if 
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+<>iTrafficSent:=<>iTrafficSent+BLOB size(WS_EventBlobIn)+BLOB size(WS_EventBlobOut)
+If (bConfirm)//True for Debug mode
+BLOB TO DOCUMENT("BlobOut"+Replace string(String(Current time);":";"")+".txt";vbEventContent)
+End if 

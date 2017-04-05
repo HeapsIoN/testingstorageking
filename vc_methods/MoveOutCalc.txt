@@ -1,0 +1,379 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 5/12/12 Moved Calculation of vMoveOutDate to before warning messages as using [Agreement]MoveOut did not make sense
+C_LONGINT($NoWks;$xDays;$yDays)
+C_DATE(vMoveOutDate;$Date;$LastDate;$LastBillDat;$NextBill;$PriorBill)
+vAmt1:=0
+vAmt2:=0
+vAmt3:=0
+vAmt4:=0
+vAmt5:=0
+vAmt6:=0
+vBillOther:=1
+vTotBal:=[Customer]Balance
+vToPay:=vTotBal
+$CurrentPlan:=[Agreement]BillingPlanCode
+$CurrentMthsAdv:=[Agreement]MthsAdv
+vMoveOutDate:=!00-00-00!
+If ([Agreement]MoveOut#!00-00-00!) & ([Agreement]NextBillDate#!00-00-00!)//Added second condition 25/9/98
+OBJECT SET ENABLED(bOut;True)
+vMoveOutDate:=[Agreement]OutNoticeDate+[Facility]NoticeDaysReqd
+If ([Agreement]MoveOut>vMoveOutDate)
+vMoveOutDate:=[Agreement]MoveOut
+End if 
+If ([BillPlan]PlanPeriod="Week")//-1 added as if they move out on the day when rent calced in future
+$Date:=Add to date([Agreement]MoveIn;0;0;[BillPlan]MthsNoRefund*7)-1//Weeks No Refund
+Else 
+$Date:=Add to date([Agreement]MoveIn;0;[BillPlan]MthsNoRefund;0)-1//Months No Refund
+End if 
+If ($Date>vMoveOutDate)
+vMoveOutDate:=$Date
+End if 
+If (vMoveOutDate<[Agreement]LastBillDate) & ((Modified([Agreement]MoveOut)) | (Modified([Agreement]OutNoticeDate)))
+//AlertMessage (Get localized string("Warning - The move out date is prior to the last bill date. Please check the move out date! For the refund calculation to be correct, please go to the 'Transactions' tab and click on the 'Undo Last Charges' button and undo the last rental charge. Then"+", return to this screen to do the move out calculation."))
+AlertMessage ("WARNING! - The move out date is prior to the last bill date. "+Char(13)+Char(13)+"Before moving this customer out, please go to back to the Transactions tab and undo last charges.")
+End if 
+If ((vMoveOutDate<[Agreement]BillPlanValidTo) | ([Agreement]BillPlanValidTo=!00-00-00!)) & ([Agreement]LastBillPlan#"") & ([Agreement]LastBillPlan#[Agreement]BillingPlanCode)
+//If ([Agreement]BillPlanValidTo>!00/00/00!)
+//AlertMessage ("Moveout date is prior to the start date for the current billing plan...undo last "+"charges and revert to prior billing plan to calculate refund due.")
+//BillNextCharges (1)  //Default to Undo
+//End if 
+[Agreement]BillingPlanCode:=[Agreement]LastBillPlan
+RELATE ONE([Agreement]BillingPlanCode)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+End if 
+If (vMoveOutDate>=[Agreement]NextBillDate)
+If (aPageNo=7)//fb10378
+AlertMessage (Get localized string("You must Bill Next Charges for this agreement before the move out transactions can be calculated."))
+End if 
+//AlertMessage (Get localized string("You must Bill Next Charges for this agreement before the move out transactions can be calculated."))
+Else 
+If (([Agreement]NextBillDate-[Agreement]LastBillDate)<2) | ([Agreement]LastBillDate=!00-00-00!)
+AlertMessage (Get localized string("This customer has never been billed!"))
+Else 
+If ([Agreement]ActiveAgreemt=True)
+If ([Facility]PriorRefndPol>=1) & ([Facility]PriorRefndPol<=3) & ([Agreement]AgreeNo<[Facility]RefndAgrChange)
+[Facility]RefundPolicy:=[Facility]PriorRefndPol
+End if 
+$MthsBilled:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30;0)
+If ([Facility]RefundPolicy=2) & ($MthsBilled>[Facility]RefndWklyMths)
+[Facility]RefundPolicy:=1
+End if 
+If ([Agreement]OutNoticeDate=!00-00-00!)
+[Agreement]OutNoticeDate:=Current date
+End if 
+QUERY([BillPlan];[BillPlan]Code=[Agreement]LastBillPlan)
+$NextBill:=[Agreement]NextBillDate
+If ([BillPlan]ShowIncentonInv=False)//Added 3.1.7
+$NextBill:=CalcNxtBillDate ([Agreement]NextBillDate;[BillPlan]FreePeriods*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)//Take out free months
+End if 
+If ([BillPlan]PlanPeriod="Week")
+$FromMoveIn:=Add to date([Agreement]MoveIn;0;0;[BillPlan]MthsRevIncent*7)
+Else 
+$FromMoveIn:=Add to date([Agreement]MoveIn;0;[BillPlan]MthsRevIncent;0)
+End if 
+$LastInsurance:=0
+If ([Facility]RefundInsurance=True)
+CREATE SET([Trxs];"Hold")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"IN";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Agreement]LastBillDate)
+$LastInsurance:=Sum([Trxs]TotAmt)
+USE SET("Hold")
+CLEAR SET("Hold")
+End if 
+vtFormula:=""
+vWords:=""
+vORCText:=""
+Case of 
+: ([Facility]RefundPolicy=1)//Daily Basis (Original)
+If ($NextBill-[Agreement]MoveOut<[BillPlan]PeriodstoPay) & ([BillPlan]RemoveDiscMO=True)
+[BillPlan]RemoveDiscMO:=False//Where Moveout is close to NextBillDate don't charge back discount
+End if 
+$xDays:=$NextBill-vMoveOutDate-1
+$PriorBill:=CalcNxtBillDate ([Agreement]LastBillDate;[Agreement]MthsAdv*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+If (vMoveOutDate<[Agreement]LastBillDate)
+//This line to adjust denominator where rent has been billed on past MoveOut date 
+$yDays:=[Agreement]LastBillDate-$PriorBill
+Else 
+$yDays:=$NextBill-[Agreement]LastBillDate
+End if 
+If ([BillPlan]RemoveDiscMO=True) | (vMoveOutDate<$FromMoveIn)//This added to add back incentive if within time of MoveIn
+//Remove Discount  
+vAmt1:=Round([Agreement]LastDiscAmt;2)
+//Rental Credit
+vAmt2:=Round((([Agreement]LastBillAmt)*$xDays/$yDays)*(-1);2)// changed 9/8/11 so discount not included in pro-rata calc if discount removed NLT
+//Previous used RentAmt instead of LastBillAmt on line above.  This did not work
+//when billing plan was changed.
+Else 
+//Rental Credit
+vAmt2:=Round((([Agreement]LastBillAmt-[Agreement]LastDiscAmt)*$xDays/$yDays)*(-1);2)
+
+End if 
+If ([Facility]InsuranceAgentType=1)
+$InsMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]LastBillDate)
+$RefundMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]MoveOut)
+If ($RefundMonths>0)
+vAmt4:=Round(($LastInsurance*$RefundMonths/$InsMonths)*(-1);2)
+Else 
+vAmt4:=0
+End if 
+Else 
+vAmt4:=Round(($LastInsurance*$xDays/$yDays)*(-1);2)
+End if 
+If ([BillPlan]RefundDays>0)
+If (vMoveOutDate>([Agreement]LastBillDate+[BillPlan]RefundDays))
+vAmt2:=0
+Else 
+If (Abs(vAmt2)>[Agreement]LastBillAmt) & (vMoveOutDate>($PriorBill+[BillPlan]RefundDays))//This in case the billing has gone on to next month
+vAmt2:=[Agreement]LastBillAmt*(-1)
+vAmt4:=$LastInsurance*(-1)
+End if 
+End if 
+End if 
+vtFormula:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+vtFormula:=vtFormula+"    = "+String($NextBill)+" - "+String(vMoveOutDate)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+vtFormula:=vtFormula+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+If (vMoveOutDate<[Agreement]LastBillDate)
+vtFormula:=vtFormula+"    = "+String([Agreement]LastBillDate)+" - "+String($PriorBill)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+Else 
+vtFormula:=vtFormula+"    = "+String($NextBill)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+End if 
+vWords:=vtFormula+Get localized string("M = Last Bill Amount for Insurance")+" = "+String($LastInsurance;<>sFormat)+Char(13)
+vORCText:=vtFormula
+/////////////////fb11246//////////////
+If ([BillPlan]RemoveDiscMO=True) | (vMoveOutDate<$FromMoveIn)
+vtFormula:=vtFormula+"M = "+Get localized string("Last Bill Amount for Agreement")+" = "+String([Agreement]LastBillAmt;<>sFormat)+Char(13)
+Else 
+vtFormula:=vtFormula+"M = "+Get localized string("Last Bill Amount for Agreement")+" = "+String([Agreement]LastBillAmt-[Agreement]LastDiscAmt;<>sFormat)+Char(13)
+End if 
+vtFormula:=vtFormula+"M x X / Y = "+String(vAmt2;<>sFormat)+Char(13)
+//////////////////////////
+vWords:=vWords+"M x X / Y = "+String(vAmt4;<>sFormat)+Char(13)
+If (Abs(vAmt2)=[Agreement]LastBillAmt) & (vMoveOutDate>($PriorBill+[BillPlan]RefundDays))
+vtFormula:=vtFormula+Get localized string("Max Refund limited to Last Bill Amt by refund days.")+Char(13)
+End if 
+If (vAmt2>0)
+vAmt2:=0
+End if 
+If (vAmt4>0)
+vAmt4:=0
+End if 
+//Rental Charges
+vAmt3:=RoundAmt (vAmt2*(-1)*[BillPlan]Penalty/100;2)
+: ([Facility]RefundPolicy=2)//Weekly basis for Safe Store
+//Remove Discount  
+If ([BillPlan]RemoveDiscMO=True) | (vMoveOutDate<$FromMoveIn)//This added to add back incentive if with time of MoveIn
+vAmt1:=Round([BillPlan]DiscFixedAmt;2)//Only fixed amount as rent is recalced
+Else 
+vAmt1:=0
+End if 
+If (vMoveOutDate>[Agreement]NextBillDate)
+$LastBillDat:=[Agreement]LastBillDate
+vAmt2:=0//No rental credit
+[Agreement]LastBillDate:=[Agreement]NextBillDate
+Else 
+$LastBillDat:=!00-00-00!
+vAmt2:=[Agreement]LastBillAmt//Rental Credit
+End if 
+If ([Agreement]LastBillDate>=vMoveOutDate)//Prev was MoveOut instead of vMoveOutDate Changed 27/7/95
+vAmt3:=0//Rental Charges
+Else //Following line was 30 instead of ◊aLastDay but caused probs between 30 & 31 day months
+
+$Month:=Month of([Agreement]LastBillDate)
+If ($Month>=1) & ($Month<=12)
+
+If ($Month=2)
+$TestDate:=Add to date(Date(String(<>aLastDay{$Month})+"/"+String($Month)+"/"+String(Year of([Agreement]LastBillDate)));0;0;1)
+$LeapYear:=Month of($TestDate)
+If ($Month=$LeapYear)
+$Month:=<>aLastDay{$Month}+1
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+
+
+Else 
+$Month:=30
+End if 
+
+$NoMths:=Trunc((vMoveOutDate-[Agreement]LastBillDate)/$Month;0)//Calculate no of months since LastBillDate
+If ([BillPlan]PlanPeriod="Week")
+$LastDate:=[Agreement]LastBillDate
+Else 
+If ($NoMths>=0)
+$LastDate:=Add to date([Agreement]LastBillDate;0;$NoMths;0)
+End if 
+If ($LastBillDat#!00-00-00!)
+[Agreement]LastBillDate:=$LastBillDat
+End if 
+End if 
+$NoWks:=Trunc((vMoveOutDate-$LastDate)/7;0)//Calculate no of extra weeks to bill
+If ($NoWks*7<(vMoveOutDate-$LastDate))
+$NoWks:=$NoWks+1
+End if 
+//vAmt3:=Round((vTotal*$NoMths)+(Round(vTotal*[System]WeeklyMthly;1)*$NoWks);1)
+//Changed SDD 21/7/95.  This has the effect of reducing the rent charge on MoveOut
+//by using the Agreement RentAmt rather than the amount currently in effect
+If ([BillPlan]PlanPeriod="Week")
+vAmt3:=RoundAmt (([Agreement]RentAmt+[Agreement]DiscountAmt)/[Agreement]MthsAdv*$NoWks)
+Else 
+If ([Facility]RentWeeklyMthly<0.23)//---- Commented by Hamid - 29/4/2015 old value 0.25 ----  8920
+AlertMessage (Get localized string("WARNING - The weekly rate in the System file is set too low and the refunds will be incorrect!"))
+End if 
+vAmt3:=RoundAmt (([Agreement]RentAmt/[Agreement]MthsAdv*$NoMths)+(RoundAmt ([Agreement]RentAmt/[Agreement]MthsAdv*[Facility]RentWeeklyMthly)*$NoWks))
+End if 
+vtFormula:=Get localized string("X = No of Weeks from LastBillDate")+" = "+String(vMoveOutDate)+" - "+String($LastDate)+" = "+String($NoWks)+" "+Get localized string("Weeks1")+Char(13)
+vtFormula:=vtFormula+"Y = "+Get localized string("Weekly Rate")+" = "+String(RoundAmt ([Agreement]RentAmt/[Agreement]MthsAdv*[Facility]RentWeeklyMthly))+Char(13)
+vtFormula:=vtFormula+"X x Y = "+String(vAmt3;<>sFormat)+Char(13)
+If (vAmt3>vAmt2) & ($LastBillDat=!00-00-00!)
+vAmt3:=0
+vAmt2:=0
+vtFormula:=""
+End if 
+End if 
+vAmt2:=vAmt2*(-1)
+If ([Facility]InsuranceAgentType=1)
+$InsMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]LastBillDate)
+$RefundMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]MoveOut)
+If ($RefundMonths>0)
+vAmt4:=Round(($LastInsurance*$RefundMonths/$InsMonths)*(-1);2)
+Else 
+vAmt4:=0
+End if 
+Else 
+vAmt4:=0
+End if 
+: ([Facility]RefundPolicy=3)//No Refunds at all
+If ([BillPlan]RemoveDiscMO=True) | (vMoveOutDate<$FromMoveIn)//This added to add back incentive if with time of MoveIn
+vAmt1:=Round([BillPlan]DiscFixedAmt;2)
+Else 
+vAmt1:=0
+End if 
+vAmt2:=0
+vAmt3:=0
+If ([Facility]InsuranceAgentType=1)
+$InsMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]LastBillDate)
+$RefundMonths:=GetMonthDiff ([Agreement]NextBillDate;[Agreement]MoveOut)
+If ($RefundMonths>0)
+vAmt4:=Round(($LastInsurance*$RefundMonths/$InsMonths)*(-1);2)
+Else 
+vAmt4:=0
+End if 
+Else 
+vAmt4:=0
+End if 
+Else 
+AlertMessage (Get localized string("Warning - The refund policy has not been set correctly for")+" "+<>sOEMName+"!  "+Get localized string("Please check your manual for details."))
+End case 
+End if 
+End if 
+End if 
+//Reverse Deposit
+QUERY([PhotosCards];[PhotosCards]Code=[Agreement]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Deposit>0)
+vAmt5:=Sum([PhotosCards]Deposit)
+CREATE SET([Trxs];"$Hold")
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Deposit")
+
+For ($i;1;Records in selection([Analysis]))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code)
+vAmt5:=vAmt5+Sum([Trxs]TotAmt)
+NEXT RECORD([Analysis])
+End for 
+
+vAmt5:=vAmt5*(-1)
+
+USE SET("$Hold")
+CLEAR SET("$Hold")
+//Other Charges
+vAmt6:=0
+If ([Facility]RefundOtherRegChgs=True)// Refund Other Regular Charges
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode#<>sFacility+"IN")
+ARRAY TEXT(aOtherChgsAnalysisCode;0)
+DISTINCT VALUES([OtherChgs]AnalysisCode;aOtherChgsAnalysisCode)
+CREATE SET([Trxs];"Hold")
+For ($i;1;Size of array(aOtherChgsAnalysisCode))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=aOtherChgsAnalysisCode{$i};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Agreement]LastBillDate)
+If ([Facility]TaxAddtoAmt=True)
+$OtherTot:=Sum([Trxs]TotAmt)-Sum([Trxs]TaxAmt)
+Else 
+$OtherTot:=Sum([Trxs]TotAmt)
+End if 
+Case of 
+: ([Facility]RefundPolicy=1)
+vAmt6:=vAmt6+Round(($OtherTot*$xDays/$yDays)*(-1);2)
+: ([Facility]RefundPolicy=2)
+vAmt6:=vAmt6+0
+: ([Facility]RefundPolicy=3)
+vAmt6:=vAmt6+0
+Else 
+//Do Nothing
+End case 
+End for 
+USE SET("Hold")
+CLEAR SET("Hold")
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveOut=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+vAmt6:=vAmt6+Round(Sum([Analysis]DfltSellAmt);2)
+//21/08/13 DAM Added for counting BnS transactions when moving out agreement
+If ([Agreement]BnS#"")
+$Kg:=Records in selection([Unit])*25
+$PostCode:=GetTextNo ([Agreement]BnS;1;",")
+$Suburb:=GetTextNo ([Agreement]BnS;2;",")
+QUERY([Shipping];[Shipping]FacilityCode=<>sFacility;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=Num($PostCode);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=$Suburb;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+vAmt6:=vAmt6+[Shipping]Price
+End if 
+If ([Facility]RoundCredit=True)
+vAmt2:=RoundAmt (vAmt2)
+End if 
+vTotBal:=Round([Agreement]BalanceOwing+vAmt1+vAmt2+vAmt3+vAmt4+vAmt5+vAmt6;2)
+vToPay:=vTotBal
+If (vAmt1<0)
+vAmt1:=0
+End if 
+vNew1:=vAmt1
+vNew2:=vAmt2
+vNew3:=vAmt3
+vNew4:=vAmt4
+vNew5:=vAmt5
+Else 
+OBJECT SET ENABLED(bOut;False)
+End if 
+Case of 
+: (vTotBal>0)
+vLeg1:=Get localized string("BALANCE DUE FROM CUSTOMER")+": "+String(vTotBal)
+: (vTotBal<0)
+vLeg1:=Get localized string("TOTAL OWING TO CUSTOMER")+": "+String(Abs(vTotBal))
+Else 
+vLeg1:=Get localized string("NIL BALANCE")
+End case 
+If (vMoveOutDate#!00-00-00!)
+vLeg1:="MoveOut Date used for calculation = "+String(vMoveOutDate)+Char(13)+vLeg1
+End if 
+If ([Agreement]ActiveAgreemt) & (vMoveOutDate#!00-00-00!) & (vMoveOutDate<[Agreement]LastBillDate)
+OBJECT SET VISIBLE(*;"Text39";True)
+OBJECT SET VISIBLE(*;"Picture39";True)
+Else 
+OBJECT SET VISIBLE(*;"Text39";False)
+OBJECT SET VISIBLE(*;"Picture39";False)
+End if 
+[Agreement]BillingPlanCode:=$CurrentPlan
+[Agreement]MthsAdv:=$CurrentMthsAdv
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)

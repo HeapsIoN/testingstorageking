@@ -1,0 +1,361 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$ExportType;$UnitSelection)
+C_BOOLEAN($SetUnit)
+vTitle:=Get localized string("Import Agreement Data...")
+vtFormula:=Get localized string("Import Agreements Formula")
+//vtFormula:="This will import data from a TEXT (Tab Delimited) or SYLK file"+" into the Agreement file.  These files can "
+//vtFormula:=vtFormula+"be created by Excel and other spreadsheet programs.  Use the Save as "
+//vtFormula:=vtFormula+"option to create the file.  Units & Customers must be imported before Agreements!"+Char(13)+Char(13)
+//vtFormula:=vtFormula+"The columns need to be in the following order: (A=Alpha + Max chars)"+Char(13)
+//vtFormula:=vtFormula+"AgreeNo (A5), CustomerCode (A5), MoveIn Date (Date), RegRentAmt ($.cc Amt), "
+//vtFormula:=vtFormula+"DepositAmt ($.cc Amt), MonthsAdvance (No), DaytoBill (No 1-31), "
+//vtFormula:=vtFormula+"NextBillDate (Date), BillingPlanCode (A2), NoticePlan (N), SendInv (True/False), "+"BalanceOwing ($.cc Amt), "
+//vtFormula:=vtFormula+"InsuranceCommence (Date), InsuranceExpiry (Date), InsuranceValue ($.cc Amt), "
+//vtFormula:=vtFormula+"InsuranceCertNo (A8), InsurancePremium ($.cc Amt), LateCycleStartDate (Date), "
+//vtFormula:=vtFormula+"LastNotice (No), LienDate (Date), AutoPay (True/False)"+Char(13)
+//vtFormula:=vtFormula+" - Don't include a header row and ensure no duplicates for AgreeNo!"
+//vtFormula:=vtFormula+" - otherwise importing will stop at duplicate code record."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"Ensure that Billing Plans have been setup prior to importing this file!"+Char(13)+Char(13)
+//vtFormula:=vtFormula+"To continue select the TEXT or SYLK formatted file at the following open dialog."
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Agreements"))
+vImportDialog:=True
+vShowCancel:=True
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+$j:=0
+If (OK=1)
+LogAction (False;"Import Agreements commenced")
+If (<>tLogging=False)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+ALL RECORDS([Agreement])
+If (Records in selection([Agreement])>0)
+BEEP
+ConfirmTwo (Get localized string("Delete")+" "+Get localized string("The")+" "+String(Records in selection([Agreement]))+" "+Get localized string("existing agreements before importing?"))
+If (OK=1)
+BEEP
+BEEP
+BEEP
+ConfirmTwo (Get localized string("WARNING - Delete")+" "+String(Records in selection([Agreement]))+" "+Get localized string("existing agreements. Are you absolutely certain?"))
+If (OK=1)
+DELETE SELECTION([Agreement])
+End if 
+End if 
+End if 
+FORM SET INPUT([Agreement];"Import")
+$ExportType:=rRefund1
+ON ERR CALL("ErrorImport")
+If (rRefund1=1)
+IMPORT TEXT([Agreement];"")
+Else 
+IMPORT SYLK([Agreement];"")
+End if 
+ON ERR CALL("ErrorLog")
+QUERY([Agreement];[Agreement]AgreeNo="";*)
+QUERY([Agreement]; | ;[Agreement]CustomerCode="")
+DELETE SELECTION([Agreement])
+FORM SET INPUT([Agreement];"MoveIn")
+READ WRITE([Analysis])
+QUERY([Analysis];[Analysis]Code=<>sFacility+"BF")
+If (Records in selection([Analysis])=0)
+CREATE RECORD([Analysis])
+[Analysis]Code:=<>sFacility+"BF"
+[Analysis]Description:=Get localized string("Brought Fwd from prev sys")
+[Analysis]SortOrder:=8
+[Analysis]Taxable:=False
+[Analysis]Taxable:=<>bBFTax
+Else 
+If ([Analysis]SortOrder>50)
+[Analysis]SortOrder:=8
+End if 
+End if 
+SAVE RECORD([Analysis])
+READ ONLY([Analysis])
+QUERY([Analysis];[Analysis]Code=<>sFacility+"BF")
+Repeat 
+$Date:=RequestDate (Get localized string("Enter date for brought forward balances?");Current date)
+If (Abs(Current date-$Date)>34)
+AlertMessage (Get localized string("Date for brought forward balances must be within 1 month of current date!"))
+End if 
+Until (OK=1) & ($Date>=(Current date-35)) & ($Date<=(Current date+35))
+ConfirmTwo (Get localized string("Set LastBillDate, LastBillAmt, PaidtoDate and AutoPayAmt for each agreement?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Set:=True
+Else 
+$Set:=False
+End if 
+ConfirmTwo (Get localized string("Set the Unit Rented Values?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$SetUnit:=True
+Else 
+$SetUnit:=False
+End if 
+Open window(20;50;300;150;0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Imported Agreements ... Please wait")+"    ")
+ALL RECORDS([Agreement])
+vtFormula:=""
+QUERY([Notices];[Notices]DaysAfter>0;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+ORDER BY([Notices];[Notices]DaysAfter;>)
+READ WRITE([Trxs])
+READ WRITE([Unit])
+READ WRITE([UnitHistory])
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;3)
+MESSAGE(Get localized string("Processing")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"    ")
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+$Total:=0
+[Agreement]UnitsOccup:=""
+$UnitSelection:=Records in selection([Unit])
+If (Records in selection([Unit])>0)
+While (End selection([Unit])=False)
+If ([Unit]MoveIn=!00-00-00!)
+[Unit]MoveIn:=[Agreement]MoveIn
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+If ($SetUnit)
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]CasualBilling)
+[Unit]DailyRentedValue:=[Agreement]RegularRent/$UnitSelection
+: ([BillPlan]PlanPeriod="Week")
+[Unit]WeeklyRentedValue:=[Agreement]RegularRent/$UnitSelection
+Else 
+[Unit]RentedValue:=[Agreement]RegularRent/$UnitSelection
+End case 
+End if 
+SAVE RECORD([Unit])
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+$Total:=$Total+[UnitType]MonthlyRate
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+", "+[Unit]UnitNo
+NEXT RECORD([Unit])
+End while 
+[Agreement]UnitsOccup:=Substring([Agreement]UnitsOccup;3)
+//[Agreement]AgreedDisc:=Round($Total-[Agreement]RegularRent;2)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+End if 
+//If ([Agreement]RentAmt<=0)
+//  [Agreement]RentAmt:=Round($Total;2)
+//Else 
+//  [Agreement]DiscountAmt:=Round($Total-[Agreement]RentAmt;2)
+//End if 
+If (($UnitSelection>1) & ($SetUnit))
+vtFormula:=vtFormula+Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("Has multiple units and the Rented Value of each is the same. Please check!")+Char(13)
+End if 
+If ([Agreement]AgreedDisc<0)
+vtFormula:=vtFormula+Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("Rent Amt")+":"+String([Agreement]RegularRent;<>sFormat)+" "+Get localized string("is greater than unit prices in UnitType file. Please check!")+Char(13)
+End if 
+Else 
+[Agreement]ActiveAgreemt:=False
+vtFormula:=vtFormula+Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("There are no units for this agreement - Set to inactive. Please check!")+Char(13)
+End if 
+If ([Agreement]NextBillDate<(Current date-31))
+vtFormula:=vtFormula+Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("Next Bill Date")+":"+String([Agreement]NextBillDate)+" "+Get localized string("is more than a month ago. Please check!")+Char(13)
+End if 
+If ([Agreement]NextBillDate>(Current date+365))
+vtFormula:=vtFormula+Get localized string("Agreement")+":"+[Agreement]AgreeNo+", "+Get localized string("Customer")+":"+[Agreement]CustomerCode+", "+Get localized string("Next Bill Date")+":"+String([Agreement]NextBillDate)+" "+Get localized string("is more than a year in the future. Please check!")+Char(13)
+End if 
+If ($Set)
+[Agreement]LastBillDate:=Add to date([Agreement]NextBillDate;0;-1;0)
+[Agreement]PaidToDate:=Add to date([Agreement]NextBillDate;0;0;-1)
+If ([Agreement]LateCycleStDate=!00-00-00!)
+[Agreement]LateCycleStDate:=[Agreement]LastBillDate
+End if 
+SET QUERY DESTINATION(3;$j)
+QUERY([Notices];[Notices]DaysAfter=[Agreement]LastNotice;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+SET QUERY DESTINATION(0)
+If ($j=0) & ([Agreement]LastNotice<5)
+GOTO SELECTED RECORD([Notices];[Agreement]LastNotice)
+If ([Notices]DaysAfter>0) & ([Notices]LateCycleIgnore=False) & (([Notices]RefDateField=44) | ([Notices]RefDateField=48))//Only do for Late letters - Added 4.1.0
+[Agreement]LastNotice:=[Notices]DaysAfter
+End if 
+End if 
+If ([Facility]TaxAddtoAmt=True)
+[Agreement]LastBillAmt:=Round(([Agreement]RentAmt*(1+([Facility]TaxRate/100)));2)
+Else 
+[Agreement]LastBillAmt:=[Agreement]RentAmt
+End if 
+If ([Agreement]AutoPay)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+[Agreement]AutoPayAmt:=Round([Agreement]RentAmt+Sum([OtherChgs]Amount);2)
+End if 
+End if 
+$Amount:=[Agreement]BalanceOwing
+If ([Agreement]RentAmt>0) & ($Amount>0)
+$Amount:=Trunc($Amount/[Agreement]RentAmt;0)*[Agreement]RentAmt
+End if 
+If ($Amount#0)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"RF")
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=RoundAmt ($Amount)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Balance:=Round($Amount;2)
+SAVE RECORD([Trxs])
+End if 
+
+If ([Agreement]DepositAmt#0)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP")
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"DP"
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=[Agreement]DepositAmt
+SAVE RECORD([Trxs])
+End if 
+
+//If (([Agreement]BalanceOwing-$Amount)#0) - Removed to always create a balance brought forward transaction
+QUERY([Analysis];[Analysis]Code=<>sFacility+"BF")
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ($Date)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=<>sFacility+"BF"
+[Trxs]Description:=[Analysis]Description
+If ([Agreement]DepositAmt#0)
+[Trxs]TotAmt:=Round([Agreement]BalanceOwing-$Amount-[Agreement]DepositAmt;2)
+Else 
+[Trxs]TotAmt:=Round([Agreement]BalanceOwing-$Amount;2)
+End if 
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+//End if 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+ALL RECORDS([Customer])
+For ($i;1;Records in selection([Customer]))
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+[Customer]AgreemtsOperating:=""
+[Customer]Balance:=0
+[Customer]NoActiveAgreemts:=Records in selection([Agreement])
+FIRST RECORD([Agreement])
+For ($j;1;Records in selection([Agreement]))
+[Customer]Balance:=[Customer]Balance+[Agreement]BalanceOwing
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+[Agreement]AgreeNo+", "
+NEXT RECORD([Agreement])
+End for 
+[Customer]AgreemtsOperating:=Substring([Customer]AgreemtsOperating;1;Length([Customer]AgreemtsOperating)-2)
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+CLOSE WINDOW
+If (vtFormula>"")
+vtFormula:=Get localized string("The following errors were recorded. Please check each line carefully!")+Char(13)+Char(13)+vtFormula
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Agreements"))
+vImportDialog:=True
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+End if 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@")
+ORDER BY([Agreement];[Agreement]AgreeNo;<)
+vPage:=Num([Agreement]AgreeNo)
+UpdateSystem (20;->vPage;Get localized string("Unable to update Next Agreement Number in the System record!"))
+vtFormula:=Get localized string("There are now")+" "+String(Records in selection([Agreement]))+" "+Get localized string("Agreements on file.")+Char(13)
+vtFormula:=vtFormula+Get localized string("Import Agreements Errors")
+//vtFormula:=vtFormula+"Please check to ensure last row of spreadsheet is in"
+//vtFormula:=vtFormula+" Agreement file, otherwise an error has occurred and you will need to fix the err"+"or "
+//vtFormula:=vtFormula+"and import the spread sheet again."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"Errors are normally caused by either a duplicate AgreeNo or by having "
+//vtFormula:=vtFormula+"a datafield that is too long or in the wrong format.  The row after the last "
+//vtFormula:=vtFormula+"successfully imported record is generally the offending row."+Char(13)+Char(13)
+//vtFormula:=vtFormula+"If you need to import the file again be sure to delete the existing agreements"
+//vtFormula:=vtFormula+" when asked during the import process."
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;"Import Agreements")
+vImportDialog:=True
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+LogAction (True;"Import Agreements finished")
+Else 
+LogAction (True;"Import Agreements finished")
+End if 
+End if 
+ConfirmTwo (Get localized string("Import Customer Notes? (must be text - not sylk)");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([NotesHistory])
+FORM SET INPUT([NotesHistory];"Import")
+ON ERR CALL("ErrorImport")
+//If ($ExportType=1) Can't get SYLK to import correctly
+IMPORT TEXT([NotesHistory];"")
+//Else 
+//  IMPORT SYLK([EventLog];"")
+//End if 
+ON ERR CALL("ErrorLog")
+READ ONLY([NotesHistory])
+UNLOAD RECORD([NotesHistory])
+End if 

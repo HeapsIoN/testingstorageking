@@ -1,0 +1,156 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 07/04/10, 09:55:15
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_GetUnitTypes2
+// Description
+// Web service to get the list of unit types, price, deposit etc and how many are available
+//
+// Parameters
+//
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP input;"WS_FacilityCode")
+SOAP DECLARATION(WS_VacantAll;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_RetrieveAll;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_asUTDescription;String array;SOAP output;"WS_UTDescription")
+SOAP DECLARATION(WS_arUTMonthlyRate;Real array;SOAP output;"WS_UTMonthlyRate")
+SOAP DECLARATION(WS_asUTBillPlanCode;String array;SOAP output;"WS_UTBillPlanCode")
+SOAP DECLARATION(WS_abUTDispOnlineReserve;Boolean array;SOAP output;"WS_UTDispOnlineReserve")
+SOAP DECLARATION(WS_abUTRCSpecial;Boolean array;SOAP output;"WS_UTRCSpecial")
+SOAP DECLARATION(WS_asUTRUnitType;String array;SOAP output;"WS_UTRUnitType")
+SOAP DECLARATION(WS_asUTUnitCategory;String array;SOAP output;"WS_UTUnitCategory")
+SOAP DECLARATION(WS_aiUTSortOrder;Integer array;SOAP output;"WS_UTSortOrder")
+SOAP DECLARATION(WS_aiUTNoVacant;Integer array;SOAP output;"WS_UTNoVacant")
+SOAP DECLARATION(WS_asUTSizeCategory;String array;SOAP output;"WS_UTSizeCategory")
+SOAP DECLARATION(WS_arUTMonthlySpecialRate;Real array;SOAP output;"WS_UTMonthlySpecialRate")
+SOAP DECLARATION(WS_arUTArea;Real array;SOAP output;"WS_UTArea")
+SOAP DECLARATION(WS_aiUTNoTotal;Integer array;SOAP output;"WS_UTNoTotal")
+SOAP DECLARATION(WS_arUTUnitTypeLength;Real array;SOAP output;"WS_UTUnitTypeLength")
+SOAP DECLARATION(WS_arUTUnitTypeWidth;Real array;SOAP output;"WS_UTUnitTypeWidth")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+SOAP DECLARATION(WS_arUTUnitTypeDeposit;Real array;SOAP output;"WS_arUTUnitTypeDeposit")
+
+ARRAY TEXT(WS_asUTDescription;0)
+ARRAY REAL(WS_arUTMonthlyRate;0)
+ARRAY TEXT(WS_asUTBillPlanCode;0)
+ARRAY BOOLEAN(WS_abUTDispOnlineReserve;0)
+ARRAY BOOLEAN(WS_abUTRCSpecial;0)
+ARRAY TEXT(WS_asUTRUnitType;0)
+ARRAY TEXT(WS_asUTUnitCategory;0)
+ARRAY LONGINT(WS_aiUTSortOrder;0)
+ARRAY LONGINT(WS_aiUTNoVacant;0)
+ARRAY TEXT(WS_asUTSizeCategory;0)
+ARRAY REAL(WS_arUTMonthlySpecialRate;0)
+ARRAY REAL(WS_arUTArea;0)
+ARRAY LONGINT(WS_aiUTNoTotal;0)
+ARRAY REAL(WS_arUTUnitTypeLength;0)
+ARRAY REAL(WS_arUTUnitTypeWidth;0)
+
+C_TEXT($String)
+$String:="Start WS_GetUnitTypes"+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_VacantAll: "+String(WS_VacantAll)+Char(13)
+SyncRecordLog ($String;"WS_GetUnitTypesLog")
+
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If ((WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")) | ([Facility]FacilityCode="ALASA")// second condition is for iPad to work on Onehunga All Secure
+
+If (WS_RetrieveAll=True)
+
+ALL RECORDS([UnitType])
+ORDER BY([UnitType]RUnitType)
+
+SELECTION TO ARRAY([UnitType]Description;WS_asUTDescription;[UnitType]MonthlyRate;WS_arUTMonthlyRate;[UnitType]BillPlanCode;WS_asUTBillPlanCode;[UnitType]DispOnlineReserve;WS_abUTDispOnlineReserve;[UnitType]RCSpecial;WS_abUTRCSpecial;[UnitType]RUnitType;WS_asUTRUnitType;[UnitType]UnitCategory;WS_asUTUnitCategory;[UnitType]SortOrder;WS_aiUTSortOrder;[UnitType]SizeCategory;WS_asUTSizeCategory;[UnitType]MonthlySpecialRate;WS_arUTMonthlySpecialRate;[UnitType]Area;WS_arUTArea;[UnitType]NoTotal;WS_aiUTNoTotal;[UnitType]UnitTypeLength;WS_arUTUnitTypeLength;[UnitType]UnitTypeWidth;WS_arUTUnitTypeWidth;[UnitType]DepositAmt;WS_arUTUnitTypeDeposit)
+ARRAY LONGINT(WS_aiUTNoVacant;Size of array(WS_asUTRUnitType))
+
+For ($i;1;Size of array(WS_asUTRUnitType))
+
+If (WS_VacantAll=True)
+QUERY([Unit];[Unit]UnitTypeCode=WS_asUTRUnitType{$i};*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail";*)
+
+//2/12/14 DAM Added for KSS
+If ([Facility]FacilityCode="KE@")
+QUERY([Unit]; & ;[Unit]Status#"Repair";*)
+QUERY([Unit]; & ;[Unit]Status#"Company";*)
+QUERY([Unit]; & ;[Unit]Status#"Reserved";*)
+End if 
+
+QUERY([Unit]; & ;[Unit]Vacant=True)
+WS_aiUTNoVacant{$i}:=Records in selection([Unit])
+Else 
+QUERY([Unit];[Unit]UnitTypeCode=WS_asUTRUnitType{$i};*)
+QUERY([Unit]; & ;[Unit]Status="Vacant")
+WS_aiUTNoVacant{$i}:=Records in selection([Unit])
+End if 
+End for 
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+
+QUERY([UnitType];[UnitType]RUnitType=WS_FacilityCode+"@")
+
+SELECTION TO ARRAY([UnitType]Description;WS_asUTDescription;[UnitType]MonthlyRate;WS_arUTMonthlyRate;[UnitType]BillPlanCode;WS_asUTBillPlanCode;[UnitType]DispOnlineReserve;WS_abUTDispOnlineReserve;[UnitType]RCSpecial;WS_abUTRCSpecial;[UnitType]RUnitType;WS_asUTRUnitType;[UnitType]UnitCategory;WS_asUTUnitCategory;[UnitType]SortOrder;WS_aiUTSortOrder;[UnitType]SizeCategory;WS_asUTSizeCategory;[UnitType]MonthlySpecialRate;WS_arUTMonthlySpecialRate;[UnitType]Area;WS_arUTArea;[UnitType]NoTotal;WS_aiUTNoTotal;[UnitType]UnitTypeLength;WS_arUTUnitTypeLength;[UnitType]UnitTypeWidth;WS_arUTUnitTypeWidth;[UnitType]DepositAmt;WS_arUTUnitTypeDeposit)
+ARRAY LONGINT(WS_aiUTNoVacant;Size of array(WS_asUTRUnitType))
+
+For ($i;1;Size of array(WS_asUTRUnitType))
+If (WS_VacantAll=True)
+QUERY([Unit];[Unit]UnitTypeCode=WS_asUTRUnitType{$i};*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail";*)
+
+//2/12/14 DAM Added for KSS
+If ([Facility]FacilityCode="KE@")
+QUERY([Unit]; & ;[Unit]Status#"Repair";*)
+QUERY([Unit]; & ;[Unit]Status#"Company";*)
+QUERY([Unit]; & ;[Unit]Status#"Reserved";*)
+End if 
+
+QUERY([Unit]; & ;[Unit]Vacant=True)
+WS_aiUTNoVacant{$i}:=Records in selection([Unit])
+Else 
+QUERY([Unit];[Unit]UnitTypeCode=WS_asUTRUnitType{$i};*)
+QUERY([Unit]; & ;[Unit]Status="Vacant")
+WS_aiUTNoVacant{$i}:=Records in selection([Unit])
+End if 
+End for 
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+$String:="End WS_GetUnitTypes"+Char(13)
+
+SyncRecordLog ($String;"WS_GetUnitTypesLog")
+
+ReadOnlyAll 
+UnloadAll 

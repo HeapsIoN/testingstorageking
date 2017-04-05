@@ -1,0 +1,118 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+If (Form event=On Clicked)
+C_TEXT($stDigiAgmtID;$inDigiAgmtID)
+RURentAmt:=[Agreement]RentAmt
+//If ([BillPlan]CasualBilling)
+//If ([BillPlan]PlanPeriod="Week")
+//RUAgreePeriods:=Round([Agreement]RegularRent*7;2)
+//Else 
+//RUAgreePeriods:=Round([Agreement]RegularRent*7/0.2308;2)
+//End if 
+//Else 
+//RUAgreePeriods:=[Agreement]RegularRent
+//End if 
+RUAgreePeriods:=vAgreePeriods
+For ($i;1;Size of array(aUnitNo))// Bill charges for Move out 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+aUnitNo{$i})
+
+Case of 
+: (<>sProduct="@B")
+$PosProrate:=Find in array(aDescription;Get localized string("Depature Prorata for berth")+" "+aUnitNo{$i})
+: (<>sProduct="@R")
+$PosProrate:=Find in array(aDescription;Get localized string("Retunt Prorata for appliance")+" "+aUnitNo{$i})
+: (<>sProduct="@C")
+$PosProrate:=Find in array(aDescription;Get localized string("Move Out Prorata for space")+" "+aUnitNo{$i})
+Else 
+$PosProrate:=Find in array(aDescription;Get localized string("Move Out Prorata for unit")+" "+aUnitNo{$i})
+End case 
+If ($PosProrate>0)
+$BillProrate:=aBill{$PosProrate}
+Else 
+$BillProrate:=False
+End if 
+
+Case of 
+: (<>sProduct="@B")
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for berth")+" "+aUnitNo{$i})
+: (<>sProduct="@R")
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for appliance")+" "+aUnitNo{$i})
+: (<>sProduct="@C")
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for space")+" "+aUnitNo{$i})
+Else 
+$PosDeposit:=Find in array(aDescription;Get localized string("Refund Deposit for unit")+" "+aUnitNo{$i})
+End case 
+If ($PosDeposit>0)
+$BillDeposit:=aBill{$PosDeposit}
+Else 
+$BillDeposit:=False
+End if 
+
+$PosInsurance:=Find in array(aDescription;"Move Out Prorata for insurance "+aUnitNo{$i})
+If ($PosInsurance>0)
+$BillInsurance:=aBill{$PosInsurance}
+Else 
+$BillInsurance:=False
+End if 
+RemoveUnit (True;$BillProrate;$BillDeposit;$BillInsurance;False)
+MoveInCode 
+End for 
+
+
+For ($k;1;Size of array(aUnitNoMI))// Bill charges for Move in
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+aUnitNoMI{$k})
+
+Case of 
+: (<>sProduct="@B")
+$PosProrate:=Find in array(aDescription;Get localized string("Prorata for berth")+" "+aUnitNoMI{$k})
+: (<>sProduct="@R")
+$PosProrate:=Find in array(aDescription;Get localized string("Prorata for appliance")+" "+aUnitNoMI{$k})
+: (<>sProduct="@C")
+$PosProrate:=Find in array(aDescription;Get localized string("Prorata for space")+" "+aUnitNoMI{$k})
+Else 
+$PosProrate:=Find in array(aDescription;Get localized string("Prorata for unit")+" "+aUnitNoMI{$k})
+End case 
+If ($PosProrate>0)
+$BillProrate:=aBill{$PosProrate}
+$ProrateAmt:=aAmount{$PosProrate}
+Else 
+$BillProrate:=False
+$ProrateAmt:=0
+End if 
+
+Case of 
+: (<>sProduct="@B")
+$PosDeposit:=Find in array(aDescription;Get localized string("Deposit for berth")+" "+aUnitNoMI{$k})
+: (<>sProduct="@R")
+$PosDeposit:=Find in array(aDescription;Get localized string("Deposit for appliance")+" "+aUnitNoMI{$k})
+: (<>sProduct="@C")
+$PosDeposit:=Find in array(aDescription;Get localized string("Deposit for space")+" "+aUnitNoMI{$k})
+Else 
+$PosDeposit:=Find in array(aDescription;Get localized string("Deposit for unit")+" "+aUnitNoMI{$k})
+End case 
+If ($PosDeposit>0)
+$BillDeposit:=aBill{$PosDeposit}
+$DepositAmt:=aAmount{$PosDeposit}
+Else 
+$DepositAmt:=0
+$BillDeposit:=False
+End if 
+QUERY([UnitHistory];[UnitHistory]UnitNo=<>sFacility+aUnitNoMI{$k};*)//10297
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+
+If ([UnitHistory]stDigiAgmtID="") | ([UnitHistory]stDigiAgmtID="20202020202020202020202020202020") | ([UnitHistory]stDigiAgmtID="00000000000000000000000000000000")
+$stDigiAgmtID:="00000000000000000000000000000000"
+Else 
+$stDigiAgmtID:=[UnitHistory]stDigiAgmtID
+End if 
+If ([UnitHistory]inDigiAgmtID="") | ([UnitHistory]inDigiAgmtID="20202020202020202020202020202020") | ([UnitHistory]inDigiAgmtID="00000000000000000000000000000000")
+$inDigiAgmtID:="00000000000000000000000000000000"
+Else 
+$inDigiAgmtID:=[UnitHistory]inDigiAgmtID
+End if 
+SelectUnitA (True;True;$BillProrate;vDate;False;$BillDeposit;aUnitRateMI{$k};$DepositAmt;$stDigiAgmtID;$inDigiAgmtID)
+End for 
+bChange:=True
+bNewChange:=True
+End if 

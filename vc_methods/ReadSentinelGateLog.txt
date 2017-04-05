@@ -1,0 +1,266 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 16/08/16, 16:04:01
+// ----------------------------------------------------
+// Method: ReadSentinelGateLog
+// Description
+// 
+//  Example of a StormanEvents.txt 
+//  99;7;22;2016;12;37;4;9600;0A049;Valid password entered
+//
+//
+// There are 10 elements to the above file:
+//  1 - 99 = Gate Action Text ID
+//  2 - 7 = Gate Date Month
+//  3 - 22 = Gate Date Day
+//  4 - 2016 = Gate Date Year
+//  5 - 12 = Gate Time Hour
+//  6 - 37 = Gate Time Mins
+//  7 - 4 = Gate Number
+//  8 - 9600 = Gate PIN entered
+//  9 - 0A049 = Unit No
+//  10 - Gate Action Text
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($Buffer;$Field)
+C_LONGINT($i;$j)
+ARRAY TEXT(asEmails;0)
+$Beep:=False
+
+
+If (Test path name(<>sTutPath+"StormanEvents.txt")=Is a document)
+$Doc:=Open document(<>sTutPath+"StormanEvents.txt")
+SET AUTOMATIC RELATIONS(True;False)
+READ WRITE([GateLog])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+
+While (Length($Buffer)>=10)//Otherwise EOF
+CREATE RECORD([GateLog])
+[GateLog]CustCode:=<>sFacility
+For ($i;1;10)//Ten fields
+$j:=Position(";";$Buffer)
+//If ($j>1) //fb11166
+If ($j>=1)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)
+Case of 
+: (Num($Field)=0)
+[GateLog]GateActionText:="Valid password entered"
+: (Num($Field)=1)
+[GateLog]GateActionText:="Delinquent"
+: (Num($Field)=2)
+[GateLog]GateActionText:="Bad password"
+: (Num($Field)=3)
+[GateLog]GateActionText:="Bad keypad zone"
+: (Num($Field)=4)
+[GateLog]GateActionText:="Bad time zone"
+: (Num($Field)=5)
+[GateLog]GateActionText:="Cold Start"
+: (Num($Field)=10)
+[GateLog]GateActionText:="Input Point Offline"
+: (Num($Field)=11)
+[GateLog]GateActionText:="Input Point Online"
+: (Num($Field)=14)
+[GateLog]GateActionText:="Tailgate"
+: (Num($Field)=15)
+[GateLog]GateActionText:="Antipassback"
+: (Num($Field)=16)
+[GateLog]GateActionText:="Secure"
+: (Num($Field)=17)
+[GateLog]GateActionText:="Alarm"
+: (Num($Field)=18)
+[GateLog]GateActionText:="Closed"
+: (Num($Field)=19)
+[GateLog]GateActionText:="Opened"
+: (Num($Field)=24)
+[GateLog]GateActionText:="Disarmed"
+: (Num($Field)=25)
+[GateLog]GateActionText:="Armed"
+: (Num($Field)=34)
+[GateLog]GateActionText:="Timer Operation Idle"
+: (Num($Field)=35)
+[GateLog]GateActionText:="Timer Operation Active"
+: (Num($Field)=36)
+[GateLog]GateActionText:="Time Zone Idle"
+: (Num($Field)=37)
+[GateLog]GateActionText:="Time Zone Active"
+: (Num($Field)=48)
+[GateLog]GateActionText:="Board Offline"
+: (Num($Field)=49)
+[GateLog]GateActionText:="Board Online"
+: (Num($Field)=50)
+[GateLog]GateActionText:="Board AC Power Fail"
+: (Num($Field)=51)
+[GateLog]GateActionText:="Board AC Power Restored"
+: (Num($Field)=52)
+[GateLog]GateActionText:="Board AC Battery Fail"
+: (Num($Field)=53)
+[GateLog]GateActionText:="Tamper Open"
+: (Num($Field)=54)
+[GateLog]GateActionText:="Tamper Closed"
+: (Num($Field)=99)
+[GateLog]GateActionText:=""
+Else 
+[GateLog]GateActionText:=$Field
+End case 
+: ($i=2)
+$DateMonth:=$Field
+: ($i=3)
+$DateDay:=$Field
+: ($i=4)
+$DateYear:=$Field
+: ($i=5)
+$TimeHour:=$Field
+: ($i=6)
+$TimeMin:=$Field
+: ($i=7)
+[GateLog]GateNo:=Num($Field)
+: ($i=8)
+[GateLog]GateKeyed:=String(Num($Field))
+If ([GateLog]GateKeyed="0")
+[GateLog]GateKeyed:=""
+End if 
+: ($i=9)
+[GateLog]UnitNo:=$Field
+: ($i=10)
+If ([GateLog]GateActionText="Valid password entered") | ([GateLog]GateActionText="Delinquent")
+Else 
+[GateLog]GateActionText:=[GateLog]GateActionText+": "+$Field
+End if 
+End case 
+Else 
+If ($i=10)
+$Field:=$Buffer
+If ([GateLog]GateActionText="Valid password entered") | ([GateLog]GateActionText="Delinquent")
+Else 
+[GateLog]GateActionText:=[GateLog]GateActionText+": "+$Field
+End if 
+End if 
+End if 
+End for 
+Case of 
+: (<>tDateFormat="US")
+[GateLog]GateDate:=Date($DateMonth+"/"+$DateDay+"/"+$DateYear)
+: (<>tDateFormat="ISO")
+[GateLog]GateDate:=Date($DateYear+"/"+$DateMonth+"/"+$DateDay)
+Else 
+[GateLog]GateDate:=Date($DateDay+"/"+$DateMonth+"/"+$DateYear)
+End case 
+[GateLog]GateTime:=Time($TimeHour+":"+$TimeMin+":00")
+
+///If ([GateLog]GateKeyed="") | ([GateLog]GateActionText="Bad password") fb11166
+If ([GateLog]GateActionText="Bad password")
+//Ignore trx as it relates to arming / disarming unit
+If ([GateLog]GateActionText="Alarm@")
+ReadGateLogAlarmAction 
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+""
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+End if 
+SAVE RECORD([GateLog])
+$Beep:=True
+Else 
+$Continue:=True
+
+If ([GateLog]GateKeyed="")
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]UnitsOccup=("@"+[GateLog]UnitNo+"@");*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+Else 
+QUERY([Customer];[Customer]GatePIN=[GateLog]GateKeyed)
+End if 
+
+If (Records in selection([Customer])>0) & ([GateLog]GateActionText#"Bad Password")
+ORDER BY([Customer];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[Customer]CustomerCode
+$Length:=Length([GateLog]GateActionText)
+Case of 
+: (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False)
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+":"+Substring([Customer]CustomerName;1;31-$Length)
+Else 
+[GateLog]GateActionText:=[GateLog]UnitNo+""+[GateLog]GateActionText+":"+Substring([Customer]CustomerName;1;38-$Length)
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+//ORDER BY([Agreement];[Agreement]AgreeNo;>)  //fb11166
+//[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+If ($Continue)
+//QUERY([PhotosCards];[PhotosCards]PINCardNo=[GateLog]GateKeyed)
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+
+If (Records in selection([PhotosCards])>0)
+ORDER BY([PhotosCards];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[PhotosCards]Code
+RELATE ONE([PhotosCards]Code)
+$Length:=Length([GateLog]GateActionText)
+Case of 
+: (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False)
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+":"+Substring([PhotosCards]Name;1;31-$Length)
+Else 
+[GateLog]GateActionText:=[GateLog]GateActionText+":"+Substring([PhotosCards]Name;1;38-$Length)
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+//ORDER BY([Agreement];[Agreement]AgreeNo;>)           //fb11166
+//[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+End if 
+If ($Continue)
+QUERY([StaffPINS];[StaffPINS]PINNumber=[GateLog]GateKeyed)
+If (Records in selection([StaffPINS])>0)
+[GateLog]GateActionText:="STAFF:"+Substring([StaffPINS]Name;1;20)
+Else 
+[GateLog]GateActionText:="INVALID:"+[GateLog]GateKeyed
+End if 
+End if 
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+//If ([GateLog]GateActionText="@Area Enter@") | ([GateLog]GateActionText="@Area Exit@") | ([GateLog]GateActionText="@Auto Door Rearm@")
+//READ WRITE([Unit])
+//QUERY([Agreement];[Agreement]Customer=[Customer]CustomerCode)
+//RELATE MANY SELECTION([Unit]AgreeNo)
+//If ([GateLog]GateActionText="@Area Enter@")
+//APPLY TO SELECTION([Unit];[Unit]Status:="OnSite")
+//Else 
+//APPLY TO SELECTION([Unit];[Unit]Status:="Rented")
+//End if 
+//READ ONLY([Unit])
+//UNLOAD RECORD([Unit])
+//End if 
+SAVE RECORD([GateLog])
+$Beep:=True
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+DELETE DOCUMENT(<>sTutPath+"StormanEvents.txt")
+If ([GateLog]GateDate>=vdLastGateDate) & ([GateLog]GateDate<=Current date)
+vdLastGateDate:=[GateLog]GateDate
+vtLastGateTime:=[GateLog]GateTime
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+READ ONLY([GateLog])
+UNLOAD RECORD([GateLog])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+End if 
+If ($Beep)//Trx Received
+BEEP
+End if 

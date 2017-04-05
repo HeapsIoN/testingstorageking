@@ -1,0 +1,45 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 03/06/14, 09:41:07
+// ----------------------------------------------------
+// Method: WS_GetInvNo
+// Description
+// Used to obtain the latest Invoice Number from head office and send to the site
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP input)
+
+SOAP DECLARATION(WS_Error;Is text;SOAP output)
+SOAP DECLARATION(WS_NextFacilityInvNo;Is longint;SOAP output)
+
+$String:="Start WS_GetInvNo"+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+Char(13)
+WSRecordLog ($String)
+
+$InvContinue:=False
+
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+
+If ($InvContinue)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+$arraypos:=Find in array(<>asSiteCodes;WS_FacilityCode)
+WS_NextFacilityInvNo:=<>aiNextInvNo{$arraypos}
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+
+CLEAR SEMAPHORE("<>bNextInvNo")
+End if 
+
+$String:="End WS_GetInvNo"+Char(13)
+$String:=$String+"WS_Error: "+WS_Error+Char(13)
+$String:=$String+"WS_NextFacilityInvNo: "+String(WS_NextFacilityInvNo)+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

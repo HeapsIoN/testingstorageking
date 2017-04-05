@@ -1,0 +1,223 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Called by CashBookSetup once only
+C_REAL(vPrint1;vPrint2;vPrint3;vPrint4;vPrint5;vPrint6;vBankBal)
+C_LONGINT($i)
+QUERY([Analysis];[Analysis]SortOrder<50;*)
+QUERY([Analysis]; & ;[Analysis]GLCode<"   ")
+READ WRITE([ChartAccts])
+If (Records in selection([Analysis])>0)
+READ WRITE([Analysis])
+FIRST RECORD([Analysis])
+For ($i;1;Records in selection([Analysis]))
+Case of 
+: ([Analysis]KeyStatsCategory=Get localized string("Rent"))
+[Analysis]GLCode:="120"
+: ([Analysis]KeyStatsCategory=Get localized string("Deposit"))
+[Analysis]GLCode:="905"
+: ([Analysis]KeyStatsCategory=Get localized string("Late Fees"))
+[Analysis]GLCode:="130"
+: ([Analysis]KeyStatsCategory=Get localized string("Insurance"))
+[Analysis]GLCode:="140"
+: ([Analysis]KeyStatsCategory=Get localized string("Merchandise"))
+[Analysis]GLCode:="230"
+: ([Analysis]KeyStatsCategory=Get localized string("Other"))
+[Analysis]GLCode:="190"
+Else 
+[Analysis]GLCode:="190"
+End case 
+SAVE RECORD([Analysis])
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+If (Records in selection([ChartAccts])=0)
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:=[Analysis]GLCode
+Case of 
+: ([Analysis]GLCode="230")
+[ChartAccts]Description:=[Analysis]KeyStatsCategory+" "+Get localized string("Sales")
+: ([Analysis]GLCode="905")
+[ChartAccts]Description:=Get localized string("Deposits Held")
+Else 
+[ChartAccts]Description:=[Analysis]KeyStatsCategory+" "+Get localized string("Income")
+End case 
+[ChartAccts]AcctType:="P"
+SAVE RECORD([ChartAccts])
+End if 
+NEXT RECORD([Analysis])
+End for 
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+If (Records in selection([ChartAccts])>1)
+AlertMessage (Get localized string("FATAL ERROR IN CASHBOOK - There are")+" "+String(Records in selection([ChartAccts]))+" "+Get localized string("accounts of type Debtors. Please contact Technical Support for assistance."))
+Else 
+If (Records in selection([ChartAccts])=0)
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:="730"
+[ChartAccts]Description:="Customer Accounts Receivable"
+[ChartAccts]AcctType:="D"
+SAVE RECORD([ChartAccts])
+End if 
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="C")
+If (Records in selection([ChartAccts])>1)
+AlertMessage (Get localized string("FATAL ERROR IN CASHBOOK - There are")+" "+String(Records in selection([ChartAccts]))+" "+Get localized string("accounts of type Creditors. Please contact Technical Support for assistance."))
+Else 
+If (Records in selection([ChartAccts])=0)
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:="900"
+[ChartAccts]Description:=Get localized string("Supplier Accounts Payable")
+[ChartAccts]AcctType:="C"
+SAVE RECORD([ChartAccts])
+End if 
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="T")
+If (Records in selection([ChartAccts])>1)
+AlertMessage (Get localized string("FATAL ERROR IN CASHBOOK - There are")+" "+String(Records in selection([ChartAccts]))+" "+Get localized string("accounts of type Tax. Please contact Technical Support for assistance."))
+Else 
+If (Records in selection([ChartAccts])=0)
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:="901"
+[ChartAccts]Description:=Get localized string("GST Tax Suspense")
+[ChartAccts]AcctType:="T"
+SAVE RECORD([ChartAccts])
+End if 
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="A")
+If (Records in selection([ChartAccts])>1)
+AlertMessage (Get localized string("FATAL ERROR IN CASHBOOK - There are")+" "+String(Records in selection([ChartAccts]))+" "+Get localized string("accounts of type Prepaid Rent. Please contact Technical Support for assistance."))
+Else 
+If (Records in selection([ChartAccts])=0)
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:="906"
+[ChartAccts]Description:=Get localized string("Prepaid Rent")
+[ChartAccts]AcctType:="A"
+SAVE RECORD([ChartAccts])
+End if 
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")
+If (Records in selection([ChartAccts])>1)
+AlertMessage (Get localized string("FATAL ERROR IN CASHBOOK - There are")+" "+String(Records in selection([ChartAccts]))+" "+Get localized string("accounts of type primary Bank. Please contact Technical Support for assistance."))
+Else 
+If (Records in selection([ChartAccts])=0)
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:="705"
+[ChartAccts]Description:=Get localized string("Bank Account")
+[ChartAccts]AcctType:="B1"
+SAVE RECORD([ChartAccts])
+End if 
+End if 
+READ WRITE([Supplier])
+ALL RECORDS([Analysis])
+For ($i;1;Records in selection([Analysis]))
+If ([Analysis]SortOrder<=50)
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+If (Records in selection([ChartAccts])=0)
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:=[Analysis]GLCode
+[ChartAccts]Description:=[Analysis]Description
+[ChartAccts]AcctType:="P"
+SAVE RECORD([ChartAccts])
+End if 
+Else 
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If (Records in selection([Supplier])=0)
+CREATE RECORD([Supplier])
+[Supplier]SupplierCode:=[Analysis]GLCode
+[Supplier]SupplierName:=[Analysis]Description
+SAVE RECORD([Supplier])
+End if 
+End if 
+NEXT RECORD([Analysis])
+End for 
+READ ONLY([Supplier])
+UNLOAD RECORD([Supplier])
+READ ONLY([ChartAccts])
+UNLOAD RECORD([ChartAccts])
+READ WRITE([CashBook])
+READ WRITE([CashBookTrxs])
+ALL RECORDS([CashBookTrxs])
+If (Records in selection([CashBookTrxs])>0)
+ConfirmTwo (Get localized string("Delete existing cashbook records?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+DELETE SELECTION([CashBookTrxs])
+ALL RECORDS([CashBook])
+DELETE SELECTION([CashBook])
+End if 
+End if 
+SetFacility 
+Open window(50;100;350;180;0;Get localized string("Progress"))
+QUERY([Trxs];[Trxs]DateBanked>=[Facility]CashBookStart;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Receipts")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs]))+"    ")
+If ([Trxs]TotAmt#0)
+GetJournal ([Trxs]DateBanked;"REC")
+GetCashBookRec ([Trxs]AnalysisCode;[Trxs]DateBanked)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+GetCashBookTrx ("B1")
+[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount+[Trxs]TotAmt;2)
+SAVE RECORD([CashBookTrxs])
+If ([Facility]CashAccrual=False)// Accrual
+GetCashBookTrx ("D")
+[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-[Trxs]TotAmt;2)
+SAVE RECORD([CashBookTrxs])
+[CashBook]NetAmt:=Round([CashBook]NetAmt+[Trxs]TotAmt;2)
+[CashBook]TotAmt:=Round([CashBook]TotAmt+[Trxs]TotAmt;2)
+SAVE RECORD([CashBook])
+Else 
+//Cash basis
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//$Tax:=0
+//For ($j;1;Records in subselection([Transaction]MiscDetls))
+//QUERY([Analysis];[Analysis]Code=[Transaction]MiscDetls'AnalysisCode)
+//GetCashBookTrx ("";[Analysis]GLCode)
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-[Transaction]MiscDetls'TotAmt+[Transaction]MiscDetls'TaxAmt;2)
+//SAVE RECORD([CashBookTrxs])
+//[CashBook]NetAmt:=Round([CashBook]NetAmt+[Transaction]MiscDetls'TotAmt-[Transaction]MiscDetls'TaxAmt;2)
+//[CashBook]TaxAmt:=Round([CashBook]TaxAmt+[Transaction]MiscDetls'TaxAmt;2)
+//$Tax:=$Tax+[Transaction]MiscDetls'TaxAmt
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End for 
+//[CashBook]TotAmt:=Round([CashBook]TotAmt+[Transaction]TotAmt;2)
+//SAVE RECORD([CashBook])
+//QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+//GetCashBookTrx ("T")
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount+$Tax;2)
+//SAVE RECORD([CashBookTrxs])
+End if 
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([Facility]CashAccrual=False)
+QUERY([Trxs];[Trxs]TrxDate>=[Facility]CashBookStart;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Charges")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs]))+"       ")
+If ([Trxs]Match>=0) & ([Trxs]TotAmt#0)
+GetJournal ([Trxs]TrxDate;"INC")
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+GetCashBookTrx ("D")
+[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount+[Trxs]TotAmt;2)
+SAVE RECORD([CashBookTrxs])
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+GetCashBookTrx ("";[Analysis]GLCode)
+[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-[Trxs]TotAmt+[Trxs]TaxAmt;2)
+SAVE RECORD([CashBookTrxs])
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+GetCashBookTrx ("T")
+[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-[Trxs]TaxAmt;2)
+SAVE RECORD([CashBookTrxs])
+End if 
+NEXT RECORD([Trxs])
+End for 
+End if 
+CLOSE WINDOW
+READ ONLY([CashBook])
+UNLOAD RECORD([CashBook])
+READ ONLY([CashBookTrxs])
+UNLOAD RECORD([CashBookTrxs])

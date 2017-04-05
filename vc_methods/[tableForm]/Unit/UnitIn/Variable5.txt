@@ -1,0 +1,66 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Facility)
+RELATE ONE([Unit]UnitTypeCode)
+$Facility:=Substring([Unit]RUnitNo;1;5)
+$OK:=True
+If (Length($Facility)<5)
+$Facility:=<>sFacility
+End if 
+If ([Unit]UnitNo="")
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("You need to give the")+" "+Get localized string("Berth No"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("You need to give the")+" "+Get localized string("Appl No"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("You need to give the")+" "+Get localized string("Space No"))
+Else 
+AlertMessage (Get localized string("You need to give the")+" "+Get localized string("Unit No"))
+End case 
+$OK:=False
+End if 
+FIRST RECORD([UnitHistory])
+If (([Unit]EndDate<[UnitHistory]MoveOut) & ([Unit]EndDate#!00-00-00!)) | (([Unit]EndDate#!00-00-00!) & ([UnitHistory]MoveOut=!00-00-00!))
+AlertMessage (Get localized string("The Unit's End Date cannot be earlier than the most recent move out!"))
+[Unit]EndDate:=!00-00-00!
+$OK:=False
+End if 
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+If ([Unit]StartDate>[UnitHistory]MoveIn) & ([UnitHistory]MoveIn#!00-00-00!)
+AlertMessage (Get localized string("The unit's Start Date cannot be later than the date of the earliest move in!"))
+[Unit]StartDate:=!00-00-00!
+$OK:=False
+End if 
+[Unit]ListPrice:=CalculateBaseRate (2;0)
+If ([UnitType]VariableLength) & ([UnitType]UnitTypeLength#0)
+[Unit]MaxLength:=[UnitType]UnitTypeLength
+End if 
+
+If ([Unit]UnitSize="")
+[Unit]UnitSize:="0"
+End if 
+
+If ([Unit]DoorSize="")
+[Unit]DoorSize:="0"
+End if 
+
+If (Records in selection([UnitType])=1) & (Substring([Unit]UnitTypeCode;1;5)=$Facility)
+If ([Unit]UnitNumeric=0)
+CalcUnitNumeric 
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+If ($OK)
+ACCEPT
+VALIDATE TRANSACTION
+End if 
+Else 
+AlertMessage (Get localized string("The Unit Type is not valid - please re-enter and try again."))
+End if 
+
+If (<>tUtilities)
+If (Old([Unit]Status)#[Unit]Status) & (([Unit]Status="Rented") | ([Unit]Status="Locked") | ([Unit]Status="Company"))// Update PULS if the status has changed
+[Unit]UpdatePULS:=True
+End if 
+End if 

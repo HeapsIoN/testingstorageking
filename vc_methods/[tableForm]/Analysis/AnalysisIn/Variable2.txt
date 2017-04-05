@@ -1,0 +1,150 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+$OK:=True
+If ([Analysis]DfltSellAmt#0)
+If ([Analysis]MinAmt#0)
+If ([Analysis]DfltSellAmt<[Analysis]MinAmt)
+AlertMessage (Get localized string("You cannot enter a default amount of less than")+" "+String([Analysis]MinAmt)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+If ([Analysis]MaxAmt#0)
+If ([Analysis]DfltSellAmt>[Analysis]MaxAmt)
+AlertMessage (Get localized string("You cannot enter a default amount of more than")+" "+String([Analysis]MaxAmt)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+End if 
+If (<>tCashBook)
+If (aAnalysis=1)
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+If (Records in selection([ChartAccts])#1)
+AlertMessage (Get localized string("There is no G/L Chart of Accounts record for the GL Code entered. Please re-enter!"))
+$OK:=False
+End if 
+
+//////////////////fb9432 by Eugene
+If (([Analysis]SortOrder>45) & ([Analysis]SortOrder<95))
+AlertMessage (Get localized string("Sort Order codes must be in the range 4-45 for charges and 95-99 for Bank Trx..."))
+[Analysis]SortOrder:=45
+$OK:=False
+End if 
+If ([Analysis]SortOrder>99)
+AlertMessage (Get localized string("Sort Order codes must be in the range 4-45 for charges and 95-99 for Bank Trx..."))
+[Analysis]SortOrder:=99
+$OK:=False
+End if 
+
+
+If (Current user#"Designer") & (<>sCurrentUser#"AdminSupport") & ([Analysis]SortOrder<4)
+AlertMessage (Get localized string("Sort Order codes must be in the range 4-45 for charges and 95-99 for Bank Trx..."))
+[Analysis]SortOrder:=4
+$OK:=False
+End if 
+Else 
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If (Records in selection([Supplier])#1)
+AlertMessage (Get localized string("There is no Supplier record for the GL Code entered. Please re-enter!"))
+$OK:=False
+End if 
+If ([Analysis]SortOrder<45)
+AlertMessage (Get localized string("Sort Order codes must be in the range 45-94 for receipts..."))
+[Analysis]SortOrder:=44///
+$OK:=False
+End if 
+End if 
+End if 
+If ([Analysis]Code="")
+AlertMessage (Get localized string("The analysis code cannot be blank - please re-enter..."))
+[Analysis]Code:=Old([Analysis]Code)
+$OK:=False
+End if 
+If ([Analysis]Code#(<>sFacility+"@"))
+If (Length([Analysis]Code)<=3)
+[Analysis]Code:=<>sFacility+[Analysis]Code
+Else 
+AlertMessage (Get localized string("The Analysis code must commence with the Facility Code!"))
+REJECT([Analysis]Code)
+$OK:=False
+End if 
+End if 
+If ([Analysis]Code=<>sFacility)
+AlertMessage (Get localized string("The Analysis code cannot be the Facility Code!"))
+REJECT([Analysis]Code)
+$OK:=False
+End if 
+If (([Analysis]ReceiptFeePerc>100) & (ShowAlertMessage=False))
+AlertMessage (Get localized string("The percentage amount is grater than 100, please enter correct amount."))
+REJECT([Analysis]Code)
+$OK:=False
+End if 
+
+If (ShowAlertMessage)
+REJECT([Analysis]Code)
+$OK:=False
+End if 
+
+If ($OK)
+[Analysis]Groups:=""
+$All:=True
+For ($i;1;Size of array(asGroups))
+If (asSigns{$i}="•")
+QUERY([Groups];[Groups]Name=asGroups{$i})
+[Analysis]Groups:=[Analysis]Groups+[Groups]GroupID+","
+End if 
+If ($All)
+$All:=(asSigns{$i}="•")
+End if 
+End for 
+If ($All)
+[Analysis]Groups:="ALL"
+End if 
+
+If ([Analysis]Code="@IN")
+QUERY([OtherChgs];[OtherChgs]AnalysisCode=[Analysis]Code)
+APPLY TO SELECTION([OtherChgs];[OtherChgs]Description:=[Analysis]Description)
+End if 
+
+
+////If (Locked([Analysis]))
+////LOCKED ATTRIBUTES([Analysis];$Proc;$User;$Comp;$ProcName)
+////End if 
+If (Size of array(atReceiptAnalysis)>0)
+atReceiptAnalysisCode:=atReceiptAnalysis
+[Analysis]ReceiptFeeAnalysis:=Substring(atReceiptAnalysisCode{atReceiptAnalysisCode};6)
+End if 
+
+// 01/07/15 DAM Added for Failed Surcharges
+If (Size of array(atFailedAnalysis)>0)
+atReceiptAnalysisCode:=atFailedAnalysis
+[Analysis]FailedFeeAnalysis:=Substring(atReceiptAnalysisCode{atReceiptAnalysisCode};6)
+End if 
+
+SAVE RECORD([Analysis])
+ACCEPT
+bCancel:=1
+//
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+Case of 
+: (asAnalysisDisplay=2)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+: (asAnalysisDisplay=3)
+QUERY([Analysis]; & ;[Analysis]Inactive=True;*)
+Else 
+//do nothing
+End case 
+If (aAnalysis=1)
+Case of 
+: (asACDisplay#1)
+QUERY([Analysis]; & ;[Analysis]AnalysisCategory=asACDisplay{asACDisplay})
+Else 
+//Do Nothing
+End case 
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+AnalysisDisplay 
+Else 
+//QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+AnalysisDisplay 
+End if 
+//ORDER BY([Analysis]SortOrder;>;[Analysis]AnalysisCategory;>;[Analysis]Code;>)
+//
+End if 

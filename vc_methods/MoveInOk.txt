@@ -1,0 +1,837 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+C_LONGINT($Tickcount)
+C_TEXT($Key)
+C_BOOLEAN(vMoveout)
+C_LONGINT($Delinquent)
+C_LONGINT($Type;$Length)
+C_BOOLEAN($Index;$Unique;$Invisible)
+
+If (vNoteHistBody>"")
+$Note:=ConfirmThree (Get localized string("You have typed a note without adding it to the list! Would you like to add this note now?");Get localized string("Add Note");Get localized string("Lose Note");Get localized string("Cancel"))
+Case of 
+: ($Note=1)
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+If (asNotesList>0)
+If (asNotesList{asNotesList}#"<None>")
+[NotesHistory]Category:=asNotesList{asNotesList}
+End if 
+End if 
+If (Length(vNoteHistBody)>20000)
+AlertMessage (Get localized string("Your note is longer than 20000 characters and will be truncated."))
+[NotesHistory]Note:=Substring(vNoteHistBody;1;20000)
+Else 
+[NotesHistory]Note:=vNoteHistBody
+End if 
+[NotesHistory]UserLogin:=<>sCurrentUser
+QUERY([MarketingTypes];[MarketingTypes]Facility=Substring([NotesHistory]CustomerCode;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[NotesHistory]Category)
+If ([MarketingTypes]Security=True)
+[Customer]ThreatLevel:=[Customer]ThreatLevel+1
+[Customer]ThreatLevelDate:=[NotesHistory]NoteDate
+[NotesHistory]Security:=True
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+AlertMessage (Get localized string("This customer has exceeded the company threat level."))
+End if 
+End if 
+SAVE RECORD([NotesHistory])
+vNoteHistBody:=""
+: ($Note=3)
+ABORT
+Else 
+//Do Nothing
+End case 
+End if 
+
+If ([Customer]BSB>"") & ([Customer]BankAcct>"") & ([Customer]BankAccountName="") & ([Facility]Country="AU") & (GetTextNo ([Facility]DDAccountDetails;6;",")#"EziDebit") & (GetTextNo ([Facility]DDAccountDetails;4;",")#"NAB CM")
+AlertMessage (Get localized string("Please enter the Account Name"))
+ABORT
+End if 
+
+If (([Facility]Country="AU") | ([Facility]Country="GB")) & (GetTextNo ([Facility]DDAccountDetails;4;",")#"Transaction Express")// - 10586
+If (Length([Customer]BSB)#6) & (Length([Customer]BSB)#0)
+$BSBSort:=<>tBSBSort
+AlertMessage ($BSBSort+" "+Get localized string("must be 6 digits!"))
+ABORT
+End if 
+End if 
+
+If ([Facility]Country="AU") & ([Customer]BSB="") & ([Customer]BankAcct>"") & (GetTextNo ([Facility]DDAccountDetails;6;",")#"EziDebit")
+AlertMessage (Get localized string("Please enter the BSB Number"))
+ABORT
+End if 
+If (vBankSuffix>"") & ([Customer]BankAccountName="") & ([Facility]Country="NZ") & (GetTextNo ([Facility]MerchantDetails;1;",")#"EziDebit")
+AlertMessage (Get localized string("Please enter the Account Name"))
+ABORT
+End if 
+
+If ([Agreement]SendNoticesEmail) & ([Customer]EmailAddress="")
+AlertMessage (Get localized string("You have set the Agreement to send notice by email but not entered an email address for the customer"))
+ABORT
+End if 
+
+If ([Agreement]SendNoticeSMS) & ([Customer]MobilePhone="")
+AlertMessage (Get localized string("You have set the Agreement to send notices by SMS but not entered a mobile number for the customer"))
+ABORT
+End if 
+
+//Logging changes to Bank Account - custom development for KSS
+If ([Facility]FacilityCode="KE@")
+$detailString:=""
+$oldDetails:=False
+$deletedDetails:=False
+$BankAcctFull:=vBank+vBankBranch+vBankAcct+vBankSuffix
+
+If (Old([Customer]BankAccountName)#[Customer]BankAccountName)
+Case of 
+: (Old([Customer]BankAccountName)="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account Name: "+[Customer]BankAccountName
+: ([Customer]BankAccountName="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account Name removed: "+Old([Customer]BankAccountName)
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account Name from: "+Old([Customer]BankAccountName)+" to: "+[Customer]BankAccountName
+$oldDetails:=True
+End case 
+End if 
+
+If (Old([Customer]BSB)#[Customer]BSB)
+Case of 
+: (Old([Customer]BSB)="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"BSB: "+[Customer]BSB
+: ([Customer]BSB="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"BSB removed: "+Old([Customer]BSB)
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"BSB from: "+Old([Customer]BSB)+" to: "+[Customer]BSB
+$oldDetails:=True
+End case 
+End if 
+
+If (Old([Customer]BankAcct)#[Customer]BankAcct)
+Case of 
+: (Old([Customer]BankAcct)="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account: "+[Customer]BankAcct
+: ([Customer]BankAcct="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account removed: "+Old([Customer]BankAcct)
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account from: "+Old([Customer]BankAcct)+" to: "+[Customer]BankAcct
+$oldDetails:=True
+End case 
+End if 
+
+
+If ($BankAcctFull#"") & (([Customer]BankAcct#$BankAcctFull))
+
+Case of 
+: ([Customer]BankAcct="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account: "+$BankAcctFull
+: ($BankAcctFull="")
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account removed: "+[Customer]BankAcct
+$deletedDetails:=True
+Else 
+$detailString:=$detailString+Char(Carriage return)+Char(Line feed)+"Bank Account from: "+[Customer]BankAcct+" to: "+$BankAcctFull
+$oldDetails:=True
+End case 
+
+End if 
+
+
+If ($detailString#"")
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Category:="System"
+Case of 
+: ($oldDetails)
+[NotesHistory]Note:="Bank Account details edited"+Char(Carriage return)+Char(Line feed)+$detailString
+: ($deletedDetails)
+[NotesHistory]Note:="Bank Account details removed"+Char(Carriage return)+Char(Line feed)+$detailString
+Else 
+[NotesHistory]Note:="Bank Account details added"+Char(Carriage return)+Char(Line feed)+$detailString
+End case 
+SAVE RECORD([NotesHistory])
+End if 
+
+
+End if 
+
+
+//Insight Gate Update Delete Record with old pin
+If (Old([Customer]GatePIN)#[Customer]GatePIN) & (Old([Customer]GatePIN)#"")
+$CustNameGate:=[Customer]CustomerName
+$GatePin:=Old([Customer]GatePIN)
+If (Application type=4D Remote mode)
+$Q:=Execute on server("Insight";400000;"Insight";$CustNameGate;$GatePin)
+Else 
+<>sInsightMO:=$CustNameGate+"&;&"+$GatePin
+End if 
+End if 
+
+
+QUERY([PhotosCards];[PhotosCards]Name="";*)
+QUERY([PhotosCards]; | ;[PhotosCards]Name="Please enter name";*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Code=[Customer]CustomerCode)
+
+If (Records in selection([PhotosCards])>0)
+AlertMessage (Get localized string("Please enter a valid name for the additional gate user/s"))
+ABORT
+End if 
+
+If ([Agreement]SendNoticeSMS=True) & ([Customer]MobilePhone="")
+[Agreement]SendNoticeSMS:=False
+End if 
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]Description="<None>")
+
+If (Records in selection([Analysis])>0)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode=[Analysis]Code)
+If (Records in selection([OtherChgs])>0)
+AlertMessage (Get localized string("You cannot have an other regular charge set to the None"))
+ABORT
+End if 
+End if 
+
+If ([Agreement]AutoPay=True) & ([Agreement]AutoPayType=0)
+AlertMessage (Get localized string("You did not pick an autopay type - automatically defaulting to the Bank Authority autopay type")+"...")
+[Agreement]AutoPayType:=1
+End if 
+If ([Customer]Overdue=6)
+AlertMessage (Get localized string("Please remove non-customer lock from this customers units, then change locked status to Access Allowed"))
+End if 
+If ([Agreement]RentAmt<1) & ([Agreement]ActiveAgreemt=True)
+[Agreement]AgreedDisc:=Round(vTotal-[Agreement]RegularRent;2)
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+
+If ([Agreement]RentAmt<1) & ([Agreement]ActiveAgreemt=True)
+ConfirmTwo (Get localized string("The rental amount is currently set to zero - it should probably be greater than zero. Are you sure you wish to continue?");Get localized string("Yes");Get localized string("No"))
+If (OK=0)
+ABORT
+End if 
+End if 
+End if 
+
+AgreementEditCheck 
+
+//01/03/13 DAM Added for reactivating inactive agreements
+If (Undefined(WasInactive))
+WasInactive:=False
+End if 
+
+If (Old([Agreement]RAgreeNo)#[Agreement]RAgreeNo) & (Find in field([Agreement]RAgreeNo;[Agreement]RAgreeNo)>=0)
+AlertMessage (Get localized string("Agreement Number")+" "+[Agreement]RAgreeNo+" "+Get localized string("has been taken by another process. Unable to accept this agreement!"))
+Else 
+OK:=1
+If ([Agreement]ActiveAgreemt=True) & (Records in selection([Unit])=0) & (Records in selection([UnitAgree])=0) & (WasInactive=False)
+ConfirmTwo (Get localized string("WARNING - There are no units assigned to this active agreement. Do you still want to save this agreement?");Get localized string("Yes");Get localized string("No"))
+End if 
+
+If ([Facility]DelinquentSystem=True) & (OK=1) & (viNewAgree=1)
+If ([Facility]CentralAddress>"") & (<>sProduct#"M@") & ([Facility]CentralAddress#"@hub.storman.com@")//11/02/16 DAM Added @cloud.storman.com FB 10328
+WSC_CheckDelinquent 
+If (Size of array(aswCustomerCode)>0)
+Case of 
+: ([Facility]DelinquentSystemPrompt=3) | (PermissionsControl (188;False))
+$find:=ConfirmThree (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve. Do you wish to continue?");Get localized string("Yes");Get localized string("No");Get localized string("Display"))
+Case of 
+: ($find=1)
+OK:=1
+: ($find=2)
+OK:=0
+Else 
+Open window((Screen width/2)-425;(Screen height/2)-318;(Screen width/2)+425;(Screen height/2)+318;5;Get localized string("Delinquent Array"))
+DIALOG("DelinquentArray")
+CLOSE WINDOW
+ConfirmTwo (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve. Do you wish to continue?");Get localized string("Yes");Get localized string("No"))
+End case 
+: ([Facility]DelinquentSystemPrompt=2)
+ConfirmTwo (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve.");Get localized string("OK");Get localized string("Display"))
+If (OK=0)
+Open window((Screen width/2)-425;(Screen height/2)-318;(Screen width/2)+425;(Screen height/2)+318;5;Get localized string("Delinquent Array"))
+DIALOG("DelinquentArray")
+CLOSE WINDOW
+End if 
+OK:=0
+Else 
+ConfirmTwo (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve.");Get localized string("OK");Get localized string("Display"))
+If (OK=0)
+Open window((Screen width/2)-425;(Screen height/2)-318;(Screen width/2)+425;(Screen height/2)+318;5;Get localized string("Delinquent Array"))
+DIALOG("DelinquentArray")
+CLOSE WINDOW
+End if 
+OK:=1
+End case 
+End if 
+Else 
+SET QUERY DESTINATION(Into variable;$Delinquent)
+$First:=True
+
+QUERY([Customer];[Customer]Delinquent=True)
+
+If ([Customer]ABNNo>"")
+QUERY SELECTION([Customer];[Customer]ABNNo=[Customer]ABNNo;*)
+$First:=False
+End if 
+
+If ([Customer]LicenceNo>"")
+If ($First=True)
+QUERY SELECTION([Customer];[Customer]LicenceNo=[Customer]LicenceNo)
+Else 
+QUERY SELECTION([Customer]; | ;[Customer]LicenceNo=[Customer]LicenceNo)
+End if 
+Else 
+If ([Customer]ABNNo>"")
+QUERY SELECTION([Customer])
+End if 
+End if 
+
+If ([Customer]ABNNo>"") | ([Customer]LicenceNo>"")
+QUERY SELECTION([Customer];[Customer]CustomerName=[Customer]CustomerName;*)
+If ([Customer]MobilePhone>"")
+QUERY SELECTION([Customer]; | ;[Customer]MobilePhone=[Customer]MobilePhone;*)
+End if 
+If ([Customer]PhonePrivate>"")
+QUERY SELECTION([Customer]; | ;[Customer]PhonePrivate=[Customer]PhonePrivate;*)
+End if 
+If ([Customer]EmailAddress>"")
+QUERY SELECTION([Customer]; | ;[Customer]EmailAddress=[Customer]EmailAddress;*)
+End if 
+QUERY SELECTION([Customer])
+Else 
+$Delinquent:=0
+End if 
+SET QUERY DESTINATION(Into current selection)
+If ($Delinquent>=1)
+Case of 
+: ([Facility]DelinquentSystemPrompt=3) | (PermissionsControl (188;False))
+$find:=ConfirmThree (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve. Do you wish to continue?");Get localized string("Yes");Get localized string("No");Get localized string("Find"))
+Case of 
+: ($find=1)
+OK:=1
+: ($find=2)
+OK:=0
+Else 
+CustFind 
+ConfirmTwo (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve. Do you wish to continue?");Get localized string("Yes");Get localized string("No"))
+End case 
+: ([Facility]DelinquentSystemPrompt=2)
+ConfirmTwo (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve.");Get localized string("OK");Get localized string("Find"))
+If (OK=0)
+CustFind 
+End if 
+OK:=0
+Else 
+ConfirmTwo (Get localized string("A previously flagged Delinquent customer shares details matching those you have entered has been found and requires your attention to resolve.");Get localized string("OK");Get localized string("Find"))
+If (OK=0)
+CustFind 
+End if 
+OK:=1
+End case 
+End if 
+End if 
+End if 
+If (OK=1)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+If (bAdd=1)
+If (Length([Customer]AgreemtsOperating)=0)
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=1
+Else 
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+", "+[Agreement]AgreeNo
+//[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1   //-- Commented by Hamid 17/9/2015 - 8762
+End if 
+End if 
+If ([Agreement]ActiveAgreemt=False) & ([Agreement]MoveOut#!00-00-00!) & ([Facility]RequireZeroBal) & ([Agreement]BalanceOwing#0)
+AlertMessage (Get localized string("This agreement is set as moved-out but there is still a balance owing! Click on the Transaction tab & create a transaction to clear or write-off the balance owing!"))
+Else 
+If ([Facility]InvStatement=2) | (([Facility]InvStatement=1) & ([Facility]GenerateInvNo=True))
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]InvNo=0)
+DISTINCT VALUES([Trxs]TrxDate;$TrxDate)
+CREATE SET([Trxs];"SearchInvNo")
+For ($inv;1;Size of array($TrxDate))
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until (Records in selection([Trxs])<1)
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=<>aiNextInvNo{$arraypos})
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+[Facility]NextInvNo:=<>aiNextInvNo{$arraypos}+1
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+USE SET("SearchInvNo")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$TrxDate{$inv})
+APPLY TO SELECTION([Trxs];[Trxs]InvDate:=Current date)
+APPLY TO SELECTION([Trxs];[Trxs]InvNo:=$InvNo)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+End if 
+End for 
+CLEAR SET("SearchInvNo")
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+If ([Facility]Country="NZ")
+[Customer]BankAcct:=vBank+vBankBranch+vBankAcct+vBankSuffix
+End if 
+If ([Customer]CustomerName>"") & ([Agreement]CustomerCode>"")
+If ([Customer]Notes#vtAlertNote) & ([Facility]LogAlertNote=True)
+CREATE RECORD([NotesHistory])
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Category:="Alerts"
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]Note:="Alert Note Edited: "+[Customer]Notes
+SAVE RECORD([NotesHistory])
+End if 
+If (Modified record([Customer]))
+
+vWebNote:=""
+
+$vlLastField:=Get last field number(5)
+//Give value of elements
+For ($vlField;1;$vlLastField)
+If (Is field number valid(5;$vlField))
+$vlFieldPointer:=Field(5;$vlField)
+GET FIELD PROPERTIES($vlFieldPointer;$Type;$Length;$Index;$Unique;$Invisible)
+If (($Type#7) & ($Type#30))//code256
+If ($vlFieldPointer->#Old($vlFieldPointer->))
+$Name:=Field name($vlFieldPointer)
+If ($Name=("@mail@")) | ($Name=("@street@")) | ($Name=("@alt@"))
+vWebNote:=vWebNote+Field name($vlFieldPointer)+" was "+String(Old($vlFieldPointer->))+" now "+String($vlFieldPointer->)+Char(13)
+End if 
+End if 
+End if 
+End if 
+End for 
+
+If (vWebNote>"")
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]Category:="Customer Edit"
+[NotesHistory]Note:=vWebNote
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+SAVE RECORD([NotesHistory])
+End if 
+
+SAVE RECORD([Customer])
+End if 
+bAll:=0
+bHistory:=0
+asShowHistory:=1
+ReCalc 
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+READ WRITE([UnitHistory])
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($i;1;Records in selection([Unit]))
+$Tickcount:=Tickcount+120//Wait max 2 seconds
+While (Locked([Unit])) & (Tickcount<$Tickcount)
+DELAY PROCESS(Current process;15)
+LOAD RECORD([Unit])
+End while 
+If (Locked([Unit]))
+AlertMessage (Get localized string("WARNING - Unit")+" "+[Unit]UnitNo+" "+Get localized string("is locked by another process and cannot be updated correctly. You should close that process and then save this agreement again."))
+LOAD RECORD([Unit])
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]CasualBilling)
+[Unit]WeeklyRentedValue:=Round([Unit]DailyRentedValue*7;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]DailyNewRent*7;2)
+[Unit]RentedValue:=Round([Unit]DailyRentedValue*7/0.2308;2)
+[Unit]NewRentAmt:=Round([Unit]DailyNewRent*7/0.2308;2)
+: ([BillPlan]PlanPeriod="Week")
+[Unit]RentedValue:=Round([Unit]WeeklyRentedValue/0.2308;2)
+[Unit]NewRentAmt:=Round([Unit]WeeklyNewRentAmt/0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]DailyNewRent:=Round([Unit]WeeklyNewRentAmt/7;2)
+: ([BillPlan]PlanPeriod="Day")
+[Unit]WeeklyRentedValue:=Round([Unit]DailyRentedValue*7;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]DailyNewRent*7;2)
+[Unit]RentedValue:=Round([Unit]DailyRentedValue*7/0.2308;2)
+[Unit]NewRentAmt:=Round([Unit]DailyNewRent*7/0.2308;2)
+Else 
+[Unit]WeeklyRentedValue:=Round([Unit]RentedValue*0.2308;2)
+[Unit]WeeklyNewRentAmt:=Round([Unit]NewRentAmt*0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]RentedValue*0.2308/7;2)
+[Unit]DailyNewRent:=Round([Unit]NewRentAmt*0.2308/7;2)
+End case 
+[Unit]Vacant:=False
+$j:=Find in array(<>asUnitStatus;[Unit]Status)
+Case of 
+: ($j<1)
+[Unit]Status:=<>asUnitStatus{1}
+: (<>asUnitCategory{$j}#"R")
+[Unit]Status:=<>asUnitStatus{1}
+: ([Unit]Status="Locked") & ((([Agreement]BalanceOwing<=0) & ([Customer]Balance<=0)) | (([Customer]Overdue=0) | ([Customer]Overdue=2) | ([Customer]Overdue=4) | ([Customer]Overdue=6)))//Added in v4 to stop zero bal custs being locked out
+[Unit]Status:=<>asUnitStatus{1}//This appears to happen when a credit is added instead of a payment
+vbUpdateGate:=True
+[Unit]UpdatePULS:=<>tUtilities
+: (([Unit]Status="Rented") | ([Unit]Status="OnSite")) & (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5))
+[Unit]Status:=<>asUnitStatus{7}
+vbUpdateGate:=True
+[Unit]UpdatePULS:=<>tUtilities
+Else 
+//Do Nothing
+End case 
+[Unit]LockStatus:=[Customer]Overdue
+If ([Unit]MoveOut#[Agreement]MoveOut)
+If ([Unit]MoveOut=!00-00-00!) & ([Agreement]MoveOut#!00-00-00!)
+[UnitType]NoExpMoveOut:=[UnitType]NoExpMoveOut+1
+End if 
+If ([Unit]MoveOut#!00-00-00!) & ([Agreement]MoveOut=!00-00-00!)
+[UnitType]NoExpMoveOut:=[UnitType]NoExpMoveOut-1
+End if 
+SAVE RECORD([UnitType])
+[Unit]MoveOut:=[Agreement]MoveOut//This line added in v3.1 to enable tracking of units that are moving out
+End if 
+//If ([Agreement]RentAmt>0)
+//[Unit]RentedValue:=Round([UnitType]MonthlyRate*[Agreement]RentAmt/([Agreement]RentAmt+[Agreement]DiscountAmt)*[Agreement]RegularRent/([Agreement]RegularRent+[Agreement]AgreedDisc);2)
+//Else 
+//[Unit]RentedValue:=0
+//End if 
+If ([Customer]CustType#Old([Customer]CustType))
+EmailMarketing (False)
+End if 
+RELATE ONE([Agreement]BillingPlanCode)
+If ([BillPlan]PlanPeriod="Week")
+[Unit]BillPlanDisc:=Round(([Unit]RentedValue*([BillPlan]DiscPercentage/100))-((([BillPlan]DiscFixedAmt/[Agreement]MthsAdv)/Records in selection([Unit]))/0.2308);2)//Round([UnitType]MonthlyRate*[BillPlan]DiscPercentage/100;2)`commented out 23/6/09
+Else 
+[Unit]BillPlanDisc:=Round(([Unit]RentedValue*([BillPlan]DiscPercentage/100))-(([BillPlan]DiscFixedAmt/[Agreement]MthsAdv)/Records in selection([Unit]));2)//Round([UnitType]MonthlyRate*[BillPlan]DiscPercentage/100;2)`commented out 23/6/09
+End if 
+//[Unit]ExtraDisc:=Round([UnitType]MonthlyRate-[Unit]RentedValue-[Unit]BillPlanDisc;2)
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Unit]AgreeNo)
+If (Records in selection([UnitHistory])>0)
+If (Locked([UnitHistory]))
+AlertMessage (Get localized string("WARNING - UnitHistory")+" "+[Unit]UnitNo+" "+Get localized string("is locked by another process and cannot be updated correctly. You should close that process and then save this agreement again."))
+End if 
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+
+End if 
+If ([Unit]IncreaseFrom=!00-00-00!)
+[Unit]NewRentAmt:=[Unit]RentedValue
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+READ ONLY([UnitHistory])
+QUERY SELECTION([Unit];[Unit]IncreaseFrom#!00-00-00!)
+ORDER BY([Unit];[Unit]IncreaseFrom;>)
+FIRST RECORD([Unit])
+[Agreement]NewRentFrom:=[Unit]IncreaseFrom
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([UnitType])
+UNLOAD RECORD([RCHistory])
+UNLOAD RECORD([UnitHistory])
+UpdateCalendar ([Agreement]MoveOut;Old([Agreement]MoveOut);"Customer "+[Customer]CustomerName+", Agreement "+[Agreement]AgreeNo+", is moving out of unit(s) "+[Agreement]UnitsOccup)
+If ([Agreement]ActiveAgreemt)
+UpdateCalendar ([Agreement]InsureExpire;Old([Agreement]InsureExpire);"Customer "+[Customer]CustomerName+", Agreement "+[Agreement]AgreeNo+", insurance is expiring.")
+If ([Agreement]MoveIn>Current date)
+UpdateCalendar ([Agreement]MoveIn;Old([Agreement]MoveIn);"Customer "+[Customer]CustomerName+", Agreement "+[Agreement]AgreeNo+", is moving into unit(s) "+[Agreement]UnitsOccup)
+End if 
+Else 
+UpdateCalendar (!00-00-00!;Old([Agreement]InsureExpire);"Customer "+[Customer]CustomerName+", Agreement "+[Agreement]AgreeNo+", insurance is expiring.")
+End if 
+If ([Agreement]NextBillDate<=[Facility]LastDaily) & ([Agreement]ActiveAgreemt=True) & (OK=5)//This is not now required because Daily Proc does ones in past
+AlertMessage (Get localized string("The Next Bill Date of")+" "+String([Agreement]NextBillDate)+" "+Get localized string("is earlier than the last processing date of")+" "+String([Facility]LastDaily)+".  "+Get localized string("This means that this agreement will not ever be updated in Daily Processing. You should select the Bill Next Charges button on the Trx Info screen for this agreement."))
+End if 
+If (vbFrom=True) & ([Agreement]ActiveAgreemt=False) & ([Facility]PrintafterMoveOut)
+$x:=New process("PrintOutOld";128000;"PrintOutOld";[Agreement]RAgreeNo)
+End if 
+If (vOldUser>0)
+If ([Agreement]AgreeNo="#@")
+$Key:=Substring([Agreement]RAgreeNo;1;5)+"#"+String(vOldUser;"00000000")
+While (Find in field([Agreement]RAgreeNo;$Key)>=0)
+vOldUser:=vOldUser+1
+$Key:=Substring([Agreement]RAgreeNo;1;5)+"#"+String(vOldUser;"00000000")
+End while 
+UpdateSystem (324;->vOldUser;Get localized string("The next credit sale number could not be incremented. You must increase the next credit sale number in System Setup before proceeding!"))
+Else 
+$Key:=Substring([Agreement]RAgreeNo;1;5)+String(vOldUser;"000000000")
+While (Find in field([Agreement]RAgreeNo;$Key)>=0)
+vOldUser:=vOldUser+1
+$Key:=Substring([Agreement]RAgreeNo;1;5)+String(vOldUser;"000000000")
+End while 
+UpdateSystem (20;->vOldUser;Get localized string("The next agreement number could not be incremented. You must increase the next agreement number in System Setup before proceeding!"))
+End if 
+End if 
+If (vMoveOut=True) & ([Agreement]ActiveAgreemt=False)
+//vMoveout:=True
+vUnits:=Old([Agreement]UnitsOccup)
+
+//07/02/13 DAM Added for BnS Move Out
+QUERY([BarCode];[BarCode]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([BarCode]; & ;[BarCode]Active=True)
+If (Records in selection([BarCode])#0)
+For ($i;1;Records in selection([BarCode]))
+[BarCode]Active:=False
+SAVE RECORD([BarCode])
+End for 
+SELECTION TO ARRAY([BarCode]Code;ArrivedBoxes)
+End if 
+
+Else 
+If (Undefined(vUnits)=True)
+vUnits:=""
+End if 
+End if 
+//14/02/12 DAM Added to call Kinitek if remove only one unit
+If (Size of array(ArrivedBoxes)>0)
+CallKinitekURL (True)
+
+//CallAUPost
+End if 
+
+VALIDATE TRANSACTION
+
+If (Undefined(<>vSubletPercentage))
+<>vSubletPercentage:=1
+End if 
+
+If (<>vSubletPercentage#0)
+If ([Customer]CRN="") & ([Facility]Country="AU") & ([Facility]BillerCode #0) & ([Facility]BPay>1)
+C_TEXT($EziDebitKey;$CRN)
+$EziDebitKey:=String(GetTextNo ([Facility]BPayDigitalKey;1;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;2;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;3;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;4;","))+"-"+String(GetTextNo ([Facility]BPayDigitalKey;5;","))
+READ WRITE([Customer])
+$CRN:=GetBPayCRN ($EziDebitKey;String([Customer]PrimaryKey);<>sCurrentUser)
+
+If ($CRN="S")
+SAVE RECORD([Customer])
+OBJECT SET ENABLED(*;"bBPAY";False)
+End if 
+
+End if 
+ACCEPT
+<>vSubletPercentage:=0
+End if 
+
+
+
+vSendCustomer:=True
+
+If (<>sProduct="M@") & (vConverted=True)
+QUERY([Facility];[Facility]FacilityCode=Substring([Agreement]RAgreeNo;1;5))
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="AgreeSite")
+If (Records in selection([Notices])=1)
+//veLetter:=WR New offscreen area 
+EXPAND BLOB([Notices]Email)
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+CREATE RECORD([Message])
+[Message]Address:=[Facility]EmailAddress
+[Message]Subject:=[Notices]EmailSubject
+[Message]Facility:=[Facility]FacilityCode
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Agreement]RAgreeNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Agreement]RAgreeNo
+//If ((Test path name($Document)=Is a document))
+//$vhDocRef:=Open document($Document)  // Select the document of your choice
+//CLOSE DOCUMENT($vhDocRef)
+//DOCUMENT TO BLOB(Document;$Blob74)
+//$Blobtext74:=BLOB to text($Blob74;Mac text without length)
+//$Blobtext74:=Replace string($Blobtext74;"./images/";<>sTutPath+"images\\")
+//$Blobtext74:=Replace string($Blobtext74;"<p>";"<br>")
+//$Blobtext74:=Replace string($Blobtext74;"</p>";"<br>")
+//TEXT TO BLOB($Blobtext74;[Message]EmailMsg;Mac text without length)
+//DELETE DOCUMENT($Document)
+//Else 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+//End if 
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+SAVE RECORD([Message])
+//WR DELETE OFFSCREEN AREA (veLetter)
+SendMail 
+End if 
+End if 
+
+
+If (vbUpdateGate)
+UpdateGateUnits 
+End if 
+If (vUnits#"")
+Contacts2a 
+QUERY([Contacts];[Contacts]OnWaitingList=True;*)
+QUERY([Contacts]; & ;[Contacts]OutComeDate=!00-00-00!;*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=<>sFacility+"@")
+CREATE SET([Contacts];"Contacts")
+CREATE EMPTY SET([Contacts];"WaitList")
+Repeat 
+USE SET("Contacts")
+$Pos:=Position(",";vUnits)
+If ($Pos>0)
+$Unit:=Substring(vUnits;1;$Pos-1)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+$Unit)
+$Unit:=Substring([Unit]UnitTypeCode;6)
+vUnits:=Substring(vUnits;$Pos+1)
+Else 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+vUnits)
+$Unit:=Substring([Unit]UnitTypeCode;6)
+vUnits:=""
+End if 
+QUERY SELECTION BY FORMULA([Contacts];(Position($Unit;[Contacts]PreferredUnits)>0))
+CREATE SET([Contacts];"BWaitList")
+UNION("WaitList";"BWaitList";"WaitList")
+Until (vUnits="")
+If (Records in set("WaitList")>0)
+$Tickcount:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+([Facility]WaitingListDelay*60)))
+USE SET("WaitList")
+FORM SET OUTPUT([Contacts];"WaitingListOutput")
+DISPLAY SELECTION([Contacts];Single selection;*)
+End if 
+CLEAR SET("WaitList")
+CLEAR SET("BWaitList")
+CLEAR SET("Contacts")
+//OUTPUT FORM([Reservation];"WaitList")
+//DISPLAY SELECTION([Reservation])
+
+
+//Reset the arrays for Customers / Agreements after 'Contacts2a' method resets them on moveout
+ARRAY TEXT(asAgreemt;3)
+asAgreemt{1}:=Get localized string("All Agreements")
+asAgreemt{2}:=Get localized string("Active Agreements")
+asAgreemt{3}:=Get localized string("Inactive Agreements")
+asAgreemt:=2
+ARRAY TEXT(asSortby;5)
+asSortBy{1}:=Get localized string("Agree't")
+asSortBy{2}:=Get localized string("Alpha Order")
+asSortBy{3}:=Get localized string("Move In Date")
+asSortBy{4}:=<>vtUnitsCap+Get localized string("No1")
+asSortBy{5}:=Get localized string("Move Out Date")
+asSortBy:=[Facility]AgreemtSortDefault
+If (asSortBy<1)
+asSortBy:=1
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("You must enter the Customer Name before continuing!"))
+End if 
+End if 
+End if 
+End if 
+
+
+If (<>sFacility="ST@") & ([Facility]UseStorerCheck=True)
+SendToSU ("Single")
+End if 

@@ -1,0 +1,73 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (PermissionsControl (13))
+C_LONGINT($PrimaryKeyMax;$PrimaryKeyMin)
+C_BOOLEAN(InvalidURLCheck)
+DEFAULT TABLE([Facility])
+FORM SET INPUT([Facility];"System")
+bButton4:=1
+ARRAY TEXT(aPageNo;12)
+aPageNo{1}:=Get localized string("Facility")
+aPageNo{2}:=Get localized string("Backups")
+aPageNo{3}:=Get localized string("Contact")
+aPageNo{4}:=Get localized string("Banking")
+aPageNo{5}:=Get localized string("Accounting")
+aPageNo{6}:=Get localized string("Insurance")
+aPageNo{7}:=Get localized string("Reports and Refunds")
+aPageNo{8}:=Get localized string("Modules")
+aPageNo{9}:=Get localized string("Security")
+aPageNo{10}:=Get localized string("Settings")+" 1"
+aPageNo{11}:=Get localized string("Settings")+" 2"
+aPageNo{12}:=Get localized string("Licence")
+aPageNo:=1
+
+READ WRITE([Facility])
+SetFacility (True)
+If (Locked([Facility]))
+LOCKED BY([Facility];$Process;$User;$Machine;$ProcName)
+AlertMessage (Get localized string("The system control record is in use.  Details:")+String($Process)+","+$User+","+$Machine+","+$ProcName+".  "+Get localized string("Unable to modify!"))
+Else 
+$PrimaryKeyMax:=[Facility]PrimaryKeyMax
+$PrimaryKeyMin:=[Facility]PrimaryKeyMin
+If (<>iPlatform=3)//Windows
+$WinRef:=Open window((Screen width/2)-469;(Screen height/2)-326;(Screen width/2)+469;(Screen height/2)+326;5;Get localized string("System Setup"))
+Else 
+$WinRef:=Open window((Screen width/2)-469;(Screen height/2)-326;(Screen width/2)+469;(Screen height/2)+326;1986;Get localized string("System Setup"))
+End if 
+InvalidURLCheck:=True
+MODIFY RECORD(*)
+CLOSE WINDOW($WinRef)
+LOAD RECORD([Facility])
+If ([Facility]PrimaryKeyMax#$PrimaryKeyMax) | ([Facility]PrimaryKeyMin#$PrimaryKeyMin)
+GeneratePrimaryKeyValues (True)
+End if 
+
+
+If ([Facility]FacilityCode#<>sFacility) & (Records in table([Facility])=1)
+
+//ConfirmTwo ("WARNING! The facility code has been changed from "+$1+" to "+$2+" Storman will now apply this change to all records in the database. Are you sure you want to continue?";"Yes";"No")
+
+//If (OK=1)
+ModFacility (<>sFacility;[Facility]FacilityCode)
+//Else 
+//AlertMessage ("Facility Code change cancelled!")
+//[Facility]FacilityCode:=Old([Facility]FacilityCode)
+//SAVE RECORD([Facility])
+//End if 
+
+End if 
+
+
+If (<>tCashBook) & ((Records in table([CashBookTrxs])=0) | (Shift down))
+ConfirmTwo (Get localized string("Initialise the CashBook?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+InitCashBook 
+End if 
+End if 
+
+
+End if 
+
+READ ONLY([Facility])
+SetFacility (True)
+<>sLetterSignOff:=[Facility]LetterSignOff
+End if 

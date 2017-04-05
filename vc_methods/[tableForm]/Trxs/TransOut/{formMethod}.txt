@@ -1,0 +1,426 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 13/07/16, 08:39:16
+// ----------------------------------------------------
+// Method: [Trxs].TransOut
+// Description
+//
+// Form Method for Accounting > Customer Receipts and Cash Sales.
+//
+// Parameters
+// ----------------------------------------------------
+
+If (Form event=On Load)
+C_LONGINT(bAddRefund)
+C_BOOLEAN(ShowHide)
+C_BOOLEAN(MoveInCall)
+MoveInCall:=False
+ShowHide:=True
+bEmailReceipt:=0
+LoadGradients 
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text1";Get localized string("Berth"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text1";Get localized string("Appliance"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text1";Get localized string("Space"))
+Else 
+OBJECT SET TITLE(*;"Text1";Get localized string("Unit"))
+End case 
+$Query:=False
+bLastButton:=bLast
+If (tBoolean=True)
+OBJECT SET ENABLED(bReturn;False)
+End if 
+
+If (vMisc)
+OBJECT SET VISIBLE(bReturn;False)
+OBJECT SET VISIBLE(bAdd;False)//11009
+OBJECT SET VISIBLE(bAddSingle;True)
+OBJECT SET VISIBLE(bAddNewOne;True)
+
+If (<>sFacility="KE@")//if kennards only show the original button
+OBJECT SET VISIBLE(*;"SingleRec";False)//11009
+OBJECT SET VISIBLE(*;"MultiRec";False)//11009
+OBJECT SET VISIBLE(*;"Variable3";True)//11009
+Else 
+OBJECT SET VISIBLE(*;"Variable3";False)//11009 - hide original button and show two new buttons
+OBJECT SET VISIBLE(*;"SingleRec";True)//11009
+OBJECT SET VISIBLE(*;"MultiRec";True)//11009
+End if 
+
+Else 
+OBJECT SET VISIBLE(bReturn;True)
+OBJECT SET VISIBLE(bAdd;True)//11009
+OBJECT SET VISIBLE(bAddSingle;False)
+OBJECT SET VISIBLE(bAddNewOne;False)
+
+OBJECT SET VISIBLE(*;"MultiRec";False)//11009
+OBJECT SET VISIBLE(*;"@LM";False)
+OBJECT SET ENABLED(*;"@LM";False)
+End if 
+End if 
+
+
+If (Form event=On Display Detail)
+//[Transaction]AnalysisCode:=Substring([Transaction]AnalysisCode;6)
+RELATE ONE([Trxs]AnalysisCode)
+vAnalysisText:=[Analysis]Description
+
+//18/11/14 DAM Added code for part payments
+If ([Trxs]AnalysisCode=(<>sFacility+"@")) & ([Trxs]AgreeNo#(<>sFacility+"@"))// Payments for other site
+OBJECT SET VISIBLE(*;"Field1";False)
+OBJECT SET VISIBLE(*;"Field5";False)
+OBJECT SET VISIBLE(*;"Field21";False)
+OBJECT SET VISIBLE(*;"Field3";False)
+
+OBJECT SET VISIBLE(*;"Field6";True)
+OBJECT SET VISIBLE(*;"Field7";True)
+vAgreeNo:=WS_AgreeNo{WS_AgreeNo}
+vUnitNos:=WS_UnitNos{WS_AgreeNo}
+vName:=WS_CustName{WS_AgreeNo}
+
+Else 
+RELATE ONE([Trxs]AgreeNo)
+
+OBJECT SET VISIBLE(*;"Field6";False)
+OBJECT SET VISIBLE(*;"Field7";False)
+
+If (Length([Trxs]AgreeNo)=13)
+OBJECT SET VISIBLE(*;"Field1";False)
+OBJECT SET VISIBLE(*;"Field5";True)
+OBJECT SET VISIBLE(*;"Field21";False)
+OBJECT SET VISIBLE(*;"Field3";True)
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+Else 
+OBJECT SET VISIBLE(*;"Field1";True)
+OBJECT SET VISIBLE(*;"Field5";False)
+OBJECT SET VISIBLE(*;"Field21";True)
+OBJECT SET VISIBLE(*;"Field3";False)
+End if 
+Case of 
+: ([Trxs]CustomerCode#(<>sFacility+"MISCL")) & ([Trxs]CustomerCode=(<>sFacility+"@"))
+RELATE ONE([Trxs]CustomerCode)
+vName:=[Customer]CustomerName
+: ([Trxs]CustomerCode=(<>sFacility+"MISCL"))
+$Pos:=Position(Char(17);[Trxs]Narration;*)
+vName:=Substring([Trxs]Narration;1;$Pos-1)
+
+Else 
+vName:=Get localized string("Cash Sale")
+End case 
+If (vName="")
+vName:=Get localized string("Cash Sale")
+End if 
+End if 
+
+bRepDate:=0
+bRepDesc:=0
+End if 
+
+
+If (Form event=On Outside Call)
+TrxListSort 
+End if 
+
+
+If (Form event=On Double Clicked)
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Reservation])
+If ([Trxs]AgreeNo>"")
+vAmount:=[Trxs]TotAmt
+
+If ([Trxs]AgreeNo=("KE@MISCL"))
+$PrimaryKey:=[Trxs]PrimaryKey
+$Match:=[Trxs]Match
+
+ARRAY DATE(aDate;0)
+ARRAY DATE(aDateFrom;0)
+ARRAY DATE(aDateTo;0)
+ARRAY REAL(aCost;0)
+ARRAY REAL(aQuantity;0)
+ARRAY REAL(aOrigQuantity;0)
+ARRAY TEXT(adDesc;0)
+ARRAY REAL(aNet;0)
+ARRAY REAL(aTax;0)
+ARRAY REAL(aTot;0)
+ARRAY TEXT(aNarration;0)
+ARRAY TEXT(asAnalysis;0)
+ARRAY BOOLEAN(abPrint;0)
+ARRAY LONGINT(aiPrimaryKey;0)
+ARRAY LONGINT(aiOrigPrimaryKey;0)
+aDate:=0
+aDateFrom:=0
+aDateTo:=0
+aCost:=0
+aQuantity:=0
+aOrigQuantity:=0
+adDesc:=0
+aNet:=0
+aTax:=0
+aTot:=0
+aNarration:=0
+asAnalysis:=0
+abPrint:=0
+aiPrimaryKey:=0
+aiOrigPrimaryKey:=0
+
+QUERY([Trxs];[Trxs]AgreeNo=(<>sFacility+"MISCL");*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match;*)
+QUERY([Trxs]; & ;[Trxs]PrimaryKey#$PrimaryKey)
+
+FIRST RECORD([Trxs])
+For ($i;1;Records in selection([Trxs]))
+
+APPEND TO ARRAY(asAnalysis;[Trxs]AnalysisCode)
+APPEND TO ARRAY(adDesc;[Trxs]Description)
+APPEND TO ARRAY(aTax;[Trxs]TaxAmt)
+APPEND TO ARRAY(aTot;[Trxs]TotAmt)
+APPEND TO ARRAY(aQuantity;[Trxs]Qty)
+APPEND TO ARRAY(aOrigQuantity;[Trxs]Qty)
+APPEND TO ARRAY(aNet;Round([Trxs]TotAmt-[Trxs]TaxAmt;2))
+APPEND TO ARRAY(aCost;Round([Trxs]TotAmt/[Trxs]Qty;2))
+APPEND TO ARRAY(aDate;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateFrom;[Trxs]TrxDate)
+APPEND TO ARRAY(aDateTo;[Trxs]TrxDate)
+APPEND TO ARRAY(aNarration;[Trxs]Narration)
+APPEND TO ARRAY(abPrint;[Trxs]PrintNarration)
+APPEND TO ARRAY(aiPrimaryKey;[Trxs]PrimaryKey)
+APPEND TO ARRAY(aiOrigPrimaryKey;[Trxs]PrimaryKey)
+NEXT RECORD([Trxs])
+End for 
+
+QUERY([Trxs];[Trxs]PrimaryKey=$PrimaryKey)
+Else //10780
+vSpecialAnalysis:=""
+vOriginalReceipt:=""
+End if 
+
+//18/11/14 DAM Modified to add ability take payment for other site
+If ([Trxs]AnalysisCode=(<>sFacility+"@")) & ([Trxs]AgreeNo#(<>sFacility+"@"))// Payments for other site
+MODIFY RECORD([Trxs];*)
+
+Else 
+If ([Trxs]CustomerCode#(<>sFacility+"MISCL")) & ([Trxs]CustomerCode=(<>sFacility+"@"))
+If ([Trxs]Charge=True)
+$pqr:=148
+Else 
+$pqr:=149
+End if 
+If (PermissionsControl ($pqr))//allow modification
+MODIFY RECORD([Trxs];*)
+Else 
+FILTER EVENT
+End if 
+If ([Trxs]TotAmt<0)
+vtReverse:=True
+Else 
+vtReverse:=False
+End if 
+Else 
+
+
+If (<>sFacility="KE@")
+MODIFY RECORD([Trxs];*)
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Match:=[Trxs]Match
+//22/05/14 DAM Added for activity calculations
+ARRAY LONGINT(aSeqNo;Size of array(asAnalysis))
+Case of 
+: (bOKArray=1)
+//User clicked ok - write changes & new records
+For ($i;1;Size of array(aiPrimaryKey))
+If (aiPrimaryKey{$i}=0)
+//New record
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=$Facility+"MISCL"
+[Trxs]AgreeNo:=$Facility+"MISCL"
+[Trxs]TrxDate:=vDate
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=asAnalysis{$i}
+[Trxs]Description:=adDesc{$i}
+[Trxs]TaxAmt:=aTax{$i}
+[Trxs]TotAmt:=aTot{$i}
+[Trxs]Qty:=aQuantity{$i}
+[Trxs]Confirmed:=True
+[Trxs]Match:=$Match
+[Trxs]Narration:=aNarration{$i}
+[Trxs]PrintNarration:=abPrint{$i}
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt;[Trxs]TotAmt)
+SAVE RECORD([Trxs])
+aSeqNo{$i}:=[Trxs]SeqNo
+Else 
+//Existing record
+QUERY([Trxs];[Trxs]PrimaryKey=aiPrimaryKey{$i})
+If (Records in selection([Trxs])>0)
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt*(-1);[Trxs]TotAmt*(-1))
+[Trxs]CustomerCode:=$Facility+"MISCL"
+[Trxs]AgreeNo:=$Facility+"MISCL"
+[Trxs]TrxDate:=vDate
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=asAnalysis{$i}
+[Trxs]Description:=adDesc{$i}
+[Trxs]TaxAmt:=aTax{$i}
+[Trxs]TotAmt:=aTot{$i}
+[Trxs]Qty:=aQuantity{$i}
+[Trxs]Confirmed:=True
+[Trxs]Match:=$Match
+[Trxs]Narration:=aNarration{$i}
+[Trxs]PrintNarration:=abPrint{$i}
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt;[Trxs]TotAmt)
+SAVE RECORD([Trxs])
+Else 
+//Transaction missing - recreate
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=$Facility+"MISCL"
+[Trxs]AgreeNo:=$Facility+"MISCL"
+[Trxs]TrxDate:=vDate
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=asAnalysis{$i}
+[Trxs]Description:=adDesc{$i}
+[Trxs]TaxAmt:=aTax{$i}
+[Trxs]TotAmt:=aTot{$i}
+[Trxs]Qty:=aQuantity{$i}
+[Trxs]Confirmed:=True
+[Trxs]Match:=$Match
+[Trxs]Narration:=aNarration{$i}
+[Trxs]PrintNarration:=abPrint{$i}
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt;[Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+aSeqNo{$i}:=[Trxs]SeqNo
+End if 
+End for 
+//Delete no longer required transactions
+
+For ($i;1;Size of array(aiPrimaryKey))
+$j:=Find in array(aiOrigPrimaryKey;aiPrimaryKey{$i})
+If ($j>0)
+DELETE FROM ARRAY(aiOrigPrimaryKey;$j)
+End if 
+End for 
+
+READ WRITE([Analysis])
+For ($i;1;Size of array(aiOrigPrimaryKey))
+QUERY([Trxs];[Trxs]PrimaryKey=aiOrigPrimaryKey{$i})
+If (Records in selection([Trxs])>0)
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+If ([Analysis]InvItem=True)
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty;0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty;2)
+End if 
+SAVE RECORD([Analysis])
+End if 
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt*(-1);[Trxs]TotAmt*(-1))
+DELETE RECORD([Trxs])
+End if 
+End for 
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+
+: (bAbortArray=1)
+//Do Nothing - user clicked cancel
+: (bDelete=1)
+//User clicked delete - wipe remaining transactions
+
+READ WRITE([Analysis])
+For ($i;1;Size of array(aiOrigPrimaryKey))
+QUERY([Trxs];[Trxs]PrimaryKey=aiOrigPrimaryKey{$i})
+If (Records in selection([Trxs])>0)
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+If ([Analysis]InvItem=True)
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty;0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty;2)
+End if 
+SAVE RECORD([Analysis])
+End if 
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt*(-1);[Trxs]TotAmt*(-1))
+DELETE RECORD([Trxs])
+End if 
+End for 
+
+For ($i;1;Size of array(aiPrimaryKey))
+If (aiPrimaryKey{$i}=0)
+QUERY([Analysis];[Analysis]Code=asAnalysis{$i})
+If ([Analysis]InvItem=True)
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+aQuantity{$i};0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+aQuantity{$i};2)
+End if 
+SAVE RECORD([Analysis])
+End if 
+End if 
+End for 
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+
+Else 
+//Do Nothing
+End case 
+
+QUERY([Trxs];[Trxs]AgreeNo=$Facility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+//22/05/14 DAM Added code to fill MiscDetls for MISCL
+ARRAY INTEGER($aType;4)
+$aType{1}:=8
+$aType{2}:=-3
+$aType{3}:=-3
+$aType{4}:=-2
+[Trxs]MiscDetls:=ArraysToText (->$aType;->asAnalysis;->aTax;->aTot;->aSeqNo)
+SAVE RECORD([Trxs])
+If ([Trxs]TotAmt<0)
+vtReverse:=True
+Else 
+vtReverse:=False
+End if 
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"MISCL")
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"MISCL")
+If (Records in selection([Agreement])=0)
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:="MISCL"
+[Agreement]RAgreeNo:=<>sFacility+"MISCL"
+[Agreement]CustomerCode:=<>sFacility+"MISCL"
+[Agreement]ActiveAgreemt:=False
+[Agreement]MoveIn:=Current date
+SAVE RECORD([Agreement])
+End if 
+viCashMatch:=[Trxs]Match
+vCustNextMatch:=[Trxs]Match
+DIALOG([Agreement];"MisclCash")
+READ WRITE([Trxs])
+End if 
+End if 
+End if 
+End if 
+
+If ([Trxs]AnalysisCode=(<>sFacility+"@")) & ([Trxs]AgreeNo#(<>sFacility+"@"))
+QUERY([Trxs];[Trxs]AnalysisCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=Current date-7;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=WS_AgreeNo{WS_AgreeNo})
+Else 
+TrxListSort 
+End if 
+FILTER EVENT
+End if 

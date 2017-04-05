@@ -1,0 +1,43 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//New version of SyncLog that receives from head office before doing a send - Created SDD 9/5/07  Also modified SyncDecode, SyncUpdate, SyncConfirm NOT USED
+//See comments in SyncLogNew re SyncStatus allowed values
+C_BLOB(vbEventContent;vbRecord;vbField;vbResponse)
+C_LONGINT($i)
+If ([Facility]LastSyncDate<UTCDate (Current time;True;Current date)) & ([Facility]LastSyncTime#?00:00:00?)
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]LastSyncTime:=?00:00:00?
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+If (UTCTime (Current time;True)>[Facility]LastSyncTime) | (Shift down)//Dont send at night so server can backup etc  (Current time>?07:00:00?) & (Current time<?19:00:00?) & 
+
+If (SyncFromMaster )//SyncToSite
+If (vMax=0)//Only do when successful connections
+QUERY([EventLog];[EventLog]SyncStatus=0)
+If (Records in selection([EventLog])>0)
+SyncToMaster //SyncFromSite
+End if 
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]LastSyncTime:=UTCTime (Current time;True)
+[Facility]LastSyncDate:=UTCDate (Current time;True;Current date)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if //SyncDecode   SyncUpdate  Prev done here but now in LogMonLoopCode
+
+//Between 5pm & 7pm to run compile checksum of balances and send to host
+//Only Send in 1st 15 secs otherwise more than one in the same minute - try to avoid all coming at once
+If (Current time>?17:00:00?) & (Current time<?19:00:00?)
+$i:=Num(Substring([Facility]UserCode;4;2))
+If ($i>59)
+$i:=$i-50
+End if 
+If (Substring(String(Current time);4;2)=String($i;"00")) & (Substring(String(Current time);7;2)<"14")
+SyncSendCheckSums 
+End if 
+End if 
+End if 
+End if 

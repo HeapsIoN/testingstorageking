@@ -1,0 +1,96 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BLOB($Blob)
+If (Form event=On Load)
+LoadGradients 
+bLastButton:=bLast
+End if 
+If (Form event=On Display Detail)
+If ([Message]OutIn)
+vCol1:="Out"
+Else 
+vCol1:="In"
+End if 
+End if 
+If (Form event=On Double Clicked)
+FILTER EVENT
+If (BLOB size([Message]EmailMsg)>0)
+If ([Message]OutIn=True)
+EmailEdit (True)
+Else 
+$win:=Open form window([Message];"MessagePreview";Movable form dialog box)
+DIALOG([Message];"MessagePreview")
+CLOSE WINDOW($win)
+End if 
+bSend:=0
+Else 
+If ([Message]Address="Storman Support")
+FORM SET INPUT([Message];"SupportIn")
+Open window((Screen width/2)-290;(Screen height/2)-315;(Screen width/2)+290;(Screen height/2)+315;5;"Help & Support Centre")
+If ([Message]OutIn=False)
+[Message]SentRead:=True
+SAVE RECORD([Message])
+End if 
+Else 
+FORM SET INPUT([Message];"MessageIn")
+Open window((Screen width/2)-248;(Screen height/2)-325;(Screen width/2)+248;(Screen height/2)+325;5;"Email Message")
+bSend:=0
+End if 
+MODIFY RECORD(*)
+CLOSE WINDOW
+End if 
+SET BLOB SIZE($Blob;0)
+If (bSend=1)
+[Message]SentDate:=Current date
+[Message]SentTime:=Current time
+If ([Message]PriorityCategory>1)
+WSC_SendSupportMessage ([Message]Subject;Num([Facility]UserCode);[Message]SentTime+0;[Message]SentDate;[Message]PriorityCategory;[Message]EmailMsg;$Blob)
+Else 
+AlertMessage (Get localized string("The message")+" '"+[Message]Subject+"' "+Get localized string("cannot be sent as the priority has not been selected!"))
+End if 
+End if 
+QUERY([Message];[Message]OutIn=True;*)
+QUERY([Message]; & ;[Message]SentRead=False;*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+If (Records in selection([Message])>0) & (bDelete#1) & (bCancel#1)
+CheckMail 
+UNLOAD RECORD([Message])
+End if 
+If (bLast=1)
+QUERY([Message];[Message]MsgDate>Current date-31;*)
+//04/11/14 DAM Added for messages per facility
+If (<>sFacility=<>SHOFACILITY)// to display all emails without facilitycode set
+QUERY([Message]; | ;[Message]SentRead=False)
+Else 
+QUERY([Message]; | ;[Message]SentRead=False;*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+End if 
+Else 
+ALL RECORDS([Message])
+//04/11/14 DAM Added for messages per facility
+If (<>sFacility=<>SHOFACILITY)// to display all emails without facilitycode set
+Else 
+QUERY([Message];[Message]Facility=<>sFacility)
+End if 
+End if 
+ORDER BY([Message];[Message]SentRead;>;[Message]MsgDate;<;[Message]MsgTime;<)
+End if 
+If (Form event=On Outside Call)
+If (bLast=1)
+QUERY([Message];[Message]MsgDate>Current date-31;*)
+//04/11/14 DAM Added for messages per facility
+If (<>sFacility=<>SHOFACILITY)// to display all emails without facilitycode set
+QUERY([Message]; | ;[Message]SentRead=False)
+Else 
+QUERY([Message]; | ;[Message]SentRead=False;*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+End if 
+Else 
+ALL RECORDS([Message])
+//04/11/14 DAM Added for messages per facility
+If (<>sFacility=<>SHOFACILITY)// to display all emails without facilitycode set
+Else 
+QUERY([Message];[Message]Facility=<>sFacility)
+End if 
+End if 
+ORDER BY([Message];[Message]SentRead;>;[Message]MsgDate;<;[Message]MsgTime;<)
+End if 

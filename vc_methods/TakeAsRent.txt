@@ -1,0 +1,128 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0;$Reject)
+C_LONGINT($i)
+$0:=False
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Deposit")
+
+$Amount:=0
+For ($i;1;Records in selection([Analysis]))
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code)
+$Amount:=$Amount+Sum([Trxs]TotAmt)
+NEXT RECORD([Analysis])
+End for 
+
+$ResAmount:=$Amount
+//QUERY([Transaction];[Transaction]CustomerCode=[Reservation]CustomerCode;*)
+//QUERY([Transaction]; & ;[Transaction]AgreeNo=[Reservation]RReserveNo;*)
+//QUERY([Transaction]; & ;[Transaction]AnalysisCode=<>sFacility+"DP")
+//If (Records in selection([Transaction])<2)
+ConfirmTwo (Get localized string("Cancel this reservation. Are you sure?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+//If (Records in selection([Transaction])=1)
+//$Amount:=[Reservation]DepositAmt
+
+If ([Reservation]Balance<0)
+ConfirmTwo (Get localized string("Write off additional remaining balance of")+" "+String([Reservation]Balance;"###,##0.00")+" "+Get localized string("to rent as well")+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Amount:=$Amount+([Reservation]Balance*-1)
+End if 
+End if 
+
+If ($Amount>0)
+//ConfirmTwo ("Create a rental charge of "+String($Amount;<>sFormat)+" to clear deposit?";"Yes";"No")
+//If (OK=1)
+If ($Amount#[Reservation]Balance)
+vtReverse:=False
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+QUERY([Analysis];[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=1)
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+End if 
+[Trxs]TotAmt:=$Amount
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Trxs])
+FORM SET INPUT([Trxs];"ModCharges")
+bFromMoveIn:=True
+MODIFY RECORD([Trxs];*)
+Else 
+bCancel:=0
+bDelete:=0
+End if 
+If ($Amount#0) & (bCancel#1) & (bDelete#1)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Reservation]CustomerCode
+[Trxs]AgreeNo:=[Reservation]RReserveNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+QUERY([Analysis];[Analysis]Code=Substring([Reservation]RReserveNo;1;5)+"DP")
+If (Records in selection([Analysis])>0)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Credit "+[Analysis]Description
+End if 
+[Trxs]TotAmt:=$ResAmount*(-1)
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+End if 
+End if 
+Case of 
+: (bCancel=1)
+DELETE RECORD([Trxs])
+[Customer]Balance:=Round([Customer]Balance-$Amount;2)
+SAVE RECORD([Customer])
+$Reject:=True
+: (bDelete=1)
+$Reject:=True
+Else 
+AlertMessage (Get localized string("The deposit held for this customer has now been written off to rental income."))
+End case 
+READ ONLY([Trxs])
+LOAD RECORD([Trxs])
+//End if 
+ReCalc (True)
+End if 
+//End if 
+If ($Reject=False)
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Write-off"
+[Reservation]OutcomeDate:=Current date
+vActive:="Non-Active"
+READ WRITE([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+For ($i;1;Records in selection([Unit]))
+If ([Unit]Status="Reserved")
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]ReservedTo:=""
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+$0:=True
+End if 
+End if 
+//Else 
+//ALERT("There is more than 1 transaction for this reservation. Unable to continue!")
+//End if 

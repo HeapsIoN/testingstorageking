@@ -1,0 +1,1119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+If (Form event=On Load)
+C_LONGINT(diffX;diffY;saveID;prevX;prevY;vSVGFontSize;vxmove;vymove;startX;startY)
+C_REAL(zoomLevel)
+C_BOOLEAN(selectionCreated;vEditSVG;vCursor)
+C_TEXT(vSVGColour;vSVGBorder;vSVGFont;myid;$runitno;vLastClicked;vResize)
+C_TEXT($angle)
+C_LONGINT($loc1)
+ARRAY TEXT(vars;0)
+ARRAY TEXT(vals;0)
+ARRAY LONGINT(parentvars;0)
+ARRAY TEXT(parentvals;0)
+ARRAY TEXT(othervars;0)
+ARRAY TEXT(othervals;0)
+ARRAY TEXT(selectedSVG;0)
+vEditSVG:=False
+vCursor:=False
+OBJECT SET VISIBLE(*;"@Edit";vEditSVG)
+varPoint:=->vars
+ParentvarPoint:=->parentvars
+OthervarPoint:=->othervars
+valPoint:=->vals
+ParentvalPoint:=->parentvals
+OthervalPoint:=->othervals
+zoomLevel:=1
+myid:=""
+drawObject:=0
+drawSelection:=False
+
+vSVGRed:=255
+vSVGGreen:=255
+vSVGBlue:=255
+
+vSVGHexRed:="ff"
+vSVGHexGreen:="ff"
+vSVGHexBlue:="ff"
+
+vSVGForeRed:=0
+vSVGForeGreen:=0
+vSVGForeBlue:=0
+
+vSVGHexForeRed:="00"
+vSVGHexForeGreen:="00"
+vSVGHexForeBlue:="00"
+
+vSVGColour:="#"+vSVGHexRed+vSVGHexGreen+vSVGHexBlue
+vSelectColour:=vSVGColour
+vSVGBorder:="#"+vSVGHexForeRed+vSVGHexForeGreen+vSVGHexForeBlue
+vSelectBorder:=vSVGBorder
+End if 
+
+If (vEditSVG=True)
+Case of 
+: (Form event=On Clicked)
+C_LONGINT($myx;$myy)
+$myx:=MouseX
+$myy:=MouseY
+startX:=$myx
+startY:=$myy
+
+If (Contextual click)
+
+$ref:=SVG Find element ID by coordinates(SVGTest;$myx;$myy)
+If ($ref#"")
+$refLoc:=Find in array(atObjects;$ref)
+SVG_GET_ATTRIBUTES (atObjectRef{$refLoc};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+
+$Mnu_choice:=""
+
+If (vals{$loc}="image")
+$Mnu_main:=Create menu
+
+APPEND MENU ITEM($Mnu_main;"Insert image")
+SET MENU ITEM PARAMETER($Mnu_main;-1;"image")
+
+$Mnu_choice:=Dynamic pop up menu($Mnu_main)
+
+RELEASE MENU($Mnu_main)
+End if 
+
+If ($Mnu_choice="image")
+
+ARRAY TEXT($tTxt_codec;0)
+PICTURE CODEC LIST($tTxt_codec)
+$kTxt_fileTypes:=""
+For ($Lon_i;1;Size of array($tTxt_codec);1)
+$kTxt_fileTypes:=$kTxt_fileTypes+$tTxt_codec{$Lon_i}+";"
+End for 
+
+$Txt_file:=Select document("";$kTxt_fileTypes;"";Use sheet window)
+
+
+If (OK=1)
+
+$path:=DOCUMENT
+
+READ PICTURE FILE($path;$Picture)
+
+$xval:=Find in array(vars;"x")
+$yval:=Find in array(vars;"y")
+$widthval:=Find in array(vars;"width")
+$heightval:=Find in array(vars;"height")
+$idval:=Find in array(vars;"id")
+
+DOM REMOVE XML ELEMENT(atObjectRef{$refLoc})
+
+objectRef:=SVG_New_embedded_image (group;$Picture;Num(vals{$xval});Num(vals{$yval}))
+SVG_SET_ATTRIBUTES (objectRef;"width";vals{$widthval};"height";vals{$heightval};"type";"image";"xmlns:xlink";"http://www.w3.org/1999/xlink";"id";vals{$idval})
+
+//SVG_SET_ATTRIBUTES (atObjectRef{$refLoc};"xlink:href";$Txt_path)
+
+End if 
+
+drawObject:=0
+End if 
+
+
+End if 
+End if 
+
+
+
+
+If (drawObject=0)
+If (Size of array(selectedSVG)>0) & (Windows Ctrl down=False)
+For ($r;1;Size of array(selectedSVG))
+//SVG_SET_ATTRIBUTES (selectedSVG{1};"stroke";"black")
+SVG_SET_ATTRIBUTES (selectedSVG{1};"stroke-width";"1")
+SVG_GET_ATTRIBUTES (selectedSVG{1};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+If (vals{$loc}="border")
+SVG_SET_ATTRIBUTES (selectedSVG{1};"selectedObject";"";"x";"0";"y";"0";"width";"0";"height";"0";"visibility";"hidden")
+End if 
+
+DELETE FROM ARRAY(selectedSVG;1)
+End for 
+End if 
+$ref:=SVG Find element ID by coordinates(SVGTest;$myx;$myy)
+If ($ref#"")
+$realref:=SVG_Find_ID (svgRef;$ref)
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+
+If (vals{$loc}#"resize_@")
+If (vals{$loc}="rect")
+$Parent:=DOM Get parent XML element($realref)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc<0)
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+SVG_ShowResize (varPoint;valPoint)
+Else 
+ARRAY TEXT(vars;0)
+ARRAY TEXT(vals;0)
+ARRAY TEXT($tempArray;1)
+ARRAY TEXT($tempArray1;1)
+$tempPoint:=->$tempArray
+$tempPoint1:=->$tempArray1
+SVG_ShowResize ($tempPoint;$tempPoint1)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+End if 
+Else 
+SVG_ShowResize (varPoint;valPoint)
+End if 
+
+vLastClicked:=$realref
+If (vals{$loc}="text") | (vals{$loc}="ref")
+$Parent:=DOM Get parent XML element($realref)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc=1)
+DOM GET XML CHILD NODES($Parent;parentvars;parentvals)
+For ($q;1;Size of array(parentvals))
+SVG_GET_ATTRIBUTES (parentvals{$q};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+Case of 
+: (vals{$loc}="rect")
+//SVG_SET_ATTRIBUTES (ParentvalPoint{$q};"stroke";"blue")
+SVG_SET_ATTRIBUTES (parentvals{$q};"stroke-width";"2")
+APPEND TO ARRAY(selectedSVG;parentvals{$q})
+End case 
+End for 
+Else 
+APPEND TO ARRAY(selectedSVG;$realref)
+End if 
+Else 
+SVG_SET_ATTRIBUTES ($realref;"stroke-width";"2")
+If (vals{$loc}="image")
+//Draw border
+$xval:=Find in array(vars;"x")
+$yval:=Find in array(vars;"y")
+$widthval:=Find in array(vars;"width")
+$heightval:=Find in array(vars;"height")
+
+SVG_SET_ATTRIBUTES (highlightObject;"selectedObject";$realref;"x";vals{$xval};"y";vals{$yval};"width";vals{$widthval};"height";vals{$heightval};"visibility";"visible";"stroke-width";"2")
+
+APPEND TO ARRAY(selectedSVG;highlightObject)
+End if 
+
+APPEND TO ARRAY(selectedSVG;$realref)
+End if 
+Else 
+vResize:=vals{$loc}
+End if 
+
+Else 
+ARRAY TEXT($tempArray;1)
+ARRAY TEXT($tempArray1;1)
+$tempPoint:=->$tempArray
+$tempPoint1:=->$tempArray1
+SVG_ShowResize ($tempPoint;$tempPoint1)
+//drawSelection:=True
+//drawX:=$myx
+//drawY:=$myy
+//objectRef:=SVG_New_rect (svgRef;$myx;$myy;0;0;0;0;vSelectBorder;vSelectColour;1)
+//SVG_SET_ATTRIBUTES (objectRef;"type";"rect")
+//SVG_SET_ATTRIBUTES (objectRef;"fill-opacity";"0.1")
+//SVG_SET_ATTRIBUTES (objectRef;"stroke-opacity";"0.9")
+//SVG_SET_ID (objectRef;String(saveID))
+//APPEND TO ARRAY(atObjects;String(saveID))
+//APPEND TO ARRAY(atObjectRef;objectRef)
+//myid:=String(saveID)
+//saveID:=saveID+1
+//diffX:=MouseX
+//diffY:=MouseY
+SVGTest:=SVG_Export_to_picture (svgRef)
+End if 
+End if 
+Case of 
+: (drawObject=1)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+objectRef:=SVG_New_rect (group;$myx;$myy;0;0;0;0;vSVGBorder;vSVGColour;1)
+SVG_SET_ATTRIBUTES (objectRef;"type";"rect")
+: (drawObject=2)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+objectRef:=SVG_New_ellipse (group;$myx;$myy;0;0;vSVGBorder;vSVGColour;1)
+SVG_SET_ATTRIBUTES (objectRef;"type";"ellipse")
+: (drawObject=3)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+// objectRef:=SVG_New_line (group;$myx;$myy;$myx;$myy;vSVGColour;1)
+objectRef:=SVG_New_line (group;$myx;$myy;$myx;$myy;"grey";1)
+SVG_SET_ATTRIBUTES (objectRef;"type";"line")
+: (drawObject=4)
+$Text:=TextEdit ("Text to insert:";"")
+If (OK=1)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+objectRef:=SVG_New_text (group;$Text;$myx;$myy;selectedFont;selectedFontSize;0;1;"grey")
+SVG_SET_ATTRIBUTES (objectRef;"type";"text")
+End if 
+: (drawObject=5)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+objectRef:=SVG_New_circle (group;$myx;$myy;0;vSVGBorder;vSVGColour;1)
+SVG_SET_ATTRIBUTES (objectRef;"type";"circle")
+: (drawObject=6)
+$Text:=TextEdit ("Text to insert:";"")
+If (OK=1)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+objectRef:=SVG_New_text (group;$Text;$myx;$myy;selectedFont;selectedFontSize;0;1;vSVGColour)
+SVG_SET_ATTRIBUTES (objectRef;"type";"ref")
+End if 
+: (drawObject=7)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+
+$path:=Get 4D folder(Current resources folder)+"your image here.jpg"
+//objectRef:=SVG_New_image (group;$path;$myx;$myy)
+READ PICTURE FILE($path;$Picture)
+objectRef:=SVG_New_embedded_image (group;$Picture;$myx;$myy)
+SVG_SET_ATTRIBUTES (objectRef;"type";"image")
+SVG_SET_ATTRIBUTES (objectRef;"xmlns:xlink";"http://www.w3.org/1999/xlink")
+Else 
+$ref:=SVG Find element ID by coordinates(SVGTest;$myx;$myy)
+If ($ref#"")
+testflag:=True
+myid:=$ref
+$refLoc:=Find in array(atObjects;myid)
+If ($refLoc>0)
+SVG_GET_ATTRIBUTES (atObjectRef{$refLoc};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+Case of 
+: (vals{$loc}="rect")
+$loc:=Find in array(vars;"x")
+diffX:=(MouseX/zoomLevel)-Num(vals{$loc})
+diffY:=(MouseY/zoomLevel)-Num(vals{$loc+1})
+$rectX:=Num(vals{$loc})
+$rectY:=Num(vals{$loc+1})
+$loc:=Find in array(vars;"width")
+$rectWidth:=Num(vals{$loc})
+$loc:=Find in array(vars;"height")
+$rectHeight:=Num(vals{$loc})
+$realref:=SVG_Find_ID (svgRef;myid)
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (vals{$loc}="ellipse")
+$loc:=Find in array(vars;"cx")
+diffX:=MouseX-Num(vals{$loc})
+diffY:=MouseY-Num(vals{$loc+1})
+$realref:=SVG_Find_ID (svgRef;myid)
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (vals{$loc}="circle")
+$loc:=Find in array(vars;"cx")
+diffX:=MouseX-Num(vals{$loc})
+diffY:=MouseY-Num(vals{$loc+1})
+$realref:=SVG_Find_ID (svgRef;myid)
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (vals{$loc}="text")
+$loc:=Find in array(vars;"x")
+diffX:=MouseX-Num(vals{$loc})
+diffY:=MouseY-Num(vals{$loc+1})
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (vals{$loc}="image")
+$loc:=Find in array(vars;"x")
+diffX:=(MouseX/zoomLevel)-Num(vals{$loc})
+$rectX:=Num(vals{$loc})
+$loc:=Find in array(vars;"y")
+diffY:=(MouseY/zoomLevel)-Num(vals{$loc})
+$rectY:=Num(vals{$loc})
+$loc:=Find in array(vars;"width")
+$rectWidth:=Num(vals{$loc})
+$loc:=Find in array(vars;"height")
+$rectHeight:=Num(vals{$loc})
+$realref:=SVG_Find_ID (svgRef;myid)
+SVGTest:=SVG_Export_to_picture (svgRef)
+End case 
+
+End if 
+End if 
+End case 
+If (drawObject>0)
+SVG_SET_ID (objectRef;String(saveID))
+APPEND TO ARRAY(atObjects;String(saveID))
+APPEND TO ARRAY(atObjectRef;objectRef)
+myid:=String(saveID)
+saveID:=saveID+1
+diffX:=MouseX
+diffY:=MouseY
+SVGTest:=SVG_Export_to_picture (svgRef)
+End if 
+
+: (Form event=On Mouse Move)
+C_LONGINT($x;$y;$button)
+GET MOUSE($x;$y;$button)
+$obj_id:=SVG Find element ID by coordinates(SVGTest;MouseX;MouseY)
+If ($obj_id#"") & (vResize="")
+$realref:=SVG_Find_ID (svgRef;$obj_id)
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+
+$angle:="0"
+$loc1:=Find in array(vars;"transform")
+If ($loc1>0)
+$Pos:=Position(" ";vals{$loc1})
+$No:=$Pos-8
+$angle:=Substring(vals{$loc1};8;$No)
+End if 
+
+Case of 
+: ((Num($angle)>=0) & (Num($angle)<=22.5)) | ((Num($angle)>=337.5) & (Num($angle)<=360))
+Case of 
+: (vals{$loc}="resize_tl")
+SET CURSOR(9005)
+: (vals{$loc}="resize_tm")
+SET CURSOR(9004)
+: (vals{$loc}="resize_tr")
+SET CURSOR(9006)
+: (vals{$loc}="resize_ml")
+SET CURSOR(9003)
+: (vals{$loc}="resize_mr")
+SET CURSOR(9003)
+: (vals{$loc}="resize_bl")
+SET CURSOR(9006)
+: (vals{$loc}="resize_bm")
+SET CURSOR(9004)
+: (vals{$loc}="resize_br")
+SET CURSOR(9005)
+Else 
+SET CURSOR(9002)
+End case 
+: (Num($angle)>22.5) & (Num($angle)<67.5)
+Case of 
+: (vals{$loc}="resize_ml")
+SET CURSOR(9005)
+: (vals{$loc}="resize_tl")
+SET CURSOR(9004)
+: (vals{$loc}="resize_tm")
+SET CURSOR(9006)
+: (vals{$loc}="resize_tr")
+SET CURSOR(9003)
+: (vals{$loc}="resize_mr")
+SET CURSOR(9005)
+: (vals{$loc}="resize_br")
+SET CURSOR(9004)
+: (vals{$loc}="resize_bm")
+SET CURSOR(9006)
+: (vals{$loc}="resize_bl")
+SET CURSOR(9003)
+Else 
+SET CURSOR(9002)
+End case 
+: (Num($angle)>=67.5) & (Num($angle)<112.5)
+Case of 
+: (vals{$loc}="resize_bl")
+SET CURSOR(9005)
+: (vals{$loc}="resize_ml")
+SET CURSOR(9004)
+: (vals{$loc}="resize_tl")
+SET CURSOR(9006)
+: (vals{$loc}="resize_tm")
+SET CURSOR(9003)
+: (vals{$loc}="resize_tr")
+SET CURSOR(9005)
+: (vals{$loc}="resize_mr")
+SET CURSOR(9004)
+: (vals{$loc}="resize_br")
+SET CURSOR(9006)
+: (vals{$loc}="resize_bm")
+SET CURSOR(9003)
+Else 
+SET CURSOR(9002)
+End case 
+: (Num($angle)>=112.5) & (Num($angle)<157.5)
+Case of 
+: (vals{$loc}="resize_bm")
+SET CURSOR(9005)
+: (vals{$loc}="resize_bl")
+SET CURSOR(9004)
+: (vals{$loc}="resize_ml")
+SET CURSOR(9006)
+: (vals{$loc}="resize_tl")
+SET CURSOR(9003)
+: (vals{$loc}="resize_tm")
+SET CURSOR(9005)
+: (vals{$loc}="resize_tr")
+SET CURSOR(9004)
+: (vals{$loc}="resize_mr")
+SET CURSOR(9006)
+: (vals{$loc}="resize_br")
+SET CURSOR(9003)
+Else 
+SET CURSOR(9002)
+End case 
+: (Num($angle)>=157.5) & (Num($angle)<202.5)
+Case of 
+: (vals{$loc}="resize_br")
+SET CURSOR(9005)
+: (vals{$loc}="resize_bm")
+SET CURSOR(9004)
+: (vals{$loc}="resize_bl")
+SET CURSOR(9006)
+: (vals{$loc}="resize_ml")
+SET CURSOR(9003)
+: (vals{$loc}="resize_tl")
+SET CURSOR(9005)
+: (vals{$loc}="resize_tm")
+SET CURSOR(9004)
+: (vals{$loc}="resize_tr")
+SET CURSOR(9006)
+: (vals{$loc}="resize_mr")
+SET CURSOR(9003)
+Else 
+SET CURSOR(9002)
+End case 
+: (Num($angle)>=202.5) & (Num($angle)<247.5)
+Case of 
+: (vals{$loc}="resize_mr")
+SET CURSOR(9005)
+: (vals{$loc}="resize_br")
+SET CURSOR(9004)
+: (vals{$loc}="resize_bm")
+SET CURSOR(9006)
+: (vals{$loc}="resize_bl")
+SET CURSOR(9003)
+: (vals{$loc}="resize_ml")
+SET CURSOR(9005)
+: (vals{$loc}="resize_tl")
+SET CURSOR(9004)
+: (vals{$loc}="resize_tm")
+SET CURSOR(9006)
+: (vals{$loc}="resize_tr")
+SET CURSOR(9003)
+Else 
+SET CURSOR(9002)
+End case 
+: (Num($angle)>=247.5) & (Num($angle)<292.5)
+Case of 
+: (vals{$loc}="resize_tr")
+SET CURSOR(9005)
+: (vals{$loc}="resize_mr")
+SET CURSOR(9004)
+: (vals{$loc}="resize_br")
+SET CURSOR(9006)
+: (vals{$loc}="resize_bm")
+SET CURSOR(9003)
+: (vals{$loc}="resize_bl")
+SET CURSOR(9005)
+: (vals{$loc}="resize_ml")
+SET CURSOR(9004)
+: (vals{$loc}="resize_tl")
+SET CURSOR(9006)
+: (vals{$loc}="resize_tm")
+SET CURSOR(9003)
+Else 
+SET CURSOR(9002)
+End case 
+: (Num($angle)>=292.5) & (Num($angle)<337.5)
+Case of 
+: (vals{$loc}="resize_tm")
+SET CURSOR(9005)
+: (vals{$loc}="resize_tr")
+SET CURSOR(9004)
+: (vals{$loc}="resize_mr")
+SET CURSOR(9006)
+: (vals{$loc}="resize_br")
+SET CURSOR(9003)
+: (vals{$loc}="resize_bm")
+SET CURSOR(9005)
+: (vals{$loc}="resize_bl")
+SET CURSOR(9004)
+: (vals{$loc}="resize_ml")
+SET CURSOR(9006)
+: (vals{$loc}="resize_tl")
+SET CURSOR(9003)
+Else 
+SET CURSOR(9002)
+End case 
+End case 
+
+vCursor:=True
+Else 
+If (vCursor)
+SET CURSOR
+vCursor:=False
+End if 
+End if 
+If ($button=1)
+If (releaseUndo=True)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+releaseUndo:=False
+End if 
+Case of 
+: (vResize#"")//Resizing
+SVG_UseResize (varPoint;valPoint)
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (drawSelection)
+//If (testflag=True)
+$realref:=SVG_Find_ID (svgRef;myid)
+
+If (((MouseX/zoomLevel)-diffX)<0)
+$widthVar:=String(Abs(((MouseX/zoomLevel)-diffX)))
+SVG_SET_ATTRIBUTES ($realref;"x";String((MouseX/zoomLevel)))
+Else 
+$widthVar:=String((MouseX/zoomLevel)-diffX)
+End if 
+
+If (((MouseY/zoomLevel)-diffY)<0)
+$heightVar:=String(Abs(((MouseY/zoomLevel)-diffY)))
+SVG_SET_ATTRIBUTES ($realref;"y";String((MouseY/zoomLevel)))
+Else 
+$heightVar:=String((MouseY/zoomLevel)-diffY)
+End if 
+
+SVG_SET_ATTRIBUTES ($realref;"width";$widthVar;"height";$heightVar)
+SVGTest:=SVG_Export_to_picture (svgRef)
+//End if 
+: (drawObject=1)//Drawing Rectangle
+//If (testflag=True)
+$realref:=SVG_Find_ID (svgRef;myid)
+
+If (((MouseX/zoomLevel)-diffX)<0)
+$widthVar:=String(Abs(((MouseX/zoomLevel)-diffX)))
+SVG_SET_ATTRIBUTES ($realref;"x";String((MouseX/zoomLevel)))
+Else 
+$widthVar:=String((MouseX/zoomLevel)-diffX)
+End if 
+
+If (((MouseY/zoomLevel)-diffY)<0)
+$heightVar:=String(Abs(((MouseY/zoomLevel)-diffY)))
+SVG_SET_ATTRIBUTES ($realref;"y";String((MouseY/zoomLevel)))
+Else 
+$heightVar:=String((MouseY/zoomLevel)-diffY)
+End if 
+
+SVG_SET_ATTRIBUTES ($realref;"width";$widthVar;"height";$heightVar)
+SVGTest:=SVG_Export_to_picture (svgRef)
+//End if 
+: (drawObject=2)// Drawing Ellipse
+$realref:=SVG_Find_ID (svgRef;myid)
+SVG_SET_ATTRIBUTES ($realref;"rx";String(Abs(MouseX-diffX));"ry";String(Abs(MouseY-diffY)))
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (drawObject=3)// Drawing Line
+$realref:=SVG_Find_ID (svgRef;myid)
+SVG_SET_ATTRIBUTES ($realref;"x2";String(Abs(MouseX));"y2";String(Abs(MouseY)))
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (drawObject=4)// Drawing Text
+//Do Nothing
+: (drawObject=5)// Drawing Circle
+$realref:=SVG_Find_ID (svgRef;myid)
+SVG_SET_ATTRIBUTES ($realref;"r";String(Abs(Square root(((MouseX-diffX)*(MouseX-diffX))+((MouseY-diffY)*(MouseY-diffY))))))
+SVGTest:=SVG_Export_to_picture (svgRef)
+: (drawObject=6)
+//Do Nothing
+: (drawObject=7)//Drawing Image
+$realref:=SVG_Find_ID (svgRef;myid)
+
+If (((MouseX/zoomLevel)-diffX)<0)
+$widthVar:=String(Abs(((MouseX/zoomLevel)-diffX)))
+SVG_SET_ATTRIBUTES ($realref;"x";String((MouseX/zoomLevel)))
+Else 
+$widthVar:=String((MouseX/zoomLevel)-diffX)
+End if 
+
+If (((MouseY/zoomLevel)-diffY)<0)
+$heightVar:=String(Abs(((MouseY/zoomLevel)-diffY)))
+SVG_SET_ATTRIBUTES ($realref;"y";String((MouseY/zoomLevel)))
+Else 
+$heightVar:=String((MouseY/zoomLevel)-diffY)
+End if 
+
+SVG_SET_ATTRIBUTES ($realref;"width";$widthVar;"height";$heightVar)
+SVGTest:=SVG_Export_to_picture (svgRef)
+
+
+Else //Movement
+C_TEXT($ref)
+//If (testflag=True)
+vxmove:=0
+vymove:=0
+$pos:=Find in array(selectedSVG;vLastClicked)
+If ($pos>0)
+$realref:=selectedSVG{$pos}
+$Parent:=DOM Get parent XML element($realref)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc=1)
+DOM GET XML CHILD NODES($Parent;parentvars;parentvals)
+$xloc:=((MouseX/zoomLevel)-diffX)
+$yloc:=((MouseY/zoomLevel)-diffY)
+For ($q;1;Size of array(parentvals))
+SVG_GET_ATTRIBUTES (parentvals{$q};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+$transform:=Find in array(vars;"transform")
+If ($transform>0)
+$transend:=Position(" ";vals{$transform};*)
+$rotation:=Substring(vals{$transform};1;$transend)
+Else 
+$rotation:="rotate(0 "
+End if 
+If ($xloc<0)
+$xloc:=0
+End if 
+If ($yloc<0)
+$yloc:=0
+End if 
+Case of 
+: (vals{$loc}="rect")
+$original:=parentvals{$q}
+SVG_SET_ATTRIBUTES (parentvals{$q};"stroke-dasharray";"5,3")
+SVG_SET_ATTRIBUTES (parentvals{$q};"x";String($xloc);"y";String($yloc))
+SVG_SET_ATTRIBUTES (parentvals{$q};"transform";$rotation+String($xloc)+","+String($yloc)+")")
+vxmove:=$xloc-Num(vals{$x})
+vymove:=$yloc-Num(vals{$y})
+: (vals{$loc}="text")
+SVG_SET_ATTRIBUTES (parentvals{$q};"x";String($xloc+2);"y";String($yloc+10))
+
+//08/01/02 DAM Added for text rotation with rect
+
+If ($rotation="rotate(180 ")
+SVG_SET_ATTRIBUTES (parentvals{$q};"transform";$rotation+String($xloc+2)+","+String($yloc)+")")
+Else 
+SVG_SET_ATTRIBUTES (parentvals{$q};"transform";$rotation+String($xloc+2)+","+String($yloc+10)+")")
+End if 
+
+End case 
+End for 
+Else 
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+$transform:=Find in array(vars;"transform")
+If ($transform>0)
+$transend:=Position(" ";vals{$transform};*)
+$rotation:=Substring(vals{$transform};1;$transend)
+Else 
+$rotation:="rotate(0 "
+End if 
+$xloc:=((MouseX/zoomLevel)-diffX)
+$yloc:=((MouseY/zoomLevel)-diffY)
+Case of 
+: (vals{$loc}="rect")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+vxmove:=$xloc-Num(vals{$x})
+vymove:=$yloc-Num(vals{$y})
+SVG_SET_ATTRIBUTES ($realref;"x";String($xloc);"y";String($yloc))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+: (vals{$loc}="text")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+vxmove:=$xloc-Num(vals{$x})
+vymove:=$yloc-Num(vals{$y})
+SVG_SET_ATTRIBUTES ($realref;"x";String($xloc);"y";String($yloc))
+: (vals{$loc}="circle")
+$x:=Find in array(vars;"cx")
+$y:=Find in array(vars;"cy")
+vxmove:=$xloc-Num(vals{$x})
+vymove:=$yloc-Num(vals{$y})
+SVG_SET_ATTRIBUTES ($realref;"cx";String($xloc);"cy";String($yloc))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+: (vals{$loc}="ellipse")
+$x:=Find in array(vars;"cx")
+$y:=Find in array(vars;"cy")
+vxmove:=$xloc-Num(vals{$x})
+vymove:=$yloc-Num(vals{$y})
+SVG_SET_ATTRIBUTES ($realref;"cx";String(MouseX-diffX);"cy";String(MouseY-diffY))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+: (vals{$loc}="image")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+vxmove:=$xloc-Num(vals{$x})
+vymove:=$yloc-Num(vals{$y})
+SVG_SET_ATTRIBUTES ($realref;"x";String($xloc);"y";String($yloc))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+SVG_SET_ATTRIBUTES (highlightObject;"x";String($xloc);"y";String($yloc))
+SVG_SET_ATTRIBUTES (highlightObject;"stroke-dasharray";"5,3")
+
+//$loc:=Find in array(vars;"selectedBorder")
+//$realref:=SVG_Find_ID (svgRef;vals{$loc})
+//
+End case 
+SVG_SET_ATTRIBUTES ($realref;"transform";$rotation+String($xloc)+","+String($yloc)+")")
+End if 
+
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+
+If (vals{$loc}="rect")
+$Parent:=DOM Get parent XML element($realref)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc<0)
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+SVG_ShowResize (varPoint;valPoint)
+Else 
+ARRAY TEXT(vars;0)
+ARRAY TEXT(vals;0)
+//SVG_ShowResize (varPoint;valPoint)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+End if 
+Else 
+SVG_ShowResize (varPoint;valPoint)
+End if 
+
+//SVG_ShowResize (varPoint;valPoint)
+
+//vrand:=String(vxmove)+" "+String(vymove)
+//For ($q;1;Size of array(resizeHandles))
+//SVG_GET_ATTRIBUTES (resizeHandles{$q};varPoint;valPoint)
+//$x:=Find in array(vars;"cx")
+//$y:=Find in array(vars;"cy")
+//$xloc:=Num(vals{$x})+vxmove
+//$yloc:=Num(vals{$y})+vymove
+//SVG_SET_ATTRIBUTES (resizeHandles{$q};"cx";String($xloc);"cy";String($yloc))
+//End for 
+
+For ($n;1;Size of array(selectedSVG))
+If (selectedSVG{$n}#vLastClicked)
+//If (myid#"")
+//$realref:=SVG_Find_ID (svgRef;myid)
+$realref:=selectedSVG{$n}
+$Parent:=DOM Get parent XML element($realref)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc=1)
+DOM GET XML CHILD NODES($Parent;parentvars;parentvals)
+//$xloc:=((MouseX/zoomLevel)-diffX)
+//$yloc:=((MouseY/zoomLevel)-diffY)
+For ($q;1;Size of array(parentvals))
+SVG_GET_ATTRIBUTES (parentvals{$q};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+$xloc:=Num(vals{$x})+vxmove
+$yloc:=Num(vals{$y})+vymove
+Case of 
+: (vals{$loc}="rect")
+$original:=parentvals{$q}
+SVG_SET_ATTRIBUTES (parentvals{$q};"stroke-dasharray";"5,3")
+// 14/12/12 DAM removed $xloc+2 and $yloc+10 to make objects move in the same direction
+SVG_SET_ATTRIBUTES (parentvals{$q};"x";String($xloc);"y";String($yloc))
+: (vals{$loc}="text")
+SVG_SET_ATTRIBUTES (parentvals{$q};"x";String($xloc);"y";String($yloc))
+End case 
+End for 
+Else 
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+//$xloc:=((MouseX/zoomLevel)-diffX)
+//$yloc:=((MouseY/zoomLevel)-diffY)
+Case of 
+: (vals{$loc}="rect")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+$xloc:=Num(vals{$x})+vxmove
+$yloc:=Num(vals{$y})+vymove
+SVG_SET_ATTRIBUTES ($realref;"x";String($xloc);"y";String($yloc))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+: (vals{$loc}="text")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+$xloc:=Num(vals{$x})+vxmove
+$yloc:=Num(vals{$y})+vymove
+SVG_SET_ATTRIBUTES ($realref;"x";String($xloc);"y";String($yloc))
+: (vals{$loc}="circle")
+$x:=Find in array(vars;"cx")
+$y:=Find in array(vars;"cy")
+$xloc:=Num(vals{$x})+vxmove
+$yloc:=Num(vals{$y})+vymove
+SVG_SET_ATTRIBUTES ($realref;"cx";String($xloc);"cy";String($yloc))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+: (vals{$loc}="ellipse")
+$x:=Find in array(vars;"cx")
+$y:=Find in array(vars;"cy")
+$xloc:=Num(vals{$x})+vxmove
+$yloc:=Num(vals{$y})+vymove
+SVG_SET_ATTRIBUTES ($realref;"cx";String(MouseX-diffX);"cy";String(MouseY-diffY))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+: (vals{$loc}="image")
+$x:=Find in array(vars;"x")
+$y:=Find in array(vars;"y")
+$xloc:=Num(vals{$x})+vxmove
+$yloc:=Num(vals{$y})+vymove
+SVG_SET_ATTRIBUTES ($realref;"x";String($xloc);"y";String($yloc))
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"5,3")
+SVG_SET_ATTRIBUTES (highlightObject;"x";String($xloc);"y";String($yloc))
+SVG_SET_ATTRIBUTES (highlightObject;"stroke-dasharray";"5,3")
+
+//$loc:=Find in array(vars;"selectedBorder")
+//$realref:=SVG_Find_ID (svgRef;vals{$loc})
+//
+End case 
+End if 
+
+//End if 
+End if 
+End for 
+End if 
+SVGTest:=SVG_Export_to_picture (svgRef)
+//DOM EXPORT TO FILE(svgRef;"C:\\users\\nicholas.wykes\\Desktop\\draw.xml")
+//end if
+End case 
+Else 
+
+If (vResize#"")
+vResize:=""
+End if 
+
+testflag:=False
+releaseUndo:=True
+If (myid#"")
+$realref:=SVG_Find_ID (svgRef;myid)
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+If (vals{$loc}#"text")
+SVG_SET_ATTRIBUTES ($realref;"stroke-dasharray";"")
+End if 
+If (drawSelection)
+//$drawx:=Find in array(vars;"x")
+//$drawy:=Find in array(vars;"y")
+$drawHeight:=Find in array(vars;"height")
+$drawWidth:=Find in array(vars;"width")
+ARRAY TEXT($arrIDs;0)
+DOM REMOVE XML ELEMENT($realref)
+$Success:=SVG Find element IDs by rect(SVGTest;drawX;drawY;Num(vals{$drawWidth});Num(vals{$drawHeight});$arrIDs)
+If (Size of array(selectedSVG)>0) & (Windows Ctrl down=False)
+For ($r;1;Size of array(selectedSVG))
+SVG_SET_ATTRIBUTES (selectedSVG{1};"stroke-width";"1")
+DELETE FROM ARRAY(selectedSVG;1)
+End for 
+End if 
+
+For ($r;1;Size of array($arrIDs))
+$realref:=SVG_Find_ID (svgRef;$arrIDs{$r})
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+If (vals{$loc}="text") | (vals{$loc}="ref")
+$Parent:=DOM Get parent XML element($realref)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc=1)
+DOM GET XML CHILD NODES($Parent;parentvars;parentvals)
+For ($q;1;Size of array(parentvals))
+SVG_GET_ATTRIBUTES (parentvals{$q};varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+Case of 
+: (vals{$loc}="rect")
+//SVG_SET_ATTRIBUTES (ParentvalPoint{$q};"stroke";"blue")
+SVG_SET_ATTRIBUTES (parentvals{$q};"stroke-width";"2")
+APPEND TO ARRAY(selectedSVG;parentvals{$q})
+End case 
+End for 
+Else 
+APPEND TO ARRAY(selectedSVG;$realref)
+End if 
+Else 
+SVG_SET_ATTRIBUTES ($realref;"stroke-width";"2")
+APPEND TO ARRAY(selectedSVG;$realref)
+End if 
+End for 
+
+
+End if 
+SVGTest:=SVG_Export_to_picture (svgRef)
+myid:=""
+End if 
+drawSelection:=False
+End if 
+: (Form event=On Double Clicked)
+
+C_LONGINT($myx;$myy)
+$myx:=MouseX
+$myy:=MouseY
+
+$ref:=SVG Find element ID by coordinates(SVGTest;$myx;$myy)
+If ($ref#"")
+$realref:=SVG_Find_ID (svgRef;$ref)
+$Parent:=DOM Get parent XML element($realref)
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$loc:=Find in array(vars;"unit")
+If ($loc#1)
+SVG_GET_ATTRIBUTES ($realref;varPoint;valPoint)
+$loc:=Find in array(vars;"type")
+If (vals{$loc}="text")
+$Text:=SVG_Get_text ($realref)
+$Text:=TextEdit ("Text to insert:";$Text)
+If (OK=1)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+SVG_SET_ATTRIBUTES ($realref;"font-family";asFont{asFont};"font-size";String(selectedFontSize))
+End if 
+End if 
+If (vals{$loc}="ref")
+$Text:=SVG_Get_text ($realref)
+$Text:=TextEdit ("Text to insert:";$Text)
+If (OK=1)
+DOM EXPORT TO VAR(svgRef;vtCommand)
+APPEND TO ARRAY(undoCommand;vtCommand)
+APPEND TO ARRAY(undoGroup;group)
+ARRAY TEXT(redoCommand;0)
+ARRAY TEXT(redoGroup;0)
+SVG_SET_ATTRIBUTES ($realref;"font-family";asFont{asFont};"font-size";String(selectedFontSize))
+End if 
+End if 
+End if 
+
+End if 
+: (Form event=On After Edit)
+drawObject:=0
+End case 
+Else 
+Case of 
+: (Form event=On Double Clicked)
+C_LONGINT($myx;$myy)
+$myx:=MouseX
+$myy:=MouseY
+$ref:=SVG Find element ID by coordinates(SVGTest;$myx;$myy)
+If ($ref#"")
+$refLoc:=Find in array(atObjects;$ref)
+$Parent:=DOM Get parent XML element(atObjectRef{$refLoc})
+SVG_GET_ATTRIBUTES ($Parent;varPoint;valPoint)
+$unitpos:=Find in array(varPoint->;"unit")
+If ($unitpos>0)
+$runitno:=valPoint->{$unitpos}
+QUERY([Unit];[Unit]RUnitNo=$runitno)
+$i:=0
+Case of 
+: ([Unit]Vacant=False)
+UNLOAD RECORD([Unit])
+CustProcess (Substring($runitno;6))
+: ([Unit]Status="Reserved")
+UNLOAD RECORD([Unit])
+ReserveProc (Substring($runitno;6))
+: ([Unit]Status="Vacant") & ([Unit]Vacant)
+Case of 
+: (<>sProduct="@R")
+$i:=ConfirmThree (Get localized string("Do what with vacant appliance")+" "+[Unit]UnitNo+"?";Get localized string("New Rental");Get localized string("Change Status");Get localized string("Cancel"))
+: (<>sProduct="@B")
+$i:=ConfirmThree (Get localized string("Do what with vacant berth")+" "+[Unit]UnitNo+"?";Get localized string("New Arrival");Get localized string("Change Status");Get localized string("Cancel"))
+: (<>sProduct="@C")
+$i:=ConfirmThree (Get localized string("Do what with vacant space")+" "+[Unit]UnitNo+"?";Get localized string("New MoveIn");Get localized string("Change Status");Get localized string("Cancel"))
+Else 
+//28/05/13 DAM Commented the variable as it is not used anywhere
+//If (asUnit#0)
+$i:=ConfirmThree (Get localized string("Do what with vacant unit")+" "+[Unit]UnitNo+"?";Get localized string("New MoveIn");Get localized string("Change Status");Get localized string("Cancel"))
+//End if 
+End case 
+
+If ($i=1)
+UNLOAD RECORD([Unit])
+CustProcess (Substring($runitno;6))
+End if 
+Else 
+$i:=2
+End case 
+If ($i=2)
+bAddNew:=False
+Case of 
+: (<>sProduct="@R")
+vTitle:=Get localized string("Modify Appliances...")
+vLeg1:=Get localized string("Appl No")
+vLeg2:=Get localized string("Make/Model")
+vLeg3:=Get localized string("Serial Number")
+vLeg4:=Get localized string("Cost Price")
+vLeg5:=Get localized string("Depreciation Rate")
+vLeg7:=Get localized string("Costs")
+vLeg13:=Get localized string("Sale Price")
+vLeg9:=Get localized string("Purchase Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=Substring(Get localized string("Invoice Number:");1;Length(Get localized string("Invoice Number:"))-1)
+vLeg12:=Get localized string("Disposal Date")
+vHeight:=""
+OBJECT SET VISIBLE([Unit]Height;False)
+: (<>sProduct="@B")
+vTitle:=Get localized string("Modify Berths...")
+vLeg1:=Get localized string("Berth No")
+vLeg2:=Get localized string("Berth Size LxW")
+vLeg3:=Get localized string("Door Size WxH")
+vLeg4:=Get localized string("Area Size")
+vLeg5:=Get localized string("Length")
+vLeg7:=Get localized string("Dimensions")
+vLeg13:=Get localized string("Width")
+vLeg9:=Get localized string("Creation Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=""
+vLeg12:=Get localized string("End Date")
+vHeight:="Water Depth"
+: (<>sProduct="@C")
+vTitle:=Get localized string("Modify Spaces...")
+vLeg1:=Get localized string("Space No")
+vLeg2:=Get localized string("Space Size LxW")
+vLeg3:=Get localized string("Door Size WxH")
+vLeg4:=Get localized string("Area Size")
+vLeg5:=Get localized string("Length")
+vLeg7:=Get localized string("Dimensions")
+vLeg13:=Get localized string("Width")
+vLeg9:=Get localized string("Creation Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=""
+vLeg12:=Get localized string("End Date")
+vHeight:="Height"
+Else 
+vTitle:=Get localized string("Modify Units...")
+vLeg1:=Get localized string("Unit No")
+vLeg2:=Get localized string("Unit Size LxW")
+vLeg3:=Get localized string("Door Size WxH")
+vLeg4:=Get localized string("Area Size")
+vLeg5:=Get localized string("Length")
+vLeg7:=Get localized string("Dimensions")
+vLeg13:=Get localized string("Width")
+vLeg9:=Get localized string("Creation Date")
+vLeg10:=Get localized string("Maintenance Comments :")
+vLeg11:=""
+vLeg12:=Get localized string("End Date")
+vHeight:="Height"
+End case 
+bStop:=1
+SET AUTOMATIC RELATIONS(True;False)
+FORM SET INPUT([Unit];"UnitIn")
+READ WRITE([Unit])
+LOAD RECORD([Unit])
+MODIFY RECORD([Unit])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+SET AUTOMATIC RELATIONS(False;False)
+End if 
+End if 
+End if 
+End case 
+End if 
+

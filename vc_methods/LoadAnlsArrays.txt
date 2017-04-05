@@ -1,0 +1,249 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 14/4/10 Modified display of Analysis Description to use the $Display variable to make sure other fields are hidden and not be visible in display
+C_BOOLEAN($1;$2;$3;$InvItem)//True for Charges;False for Receipts / $2 = True for Transactions;False for Other / $3 = Inv Items Only
+C_LONGINT($i;$j;$k;$m;$r;$Display)//$Display 1=Hierarchial List, 2=DropDown, 3=Analysis Description field - USED FOR CHARGES ONLY
+C_LONGINT(hlList;$hSubList)
+C_TEXT($resp;$temp11)
+
+If (Count parameters<=2)
+$InvItem:=False
+Else 
+$InvItem:=True
+End if 
+
+$Display:=2//Default to dropdown in case not set
+If ($1)//Charges
+QUERY([MarketingTypes];[MarketingTypes]ListCode="AC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+If (Records in selection([MarketingTypes])>0) & ($2)
+hlList:=New list
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+For ($i;1;Records in selection([MarketingTypes]))
+If (Length([Trxs]AgreeNo)>=5)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]AnalysisCategory=[MarketingTypes]Description;*)
+If ($InvItem)
+QUERY([Analysis]; & ;[Analysis]InvItem=True;*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+If (vtReverse=True)
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#1)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+End if 
+If ([Reservation]RReserveNo>"")
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#1;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#5)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#2;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#6)
+End if 
+If (Records in selection([Analysis])>0)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+$hSubList:=New list
+For ($j;1;Records in selection([Analysis]))
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+APPEND TO LIST($hSubList;[Analysis]Description;$k)
+NEXT RECORD([Analysis])
+End for 
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+
+Else //***** Added by Hamid - 31/3/2015 - 8445
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False;*)
+QUERY([MerchPlan]; & ;[MerchPlan]InventoryPack=True;*)
+QUERY([MerchPlan]; & ;[MerchPlan]AnalysisCategory=[MarketingTypes]Description)
+
+
+If (Records in selection([MerchPlan])>0)
+$hSubList:=New list
+For ($j;1;Records in selection([MerchPlan]))
+$k:=Record number([MerchPlan])
+If ($k=0)
+$k:=32000
+End if 
+APPEND TO LIST($hSubList;[MerchPlan]Description;$k)
+NEXT RECORD([MerchPlan])
+End for 
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+End if 
+
+End if 
+NEXT RECORD([MarketingTypes])
+End for 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+SELECT LIST ITEMS BY REFERENCE(hlList;$k)
+$Display:=1
+$r:=List item position(hlList;$k)
+If ($r<=0)
+OBJECT SET ENTERABLE(*;"@";False)
+OBJECT SET ENTERABLE(vQtyMinus;False)
+OBJECT SET ENTERABLE(vQtyPlus;False)
+OBJECT SET ENTERABLE(vPlus;False)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET VISIBLE(aDesc;False)
+OBJECT SET ENABLED(bSet;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bAccept;False)
+$Display:=3
+Else 
+OBJECT SET VISIBLE([Analysis]Description;False)
+End if 
+Else 
+If ($2)
+$Display:=2
+End if 
+If (Length([Trxs]AgreeNo)>=5) & ($2)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+If (vtReverse=True)
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#1)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+End if 
+If ([Reservation]RReserveNo>"")
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#1;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#5)
+Else 
+QUERY SELECTION([Analysis];[Analysis]ChargeShow#2;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#3;*)
+QUERY SELECTION([Analysis]; & ;[Analysis]ChargeShow#6)
+End if 
+
+
+
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asCharges;0)
+ARRAY TEXT(asChargeDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asCharges;[Analysis]Description;asChargeDesc)
+If ($2)
+asCharges:=Find in array(asCharges;[Trxs]AnalysisCode)
+If (asCharges>0)
+asChargeDesc:=asCharges
+Else 
+OBJECT SET ENTERABLE(*;"@";False)
+OBJECT SET ENTERABLE(vQtyMinus;False)
+OBJECT SET ENTERABLE(vQtyPlus;False)
+OBJECT SET ENTERABLE(vPlus;False)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET VISIBLE(aDesc;False)
+OBJECT SET ENABLED(bSet;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET ENABLED(bBoth;False)
+OBJECT SET ENABLED(bAccept;False)
+$Display:=3
+End if 
+End if 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+End if 
+Case of 
+: ($Display=1)
+OBJECT SET VISIBLE(*;"Field8";True)//Hierarchial List
+OBJECT SET VISIBLE(*;"Field82";False)//Regular dropdown
+OBJECT SET VISIBLE(*;"Field3";False)//Plain field containing Analysis Description
+: ($Display=2)
+OBJECT SET VISIBLE(*;"Field8";False)//Hierarchial List
+OBJECT SET VISIBLE(*;"Field82";True)//Regular dropdown
+OBJECT SET VISIBLE(*;"Field3";False)//Plain field containing Analysis Description
+: ($Display=3)
+OBJECT SET VISIBLE(*;"Field8";False)//Hierarchial List
+OBJECT SET VISIBLE(*;"Field82";False)//Regular dropdown
+OBJECT SET VISIBLE(*;"Field3";True)//Plain field containing Analysis Description
+End case 
+Else //Receipts
+
+If (Length([Trxs]AgreeNo)>=5) & ($2)
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+End if 
+
+
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+If (vtReverse=True)
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#1)
+
+Else 
+QUERY SELECTION([Analysis];[Analysis]ReceiptShow#2)
+End if 
+
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asReceipts;0)
+ARRAY TEXT(asReceiptDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asReceipts;[Analysis]Description;asReceiptDesc)
+asReceipts:=Find in array(asReceipts;[Trxs]AnalysisCode)
+
+$temp11:=[Trxs]AnalysisCode
+
+/////-------------
+
+If (asReceipts>0)
+asReceiptDesc:=asReceipts
+OBJECT SET VISIBLE(*;"Field82";False)
+Else 
+OBJECT SET VISIBLE(asReceiptDesc;False)
+OBJECT SET VISIBLE(*;"Field82";True)
+OBJECT SET ENTERABLE(*;"@";False)
+OBJECT SET ENTERABLE(vPlus;False)
+OBJECT SET ENTERABLE(vMinus;False)
+OBJECT SET VISIBLE(aDesc;False)
+OBJECT SET ENABLED(bSet;False)
+OBJECT SET VISIBLE(bLoad;False)
+OBJECT SET VISIBLE(bPrtRec;False)
+OBJECT SET VISIBLE(bEmailReceipt;False)
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET ENABLED(bAccept;False)
+End if 
+QUERY([Analysis];[Analysis]Code=$temp11)//[Trxs]AnalysisCode)
+End if 

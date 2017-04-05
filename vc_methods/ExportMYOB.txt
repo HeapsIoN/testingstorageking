@@ -1,0 +1,512 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//moved the "Sum Receipts for Receivables Account?" to the top of the loop so only asks once whether you want to sum - 14/3/06 NLT
+SetFacility 
+C_TEXT($0)//Contains the resulting journal
+C_LONGINT($i;$j;$Neg)
+C_TIME(vDocRef)
+C_TEXT($t;$cr;$Ext)
+C_BOOLEAN($Sum;$1)
+C_REAL($CreditExTax;$CreditIncTax;$DebitExTax;$DebitIncTax;$TaxAmt)
+$0:=""
+$sp:="  "
+$t:=Char(9)
+$cr:=Char(13)+Char(10)
+$Sum:=False
+$CreditExTax:=0
+$CreditIncTax:=0
+$DebitExTax:=0
+$DebitIncTax:=0
+$TaxAmt:=0
+$TotExTax:=0
+$TotIncTax:=0
+vLoc:=""
+PLATFORM PROPERTIES($Platform)
+
+If ([Facility]AcctgSystem="MN")
+If ($Platform=2)
+$Ext:="TEXT"
+Else 
+$Ext:="TXT"
+End if 
+If ($1=False)//one output file only
+vDocRef:=Create document("";$Ext)
+If ([Journal]JrnlType="REC")// only send header once
+SEND PACKET(vDocRef;"Deposit Account"+$t+"Date"+$t+"Co./Last Name"+$t+"Allocation Account #"+$t+"Ex-Tax Amount"+$t+"Inc-Tax Amount"+$t+"Tax Code"+$t+"Payment Method"+$cr)//let MYOB assign default deposit ID numbers
+End if 
+End if 
+If (OK=1)
+CREATE SET([Journal];"Jnls")
+$Jnls:=Records in set("Jnls")
+For ($i;1;$Jnls)
+USE SET("Jnls")
+ORDER BY([Journal];[Journal]JrnlType;<)
+FIRST RECORD([Journal])
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]AcctNo>"")
+CREATE SET([CashBookTrxs];"CashBookTrxs")
+Case of 
+: ([Journal]JrnlType="REV")
+For ($n;1;Size of array(<>asSiteCodes))
+USE SET("CashBookTrxs")
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+If ($1=True)
+$n:=Size of array(<>asSiteCodes)
+If ($i>1)
+CLOSE DOCUMENT(vDocRef)
+Else 
+vLoc:=Select folder("Save Export";Get 4D folder(Current resources folder))
+End if 
+vShortname:=Position(",";[CashBookTrxs]Description)
+$Name:=vLoc+[Journal]JrnlType+Substring([CashBookTrxs]Description;vShortname+1;5)+Replace string(String([Journal]JrnlDate);"/";"")
+vDocRef:=Create document($Name;$Ext)
+Else 
+QUERY SELECTION BY FORMULA([CashBookTrxs];Substring([CashBookTrxs]Description;((Position(",";[CashBookTrxs]Description))+1);5)=<>asSiteCodes{$n})
+vShortname:=Position(",";[CashBookTrxs]Description)
+End if 
+ORDER BY([CashBookTrxs];[CashBookTrxs]AcctNo;>)
+FIRST RECORD([CashBookTrxs])
+$Neg:=1
+$AcctNo:=[CashBookTrxs]AcctNo
+$TotalTax:=Sum([CashBookTrxs]GrossAmt)-Sum([CashBookTrxs]Amount)
+If (Records in selection([CashBookTrxs])>0)
+$BAS:="S"//think this either has to be P or S, for Purchase or Sale on the Bas Reporting.
+//*** Modified by Hamid - 8543
+SEND PACKET(vDocRef;"{}"+$cr)
+SEND PACKET(vDocRef;"Journal Number"+$t+"Date"+$t+"Memo"+$t+"GST (BAS) Reporting"+$t+"Inclusive"+$t+"Account Number"+$t+"Is Credit"+$t+"AmountJob"+$t+"Tax Code"+$t+"Tax Amount"+$t+"Allocation MemoCategory"+$t+"Is Year-End Adjustment"+$cr)
+//SEND PACKET(vDocRef;"Date"+$t+"Memo"+$t+"GST [BAS] Reporting"+$t+"AccountNum"+$t+"Debit Ex-Tax"+$t+"Debit Inc-Tax"+$t+"Credit Ex-Tax"+$t+"Credit Inc-Tax"+$t+"Tax Code"+$t+"GST Amount"+$cr)
+For ($j;1;Records in selection([CashBookTrxs]))
+[CashBookTrxs]Amount:=[CashBookTrxs]Amount*$Neg
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+If (<>sProduct="M@") & (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+$TaxAmt:=$TaxAmt+(([CashBookTrxs]GrossAmt-[CashBookTrxs]Amount)*(-1))
+
+If ($TaxAmt=0)
+If ([ChartAccts]AcctType="D")//if debtors account
+$TaxCode:="N-T"
+Else 
+$TaxCode:="FRE"//GST Free;  "N-T"  in MYOB means not reportable
+End if 
+Else 
+$TaxCode:="GST"//standard tax rate
+End if 
+$Memo:="Income Journal"
+vShortname:=Position(",";[CashBookTrxs]Description)
+If ($AcctNo=[CashBookTrxs]AcctNo)
+$TotExTax:=$TotExTax+[CashBookTrxs]Amount
+$TotIncTax:=$TotIncTax+[CashBookTrxs]GrossAmt
+Else 
+$TotExTax:=[CashBookTrxs]Amount
+$TotIncTax:=[CashBookTrxs]GrossAmt
+End if 
+$Date:=[CashBookTrxs]TrxDate
+NEXT RECORD([CashBookTrxs])
+If ($AcctNo#[CashBookTrxs]AcctNo)
+If ($TotExTax>0)
+$DebitExTax:=$TotExTax
+$DebitIncTax:=$TotIncTax
+$CreditExTax:=0
+$CreditIncTax:=0
+$DebCer:="N"
+Else 
+$CreditExTax:=$TotExTax*(-1)
+$CreditIncTax:=$TotIncTax*(-1)
+$DebitExTax:=0
+$DebitIncTax:=0
+$DebCer:="Y"
+End if 
+If ([ChartAccts]AcctType="D")
+$DebitExTax:=$DebitExTax-($TotalTax*(-1))
+End if 
+
+//If ($TaxAmt<0)  //commented by eugene, wasn't in v13
+//$TaxAmt:=$TaxAmt*(-1)
+//End if 
+
+//**-by Hamid-31/8/2015--9702 & 9706
+If ([Facility]AcctgSystem="MN")
+If ($TotIncTax<0)
+$TotIncTax:=$TotIncTax*(-1)
+End if 
+
+If ($DebCer="Y") & ($TaxCode="GST")
+$TotIncTax:=$TotIncTax-$TaxAmt
+End if 
+
+////////fb10320///////
+If ($DebCer="N") & ($TaxCode="GST")
+$TotIncTax:=$TotIncTax+$TaxAmt
+End if 
+
+End if 
+//**-
+SEND PACKET(vDocRef;String([Journal]JournalNo)+$t+GetDateString ($Date;5)+$t+$Memo+$t+$BAS+$t+"X"+$t+$AcctNo+$t+$DebCer+$t+String($TotIncTax;"$#,###,##0.00")+$t+$TaxCode+$t+String($TaxAmt;"$#,###,##0.00")+$t+"N"+$t+""+$cr)
+
+//SEND PACKET(vDocRef;GetDateString ($Date;3)+$t+$Memo+$t+$BAS+$t+$AcctNo+$t+String($DebitExTax;"$#,###,##0.00")+$t+String($DebitIncTax;"$#,###,##0.00")+$t)
+//SEND PACKET(vDocRef;String($CreditExTax;"$#,###,##0.00")+$t+String($CreditIncTax;"$#,###,##0.00")+$t+$TaxCode+$t+String($TaxAmt;"$#,###,##0.00")+$cr)
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;5)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+$CreditExTax:=0
+$CreditIncTax:=0
+$DebitExTax:=0
+$DebitIncTax:=0
+$TaxAmt:=0
+$TotExTax:=0
+$TotIncTax:=0
+End if 
+$AcctNo:=[CashBookTrxs]AcctNo
+End for 
+End if 
+End if 
+End for 
+SEND PACKET(vDocRef;$cr+$cr)
+$0:=$0+$cr+$cr
+: ([Journal]JrnlType="REC") & (Records in selection([CashBookTrxs])>0)
+For ($n;1;Size of array(<>asFacilities))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+If ($1=True)
+$n:=Size of array(<>asFacilities)
+If ($i>1)
+CLOSE DOCUMENT(vDocRef)
+Else 
+vLoc:=Select folder("Save Export";Get 4D folder(Current resources folder))
+End if 
+FIRST RECORD([CashBookTrxs])
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+vShortname:=Position(",";[CashBookTrxs]Description)
+//NameExportDoc ("Receipts")
+vDocRef:=Create document(vLoc+[Journal]JrnlType+Substring([CashBookTrxs]Description;vShortname+1;5)+Replace string(String([Journal]JrnlDate);"/";"");$Ext)
+SEND PACKET(vDocRef;"Deposit Account"+$t+"Date"+$t+"Co./Last Name"+$t+"Allocation Account #"+$t+"Ex-Tax Amount"+$t+"Inc-Tax Amount"+$t+"Tax Code"+$t+"Payment Method"+$cr)//let MYOB assign default deposit ID numbers
+Else 
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position((<>asFacilities{$n}+",");[CashBookTrxs]Description)>0)
+FIRST RECORD([CashBookTrxs])
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+vShortname:=Position(",";[CashBookTrxs]Description)
+End if 
+If (Records in selection([CashBookTrxs])>0)
+//vShortname:=Position(",";[CashBookTrxs]Description)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")//need to know primary bank account
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=Substring([CashBookTrxs]Description;vShortname+1;5))//◊asSiteCodes{$n})  `[Facility]FacilityCode  `◊asSiteCodes{$o})
+End if 
+$BankAcc:=[ChartAccts]AcctNo
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=Substring([CashBookTrxs]Description;vShortname+1;5))//◊asSiteCodes{$n})  `[Facility]FacilityCode  `◊asSiteCodes{$o})
+End if 
+$IncomeAcc:=[ChartAccts]AcctNo
+For ($q;1;Records in selection([CashBookTrxs]))
+vShortname:=Position(",";[CashBookTrxs]Description)
+$Desc:=Substring([CashBookTrxs]Description;(vShortname+1))
+$Pos:=Position(",";$Desc)
+$GLCode:=Substring($Desc;1;($Pos-1))
+$Desc:=Substring($Desc;($Pos+1))
+QUERY([Supplier];[Supplier]SupplierCode=$GLCode)
+If ([Supplier]Phone#"")
+$Item:=[Supplier]Phone
+Else 
+$Item:=[Supplier]SupplierCode
+End if 
+$Amt:=[CashBookTrxs]Amount
+$TaxCode:="N-T"
+SEND PACKET(vDocRef;$BankAcc+$t+GetDateString ([CashBookTrxs]TrxDate;5)+$t+Substring([CashBookTrxs]Description;1;vShortname-1)+$t+$t+String($Amt)+$t+String($Amt)+$t+$t+$cr)
+SEND PACKET(vDocRef;$t+GetDateString ([CashBookTrxs]TrxDate;5)+$t+Substring([CashBookTrxs]Description;1;vShortname-1)+$t+[ChartAccts]AcctNo+$t+String($Amt)+$t+String($Amt)+$t+$TaxCode+$t+$Desc+$cr+$cr)
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End if 
+End for 
+: ([Journal]JrnlType="PRE")
+For ($n;1;Size of array(<>asSiteCodes))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+$Memo:="Prepaid Jnl"
+$Date:=[Journal]JrnlDate
+$BAS:="S"
+$TaxCode:="N-T"
+$TaxAmt:=0
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]AcctNo>"")
+If ($1=True)
+$n:=Size of array(<>asSiteCodes)
+If ($i>1)
+CLOSE DOCUMENT(vDocRef)
+Else 
+vLoc:=Select folder("Save Export";Get 4D folder(Current resources folder))
+End if 
+vShortname:=Position(",";[CashBookTrxs]Description)
+//NameExportDoc ("Prepaid")
+vDocRef:=Create document(vLoc+[Journal]JrnlType+Substring([CashBookTrxs]Description;vShortname+1;5)+Replace string(String([Journal]JrnlDate);"/";"");$Ext)
+Else 
+QUERY SELECTION BY FORMULA([CashBookTrxs];Substring([CashBookTrxs]Description;((Position(",";[CashBookTrxs]Description))+1);5)=<>asSiteCodes{$n})
+vShortname:=Position(",";[CashBookTrxs]Description)
+End if 
+For ($j;1;Records in selection([CashBookTrxs]))
+If ([CashBookTrxs]Amount>0)
+$DebitExTax:=[CashBookTrxs]Amount
+$DebitIncTax:=[CashBookTrxs]Amount
+$CashBookTrxsAmount:=[CashBookTrxs]Amount
+$CreditExTax:=0
+$CreditIncTax:=0
+$DebCer:="N"
+Else 
+$DebitExTax:=0
+$DebitIncTax:=0
+$CreditExTax:=[CashBookTrxs]Amount*(-1)
+$CreditIncTax:=[CashBookTrxs]Amount*(-1)
+$CashBookTrxsAmount:=[CashBookTrxs]Amount*(-1)
+$DebCer:="Y"
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+//SEND PACKET(vDocRef;GetDateString ($Date;3)+$t+$Memo+$t+$BAS+$t+[ChartAccts]AcctNo+$t+String($DebitExTax;"$#,###,##0.00")+$t+String($DebitIncTax;"$#,###,##0.00")+$t)
+//SEND PACKET(vDocRef;String($CreditExTax;"$#,###,##0.00")+$t+String($CreditIncTax;"$#,###,##0.00")+$t+$TaxCode+$t+String($TaxAmt;"$#,###,##0.00")+$cr)
+SEND PACKET(vDocRef;String([Journal]JournalNo)+$t+GetDateString ($Date;5)+$t+$Memo+$t+$BAS+$t+"X"+$t+[CashBookTrxs]AcctNo+$t+$DebCer+$t+String($CashBookTrxsAmount)+$t+$TaxCode+$t+String($TaxAmt;"$#,###,##0.00")+$t+"N"+$t+""+Char(13)+Char(10))
+
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;5)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+//End case 
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End for 
+End case 
+REMOVE FROM SET([Journal];"Jnls")
+If ($1=True)
+CLOSE DOCUMENT(vDocRef)
+End if 
+End for 
+CLOSE DOCUMENT(vDocRef)
+AlertMessage (Get localized string("Export process complete!"))
+CLEAR SET("Jnls")
+CLEAR SET("CashBookTrxs")
+AlertMessage (Get localized string("Export Complete!"))
+End if 
+Else 
+PLATFORM PROPERTIES($Platform)
+If ($Platform=2)
+$Ext:="TEXT"
+Else 
+$Ext:="TXT"
+End if 
+If ($1=False)//one output file only
+vDocRef:=Create document("";$Ext)
+If ([Journal]JrnlType="REC")// only send header once
+SEND PACKET(vDocRef;"Deposit Account"+$t+"Date"+$t+"Co./Last Name"+$t+"Allocation Account #"+$t+"Ex-Tax Amount"+$t+"Inc-Tax Amount"+$t+"Tax Code"+$t+"Payment Method"+$cr)//let MYOB assign default deposit ID numbers
+End if 
+End if 
+If (OK=1)
+CREATE SET([Journal];"Jnls")
+$Jnls:=Records in set("Jnls")
+For ($i;1;$Jnls)
+USE SET("Jnls")
+ORDER BY([Journal];[Journal]JrnlType;<)
+FIRST RECORD([Journal])
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]AcctNo>"")
+CREATE SET([CashBookTrxs];"CashBookTrxs")
+Case of 
+: ([Journal]JrnlType="REV")
+For ($n;1;Size of array(<>asSiteCodes))
+USE SET("CashBookTrxs")
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+If ($1=True)
+$n:=Size of array(<>asSiteCodes)
+If ($i>1)
+CLOSE DOCUMENT(vDocRef)
+Else 
+vLoc:=Select folder("Save Export";Get 4D folder(Current resources folder))
+End if 
+vShortname:=Position(",";[CashBookTrxs]Description)
+$Name:=vLoc+[Journal]JrnlType+Substring([CashBookTrxs]Description;vShortname+1;5)+Replace string(String([Journal]JrnlDate);"/";"")
+vDocRef:=Create document($Name;$Ext)
+Else 
+QUERY SELECTION BY FORMULA([CashBookTrxs];Substring([CashBookTrxs]Description;((Position(",";[CashBookTrxs]Description))+1);5)=<>asSiteCodes{$n})
+vShortname:=Position(",";[CashBookTrxs]Description)
+End if 
+ORDER BY([CashBookTrxs];[CashBookTrxs]AcctNo;>)
+FIRST RECORD([CashBookTrxs])
+$Neg:=1
+$AcctNo:=[CashBookTrxs]AcctNo
+$TotalTax:=Sum([CashBookTrxs]GrossAmt)-Sum([CashBookTrxs]Amount)
+If (Records in selection([CashBookTrxs])>0)
+$BAS:="S"//think this either has to be P or S, for Purchase or Sale on the Bas Reporting.
+SEND PACKET(vDocRef;"Date"+$t+"Memo"+$t+"GST [BAS] Reporting"+$t+"AccountNum"+$t+"Debit Ex-Tax"+$t+"Debit Inc-Tax"+$t+"Credit Ex-Tax"+$t+"Credit Inc-Tax"+$t+"Tax Code"+$t+"GST Amount"+$cr)
+For ($j;1;Records in selection([CashBookTrxs]))
+[CashBookTrxs]Amount:=[CashBookTrxs]Amount*$Neg
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+If (<>sProduct="M@") & (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+$TaxAmt:=$TaxAmt+(([CashBookTrxs]GrossAmt-[CashBookTrxs]Amount)*(-1))
+If ($TaxAmt=0)
+If ([ChartAccts]AcctType="D")//if debtors account
+$TaxCode:="N-T"
+Else 
+$TaxCode:="FRE"//GST Free;  "N-T"  in MYOB means not reportable
+End if 
+Else 
+$TaxCode:="GST"//standard tax rate
+End if 
+$Memo:="Income Journal"
+vShortname:=Position(",";[CashBookTrxs]Description)
+If ($AcctNo=[CashBookTrxs]AcctNo)
+$TotExTax:=$TotExTax+[CashBookTrxs]Amount
+$TotIncTax:=$TotIncTax+[CashBookTrxs]GrossAmt
+Else 
+$TotExTax:=[CashBookTrxs]Amount
+$TotIncTax:=[CashBookTrxs]GrossAmt
+End if 
+$Date:=[CashBookTrxs]TrxDate
+NEXT RECORD([CashBookTrxs])
+If ($AcctNo#[CashBookTrxs]AcctNo)
+If ($TotExTax>0)
+$DebitExTax:=$TotExTax
+$DebitIncTax:=$TotIncTax
+$CreditExTax:=0
+$CreditIncTax:=0
+Else 
+$CreditExTax:=$TotExTax*(-1)
+$CreditIncTax:=$TotIncTax*(-1)
+$DebitExTax:=0
+$DebitIncTax:=0
+End if 
+If ([ChartAccts]AcctType="D")
+$DebitExTax:=$DebitExTax-($TotalTax*(-1))
+End if 
+If ($TaxAmt<0)
+$TaxAmt:=$TaxAmt*(-1)
+End if 
+SEND PACKET(vDocRef;GetDateString ($Date;3)+$t+$Memo+$t+$BAS+$t+$AcctNo+$t+String($DebitExTax;"$#,###,##0.00")+$t+String($DebitIncTax;"$#,###,##0.00")+$t)
+SEND PACKET(vDocRef;String($CreditExTax;"$#,###,##0.00")+$t+String($CreditIncTax;"$#,###,##0.00")+$t+$TaxCode+$t+String($TaxAmt;"$#,###,##0.00")+$cr)
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;3)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+$CreditExTax:=0
+$CreditIncTax:=0
+$DebitExTax:=0
+$DebitIncTax:=0
+$TaxAmt:=0
+$TotExTax:=0
+$TotIncTax:=0
+End if 
+$AcctNo:=[CashBookTrxs]AcctNo
+End for 
+End if 
+End if 
+End for 
+SEND PACKET(vDocRef;$cr+$cr)
+$0:=$0+$cr+$cr
+: ([Journal]JrnlType="REC") & (Records in selection([CashBookTrxs])>0)
+For ($n;1;Size of array(<>asFacilities))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+If ($1=True)
+$n:=Size of array(<>asFacilities)
+If ($i>1)
+CLOSE DOCUMENT(vDocRef)
+Else 
+vLoc:=Select folder("Save Export";Get 4D folder(Current resources folder))
+End if 
+FIRST RECORD([CashBookTrxs])
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+vShortname:=Position(",";[CashBookTrxs]Description)
+//NameExportDoc ("Receipts")
+vDocRef:=Create document(vLoc+[Journal]JrnlType+Substring([CashBookTrxs]Description;vShortname+1;5)+Replace string(String([Journal]JrnlDate);"/";"");$Ext)
+SEND PACKET(vDocRef;"Deposit Account"+$t+"Date"+$t+"Co./Last Name"+$t+"Allocation Account #"+$t+"Ex-Tax Amount"+$t+"Inc-Tax Amount"+$t+"Tax Code"+$t+"Payment Method"+$cr)//let MYOB assign default deposit ID numbers
+Else 
+QUERY SELECTION BY FORMULA([CashBookTrxs];Position((<>asFacilities{$n}+",");[CashBookTrxs]Description)>0)
+FIRST RECORD([CashBookTrxs])
+ORDER BY([CashBookTrxs];[CashBookTrxs]Amount;<)
+vShortname:=Position(",";[CashBookTrxs]Description)
+End if 
+If (Records in selection([CashBookTrxs])>0)
+//vShortname:=Position(",";[CashBookTrxs]Description)
+QUERY([ChartAccts];[ChartAccts]AcctType="B1")//need to know primary bank account
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=Substring([CashBookTrxs]Description;vShortname+1;5))//◊asSiteCodes{$n})  `[Facility]FacilityCode  `◊asSiteCodes{$o})
+End if 
+$BankAcc:=[ChartAccts]AcctNo
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+If (Records in selection([ChartAccts])>1)
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=Substring([CashBookTrxs]Description;vShortname+1;5))//◊asSiteCodes{$n})  `[Facility]FacilityCode  `◊asSiteCodes{$o})
+End if 
+$IncomeAcc:=[ChartAccts]AcctNo
+For ($q;1;Records in selection([CashBookTrxs]))
+vShortname:=Position(",";[CashBookTrxs]Description)
+$Desc:=Substring([CashBookTrxs]Description;(vShortname+1))
+$Pos:=Position(",";$Desc)
+$GLCode:=Substring($Desc;1;($Pos-1))
+$Desc:=Substring($Desc;($Pos+1))
+QUERY([Supplier];[Supplier]SupplierCode=$GLCode)
+If ([Supplier]Phone#"")
+$Item:=[Supplier]Phone
+Else 
+$Item:=[Supplier]SupplierCode
+End if 
+$Amt:=[CashBookTrxs]Amount
+$TaxCode:="N-T"
+SEND PACKET(vDocRef;$BankAcc+$t+GetDateString ([CashBookTrxs]TrxDate;3)+$t+Substring([CashBookTrxs]Description;1;vShortname-1)+$t+$t+String($Amt)+$t+String($Amt)+$t+$t+$cr)
+SEND PACKET(vDocRef;$t+GetDateString ([CashBookTrxs]TrxDate;3)+$t+Substring([CashBookTrxs]Description;1;vShortname-1)+$t+[ChartAccts]AcctNo+$t+String($Amt)+$t+String($Amt)+$t+$TaxCode+$t+$Desc+$cr+$cr)
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End if 
+End for 
+: ([Journal]JrnlType="PRE")
+For ($n;1;Size of array(<>asSiteCodes))
+If (<>asSiteCodes{$n}#<>sHOFacility) | (Size of array(<>asSiteCodes)=1)
+$Memo:="Prepaid Jnl"
+$Date:=[Journal]JrnlDate
+$BAS:="S"
+$TaxCode:="N-T"
+$TaxAmt:=0
+QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo;*)
+QUERY([CashBookTrxs]; & ;[CashBookTrxs]AcctNo>"")
+If ($1=True)
+$n:=Size of array(<>asSiteCodes)
+If ($i>1)
+CLOSE DOCUMENT(vDocRef)
+Else 
+vLoc:=Select folder("Save Export";Get 4D folder(Current resources folder))
+End if 
+vShortname:=Position(",";[CashBookTrxs]Description)
+//NameExportDoc ("Prepaid")
+vDocRef:=Create document(vLoc+[Journal]JrnlType+Substring([CashBookTrxs]Description;vShortname+1;5)+Replace string(String([Journal]JrnlDate);"/";"");$Ext)
+Else 
+QUERY SELECTION BY FORMULA([CashBookTrxs];Substring([CashBookTrxs]Description;((Position(",";[CashBookTrxs]Description))+1);5)=<>asSiteCodes{$n})
+vShortname:=Position(",";[CashBookTrxs]Description)
+End if 
+For ($j;1;Records in selection([CashBookTrxs]))
+If ([CashBookTrxs]Amount>0)
+$DebitExTax:=[CashBookTrxs]Amount
+$DebitIncTax:=[CashBookTrxs]Amount
+$CreditExTax:=0
+$CreditIncTax:=0
+Else 
+$DebitExTax:=0
+$DebitIncTax:=0
+$CreditExTax:=[CashBookTrxs]Amount*(-1)
+$CreditIncTax:=[CashBookTrxs]Amount*(-1)
+End if 
+QUERY([ChartAccts];[ChartAccts]AcctNo=[CashBookTrxs]AcctNo)
+SEND PACKET(vDocRef;GetDateString ($Date;3)+$t+$Memo+$t+$BAS+$t+[ChartAccts]AcctNo+$t+String($DebitExTax;"$#,###,##0.00")+$t+String($DebitIncTax;"$#,###,##0.00")+$t)
+SEND PACKET(vDocRef;String($CreditExTax;"$#,###,##0.00")+$t+String($CreditIncTax;"$#,###,##0.00")+$t+$TaxCode+$t+String($TaxAmt;"$#,###,##0.00")+$cr)
+$0:=$0+[ChartAccts]AcctNo+$sp+GetDateString ([CashBookTrxs]TrxDate;3)+$sp+<>sCurrency+String([CashBookTrxs]Amount;<>sFormat)+$sp+[ChartAccts]Description+$cr
+//End case 
+NEXT RECORD([CashBookTrxs])
+End for 
+End if 
+End for 
+End case 
+REMOVE FROM SET([Journal];"Jnls")
+If ($1=True)
+CLOSE DOCUMENT(vDocRef)
+End if 
+End for 
+CLOSE DOCUMENT(vDocRef)
+AlertMessage (Get localized string("Export process complete!"))
+CLEAR SET("Jnls")
+CLEAR SET("CashBookTrxs")
+AlertMessage (Get localized string("Export Complete!"))
+End if 
+End if 
+
+
+SetFacility 

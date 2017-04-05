@@ -1,0 +1,251 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+C_DATE($Date)
+C_TEXT(vDateTime)
+If (Form event=On Header)
+//vTax:=0
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+If (forCompleted=False)
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+If ([Trxs]CustomerCode="")
+FIRST RECORD([Trxs])
+End if 
+OBJECT SET VISIBLE(*;"Field91";[Facility]GraphiconInv)
+If (BLOB size([Facility]InvHeader_)#0) & ([Facility]GraphiconInv)
+LoadReferences (1)
+OBJECT MOVE(*;"Field91";0;0;40;80)
+End if 
+OBJECT SET VISIBLE(*;"Field2@";Not([Facility]GraphiconInv))
+OBJECT SET TITLE(*;"Text4Buyback";Get localized string("Signature")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Printed")+":")
+If ([Facility]PhoneFormat>"")
+OBJECT SET FORMAT([Facility]Phone;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Facility]Fax;[Facility]PhoneFormat)
+End if 
+If ([Facility]CompanyName#"")
+vtCompanyName:=[Facility]CompanyName+" "+Get localized string("trading as")
+Else 
+vtCompanyName:=""
+End if 
+If (Records in selection([Customer])=0) | (([Trxs]CustomerCode#[Customer]CustomerCode) & ([Trxs]CustomerCode#""))
+RELATE ONE([Trxs]CustomerCode)
+End if 
+If (Records in selection([Agreement])=0) | (([Trxs]CustomerCode#[Agreement]CustomerCode) & ([Trxs]CustomerCode#""))
+If (Length([Trxs]AgreeNo)=13)//THIS WILL NOT WORK
+If ([Reservation]RReserveNo#[Trxs]AgreeNo)
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+End if 
+Else 
+REDUCE SELECTION([Reservation];0)
+RELATE ONE([Trxs]AgreeNo)
+End if 
+End if 
+If (Records in selection([Unit])=0) | ([Trxs]AgreeNo#[Unit]AgreeNo)
+If (Records in selection([Reservation])>0)
+If ([Unit]ReservedTo#[Reservation]RReserveNo)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+Else 
+If ([Agreement]ActiveAgreemt)//Don't find unit for inactive agreement        
+QUERY([Unit];[Unit]AgreeNo=[Trxs]AgreeNo)
+End if 
+End if 
+End if 
+If (Records in selection([Agreement])=0) & ([Reservation]ReserveNo>"")
+vLine1:=Get localized string("Reservation Number")+" :"
+Else 
+vLine1:=Get localized string("Agreement Number")+" :"
+End if 
+If ([Facility]ShowABNInv) & (Length([Customer]ABNNo)>8)
+vLine2:=Get localized string("Customer ABN")+" :"
+vLine3:=String(Num([Customer]ABNNo);"##-###-###-###")
+Else 
+vLine2:=Get localized string("Customer Code")+" :"
+vLine3:=[Customer]CustomerCode
+End if 
+ARRAY TEXT(aCustCode;1)
+aCustCode{1}:=[Agreement]RAgreeNo
+If ([Agreement]ActiveAgreemt=True)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+ARRAY REAL(aTotal;1)
+If ([Agreement]NextBillDate>=[Agreement]NewRentFrom) & ([Agreement]NewRentFrom#!00-00-00!) & ([Agreement]NewRentAmt>0)
+aTotal{1}:=[Agreement]NewRentAmt+Sum([OtherChgs]Amount)
+Else 
+aTotal{1}:=[Agreement]RentAmt+Sum([OtherChgs]Amount)
+End if 
+ARRAY DATE(aDates;1)
+ARRAY DATE(aFutureDate;1)
+aDates{1}:=[Agreement]NextBillDate
+RELATE ONE([Agreement]BillingPlanCode)
+aFutureDate{1}:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+ARRAY REAL(aTotal;0)
+ARRAY DATE(aDates;0)
+ARRAY DATE(aFutureDate;0)
+End if 
+//QUERY([Notices];[Notices]Description="InvoiceHead@")
+//If (Records in selection([Notices])>0)
+// $i:=WR Picture to offscreen area ([Notices]Letter_)
+//  vpHeader:=WR Area to picture ($i)
+//  WR DELETE OFFSCREEN AREA ($i)
+//Else 
+//ALERT("The Notice called 'InvoiceHeader' is missing from Notices Details so the 
+//+"rs name and address will not be printed!")
+//End if 
+vInvDate:=Current date
+vCol2:=<>tTaxName
+vLeg3:=<>tInvPrefix+Get localized string("INVOICE / RECEIPT")
+vLeg4:=<>tTaxFull+" : "+String([Facility]TaxNumber;<>tTaxFormat)
+bConfirm:=False
+If ([Customer]CustomerCode="MISCL")
+REDUCE SELECTION([Unit];0)
+Else 
+If ([Facility]InvUseAgrBalFwd)
+vDate:=[Agreement]BalFwdDate
+Else 
+vDate:=[Customer]BalFwdDate
+End if 
+End if 
+vLeg1:=Get localized string("Phone")+" :"
+vLeg2:=Get localized string("Fax")+" :"
+If ([Facility]Country="DE")
+vSCity:=[Facility]PostZIPCode+"  "+[Facility]City+"  "+[Facility]State
+Else 
+vSCity:=[Facility]City+"  "+[Facility]State+"  "+[Facility]PostZIPCode
+End if 
+If ([Agreement]PurchaseOrder>"") | ([Reservation]PurchaseOrder>"")
+vLeg7:=Get localized string("Purchase Order")+" :"
+Else 
+vLeg7:=""
+End if 
+$i:=Length([Unit]UnitSize)+Length([Unit]UnitNo)
+If ([Facility]ShowSizeonInv) & ($i<18)
+Case of 
+: ([Facility]ProductCode="@R")
+vLeg8:=Get localized string("Appl Size and No")+" :"
+: ([Facility]ProductCode="@B")
+vLeg8:=Get localized string("Berth Size and No")+" :"
+: ([Facility]ProductCode="@C")
+vLeg8:=Get localized string("Space Size and No")+" :"
+Else 
+vLeg8:=Get localized string("Unit Size and No")+" :"
+End case 
+vLeg9:=[Unit]UnitSize+(" "*(18-$i))+[Unit]UnitNo
+Else 
+Case of 
+: ([Facility]ProductCode="@R")
+vLeg8:=Get localized string("Appl No")+" :"
+: ([Facility]ProductCode="@B")
+vLeg8:=Get localized string("Berth No")+" :"
+: ([Facility]ProductCode="@C")
+vLeg8:=Get localized string("Space No")+" :"
+Else 
+vLeg8:=Get localized string("Unit No")+" :"
+End case 
+vLeg9:=[Unit]UnitNo
+End if 
+End if 
+If (Form event=On Load)
+//vBal:=Sum([Transaction]TotAmt)
+If (Application type#4D Server)
+$j:=Find in array(<>aButton;"Invoice")
+If ($j>0)
+CANCEL
+End if 
+End if 
+$i:=Find in array(aCustCode;[Trxs]AgreeNo)
+If ($i<1)
+CUT NAMED SELECTION([Agreement];"Restore")
+RELATE ONE([Trxs]AgreeNo)
+INSERT IN ARRAY(aCustCode;1)
+aCustCode{1}:=[Agreement]RAgreeNo
+If ([Agreement]ActiveAgreemt=True)
+INSERT IN ARRAY(aTotal;1)
+INSERT IN ARRAY(aDates;1)
+INSERT IN ARRAY(aFutureDate;1)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]NextBillDate>=[Agreement]NewRentFrom) & ([Agreement]NewRentFrom#!00-00-00!) & ([Agreement]NewRentAmt>0)
+aTotal{1}:=[Agreement]NewRentAmt+Sum([OtherChgs]Amount)
+Else 
+aTotal{1}:=[Agreement]RentAmt+Sum([OtherChgs]Amount)
+End if 
+aDates{1}:=[Agreement]NextBillDate
+RELATE ONE([Agreement]BillingPlanCode)
+aFutureDate{1}:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End if 
+USE NAMED SELECTION("Restore")
+End if 
+End if 
+If (Form event=On Printing Break)
+If (bConfirm=True)
+vConfirm:=Get localized string("N.B. Unconfirmed Payments")
+Else 
+vConfirm:=""
+End if 
+bConfirm:=False
+ARRAY TEXT(aCustCode;0)
+vLeg5:=""
+vLeg6:=""
+vTot:=0
+QUERY([Analysis];[Analysis]SortOrder=1)
+If (Size of array(aTotal)>0)
+SORT ARRAY(aDates;aFutureDate;aTotal;>)
+vRentAmtInv:=aTotal{1}+CalcTaxAmt (aTotal{1};[Analysis]Code;aDates{1};aFutureDate{1};1;[Agreement]TaxExempt)//Added last field 4/9/2000
+For ($i;2;Size of array(aDates))
+If (Abs(aDates{$i}-aDates{1})<=[Facility]CombineNxtDueDays)
+vRentAmtInv:=vRentAmtInv+aTotal{$i}+CalcTaxAmt (aTotal{$i};[Analysis]Code;aDates{$i};aFutureDate{$i};1;[Agreement]TaxExempt)
+End if 
+End for 
+$Date:=aDates{1}
+Else 
+$Date:=[Agreement]NextBillDate
+End if 
+If (Records in selection([Agreement])=0) & ([Reservation]ReserveNo>"")
+vLeg5:=Get localized string("Reservation Confirmation")
+Else 
+If ([Facility]PaidtoDateonInv)
+vLeg5:=Get localized string("Rent Paid until")+" "+String([Agreement]PaidToDate;6)
+Else 
+If ([Facility]HideNxtChgInv=False)
+vLeg5:=Get localized string("Next Rent Due")+" : "+String($Date;6)
+End if 
+End if 
+End if 
+ARRAY REAL(aTotal;0)
+ARRAY DATE(aDates;0)
+If (vLeg5#"Next@")
+vRentAmtInv:=0
+End if 
+vCheques:=""
+If ([Facility]HideNxtChgInv=False)
+If ([Facility]CompanyName>"") & ([Facility]ChqsPayableOption=False)
+vCheques:=Get localized string("Cheques should be made payable to '")+[Facility]CompanyName+"'"
+Else 
+vCheques:=Get localized string("Cheques should be made payable to '")+[Facility]BusinessName+"'"
+End if 
+OBJECT SET FORMAT([Facility]Phone;[Facility]PhoneFormat)
+If (<>bEnglishSpelling=False)
+vCheques:=Replace string(vCheques;"que";"ck";1)
+End if 
+End if 
+OBJECT SET VISIBLE(*;"@Buyback";[Agreement]BB)
+vDateTime:=String(Current date)+" "+Get localized string("at")+" "+String(Current time)
+If ([UserLogins]ActualName="")
+[UserLogins]ActualName:=[UserLogins]Name
+End if 
+End if 
+SetFormats 

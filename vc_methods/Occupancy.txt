@@ -1,0 +1,173 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+C_BOOLEAN($Abort;$Check)
+C_DATE($Date)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Occupancy Report started.")// records the report being started in the eventlog
+If (PermissionsControl (52))
+$Abort:=False
+$Check:=True
+SetFacility 
+vReportSettings:=[Facility]ReportSettings
+OK:=1
+If (<>tBatch=False)
+//Open window(20;50;420;563;5)
+$Window:=Open window((Screen width/2)-200;(Screen height/2)-286;(Screen width/2)+200;(Screen height/2)+286;5;Get localized string("MenuReportoccupancyReport"))
+DIALOG([UnitType];"OccupDialog")
+CLOSE WINDOW($Window)
+End if 
+If (OK=1) & (Length(vReportSettings)>11)
+SET AUTOMATIC RELATIONS(False;False)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=1)
+$Date:=vMthDate
+If (vMthDate=!00-00-00!)
+$Date:=Current date
+End if 
+If ([Analysis]Taxable) & ((([Facility]TaxAddtoAmt=False) & (vReportSettings[[5]]="1")) | (([Facility]TaxAddtoAmt) & (vReportSettings[[5]]="2")))
+vTax:=GetTaxRate ($Date)
+Else 
+vTax:=0
+End if 
+tBoolean:=False
+If (vMthDate#!00-00-00!) & ((vReportSettings[[11]]="Y") | (<>tBatch))
+tBoolean:=True//Prior Date procedure
+$Abort:=Not(CheckUnitHistSeq )
+If ($Abort=False) & (<>tBatch=False)
+$Check:=CalcRentedValues (<>sFacility;vMthDate)
+End if 
+Else 
+If (<>tBatch=False)
+$Check:=CalcRentedValues (<>sFacility)
+End if 
+End if 
+If (tBoolean)
+vTitle:=Get localized string("Occupancy Report as at")+" "+String(vMthDate;6)
+Else 
+vTitle:=Get localized string("Occupancy Report for")+" "+String(Current date;6)
+End if 
+If ($Abort=False) & ($Check)
+DEFAULT TABLE([UnitType])
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@")
+//OldOccupCode
+If (vReportSettings[[4]]="1")
+vLegend:=Get localized string("Occupied Values based on Actual Rent")
+Else 
+vLegend:=Get localized string("Occupied Values based on Notional Rent")
+End if 
+If (vReportSettings[[6]]="Y")
+If (vMthDate#!00-00-00!) & ((vReportSettings[[11]]="Y") | (<>tBatch))
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail@";*)
+QUERY([Unit]; & ;[Unit]StartDate<=vMthDate)
+Else 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail@")
+End if 
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Unit];[Unit]BldgLocation;>;[UnitType]SortOrder;>;[Unit]UnitTypeCode;>)
+SET AUTOMATIC RELATIONS(False;False)
+BREAK LEVEL(3)
+ACCUMULATE([Unit]RentedValue;[Unit]UnitAreaSize;vTotUnit;vOccUnit;vVacUnit;vOccVal;vVacVal;vTotArea;vOccArea;vVacArea;vTotal)
+DEFAULT TABLE([Unit])
+If (<>iPrinttoFile=3)
+ARRAY TEXT(aFieldNames;17)
+aFieldNames{1}:="[UnitType]UnitTypeCode"
+aFieldNames{2}:="[UnitType]Description"
+aFieldNames{3}:="OnDetailMonthly Rate"
+aFieldNames{4}:="[UnitType]NoTotal"//Total "+◊vtUnitsCap+"s"
+aFieldNames{5}:="[UnitType]AreaSizeTotal"
+
+Case of 
+: (<>sProduct="@B")
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Berths")
+aFieldNames{12}:=Get localized string("Vacant")+" "+Get localized string("Berths")
+: (<>sProduct="@R")
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Appliances")
+aFieldNames{12}:=Get localized string("Vacant")+" "+Get localized string("Appliances")
+: (<>sProduct="@C")
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Spaces")
+aFieldNames{12}:=Get localized string("Vacant")+" "+Get localized string("Spaces")
+Else 
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Units")
+aFieldNames{12}:=Get localized string("Vacant")+" "+Get localized string("Units")
+End case 
+
+aFieldNames{7}:="% "+Get localized string("Occupied")
+aFieldNames{8}:="[UnitType]RentedValue"
+aFieldNames{9}:=Get localized string("Occupancy Value")+" %"
+aFieldNames{10}:=Get localized string("Occupied Area")
+aFieldNames{11}:=Get localized string("Occupied Area")+" %"
+aFieldNames{13}:="% "+Get localized string("Vacant")
+aFieldNames{14}:=Get localized string("Vacant Value")
+aFieldNames{15}:=Get localized string("Vacant Value")+" %"
+aFieldNames{16}:=Get localized string("Vacant Area")
+aFieldNames{17}:=Get localized string("Vacant Area")+" %"
+vpTable:=->[UnitType]
+CreateExcelReport (17;Records in selection([UnitType]);"MethodCalcOccupRpt";[Facility]FacilityName;vTitle)//no of columns on report, no of rows, lines to execute, header 1, header 2, footer
+Else 
+If (vReportSettings[[3]]="1")
+FORM SET OUTPUT([Unit];"Occupancy")
+PrintSelection ("P")
+Else 
+FORM SET OUTPUT([Unit];"OccupWide")
+PrintSelection ("L")
+End if 
+End if 
+FORM SET OUTPUT([Unit];"Output")
+Else 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+BREAK LEVEL(0)
+ACCUMULATE([UnitType]NoTotal;vOccUnit;[UnitType]NoVacant;[UnitType]MonthlyRate;[UnitType]RentedValue;[UnitType]AreaSizeTotal;[UnitType]AreaSizeOccup;vVacVal;vVacArea;vTotal)
+If (<>iPrinttoFile=3)
+ARRAY TEXT(aFieldNames;17)
+aFieldNames{1}:="[UnitType]UnitTypeCode"
+aFieldNames{2}:="[UnitType]Description"
+aFieldNames{3}:="OnDetailMonthly Rate"
+aFieldNames{4}:="[UnitType]NoTotal"//Total "+◊vtUnitsCap+"s"
+aFieldNames{5}:="[UnitType]AreaSizeTotal"
+Case of 
+: (<>sProduct="@B")
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Berths")
+: (<>sProduct="@R")
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Appliances")
+: (<>sProduct="@C")
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Spaces")
+Else 
+aFieldNames{6}:=Get localized string("Occupied")+" "+Get localized string("Units")
+End case 
+
+aFieldNames{7}:="% "+Get localized string("Occupied")
+aFieldNames{8}:="[UnitType]RentedValue"
+aFieldNames{9}:=Get localized string("Occupancy Value")+" %"
+aFieldNames{10}:="[UnitType]AreaSizeOccup"
+aFieldNames{11}:=Get localized string("Occupied Area")+" %"
+aFieldNames{12}:="[UnitType]NoVacant"
+aFieldNames{13}:="% "+Get localized string("Vacant")
+aFieldNames{14}:=Get localized string("Vacant Value")
+aFieldNames{15}:=Get localized string("Vacant Value")+" %"
+aFieldNames{16}:=Get localized string("Vacant Area")
+aFieldNames{17}:=Get localized string("Vacant Area")+" %"
+vpTable:=->[UnitType]
+CreateExcelReport (17;Records in selection([UnitType]);"MethodCalcOccupRpt";[Facility]FacilityName;vTitle)//no of columns on report, no of rows, lines to execute, header 1, header 2, footer
+Else 
+If (vReportSettings[[3]]="3")
+FORM SET OUTPUT([UnitType];"OccupSmall")
+PrintSelection ("P")
+Else 
+If (vReportSettings[[3]]="1")
+FORM SET OUTPUT([UnitType];"Occupancy")
+PrintSelection ("P")
+Else 
+FORM SET OUTPUT([UnitType];"OccupWide")
+PrintSelection ("L")
+End if 
+End if 
+End if 
+FORM SET OUTPUT([UnitType];"Output")
+End if 
+End if 
+End if 
+End if 
+LogAction (True;"Occupancy Report ended.")

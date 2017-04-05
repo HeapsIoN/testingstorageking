@@ -1,0 +1,197 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+SOAP DECLARATION(WS_GatePIN;Is text;SOAP output;"WS_GatePIN")
+SOAP DECLARATION(WS_Timezone;Is integer;SOAP output;"WS_Timezone")
+SOAP DECLARATION(WS_KeypadZone;Is integer;SOAP output;"WS_KeypayZone")
+SOAP DECLARATION(WS_CustomAccessFee;Is real;SOAP output;"WS_CustomAccessFee")
+SOAP DECLARATION(WS_AlwaysAllowEntry;Is Boolean;SOAP output;"WS_AlwaysAllowEntry")
+SOAP DECLARATION(WS_AccessList;Is text;SOAP output;"WS_AccessList")
+SOAP DECLARATION(WS_InsureCertNo;Is text;SOAP output;"WS_InsureCertNo")
+SOAP DECLARATION(WS_InsureValue;Is real;SOAP output;"WS_InsureValue")
+SOAP DECLARATION(WS_InsureCommence;Is date;SOAP output;"WS_InsureCommence")
+SOAP DECLARATION(WS_InsureExpire;Is date;SOAP output;"WS_InsureExpire")
+
+SOAP DECLARATION(WS_asPCName;Is text;SOAP output;"WS_asPCName")
+SOAP DECLARATION(WS_asPCPINCardNo;Is text;SOAP output;"WS_asPCPINCardNo")
+SOAP DECLARATION(WS_aiPCTimezone;Is integer;SOAP output;"WS_aiPCTimezone")
+SOAP DECLARATION(WS_aiPCKeypadZone;Is integer;SOAP output;"WS_aiKeypadZone")
+SOAP DECLARATION(WS_arPCDeposit;Is real;SOAP output;"WS_arPCDeposit")
+SOAP DECLARATION(WS_asPCUnitAccess;Is text;SOAP output;"WS_asPCUnitAccess")
+SOAP DECLARATION(WS_adGLDate;Is date;SOAP output;"WS_asGLDate")
+SOAP DECLARATION(WS_aiGLTime;Is longint;SOAP output;"WS_aiGLTime")
+SOAP DECLARATION(WS_aiGLGateNo;Is integer;SOAP output;"WS_aiGLGateNo")
+SOAP DECLARATION(WS_asGLGateActionText;Is text;SOAP output;"WS_asGLGateActionText")
+SOAP DECLARATION(WS_asUTUnitNo;Is text;SOAP output;"WS_asUTUnitNo")
+SOAP DECLARATION(WS_asUTInsureCertNo;Is text;SOAP output;"WS_asUTInsureCertNo")
+SOAP DECLARATION(WS_arUTInsureVal;Is real;SOAP output;"WS_arUTInsureVal")
+
+$String:="Start WS_GetAccessInsuranceInfo"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+
+Case of 
+: (Records in selection([Agreement])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement or reservation found"
+: (Records in selection([Agreement])=1)
+
+RELATE ONE([Agreement]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+For ($i;1;Records in selection([PhotosCards]))
+APPEND TO ARRAY(WS_asPCName;[PhotosCards]Name)
+APPEND TO ARRAY(WS_asPCPINCardNo;[PhotosCards]PINCardNo)
+APPEND TO ARRAY(WS_aiPCTimezone;[PhotosCards]TimeZone)
+APPEND TO ARRAY(WS_aiPCKeypadZone;[PhotosCards]KeypadZone)
+APPEND TO ARRAY(WS_arPCDeposit;[PhotosCards]Deposit)
+APPEND TO ARRAY(WS_asPCUnitAccess;[PhotosCards]UnitAccess)
+
+NEXT RECORD([PhotosCards])
+End for 
+
+QUERY([GateLog];[GateLog]CustCode=[Customer]CustomerCode)
+For ($j;1;Records in selection([GateLog]))
+APPEND TO ARRAY(WS_adGLDate;[GateLog]GateDate)
+APPEND TO ARRAY(WS_aiGLTime;[GateLog]GateTime)
+APPEND TO ARRAY(WS_aiGLGateNo;[GateLog]GateNo)
+APPEND TO ARRAY(WS_asGLGateActionText;[GateLog]GateActionText)
+
+NEXT RECORD([GateLog])
+End for 
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+For ($k;1;Records in selection([Unit]))
+APPEND TO ARRAY(WS_asUTUnitNo;[Unit]UnitNo)
+APPEND TO ARRAY(WS_asUTInsureCertNo;[Unit]InsureCertNo)
+APPEND TO ARRAY(WS_arUTInsureVal;[Unit]InsureValue)
+End for 
+
+WS_GatePIN:=[Customer]GatePIN
+WS_Timezone:=[Customer]GateTimeZone
+WS_KeypadZone:=[Customer]KeypadZone
+WS_CustomAccessFee:=[Customer]CustomAccessFee
+WS_AlwaysAllowEntry:=[Customer]AllowAccessArrs
+WS_AccessList:=[Customer]AccessList
+WS_InsureCertNo:=[Agreement]InsureCertNo
+WS_InsureValue:=[Agreement]InsureValue
+WS_InsureCommence:=[Agreement]InsureCommence
+WS_InsureExpire:=[Agreement]InsureExpire
+
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=4//There is a duplicate of agreement. 
+WS_ORErrorDescription:="There are duplicate agreements."
+
+End case 
+End if 
+
+ReadOnlyAll 
+UnloadAll 
+
+$String:="End WS_GetAccessInsuranceInfo"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_GatePIN: "+WS_GatePIN+Char(13)
+$String:=$String+"WS_Timezone: "+String(WS_Timezone)+Char(13)
+$String:=$String+"WS_KeypadZone: "+String(WS_KeypadZone)+Char(13)
+$String:=$String+"WS_CustomAccessFee: "+String(WS_CustomAccessFee)+Char(13)
+$String:=$String+"WS_AlwaysAllowEntry: "+String(WS_CustomAccessFee)+Char(13)
+$String:=$String+"WS_AccessList: "+WS_AccessList+Char(13)
+$String:=$String+"WS_InsureCertNo: "+WS_InsureCertNo+Char(13)
+$String:=$String+"WS_InsureValue: "+String(WS_InsureValue)+Char(13)
+$String:=$String+"WS_InsureCommence: "+String(WS_InsureCommence)+Char(13)
+$String:=$String+"WS_InsureExpire: "+String(WS_InsureExpire)+Char(13)
+
+$sizeofarray:=Size of array(WS_asPCName)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asPCName("+String($vlElem)+"):"+WS_asPCName{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asPCPINCardNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asPCPINCardNo("+String($vlElem)+"):"+WS_asPCPINCardNo{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiPCTimezone)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiPCTimezone("+String($vlElem)+"):"+String(WS_aiPCTimezone{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiPCTimezone)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiPCKeypadZone("+String($vlElem)+"):"+String(WS_aiPCKeypadZone{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arPCDeposit)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arPCDeposit("+String($vlElem)+"):"+String(WS_arPCDeposit{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asPCUnitAccess)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asPCUnitAccess("+String($vlElem)+"):"+WS_asPCUnitAccess{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_adGLDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adGLDate("+String($vlElem)+"):"+String(WS_adGLDate{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiGLTime)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiGLTime("+String($vlElem)+"):"+String(WS_aiGLTime{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_aiGLGateNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aiGLGateNo("+String($vlElem)+"):"+String(WS_aiGLGateNo{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asGLGateActionText)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asGLGateActionText("+String($vlElem)+"):"+WS_asGLGateActionText{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asUTUnitNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUTUnitNo("+String($vlElem)+"):"+WS_asUTUnitNo{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asUTInsureCertNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asUTInsureCertNo("+String($vlElem)+"):"+WS_asUTInsureCertNo{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arUTInsureVal)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arUTInsureVal("+String($vlElem)+"):"+String(WS_arUTInsureVal{$vlElem})+Char(13)
+End for 
+
+WSRECORDLOG ($String)

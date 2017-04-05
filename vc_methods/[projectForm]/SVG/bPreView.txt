@@ -1,0 +1,79 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+
+If (PreviewCheck=0)
+PreviewCheck:=1
+OBJECT SET VISIBLE(*;"Pict";True)
+OBJECT SET VISIBLE(*;"Text_Preview";True)
+OBJECT SET VISIBLE(*;"area";False)
+SvgAreaDomRef:=SVG AREA Get DOM 
+DOM SET XML ATTRIBUTE(SvgAreaDomRef;"transform";"scale(1,1)")// Set Zoom
+DOM EXPORT TO VAR(SvgAreaDomRef;Original)
+C_TEXT($Text;$TextCont)
+C_LONGINT($NoElem)
+$NoElem:=SVG_Count_elements (SvgAreaDomRef)
+If ($NoElem#0)
+ARRAY TEXT($aRef;$NoElem)
+ARRAY TEXT($aTypes;$NoElem)
+ARRAY TEXT($namesArray;0)
+ARRAY TEXT($valuesArray;0)
+C_POINTER($pRef;$pTypes;$namesArrayPointer;$valuesArrayPointer)
+$pRef:=->$aRef
+$pTypes:=->$aTypes
+$namesArrayPointer:=->$namesArray
+$valuesArrayPointer:=->$valuesArray
+
+SVG_ELEMENTS_TO_ARRAYS (SvgAreaDomRef;$pRef;$pTypes)
+For ($i;1;Size of array($aTypes))
+If ($aTypes{$i}="text") | ($aTypes{$i}="textArea") | ($aTypes{$i}="tspan")
+
+$TextCont:=SVG_Get_text ($aRef{$i})
+
+PROCESS 4D TAGS($TextCont;$NewVar)
+$photoPos:=Position("\"/4DImgField/";$NewVar)
+
+If ($photoPos#0)
+$photoReplace:=Substring($NewVar;$photoPos;Position("\"";$NewVar;$photoPos+1)-$photoPos+1)
+$photoRecord:=Substring($photoReplace;14;Position("-";$photoReplace)-14)
+$photoTable:=GetTextNo ($photoRecord;1;".")
+$photoField:=GetTextNo ($photoRecord;2;".")
+$photoRecord:=GetTextNo ($photoRecord+".";3;".")
+$photoInsert:=""
+$docPath:=<>sAttachPath+"Pic"+String($photoPos)+".png"
+$tblPoint:=Table(Num($photoTable))
+GOTO RECORD($tblPoint->;Num($photoRecord))
+
+$fieldPoint:=Field(Num($photoTable);Num($photoField))
+
+WRITE PICTURE FILE($docPath;$fieldPoint->)
+READ PICTURE FILE($docPath;$Picture)
+If (OK=1)
+SVG_GET_ATTRIBUTES ($aRef{$i};$namesArrayPointer;$valuesArrayPointer)
+objectRef:=SVG_New_embedded_image (SvgAreaDomRef;$Picture;Num($valuesArray{16});Num($valuesArray{17}))
+SVG_SET_VISIBILITY ($aRef{$i};False)
+End if 
+End if 
+SVG_SET_TEXTAREA_TEXT ($aRef{$i};$NewVar)
+End if 
+End for 
+//DOM SET XML ATTRIBUTE(SvgAreaDomRef;"transform";"scale(1,1)")
+PicPreview:=SVG_Export_to_picture (SvgAreaDomRef)
+End if 
+OBJECT SET ENABLED(bSave;False)
+OBJECT SET ENABLED(btnZoom;False)
+OBJECT SET ENABLED(bInsertFields;False)
+OBJECT SET TITLE(bPreView;Get localized string("Close Preview"))
+Else 
+OBJECT SET ENABLED(bSave;True)
+OBJECT SET ENABLED(btnZoom;True)
+OBJECT SET ENABLED(bInsertFields;True)
+OBJECT SET TITLE(bPreView;Get localized string("Preview"))
+OBJECT SET VISIBLE(*;"Pict";False)
+OBJECT SET VISIBLE(*;"Text_Preview";False)
+OBJECT SET VISIBLE(*;"area";True)
+PreviewCheck:=0
+SvgAreaDomRef:=DOM Parse XML variable(Original)
+SVG AREA SET DOM (SvgAreaDomRef)
+svgAreaPicture:=SVG_Export_to_picture (SvgAreaDomRef)
+End if 
+End if 

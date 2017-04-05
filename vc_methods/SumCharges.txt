@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+LogAction (False;"Summary of Charges Report started.")// records the report being started in the eventlog
+If (PermissionsControl (80))
+SetFacility 
+DEFAULT TABLE([Customer])
+If (<>tBatch=True)
+OK:=1
+Else 
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vMthDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vMthDate)
+End if 
+If (OK=1)
+vSDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+vStmtDate:=GetMonthName (Month of(vMthDate))+" "+String(Year of(vMthDate))
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vSDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+RELATE ONE SELECTION([Trxs];[Customer])
+ARRAY TEXT(aAgreeNos;0)//Check whether customer record for all transactions
+DISTINCT VALUES([Trxs]CustomerCode;aAgreeNos)
+If (Size of array(aAgreeNos)>Records in selection([Customer]))
+ORDER BY([Customer];[Customer]CustomerCode;>)
+SORT ARRAY(aAgreeNos;>)
+$j:=0
+For ($i;1;Records in selection([Customer]))
+While ([Customer]CustomerCode>aAgreeNos{$i+$j}) & (($i+$j)<Size of array(aAgreeNos))
+AlertMessage (Get localized string("WARNING - There is no Customer record for transaction code:")+aAgreeNos{$i+$j}+Get localized string(" - Summary of Charges report will be incorrect!!"))
+$j:=$j+1
+End while 
+NEXT RECORD([Customer])
+End for 
+PREVIOUS RECORD([Customer])
+If ([Customer]CustomerCode#aAgreeNos{Size of array(aAgreeNos)})
+AlertMessage (Get localized string("WARNING - There is no Customer record for transaction code:")+aAgreeNos{$i+$j}+Get localized string(" - Summary of Charges report will be incorrect!!"))
+End if 
+End if 
+If ([Facility]UnitNoRpts)
+SortbyUnits 
+Else 
+ORDER BY([Customer];[Customer]CustomerCode;>)
+End if 
+For ($i;1;7)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=$i)
+ORDER BY([Analysis];[Analysis]HdrforRptCols;<;[Analysis]Code;>)
+$p:=Get pointer("vHdr"+String($i))
+$p->:=Substring([Analysis]Description;1;12)
+End for 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>7;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<50)
+vHdr8:=""
+If (Records in selection([Analysis])>1)
+vHdr8:=Get localized string("Other")
+Else 
+vHdr8:=Substring([Analysis]Description;1;12)
+End if 
+BREAK LEVEL(0)
+ACCUMULATE([Customer]BalFwd;vTot1;vTot2;vTot3;vTot4;vTot5;vTot6;vTot7;vTot8)
+vTotTax:=0
+FORM SET OUTPUT([Customer];"SumCharges")
+PrintSelection ("L")
+FORM SET OUTPUT([Customer];"Output")
+End if 
+End if 
+LogAction (True;"Summary of Charges Report ended.")

@@ -1,0 +1,245 @@
+//%attributes = {"folder":"bpoint","lang":"en"} comment added and reserved by 4D.
+// Method Name: wsc_bpoint_ProcessPayment
+// Syntax: wsc_bpoint_ProcessPayment($username_t; $password_t; $merchantNumber_t; $paymentType_t; $txnType_t; $merchantReference_t; $crn1_t; $crn2_t; $crn3_t; $amount_i) -> text
+// Description:
+//  Submits a payment to BPOINT for processing
+
+// Returns: 
+C_TEXT($responseCode_t)
+C_TEXT($acquirerResponseCode_t)
+C_TEXT($authorisationResult_t)
+C_TEXT($transactionNumber_t)
+C_TEXT($receiptNumber_t)
+C_TEXT($authoriseId_t)
+C_TEXT($settlementDate_t)
+C_TEXT($maskedCardNumber_t)
+C_TEXT($cardType_t)
+C_TEXT($0;$errCode_t)
+C_TEXT(errMessage_t)
+
+// Required Parameters: 
+C_TEXT($1)
+C_TEXT($2)
+C_TEXT($3)
+C_TEXT($4)
+C_TEXT($5)
+C_TEXT($6)
+C_TEXT($7)
+C_TEXT($8)
+C_TEXT($9)
+C_TEXT($10)
+C_LONGINT($11)
+C_TEXT($12)
+C_TEXT($13)
+C_TEXT($14)
+C_TEXT($15)
+C_BOOLEAN($16)//Display Decline / Error Alerts
+
+// Optional Parameters: --none--
+
+// Other Variables:
+C_TEXT($root)
+C_TEXT($subelem)
+C_TEXT($namespace)
+C_BOOLEAN($noerrors)
+C_LONGINT($Month)
+C_LONGINT($Year)
+C_DATE($Date)
+
+errMessage_t:=""
+$noerrors:=True
+
+//Test for invalid expiry month
+$Month:=Num(Substring($13;1;2))
+If (($Month<1) | ($Month>12)) & ($Month#99)//99 is for testing
+$noerrors:=False
+$errCode_t:="ERROR INVALID EXPIRY MONTH"
+End if 
+
+If ($noerrors)
+$Date:=Date("01/"+Substring($13;1;2)+"/"+Substring($13;3))
+If ($Date=!00-00-00!)
+$noerrors:=False
+$errCode_t:="ERROR INVALID EXPIRY DATE"
+End if 
+End if 
+
+If ($noerrors)
+$namespace:="urn:Eve"
+$root:=DOM Create XML Ref("ProcessPayment";$namespace)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/username")
+DOM SET XML ELEMENT VALUE($subelem;$1)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/password")
+DOM SET XML ELEMENT VALUE($subelem;$2)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/merchantNumber")
+DOM SET XML ELEMENT VALUE($subelem;$3)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/PaymentType")
+DOM SET XML ELEMENT VALUE($subelem;$4)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/TxnType")
+DOM SET XML ELEMENT VALUE($subelem;$5)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/BillerCode")
+DOM SET XML ELEMENT VALUE($subelem;$6)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/MerchantReference")
+DOM SET XML ELEMENT VALUE($subelem;$7)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/CRN1")
+DOM SET XML ELEMENT VALUE($subelem;$8)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/CRN2")
+DOM SET XML ELEMENT VALUE($subelem;$9)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/CRN3")
+DOM SET XML ELEMENT VALUE($subelem;$10)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/Amount")
+DOM SET XML ELEMENT VALUE($subelem;$11)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/CardNumber")
+DOM SET XML ELEMENT VALUE($subelem;$12)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/ExpiryDate")
+DOM SET XML ELEMENT VALUE($subelem;$13)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/CVC")
+DOM SET XML ELEMENT VALUE($subelem;$14)
+
+$subelem:=DOM Create XML element($root;"/ProcessPayment/txnReq/OriginalTransactionNumber")
+DOM SET XML ELEMENT VALUE($subelem;$15)
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+
+DOM EXPORT TO VAR($root;$Sendcode)
+MaskCCLog ($Sendcode;"bPoint")
+SyncRecordLog ($Sendcode)
+
+WEB SERVICE CALL("https://www.bpoint.com.au/evolve/service.asmx";"urn:Eve/ProcessPayment";"ProcessPayment";"urn:Eve";Web Service manual)
+$BpointError:=Num(WEB SERVICE Get info(0))
+
+If ($BpointError=0)//No error
+C_BLOB($blob)
+C_TEXT($resroot)
+C_TEXT($ressubelem)
+WEB SERVICE GET RESULT($blob;"XMLOut";*)
+$resroot:=DOM Parse XML variable($blob)
+
+$Receivecode:=Convert to text($blob;"UTF-8")
+SyncRecordLog ($Receivecode)
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/ResponseCode")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$responseCode_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/AcquirerResponseCode")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$acquirerResponseCode_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/AuthorisationResult")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$authorisationResult_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/TransactionNumber")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$transactionNumber_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/ReceiptNumber")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$receiptNumber_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/AuthoriseId")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$authoriseId_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/SettlementDate")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$settlementDate_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/MaskedCardNumber")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$maskedCardNumber_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/ProcessPaymentResult/CardType")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$cardType_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/response/ResponseCode")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;$errCode_t)
+End if 
+End if 
+
+$ressubelem:=DOM Find XML element($resroot;"/ProcessPaymentResponse/response/ResponseMessage")
+If (OK=1)
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;errMessage_t)
+End if 
+End if 
+DOM CLOSE XML($resroot)
+
+End if 
+
+DOM CLOSE XML($root)
+End if 
+
+If ($responseCode_t="0") & ($BpointError=0)
+$0:=$authoriseId_t//Authorisation Number
+
+[Trxs]CCTransID:=$transactionNumber_t//Transaction ID,
+[Trxs]OriginalReceipt:=$receiptNumber_t
+If ([Analysis]SetBankedDate=False)//The Date Banked value is set to 'Off' in the Analysis Code
+[Trxs]DateBanked:=Date(Substring($settlementDate_t;7;2)+"/"+Substring($settlementDate_t;5;2)+"/"+Substring($settlementDate_t;1;4))
+End if 
+
+Else 
+Case of 
+: ($BpointError#0)
+$0:="ERR4IC"+String($BpointError)
+Else 
+$0:="ERR"+$responseCode_t
+vCCText:=errMessage_t
+End case 
+
+If ($16) & (Not(IsAWebProcess ))
+If (errMessage_t#"")
+AlertMessage ("Payment for customer: "+$8+" failed with error: "+errMessage_t)
+Else 
+AlertMessage ("Payment for customer: "+$8+" failed with error: "+$0)
+End if 
+End if 
+
+SyncRecordLog ($0)
+End if 

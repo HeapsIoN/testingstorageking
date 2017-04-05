@@ -1,0 +1,723 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): N/A
+// Date and time: 02/06/15, 11:30:11
+// ----------------------------------------------------
+// Method: WS_AddAgreement
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+// Standardized
+// Documented
+// Unit Test
+// WSChangeLog
+
+SOAP DECLARATION(WS_ORFacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORCustomerName;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORCustomerEmail;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORCustomerEmailSend;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_ORFacilityEmailSend;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_ORCustomerPhone;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORUnitTypeCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP input)
+SOAP DECLARATION(WS_Username;Is string var;SOAP input)
+SOAP DECLARATION(WS_ORWeekly;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_CustPass;Is string var;SOAP input)
+SOAP DECLARATION(WS_Locked;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_OREnquiryNo;Is string var;SOAP input)
+SOAP DECLARATION(WS_AdHoc;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_CTCustType;Is text;SOAP input)
+SOAP DECLARATION(WS_CallTakenBy;Is text;SOAP input)
+SOAP DECLARATION(WS_stDigAgmtID;Is string var;SOAP input;"WS_stDigAgmtID")
+SOAP DECLARATION(WS_inDigAgmtID;Is string var;SOAP input;"WS_inDigAgmtID")
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")
+SOAP DECLARATION(WS_AgreementID;Is string var;SOAP output)
+SOAP DECLARATION(WS_UnitsOccupied;Is text;SOAP output)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+vBuyBack:=False
+
+$String:="Start WS_AddAgreement"+Char(13)
+$String:=$String+"WS_ORFacilityCode: "+WS_ORFacilityCode+Char(13)
+$String:=$String+"WS_ORCustomerName: "+WS_ORCustomerName+Char(13)
+$String:=$String+"WS_ORCustomerEmail: "+WS_ORCustomerEmail+Char(13)
+$String:=$String+"WS_ORCustomerEmailSend: "+String(WS_ORCustomerEmailSend)+Char(13)
+$String:=$String+"WS_ORFacilityEmailSend: "+String(WS_ORFacilityEmailSend)+Char(13)
+$String:=$String+"WS_ORCustomerPhone: "+WS_ORCustomerPhone+Char(13)
+$String:=$String+"WS_ORUnitTypeCode: "+WS_ORUnitTypeCode+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+$String:=$String+"WS_Username: "+WS_Username+Char(13)
+$String:=$String+"WS_ORWeekly: "+String(WS_ORWeekly)+Char(13)
+$String:=$String+"WS_CustPass: "+WS_CustPass+Char(13)
+$String:=$String+"WS_Locked: "+String(WS_Locked)+Char(13)
+$String:=$String+"WS_OREnquiryNo: "+WS_OREnquiryNo+Char(13)
+$String:=$String+"WS_AdHoc: "+String(WS_AdHoc)+Char(13)
+$String:=$String+"WS_CTCustType: "+WS_CTCustType+Char(13)
+$String:=$String+"WS_CallTakenBy: "+WS_CallTakenBy+Char(13)
+
+$String:=$String+"WS_stDigAgmtID: "+WS_stDigAgmtID+Char(13)
+$String:=$String+"WS_inDigAgmtID: "+WS_inDigAgmtID+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+
+If (<>sHOFacility="@HUB")
+WSRecordLog ($String;WS_ORFacilityCode)
+Else 
+WSRecordLog ($String)
+End if 
+
+READ WRITE([Reservation])
+READ WRITE([Contacts])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+READ WRITE([Authenticate])
+READ WRITE([Unit])
+READ WRITE([BillPlan])
+READ WRITE([UnitType])
+
+C_TEXT($CurrencySymbol)
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sProduct:=[Facility]ProductCode
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+//<>sFacility:=WS_ORFacilityCode
+
+$CurrencySymbol:=GetTextNo ([Facility]CurrencyFormat;1;";")
+
+ARRAY TEXT(Attachments;0)
+
+$Existing:=False
+
+If (WS_Username>"")
+$Existing:=True
+READ WRITE([Customer])
+QUERY([Customer];[Customer]CustomerCode=WS_Username)
+If (Records in selection([Customer])#1)
+WS_ORErrorCode:=1012
+WS_ORErrorDescription:="Customer record not found in database Storman."
+WS_ORSuccess:=False
+Else 
+If (WS_CustPass#"")
+[Customer]Password:=WS_CustPass
+SAVE RECORD([Customer])
+End if 
+End if 
+//10670 - Commented by Hamid - 04/05/2016
+//READ ONLY([Customer])
+//LOAD RECORD([Customer])
+
+End if 
+
+$Index:=Find in field([Facility]FacilityCode;WS_ORFacilityCode)//Find the Facility Record
+If ($Index#-1)
+GOTO RECORD([Facility];$Index)
+Else //Facility Record Not Found
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+WS_ORSuccess:=False
+End if 
+TRACE
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+If (WS_ORSuccess=True)//Check the Date Required Date
+//WS_MoveInDate:=Substring(WS_MoveInDate;9;2)+"/"+Substring(WS_MoveInDate;6;2)+"/"+Substring(WS_MoveInDate;1;4)
+If (WS_MoveInDate<Current date)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1024
+WS_ORErrorDescription:="Invalid Move In Date."
+End if 
+End if 
+
+
+If (WS_ORSuccess=True) & (WS_ORCustomerEmailSend=True)//Check the Customer Email Address
+If (Length(WS_ORCustomerEmail)<1)
+WS_ORErrorCode:=1002
+WS_ORErrorDescription:="Invalid Customer Email Address."
+End if 
+End if 
+
+If (WS_ORSuccess=True) & (WS_ORFacilityEmailSend=True)//Check the Facility Email Address
+If (Length([Facility]OResFacNotifEmail)<1)
+WS_ORErrorCode:=1008
+WS_ORErrorDescription:="Agreement email address not defined in database Storman."
+End if 
+End if 
+
+If (WS_ORSuccess=True) & (Length(WS_ORCustomerName)<1)//Check the Customer Name
+WS_ORErrorCode:=1003
+WS_ORErrorDescription:="Invalid customer name."
+WS_ORSuccess:=False
+End if 
+
+If (WS_ORSuccess=True) & ($Existing=False)//Create the Customer
+ORName:=WS_ORCustomerName
+ORName:=RemoveSpecial (ORName)
+If (ORName#"")
+CREATE RECORD([Customer])
+$i:=0
+$Base:=Substring(Uppercase(Replace string(Replace string(ORName;" ";"");",";""));1;6)
+Repeat 
+$j:=5-Length(String($i;"#####"))
+$Code:=[Facility]FacilityCode+Substring($Base;1;$j)+String($i;"#####")
+$i:=$i+1
+Until (Find in field([Customer]CustomerCode;$Code)<0)
+[Customer]CustomerCode:=$Code
+[Customer]CustomerName:=WS_ORCustomerName
+[Customer]EmailAddress:=WS_ORCustomerEmail
+[Customer]PhonePrivate:=WS_ORCustomerPhone
+[Customer]MarketSrce:="Web"
+
+[Customer]CustType:=WS_CTCustType
+If (WS_Locked)
+[Customer]Overdue:=1
+End if 
+$i:=Position(",";[Customer]CustomerName)
+If ($i>0) & ([Facility]AutoFirstName>1)
+[Customer]FirstName:=Reverse ([Customer]CustomerName;[Facility]AutoFirstName)
+End if 
+[Customer]GateTimeZone:=[Facility]GateTimeZoneDefault
+SAVE RECORD([Customer])
+Else 
+WS_ORErrorCode:=1004
+WS_ORErrorDescription:="Customer name contains invalid characters."
+WS_ORSuccess:=False
+End if 
+End if 
+
+If (WS_ORSuccess=True)
+
+If (WS_OREnquiryNo#"")
+QUERY([Contacts];[Contacts]ContactNo=WS_OREnquiryNo)
+If (Records in selection([Contacts])=1)
+[Contacts]Outcome:="Rented"
+[Contacts]OutComeDate:=Current date
+[Contacts]FollowUpDate:=!00-00-00!
+[Contacts]FollowUpDone:=True
+//15/07/13 DAM Added to set the cust type for customer record to be the same as for contact, WS_CTCustType - has higher priority
+[Customer]CustType:=[Contacts]CustType
+If (WS_CTCustType#"")
+[Customer]CustType:=WS_CTCustType
+End if 
+
+SAVE RECORD([Customer])
+SAVE RECORD([Contacts])
+End if 
+Else 
+If ([Facility]SaleInqRequest=True) & (WS_ORUnitTypeCode#"Credit")//Create a Contact
+CREATE RECORD([Contacts])
+If ([Contacts]ContactNo="")//Pick up the next Sales Enquiry number available
+If (<>sProduct="MV")
+vOldContact:=500001
+Else 
+vOldContact:=[Facility]NextContactNo
+End if 
+$Continue:=False
+If (Not(Semaphore("<>bNextSalesInqNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//If (Application type=4D Remote Mode)
+GET PROCESS VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+//End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+Repeat 
+If (<>aiNextSalesInqNo{$arraypos}>vOldContact)
+//If (<>sProduct#"MV")
+//ConfirmTwo (Get localized string("It appears the next sales inquiry number of")+" "+String(vOldContact;"0000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+//Else 
+//OK:=1
+//End if 
+//If (OK=1)
+[Contacts]ContactNo:=[Facility]FacilityCode+String(<>aiNextSalesInqNo{$arraypos};"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=<>aiNextSalesInqNo{$arraypos}+1
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+Else 
+<>aiNextSalesInqNo{$arraypos}:=<>aiNextSalesInqNo{$arraypos}+1
+End if 
+//Else 
+//[Contacts]ContactNo:=[Facility]FacilityCode+String(vOldContact;"0000000000")
+//vOldContact:=vOldContact+1
+//If (<>sProduct#"MV")
+//[Facility]NextContactNo:=[Facility]NextContactNo+1
+//<>aiNextSalesInqNo{$arraypos}:=vOldContact
+//End if 
+//End if 
+Else 
+[Contacts]ContactNo:=[Facility]FacilityCode+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+<>aiNextSalesInqNo{$arraypos}:=vOldContact
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+//End if 
+CLEAR SEMAPHORE("<>bNextSalesInqNo")
+Else 
+Repeat 
+[Contacts]ContactNo:=[Facility]FacilityCode+String(vOldContact;"0000000000")
+vOldContact:=vOldContact+1
+If (<>sProduct#"MV")
+[Facility]NextContactNo:=[Facility]NextContactNo+1
+End if 
+$Key:=[Contacts]ContactNo
+$i:=Find in field([Contacts]ContactNo;$Key)
+Until ($i<=0)
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+End if 
+
+//Fills out the Sales Enquiry
+[Contacts]Facility:=[Facility]FacilityCode
+[Contacts]ContactName:=[Customer]CustomerName
+[Contacts]Firstname:=[Customer]FirstName
+[Contacts]EmailAddress:=[Customer]EmailAddress
+[Contacts]Outcome:="Rented"
+[Contacts]OutComeDate:=Current date
+[Contacts]CallDate:=Current date
+[Contacts]ContactPhone:=[Customer]PhonePrivate
+[Contacts]MarketSrce:="Web"
+[Contacts]CallTakenBy:="Web"
+[Contacts]FollowUpDate:=!00-00-00!
+[Contacts]FollowUpDone:=True
+
+If (WS_ORUnitTypeCode#"None") & (WS_ORUnitTypeCode#"Credit")
+//QUERY([UnitType];[UnitType]RUnitType=WS_ORUnitTypeCode)
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+WS_ORUnitTypeCode)//johnno changed this
+[Contacts]SizeQuoted:=[UnitType]Description
+End if 
+
+//15/07/13 DAM Added to set the cust type for customer record to be the same as for contact, WS_CTCustType - has higher priority
+If (WS_CallTakenBy#"")
+[Contacts]CallTakenBy:=WS_CallTakenBy
+End if 
+If (WS_CTCustType#"")
+[Customer]CustType:=WS_CTCustType
+[Contacts]CustType:=WS_CTCustType
+End if 
+SAVE RECORD([Customer])
+SAVE RECORD([Contacts])
+
+End if 
+End if 
+
+End if 
+
+If (WS_ORSuccess=True)//Create Agreement
+If (Length(WS_ORUnitTypeCode)<11)//| (WS_ORUnitTypeCode="Credit") Unit Type Codes can be up to 10 chars excl Facility Code.
+If (WS_ORUnitTypeCode#"None") & (WS_ORUnitTypeCode#"Credit")
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+WS_ORUnitTypeCode)
+End if 
+If (Records in selection([UnitType])>0) | (WS_ORUnitTypeCode="None") | (WS_ORUnitTypeCode="Credit")
+If (WS_ORUnitTypeCode#"None") & (WS_ORUnitTypeCode#"Credit")
+RELATE MANY([UnitType]RUnitType)
+QUERY SELECTION([Unit];[Unit]Vacant=True;*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Company";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Reserved";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Repair";*)
+QUERY SELECTION([Unit]; & ;[Unit]Status#"Unavail")
+ORDER BY([Unit];[Unit]UnitNo;>)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=2)
+
+FIRST RECORD([Unit])
+While ((Locked([Unit])=True) | (Read only state([Unit])=True)) & (End selection([Unit])=False)
+NEXT RECORD([Unit])
+End while 
+End if 
+
+If (End selection([Unit])=False) | (WS_ORUnitTypeCode="None") | (WS_ORUnitTypeCode="Credit")//Able to reserve a Unit
+
+//ORes.xml
+If (OR_ReadOResXML ="True")//Does the XML file exist?
+$vtCreatechargeTransaction:=OR_ReadOResXML ("ChargeTransaction";"Create")//Find out what the deposit value for this Facility Code is
+If ($vtCreatechargeTransaction="")//If value not found then default to True - Create Charge Transaction
+$vtCreatechargeTransaction:="TRUE"
+End if 
+Else 
+$vtCreatechargeTransaction:="TRUE"
+End if 
+
+CREATE RECORD([Agreement])
+If (WS_AdHoc=True) & (WS_ORUnitTypeCode="Credit")
+[Agreement]ActiveAgreemt:=False
+Else 
+[Agreement]ActiveAgreemt:=True
+End if 
+[Agreement]CustomerCode:=[Customer]CustomerCode
+If (WS_ORUnitTypeCode="None") | (WS_ORUnitTypeCode="Credit")
+[Agreement]DepositAmt:=[Analysis]DfltSellAmt
+Else 
+[Agreement]DepositAmt:=[UnitType]DepositAmt+[Analysis]DfltSellAmt
+[Agreement]UnitsOccup:=[Unit]UnitNo
+End if 
+
+If ($vtCreatechargeTransaction#"TRUE")
+[Agreement]DepositAmt:=0
+End if 
+
+[Agreement]MoveIn:=WS_MoveInDate
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+[Agreement]NextBillDate:=[Agreement]MoveIn
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+[Agreement]LastBillDate:=[Agreement]MoveIn
+[Agreement]BalanceOwing:=[Agreement]DepositAmt
+[Agreement]UserLogin:="Web"
+[Agreement]CallTakenBy:="Web"
+If (WS_CallTakenBy#"")
+[Agreement]UserLogin:=WS_CallTakenBy
+[Agreement]CallTakenBy:=WS_CallTakenBy
+End if 
+
+[Agreement]ContactNo:=[Contacts]ContactNo
+[Agreement]BillUtilities:=<>tUtilities
+QUERY([BillPlan];[BillPlan]Code=[Facility]FacilityCode+"@";*)
+
+If (WS_ORWeekly=True)
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod="Week")
+Else 
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod="Month")
+End if 
+ORDER BY([BillPlan]SortOrder;>)
+FIRST RECORD([BillPlan])
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]RefDateField=11;*)
+QUERY([Notices]; & ;[Notices]DaysAfter<0)
+If (Records in selection([Notices])>0)
+[Agreement]NoticeDaysPrior:=Abs([Notices]DaysAfter)
+End if 
+
+If ([Agreement]AgreeNo="")
+$Continue:=False
+If (WS_ORUnitTypeCode="Credit")
+If (Not(Semaphore("<>bNextCreditSaleNo";1800)))
+$Continue:=True
+End if 
+Else 
+If (Not(Semaphore("<>bNextAgreeNo";1800)))
+$Continue:=True
+End if 
+End if 
+If ($Continue)
+//If (Application type=4D Remote Mode)
+If (WS_ORUnitTypeCode="Credit")
+GET PROCESS VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+Else 
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+End if 
+//End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+Repeat 
+If (WS_ORUnitTypeCode="Credit")
+If (<>aiNextCreditSaleNo{$arraypos}>[Facility]NextCreditSaleNo)
+//ConfirmTwo (Get localized string("It appears the next credit sale number of")+" "+String([Facility]NextCreditSaleNo;"00000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+OK:=1
+If (OK=1)
+[Agreement]AgreeNo:="#"+String(<>aiNextCreditSaleNo{$arraypos};"00000000")
+[Facility]NextCreditSaleNo:=<>aiNextCreditSaleNo{$arraypos}+1
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+Else 
+[Agreement]AgreeNo:="#"+String([Facility]NextCreditSaleNo;"00000000")
+[Facility]NextCreditSaleNo:=[Facility]NextCreditSaleNo+1
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+End if 
+Else 
+[Agreement]AgreeNo:="#"+String([Facility]NextCreditSaleNo;"00000000")
+[Facility]NextCreditSaleNo:=[Facility]NextCreditSaleNo+1
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+End if 
+If (vBuyBack=True)
+[Agreement]ActiveAgreemt:=False
+[Agreement]BB:=True
+End if 
+vOldUser:=[Facility]NextCreditSaleNo
+Else 
+If (<>aiNextAgreeNo{$arraypos}>[Facility]NextAgreeNo)
+//ConfirmTwo (Get localized string("It appears the next agreement number of")+" "+String([Facility]NextAgreeNo;"000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+OK:=1
+If (OK=1)
+[Agreement]AgreeNo:=String(<>aiNextAgreeNo{$arraypos};"000000000")
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$arraypos}+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+Else 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+Else 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+vOldUser:=[Facility]NextAgreeNo
+End if 
+$Key:=[Facility]FacilityCode+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+//If (Application type=4D Remote Mode)
+If (WS_ORUnitTypeCode="Credit")
+VARIABLE TO VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+Else 
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+End if 
+//End if 
+Else 
+If (WS_ORUnitTypeCode="Credit")
+//AlertMessage ("Could not get next credit sale number")
+Else 
+//AlertMessage ("Could not get next agreement number")
+End if 
+Repeat 
+If (WS_ORUnitTypeCode="Credit")
+[Agreement]AgreeNo:="#"+String([Facility]NextCreditSaleNo;"00000000")
+[Facility]NextCreditSaleNo:=[Facility]NextCreditSaleNo+1
+If (vBuyBack=True)
+[Agreement]ActiveAgreemt:=False
+[Agreement]BB:=True
+End if 
+vOldUser:=[Facility]NextCreditSaleNo
+Else 
+[Agreement]AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+vOldUser:=[Facility]NextAgreeNo
+End if 
+$Key:=[Facility]FacilityCode+[Agreement]AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+End if 
+If ($Continue)
+If (WS_ORUnitTypeCode="Credit")
+CLEAR SEMAPHORE("<>bNextCreditSaleNo")
+Else 
+CLEAR SEMAPHORE("<>bNextAgreeNo")
+End if 
+End if 
+[Agreement]RAgreeNo:=$Key
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+End if 
+
+If (WS_ORWeekly) & (WS_ORUnitTypeCode#"None") & (WS_ORUnitTypeCode#"Credit")
+[Unit]RentedValue:=[UnitType]WeeklyRate
+Else 
+[Unit]RentedValue:=[UnitType]MonthlyRate
+End if 
+SAVE RECORD([Agreement])
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+SAVE RECORD([Customer])
+
+If (WS_ORUnitTypeCode#"None") & (WS_ORUnitTypeCode#"Credit")
+//Modify Unit Table values as appropriate
+[Unit]AgreeNo:=[Agreement]RAgreeNo
+[Unit]Deposit:=[UnitType]DepositAmt
+If ($vtCreatechargeTransaction#"TRUE")
+[Unit]Deposit:=0
+End if 
+[Unit]MoveIn:=[Agreement]MoveIn
+[Unit]LastStatusDate:=Current date
+[Unit]Vacant:=False
+If (WS_Locked)
+[Unit]Status:=<>asUnitStatus{7}
+Else 
+[Unit]Status:=<>asUnitStatus{1}
+End if 
+
+
+//20/02/17 DM Added for KSS
+[Unit]stDigiAgmtID:=WS_stDigAgmtID
+[Unit]inDigiAgmtID:=WS_inDigAgmtID
+SAVE RECORD([Unit])
+
+[UnitType]NoVacant:=[UnitType]NoVacant-1
+SAVE RECORD([UnitType])
+
+//04/05/16 DAM Added to fix first month billing
+[Agreement]RentAmt:=[Unit]RentedValue
+[Agreement]RegularRent:=[Unit]RentedValue
+[Agreement]NewRentAmt:=[Unit]RentedValue
+[Agreement]NewRegularRent:=[Unit]RentedValue
+SAVE RECORD([Agreement])
+
+READ WRITE([UnitHistory])
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+//[UnitHistory]RentedValue:=$CustProrate
+[UnitHistory]stDigiAgmtID:=WS_stDigAgmtID
+[UnitHistory]inDigiAgmtID:=WS_inDigAgmtID
+SAVE RECORD([UnitHistory])
+End if 
+
+If ($vtCreatechargeTransaction="TRUE")
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+[Trxs]Balance:=[Agreement]DepositAmt
+If (WS_ORUnitTypeCode#"None") & (WS_ORUnitTypeCode#"Credit")
+[Trxs]UnitNo:=[Unit]UnitNo
+End if 
+[Trxs]Qty:=1
+[Trxs]DateFrom:=[Agreement]MoveIn
+[Trxs]TrxTime:=Current time
+[Trxs]UserLogin:="Web"
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"DP"
+If (WS_ORUnitTypeCode#"None") & (WS_ORUnitTypeCode#"Credit")
+[Trxs]Description:=[Analysis]Description
+Else 
+[Trxs]Description:=[Analysis]Description+" Unit "+[Unit]UnitNo
+End if 
+[Trxs]TotAmt:=[Agreement]DepositAmt//RoundAmt ([UnitType]DepositAmt)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=False
+SAVE RECORD([Trxs])
+End if 
+
+If (WS_ORFacilityEmailSend=True)
+If ([Facility]OResFacNotifEmail#"")
+$MessageBody:="A new Online Agreement has been created:"+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Agreement Number: "+[Facility]FacilityCode+[Reservation]ReserveNo+Char(Carriage return)
+$MessageBody:=$MessageBody+"Date: "+String(Current date;5)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Time: "+String(Current time)+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Customer Name: "+WS_ORCustomerName+Char(Carriage return)
+$MessageBody:=$MessageBody+"Email Address: "+WS_ORCustomerEmail+Char(Carriage return)
+$MessageBody:=$MessageBody+"Phone Number: "+WS_ORCustomerPhone+Char(Carriage return)+Char(Carriage return)
+$MessageBody:=$MessageBody+"Facility: "+[Facility]FacilityName+Char(Carriage return)
+$MessageBody:=$MessageBody+"Description: "+[UnitType]Description+Char(Carriage return)
+$MessageBody:=$MessageBody+"Agreement Deposit Cost: "+$CurrencySymbol+String([UnitType]DepositAmt+[Analysis]DfltSellAmt;"#####0.00")+Char(Carriage return)
+$MessageBody:=$MessageBody+"Move In Date: "+String(WS_MoveInDate)+Char(Carriage return)
+If (WS_ORWeekly=True)
+$WeeklyMonthly:="Weekly"
+Else 
+$WeeklyMonthly:="Monthly"
+End if 
+$MessageBody:=$MessageBody+"Weekly / Monthly: "+$WeeklyMonthly+Char(Carriage return)
+$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - New Online Agreement";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")//Notification Email to Facility
+If ($OK=False)//Email Failed
+WS_ORErrorCode:=1009
+WS_ORErrorDescription:="Facility notification email failed."
+End if 
+End if 
+End if 
+
+
+If (WS_ORCustomerEmailSend=True)
+If ([Facility]EmailAddress#"")
+vtDepositAmt:=String([UnitType]DepositAmt+[Analysis]DfltSellAmt)
+vtDateUnitRequired:=String(WS_MoveInDate)
+$OK:=OR_EmailCustAgree //("";"";"";"";"";"";False;->Attachments;"";"";"";"";"";"";"")  `Notification Email to Customer - details of email are filled in from 'OR_EmailNotice' method 
+If ($OK=False)//Email Failed
+WS_ORErrorCode:=1010
+WS_ORErrorDescription:="Customer notification email failed."
+End if 
+End if 
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1007
+WS_ORErrorDescription:="Unit record not found in database Storman."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1006
+WS_ORErrorDescription:="Unit Type record not found in database Storman."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1005
+WS_ORErrorDescription:="Requested Unit Type Code is invalid."
+End if 
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+If (WS_ORSuccess=True)
+WS_CustomerID:=[Customer]CustomerCode
+WS_AgreementID:=[Agreement]AgreeNo
+WS_UnitsOccupied:=[Agreement]UnitsOccup
+VALIDATE TRANSACTION
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Agreement record successfully added into database Storman."
+Else 
+WS_CustomerID:="Invalid"
+CANCEL TRANSACTION
+End if 
+
+//18/03/15 DAM added to release records.
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Agreement])
+UNLOAD RECORD([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([BillPlan])
+UNLOAD RECORD([BillPlan])
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+
+$String:="End WS_AddAgreement"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_AgreementID: "+WS_AgreementID+Char(13)
+$String:=$String+"WS_UnitsOccupied: "+WS_UnitsOccupied+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

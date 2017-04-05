@@ -1,0 +1,81 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Clicked)
+If (Modified record([Unit]))
+
+//23/12/16 DM Added code below to change unithistory in a case unitno is changed
+[Unit]RUnitNo:=<>sFacility+[Unit]UnitNo
+If ([Unit]RUnitNo#Old([Unit]RUnitNo))
+READ WRITE([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]UnitNo=Old([Unit]RUnitNo);*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+If (Records in selection([UnitHistory])>0)
+APPLY TO SELECTION([UnitHistory];[UnitHistory]UnitNo:=[Unit]RUnitNo)
+End if 
+READ ONLY([UnitHistory])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+LOAD RECORD([Agreement])
+If (Position(",";[Agreement]UnitsOccup)<1)
+[Agreement]UnitsOccup:=Replace string([Agreement]UnitsOccup;Old([Unit]UnitNo);[Unit]UnitNo)
+Else 
+[Agreement]UnitsOccup:=Replace string([Agreement]UnitsOccup;Old([Unit]UnitNo);[Unit]UnitNo)
+ConfirmTwo (Get localized string("Please confirm this is correct (Old version:")+" "+Old([Agreement]UnitsOccup)+" "+Get localized string("Current:")+" "+[Agreement]UnitsOccup)
+End if 
+SAVE RECORD([Agreement])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+End if 
+If ([Unit]Status="Unavail") & ([Unit]Status#Old([Unit]Status)) & ([Unit]EndDate=!00-00-00!)
+[Unit]EndDate:=Current date
+End if 
+[Unit]TriggerUpdate:=True
+
+SAVE RECORD([Unit])
+End if 
+VALIDATE TRANSACTION
+NEXT RECORD([Unit])
+If (End selection([Unit]))
+LAST RECORD([Unit])
+End if 
+START TRANSACTION
+RELATE MANY([Unit]RUnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+$i:=Find in array(aCustCode;Substring([Unit]UnitTypeCode;6))
+//If ($i<1)
+//$i:=1
+//End if 
+If ($i#-1)
+aCustCode:=$i
+Else 
+aCustCode:=1
+End if 
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+If ([Unit]Vacant=True)
+OBJECT SET VISIBLE(*;"@Vacant@";False)
+Else 
+OBJECT SET VISIBLE(*;"@Vacant@";True)
+End if 
+vLeg50:=[Agreement]AgreeNo
+vLeg51:=[Customer]CustomerName
+If (Records in selection([Agreement])>0) | (Records in selection([UnitHistory])>0)
+OBJECT SET VISIBLE(bDelete;False)
+Else 
+OBJECT SET VISIBLE(bDelete;True)
+End if 
+//If (aPageNo=2)
+//NEXT RECORD([Unit])
+//NEXT RECORD([UnitHistory])
+//GOTO PAGE(2)
+//End if 
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+If (Records in selection([UnitHistory])>0)
+OBJECT SET ENABLED(bDelIncl;True)
+Else 
+OBJECT SET ENABLED(bDelIncl;False)
+End if 
+End if 
+
+

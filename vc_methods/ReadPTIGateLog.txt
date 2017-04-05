@@ -1,0 +1,307 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Buffer)//Only called by LogMonLoopCode
+C_TEXT($Binary)
+C_TEXT($Name)
+C_LONGINT($Day;$Month;$Year)
+C_LONGINT($i;$j)
+C_TIME($StartTime)
+ARRAY TEXT(asEmails;0)
+$Beep:=False
+$StartTime:=Current time
+If ($StartTime<?23:58:00?)//Don't do this process if near midnight
+$StartTime:=$StartTime+?00:02:00?
+READ WRITE([GateLog])
+//If ([Facility]GateviaModem=False)
+SET CHANNEL([Facility]SerialPortNo;10+1024+16384+12288)
+SET TIMEOUT(10)
+//End if 
+//CommsAction (True;":"+CalcBinHex (5;"0C")+Char(13)) `Not needed
+//DELAY PROCESS(Current process;15)
+CREATE EMPTY SET([GateLog];"New")
+Repeat 
+CommsAction (True;":"+CalcBinHex (5;"0D")+Char(13))
+DELAY PROCESS(Current process;15)
+$Buffer:=CommsAction (False)
+$i:=Position(":";$Buffer)//Sometimes this is not the first character
+If ($i>1)
+$Buffer:=Substring($Buffer;$i)
+End if 
+If (Length($Buffer)>20) & (Substring($Buffer;4;2)#"FF")
+CREATE RECORD([GateLog])
+[GateLog]CustCode:=<>sFacility
+[GateLog]GateActionText:=Substring($Buffer;4;2)
+$j:=0
+Case of 
+: ([GateLog]GateActionText="00")
+[GateLog]GateActionText:="Area Enter"
+$j:=1
+: ([GateLog]GateActionText="07")
+[GateLog]GateActionText:="Contrast Code"
+: ([GateLog]GateActionText="01")
+[GateLog]GateActionText:="Area Closed"
+$j:=1
+: ([GateLog]GateActionText="08")
+[GateLog]GateActionText:="Trigger Relay"
+: ([GateLog]GateActionText="02")
+[GateLog]GateActionText:="Area Denied"
+$j:=1
+: ([GateLog]GateActionText="09")
+[GateLog]GateActionText:="Door Close"
+$j:=1
+: ([GateLog]GateActionText="03")
+[GateLog]GateActionText:="Code Expired"
+$j:=1
+: ([GateLog]GateActionText="0A")
+[GateLog]GateActionText:="Door Open"
+$j:=1
+: ([GateLog]GateActionText="04")
+[GateLog]GateActionText:="Locked Out"
+$j:=1
+: ([GateLog]GateActionText="0B")
+[GateLog]GateActionText:="Door Alarm"
+$j:=2
+: ([GateLog]GateActionText="05")
+[GateLog]GateActionText:="Code Unknown"
+: ([GateLog]GateActionText="0E")
+[GateLog]GateActionText:="Comms Off"
+: ([GateLog]GateActionText="0C")
+[GateLog]GateActionText:="Unknown Door Open"
+: ([GateLog]GateActionText="11")
+[GateLog]GateActionText:="Unknown Door Close"
+: ([GateLog]GateActionText="13")
+[GateLog]GateActionText:="Auto Door Rearm"
+$j:=1
+: ([GateLog]GateActionText="06")
+[GateLog]GateActionText:="Area Exit"
+$j:=1
+: ([GateLog]GateActionText="0D")
+[GateLog]GateActionText:="Comms On"
+: ([GateLog]GateActionText="17")
+[GateLog]GateActionText:="Unit Check in Fail"
+$j:=1
+: ([GateLog]GateActionText="1C")
+[GateLog]GateActionText:="Unknown Unit Check in Fail"
+: ([GateLog]GateActionText="18")
+[GateLog]GateActionText:="Unit Check in Resumed"
+$j:=1
+: ([GateLog]GateActionText="14")
+[GateLog]GateActionText:="Mux Unit Tamper Alarm"
+$j:=1
+: ([GateLog]GateActionText="15")
+[GateLog]GateActionText:="Tamper Alarm"
+$j:=1
+: ([GateLog]GateActionText="16")
+[GateLog]GateActionText:="Tamper Secure"
+$j:=1
+: ([GateLog]GateActionText="10")
+[GateLog]GateActionText:="Remote Tamper Switch Restored"
+$j:=1
+: ([GateLog]GateActionText="0F")
+[GateLog]GateActionText:="Remote Tamper Switch Alarm"
+$j:=1
+: ([GateLog]GateActionText="26")
+[GateLog]GateActionText:="Request to Exit"
+Else 
+[GateLog]GateActionText:="PTI Event Type:"+[GateLog]GateActionText
+End case 
+[GateLog]GateNo:=Num(Substring($Buffer;6;2))
+$Binary:=CalcBinHex (6;Substring($Buffer;8;4);16)
+$Year:=Num(CalcBinHex (7;Substring($Binary;1;7)))
+$Month:=Num(CalcBinHex (7;Substring($Binary;8;4)))
+$Day:=Num(CalcBinHex (7;Substring($Binary;12;5)))
+[GateLog]GateDate:=GetDate ($Day;$Month;$Year)
+$Binary:=Substring($Buffer;12;2)+":"+Substring($Buffer;14;2)
+[GateLog]GateTime:=Time($Binary)
+If ($j>=1)
+$Binary:=CalcBinHex (6;Substring($Buffer;16;8);24)
+[GateLog]UnitNo:=CalcBinHex (7;Substring($Binary;6;14))
+[GateLog]UnitSection:=Num(CalcBinHex (7;Substring($Binary;1;5)))
+[GateLog]UnitLetter:=Num(CalcBinHex (7;Substring($Binary;20;5)))
+QUERY([Unit];[Unit]UnitNumeric=Num([GateLog]UnitNo);*)
+QUERY([Unit]; & ;[Unit]UnitSection=[GateLog]UnitSection)
+If (Records in selection([Unit])>1)
+QUERY SELECTION([Unit];[Unit]UnitLetter=[GateLog]UnitLetter)
+End if 
+If (Records in selection([Unit])>0)
+If (Records in selection([Unit])>1)
+AlertMessage (Get localized string("WARNING - GateLog has discovered")+" "+String(Records in selection([Unit]))+" "+Get localized string("units with the GateUserNo")+" "+[GateLog]UnitNo+". "+Get localized string("Please correct!"))
+End if 
+RELATE ONE([Unit]AgreeNo)
+If (Records in selection([Agreement])=1)
+RELATE ONE([Agreement]CustomerCode)
+[GateLog]CustCode:=[Customer]CustomerCode
+End if 
+[GateLog]UnitNo:=[Unit]UnitNo
+Else 
+QUERY([StaffPINS];[StaffPINS]UserNo=Num([GateLog]UnitNo))
+If (Records in selection([StaffPINS])=1)
+[GateLog]GateKeyed:=Substring([StaffPINS]Name;1;10)
+End if 
+End if 
+ReadGateLogAlarmAction 
+If ([Facility]AccessFee=True) & (([GateLog]GateActionText="@Area Enter@") | ([GateLog]GateActionText="@Enter Area@")) & (Records in selection([Customer])>0)
+If ([Customer]CustomAccessFee#[Facility]AccessFeeCost)
+If ([Customer]CustomAccessFee>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Customer]CustomAccessFee
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Facility]AccessFeeCost
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+End if 
+If (([GateLog]GateActionText="@Area Enter@") | ([GateLog]GateActionText="@Area Exit@") | ([GateLog]GateActionText="@Auto Door Rearm@")) & ([Facility]OnSiteDisable=False)
+QUERY([PhotosCards];[PhotosCards]Code=[GateLog]CustCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+If ([Customer]GatePIN>"") | (Records in selection([PhotosCards])>0)
+READ WRITE([Unit])
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+RELATE MANY SELECTION([Unit]AgreeNo)
+If ([GateLog]GateActionText="@Area Enter@")
+APPLY TO SELECTION([Unit];[Unit]Status:="OnSite")
+Else 
+APPLY TO SELECTION([Unit];[Unit]Status:="Rented")
+End if 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+End if 
+If ($j=2)
+For ($i;1;20)
+BEEP
+End for 
+//Should send alarm to all Clients logged in
+//Send email if after hours or if client not logged in
+End if 
+If (Length([GateLog]CustCode)>5)
+If ([Facility]GateSysType=3) & ([GateLog]GateKeyed="")
+QUERY([PhotosCards];[PhotosCards]Code=[GateLog]CustCode;*)
+QUERY([PhotosCards];[PhotosCards]Size=0;*)
+QUERY([PhotosCards]; & ;[PhotosCards]UnitSuffix=[GateLog]UnitLetter)
+If (Records in selection([PhotosCards])=1)
+[GateLog]GateKeyed:="%# "+[PhotosCards]Name
+Else 
+[GateLog]GateKeyed:="%# "+[Customer]CustomerName
+End if 
+End if 
+End if 
+Else 
+[GateLog]GateKeyed:=Substring(CalcBinHex (4;Substring($Buffer;16;8));1;10)
+End if 
+If ([GateLog]GateDate>=[Facility]LastGateDate)
+If ([GateLog]GateDate>[Facility]LastGateDate) | ([GateLog]GateTime>=[Facility]LastGateTime)
+$Save:=1
+If ([GateLog]GateDate>(Current date+1))
+If (Application type=4D Server)
+$Save:=0
+Else 
+ConfirmTwo (Get localized string("A gate log item with the date of")+" "+String([GateLog]GateDate)+" "+Get localized string("is in the future. Save this gate trx?");Get localized string("Yes");Get localized string("No"))
+$Save:=OK
+End if 
+End if 
+If ($Save=1)
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+SAVE RECORD([GateLog])
+If ($j=1) & ([GateLog]GateActionText#"Area Exit") & ([GateLog]GateActionText#"Door@")
+ADD TO SET([GateLog];"New")
+End if 
+$Beep:=True
+End if 
+End if 
+End if 
+Else 
+$Buffer:="ABORT"
+End if 
+Until ($Buffer="ABORT") | (Current time>=$StartTime)
+//CommsAction (True;":"+CalcBinHex (5;"0B")+Char(13))  `Clear Gate Log - not needed
+//If ([Facility]GateviaModem=False)
+SET CHANNEL(11)
+//End if 
+READ ONLY([GateLog])
+UNLOAD RECORD([GateLog])
+USE SET("New")
+CLEAR SET("New")
+If ([Facility]GateModemInit="Print@") & (Records in selection([GateLog])>0)
+FIRST RECORD([GateLog])
+If ([Facility]UseReceiptPrinter=True)
+$Name:=Get current printer
+SET CURRENT PRINTER([Facility]ReceiptName)
+End if 
+While (End selection([GateLog])=False)
+QUERY([Unit];[Unit]UnitNumeric=Num([GateLog]UnitNo);*)
+QUERY([Unit]; & ;[Unit]UnitSection=[GateLog]UnitSection)
+If (Records in selection([Unit])>1)
+QUERY SELECTION([Unit];[Unit]UnitLetter=[GateLog]UnitLetter)
+End if 
+If (Records in selection([Unit])>0)
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+vLeg1:=Get localized string("Phone")+" :"
+vLeg2:=Get localized string("Fax")+" :"
+If ([Facility]Country="DE")
+vSCity:=[Facility]PostZIPCode+"  "+[Facility]City+"  "+[Facility]State
+Else 
+vSCity:=[Facility]City+"  "+[Facility]State+"  "+[Facility]PostZIPCode
+End if 
+vLeg3:=""
+If ([GateLog]GateActionText="Area Enter")
+vLine1:=Get localized string("ACCESS GRANTED")
+Else 
+vLine1:=Uppercase([GateLog]GateActionText;*)
+vLeg3:=Get localized string("PLEASE SEE OFFICE")
+End if 
+If ([Facility]UseCustomReceipt)
+FORM SET OUTPUT([Facility];"ReceiptOnly")
+// Settingd for SVG
+C_TEXT($vXML)
+If (BLOB size([Facility]Receipt_)#0)
+LoadReferences (3)
+End if 
+SET PRINT PREVIEW(False)
+PRINT RECORD([Facility];>)
+FORM SET OUTPUT([Facility];"Output")
+Else 
+FORM SET OUTPUT([GateLog];"GateReceipt")//Design this receipt
+SET PRINT PREVIEW(False)
+PRINT RECORD([GateLog];>)
+FORM SET OUTPUT([GateLog];"Output")
+End if 
+End if 
+NEXT RECORD([GateLog])
+End while 
+If ([Facility]UseReceiptPrinter=True)
+SET CURRENT PRINTER($Name)
+End if 
+End if 
+If ([GateLog]GateDate>=vdLastGateDate) & ([GateLog]GateDate<=Current date)
+vdLastGateDate:=[GateLog]GateDate
+vtLastGateTime:=[GateLog]GateTime
+End if 
+End if 
+If ($Beep)//Trx Received
+BEEP
+End if 

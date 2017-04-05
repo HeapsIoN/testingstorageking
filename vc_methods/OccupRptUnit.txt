@@ -1,0 +1,124 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Printing Detail)
+SetFormats 
+vTotUnit:=1
+If ((tBoolean) & ([Unit]OccupRentedVal#-999)) | ((tBoolean=False) & ([Unit]Vacant=False))
+vOccUnit:=1
+vVacUnit:=0
+Else 
+vVacUnit:=1
+vOccUnit:=0
+End if 
+If (tBoolean)
+[Unit]UnitValue:=[Unit]OccupRentedVal
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+If ([Facility]TaxAddtoAmt)
+vRate:=Round(CalculateBaseRate (0;0)*(1+(vTax/100));2)
+vOccVal:=Round([Unit]UnitValue*vOccUnit*(1+(vTax/100));2)
+Else 
+vRate:=Round(CalculateBaseRate (0;0)/(1+(vTax/100));2)
+vOccVal:=Round([Unit]UnitValue*vOccUnit/(1+(vTax/100));2)
+End if 
+vTotal:=vRate
+If (bAdd#1)
+vOccVal:=vRate*vOccUnit//Use Notional Rate instead of Actual above
+End if 
+vVacVal:=vRate*vVacUnit
+vTotArea:=[Unit]UnitAreaSize
+vOccArea:=[Unit]UnitAreaSize*vOccUnit
+vVacArea:=[Unit]UnitAreaSize*vVacUnit
+If ([UnitType]RCSpecial=True)
+OBJECT SET VISIBLE(*;"SpecialStar";True)
+Else 
+OBJECT SET VISIBLE(*;"SpecialStar";False)
+End if 
+End if 
+If (Form event=On Header)
+If (tBoolean)
+vTitle:=Get localized string("Occupancy Report as at")+" "+String(vMthDate;6)
+Else 
+vTitle:=Get localized string("Occupancy Report as at")+" "+String(Current date;6)
+End if 
+vLeg1:=""
+If (Level=1)
+vLeg1:="Bldg / Location : "+[Unit]BldgLocation
+End if 
+Case of 
+: (<>sProduct="@R")
+vsUn:=Get localized string("OccupRptMethod")
+vsUns:=Get localized string("OccupRptMethod1")
+OBJECT SET TITLE(*;"Text1Units1";Get localized string("OccupRptMethod5"))
+OBJECT SET TITLE(*;"Text1Units";Get localized string("OccupRptMethod5"))
+OBJECT SET TITLE(*;"Text5Units";Get localized string("OccupRptMethod10a"))
+OBJECT SET TITLE(*;"Text7Units";Get localized string("OccupRptMethod11a"))
+OBJECT SET TITLE(*;"text7";Get localized string("Vacancya"))
+: (<>sProduct="@B")
+vsUn:=Get localized string("Berth")
+vsUns:=Get localized string("Berths")
+OBJECT SET TITLE(*;"Text1Units1";Get localized string("SpacenextlineType"))
+OBJECT SET TITLE(*;"Text1Units";Get localized string("SpacenextlineType"))
+OBJECT SET TITLE(*;"Text5Units";Get localized string("OccupRptMethod10"))
+OBJECT SET TITLE(*;"Text7Units";Get localized string("OccupRptMethod11"))
+OBJECT SET TITLE(*;"text7";Get localized string("Vacancy"))
+: (<>sProduct="@C")
+vsUn:=Get localized string("Space")
+vsUns:=Get localized string("Spaces")
+OBJECT SET TITLE(*;"Text1Units1";Get localized string("SpacenextlineType"))
+OBJECT SET TITLE(*;"Text1Units";Get localized string("SpacenextlineType"))
+OBJECT SET TITLE(*;"Text5Units";Get localized string("OccupRptMethod10"))
+OBJECT SET TITLE(*;"Text7Units";Get localized string("OccupRptMethod11"))
+OBJECT SET TITLE(*;"text7";Get localized string("Vacancy"))
+Else 
+vsUn:=Get localized string("Unit")
+vsUns:=Get localized string("Units")
+OBJECT SET TITLE(*;"Text1Units1";Get localized string("OccupRptMethod4"))
+OBJECT SET TITLE(*;"Text1Units";Get localized string("OccupRptMethod4"))
+OBJECT SET TITLE(*;"Text5Units";Get localized string("OccupRptMethod10"))
+OBJECT SET TITLE(*;"Text7Units";Get localized string("OccupRptMethod11"))
+OBJECT SET TITLE(*;"text7";Get localized string("Vacancy"))
+End case 
+OBJECT SET TITLE(*;"Text5Units1";Get localized string("Occupancy"))
+OBJECT SET TITLE(*;"Text7Units1";Get localized string("Vacancy"))
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Break)
+vNoTotal:=Subtotal(vTotUnit)
+vTotal:=Subtotal(vTotal)
+vAvgRate:=Round(vTotal/vNoTotal;2)
+vNoOccup:=Subtotal(vOccUnit)
+vNoVacant:=Subtotal(vVacUnit)
+vOccVal:=Subtotal(vOccVal)
+vVacVal:=Subtotal(vVacVal)
+vTotArea:=Subtotal(vTotArea)
+vOccArea:=Subtotal(vOccArea)
+vVacArea:=Subtotal(vVacArea)
+If (vNoTotal=0)
+vPCUOcc:=0
+vPCUVac:=0
+Else 
+vPCUOcc:=Round(vNoOccup*100/vNoTotal;0)
+vPCUVac:=Round(vNoVacant*100/vNoTotal;0)
+End if 
+If (vTotal=0)
+vPCVOcc:=0
+vPCVVac:=0
+Else 
+vPCVOcc:=Round(vOccVal*100/vTotal;0)
+vPCVVac:=Round(vVacVal*100/vTotal;0)
+End if 
+If (vTotArea=0)
+vPCAOcc:=0
+vPCAVac:=0
+Else 
+vPCAOcc:=Round(vOccArea*100/vTotArea;0)
+vPCAVac:=Round(vVacArea*100/vTotArea;0)
+End if 
+OccupGetLegend 
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

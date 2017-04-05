@@ -1,0 +1,170 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+ARRAY TEXT($aFiles;0)
+C_BOOLEAN($Locked;$Invis)
+C_BOOLEAN(vbNewStartupDatafile;vbExistingStartupDatafile;vBB)
+C_DATE($CDate;$MDate)
+C_TIME($CTime;$MTime)
+
+
+Case of 
+: (Test path name(<>sStormanPath+"Marina.txt")=Is a document)
+GET PICTURE FROM LIBRARY(2116;vpMasthead)
+: (Test path name(<>sStormanPath+"Rental.txt")=Is a document)
+GET PICTURE FROM LIBRARY(2117;vpMasthead)
+: (Test path name(<>sStormanPath+"Vault.txt")=Is a document)
+GET PICTURE FROM LIBRARY(2113;vpMasthead)
+: (Test path name(<>sStormanPath+"Billing.txt")=Is a document)
+GET PICTURE FROM LIBRARY(27694;vpMasthead)
+Else 
+//GET PICTURE FROM LIBRARY(24217;vpMasthead)
+GET PICTURE FROM LIBRARY(27690;vpMasthead)//v10logo
+End case 
+
+Case of 
+: (Test path name(<>sStormanPath+"Marina.txt")=Is a document)
+vBB:=True
+: (Test path name(<>sStormanPath+"Rental.txt")=Is a document)
+vBB:=True
+Else 
+vBB:=False
+End case 
+
+vbNewStartupDatafile:=True
+vbExistingStartupDatafile:=False
+FORM GOTO PAGE(1)//New Datafile
+
+$Locked:=False
+$Invis:=False
+$CDate:=!00-00-00!
+$MDate:=!00-00-00!
+$CTime:=?00:00:00?
+$MTime:=?00:00:00?
+SetFormats 
+LoadFacilityCountries 
+//ARRAY TEXT(aPageNo;9)
+//aPageNo{1}:="Australia"
+//aPageNo{2}:="New Zealand"
+//aPageNo{3}:="United States"
+//aPageNo{4}:="United Kingdom"
+//aPageNo{5}:="Canada"
+//aPageNo{6}:="Singapore"
+//aPageNo{7}:="Hong Kong"
+//aPageNo{8}:="South Africa"
+//aPageNo{9}:="Thailand"
+asCountries:=Find in array(asCountryCodes;[Facility]Country)
+If (asCountries<1)
+If (Day number(Date("5/1/12"))=Thursday)
+asCountries:=Find in array(asCountryCodes;"AU")
+Else 
+asCountries:=Find in array(asCountryCodes;"US")
+End if 
+End if 
+$Ext:=".data"
+If (<>iPlatform=3)
+$Ext:=".4DD"
+End if 
+If ([Facility]BackupInfo="")//First time after upgrade
+$StormanOldPath:=Substring(<>sStormanPath;1;Length(<>sStormanPath)-1)+"Old"+<>sSeparator//Initialise
+If (Test path name($StormanOldPath)=Is a folder)
+DOCUMENT LIST($StormanOldPath;$aFiles)
+For ($i;Size of array($aFiles);1;-1)
+If ($aFiles{$i}#("@"+$Ext))
+DELETE FROM ARRAY($aFiles;$i;1)
+End if 
+End for 
+If (Size of array($aFiles)>0)//Locate date of last change
+ARRAY DATE($aModDate;Size of array($aFiles))
+For ($i;1;Size of array($aFiles))
+GET DOCUMENT PROPERTIES($StormanOldPath+$aFiles{$i};$Locked;$Invis;$CDate;$CTime;$MDate;$MTime)
+$aModDate{$i}:=$MDate
+End for 
+SORT ARRAY($aModDate;$aFiles;<)//Most recent change date should be latest file
+If (Abs(Current date-$aModDate{1})>3)
+ConfirmTwo (Get localized string("This is old?");Get localized string("Yes");Get localized string("No"))
+End if 
+If ($aFiles{1}=("Storman"+$Ext))
+$aFiles{1}:=<>sStormanPath+"Facility"+$Ext
+End if 
+If (Test path name(<>sStormanPath+$aFiles{1})=Is a document)
+AlertMessage (Get localized string("The file already exists!"))
+Else 
+COPY DOCUMENT($StormanOldPath+$aFiles{1};<>sStormanPath+$aFiles{1})
+//If (<>iPlatform=3)
+//$ResFile:=$StormanOldPath+$aFiles{1}
+//$ResFile:=Change string($ResFile;"R";Length($ResFile))
+//If (Test path name($ResFile)=Is a document)
+//COPY DOCUMENT($ResFile;Change string(<>sStormanPath+$aFiles{1};"R";Length(<>sStormanPath+$aFiles{1})))
+//Else 
+//AlertMessage (Get localized string("Error - The .4DR file is missing for")+" "+$StormanOldPath+$aFiles{1}+"! "+Get localized string("For more info please click the Learn More button"))
+//End if 
+//End if 
+End if 
+End if 
+End if 
+[Facility]BackupInfo:="1"
+SAVE RECORD([Facility])
+End if 
+//Locate datafiles
+vAddr1:=Get localized string("New")
+vAddr2:=Get localized string("New")
+vAddr3:=Get localized string("New")
+vAddr4:=Get localized string("New")
+vAddr5:=""
+
+If (Test path name(<>sStormanPath+"Database"+<>sSeparator)#Is a folder)
+CREATE FOLDER(<>sStormanPath+"Database"+<>sSeparator)
+End if 
+DOCUMENT LIST(<>sStormanPath+"Database"+<>sSeparator;$aFiles)
+SORT ARRAY($aFiles;>)
+$Main:=0
+$LDate:=!00-00-00!
+For ($i;1;Size of array($aFiles))
+If ($aFiles{$i}=("@"+$Ext))
+GET DOCUMENT PROPERTIES(<>sStormanPath+"Database"+<>sSeparator+$aFiles{$i};$Locked;$Invis;$CDate;$CTime;$MDate;$MTime)
+Case of 
+: ($aFiles{$i}="DemoSL@")
+vAddr1:=<>sStormanPath+"Database"+<>sSeparator+$aFiles{$i}
+vHdr1:=String($MDate)
+: ($aFiles{$i}="DemoSP@")
+vAddr2:=<>sStormanPath+"Database"+<>sSeparator+$aFiles{$i}
+vHdr2:=String($MDate)
+: ($aFiles{$i}="DemoMV@")
+vAddr3:=<>sStormanPath+"Database"+<>sSeparator+$aFiles{$i}
+vHdr3:=String($MDate)
+: ($aFiles{$i}="Storman.@")//Ignore as it is control file.
+: ($aFiles{$i}="Storage.@")//Ignore as it is control file.
+Else 
+vAddr5:=vAddr5+<>sStormanPath+"Database"+<>sSeparator+$aFiles{$i}+Char(13)
+If ($MDate>$LDate)
+$Main:=$i
+$LDate:=$MDate
+End if 
+End case 
+End if 
+End for 
+If ($Main>0)
+vAddr4:=<>sStormanPath+"Database"+<>sSeparator+$aFiles{$Main}
+
+
+vHdr4:=String($LDate)
+vAddr5:=Replace string(vAddr5;vAddr4+Char(13);"")
+End if 
+For ($i;1;5)
+$p:=Get pointer("vAddr"+String($i))
+If (Length($p->)>25)
+OBJECT SET FONT SIZE($p->;9)
+End if 
+End for 
+
+If (vBB=True)
+OBJECT SET VISIBLE(*;"@SL";False)
+End if 
+
+If (vAddr4#Get localized string("New"))
+vbExistingStartupDatafile:=True
+vbNewStartupDatafile:=False
+FORM GOTO PAGE(2)
+End if 
+
+End if 

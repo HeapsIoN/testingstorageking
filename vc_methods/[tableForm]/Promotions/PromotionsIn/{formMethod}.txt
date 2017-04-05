@@ -1,0 +1,83 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+If (Form event=On Load)
+
+OBJECT SET TITLE(*;"Text19";Get localized string("Description")+":")
+OBJECT SET TITLE(*;"Text18";Get localized string("Sort Order")+":")
+OBJECT SET TITLE(*;"Text36";Get localized string("Customer Type")+":")
+OBJECT SET TITLE(*;"Text25BP";Get localized string("Billing Plan")+":")
+
+ARRAY TEXT(asPromoType;2)
+asPromoType{1}:=Substring(Get localized string("Analysis code:");1;Length(Get localized string("Analysis code:"))-1)
+asPromoType{2}:=Get localized string("Billing Plan")
+
+If ([Promotions]PromoType=True)
+asPromoType:=2
+Else 
+asPromoType:=1
+End if 
+
+If (asPromoType=1)
+OBJECT SET VISIBLE(*;"@AC";True)
+OBJECT SET VISIBLE(*;"@BP";False)
+Else 
+OBJECT SET VISIBLE(*;"@AC";False)
+OBJECT SET VISIBLE(*;"@BP";True)
+End if 
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]Promotions=True)
+
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+
+SELECTION TO ARRAY([Analysis]Code;asPromoAnalysis;[Analysis]Description;asPromoAnalysisCode)
+
+asPromoAnalysisCode:=Find in array(asPromoAnalysis;[Promotions]AnalysisCode)
+
+If (asPromoAnalysisCode<1)
+asPromoAnalysisCode:=1
+End if 
+
+
+
+
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+
+ORDER BY([BillPlan];[BillPlan]SortOrder;>;[BillPlan]Code;>)
+
+SELECTION TO ARRAY([BillPlan]Code;asPromoBillPlan;[BillPlan]Description;asPromoBillPlanCode)
+
+asPromoBillPlanCode:=Find in array(asPromoBillPlan;[Promotions]BillingPlanCode)
+
+If (asPromoBillPlanCode<1)
+asPromoBillPlanCode:=1
+End if 
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+SELECTION TO ARRAY([MarketingTypes]Description;asPromoCustType)
+
+INSERT IN ARRAY(asPromoCustType;1;6)
+
+asPromoCustType{1}:=Get localized string("All Customers")
+asPromoCustType{2}:=Get localized string("Active Customers")
+asPromoCustType{3}:=Get localized string("Customer Referals")
+asPromoCustType{4}:=Get localized string("Repeat Customers")
+asPromoCustType{5}:=Get localized string("Longterm Customers")
+asPromoCustType{6}:=Get localized string("New Customers")
+
+
+asPromoCustType:=Find in array(asPromoCustType;[Promotions]CustomerType)
+
+If (asPromoCustType<1)
+asPromoCustType:=1
+End if 
+
+//fb9594 by eugene
+If ((asPromoType=1) & (Size of array(asPromoAnalysisCode)>0))
+[Promotions]AnalysisCode:=asPromoAnalysis{asPromoAnalysisCode}
+End if 
+End if 

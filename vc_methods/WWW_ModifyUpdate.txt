@@ -1,0 +1,135 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method: WWW_CustAgreemt_Update
+//Date: 27.3.2000
+C_TEXT($1;recnum;printnarration)
+C_TEXT(unitno;MoveOut)
+C_TEXT(TotAmt;Qty;TotAmt;TaxAmt)
+C_LONGINT(vBillOther;bAll)
+C_TEXT(st;from)
+
+READ WRITE([Trxs])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Unit])
+READ WRITE([Customer])
+
+$HTML:=Char(1)
+
+If (from="deletetranx")
+GOTO RECORD([Trxs];Num(recnum))
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+[Customer]Balance:=Round([Customer]Balance-Old([Trxs]TotAmt);2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+SAVE RECORD([Customer])
+If ([Trxs]Match=0)
+viMatch:=-1
+Else 
+viMatch:=[Trxs]Match
+End if 
+DELETE RECORD([Trxs])
+bPrtRec:=0
+bEmailReceipt:=0
+ReCalc 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+to:="tranx"
+End if 
+
+If (from="modifyreceipt")
+GOTO RECORD([Trxs];Num(recnum))
+RELATE ONE([Trxs]AgreeNo)
+
+[Trxs]Description:=details
+[Trxs]TotAmt:=Num(TotAmt)
+[Trxs]BankBranch:=bankbranch
+[Trxs]Drawer:=drawer
+[Trxs]AnalysisCode:=analcode
+[Trxs]DateBanked:=Date(datebanked)
+If (confirmed="")
+[Trxs]Confirmed:=False
+Else 
+[Trxs]Confirmed:=True
+End if 
+SAVE RECORD([Trxs])
+If ([Trxs]Match=0)
+viMatch:=-1
+Else 
+viMatch:=[Trxs]Match
+End if 
+bPrtRec:=0
+bEmailReceipt:=0
+ReCalc 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+to:="tranx"
+End if 
+
+If (from="modifycharge")
+GOTO RECORD([Trxs];Num(recnum))
+RELATE ONE([Trxs]AgreeNo)
+[Trxs]DateFrom:=Date(datefrom)
+[Trxs]DateTo:=Date(dateto)
+[Trxs]Qty:=Num(qty)
+[Trxs]Description:=details
+[Trxs]TotAmt:=Num(TotAmt)
+[Trxs]TaxAmt:=Num(TaxAmt)
+[Trxs]Narration:=narration
+[Trxs]AnalysisCode:=analcode
+
+If (printnarration="")
+[Trxs]PrintNarration:=False
+Else 
+[Trxs]PrintNarration:=True
+End if 
+
+SAVE RECORD([Trxs])
+If ([Trxs]Match=0)
+viMatch:=-1
+Else 
+viMatch:=[Trxs]Match
+End if 
+bPrtRec:=0
+bEmailReceipt:=0
+ReCalc 
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+to:="tranx"
+End if 
+
+st:="/"+String(Record number([Agreement]))
+
+vtTable:=$HTML+Char(13)
+
+READ ONLY([Trxs])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Unit])
+READ ONLY([Customer])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Customer])
+
+// Redirect back to required page
+// If "to" is not specified return to the main page
+
+WWW_GoBack 
+Case of 
+: (to="agreeno")
+WWW_CustAgreet_AgreeNo (st)
+: (to="custinfo")
+WWW_CustAgreet_CustInfo (st)
+: (to="tranx")
+WWW_CustAgreet_Tranx (st)
+: (to="moveout")
+WWW_CustAgreet_MoveOut (st)
+: (to="notes")
+WWW_CustAgreet_Notes (st)
+Else 
+WWW_CustAgreet ("")
+End case 
+WWW_GoBack 

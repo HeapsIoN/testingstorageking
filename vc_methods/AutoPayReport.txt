@@ -1,0 +1,40 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+LogAction (False;"Autopay Report started.")// records the report being started in the eventlog
+If (PermissionsControl (69))
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+If (<>tBatch=False)
+$Date1:=RequestDate (Get localized string("Enter Start Date (must be greater than last daily processing)");[Facility]LastDaily+1)
+Else 
+$Date1:=[Facility]LastDaily+1
+End if 
+If (OK=1)
+If (<>tBatch=False)
+$Date2:=RequestDate (Get localized string("Enter End Date");Add to date([Facility]LastDaily;0;1;1))
+Else 
+$Date2:=Add to date([Facility]LastDaily;0;1;1)
+End if 
+If (OK=1)
+DEFAULT TABLE([Agreement])
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]AutoPay=True;*)
+QUERY([Agreement]; & ;[Agreement]AutoPayAmt>0;*)
+QUERY([Agreement]; & ;[Agreement]NextBillDate>=$Date1;*)
+QUERY([Agreement]; & ;[Agreement]NextBillDate<=$Date2)
+ORDER BY([Agreement];[Agreement]NextBillDate;>)
+If (Records in selection([Agreement])>0)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+FORM SET OUTPUT([Agreement];"AutoPayReport")
+PrintSelection ("P")
+FORM SET OUTPUT([Agreement];"Output")
+Else 
+If (<>tBatch=False)
+AlertMessage (Get localized string("There are no records to print for this report"))
+End if 
+End if 
+End if 
+End if 
+End if 
+LogAction (True;"Autopay Report ended.")

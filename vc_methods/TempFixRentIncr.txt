@@ -1,0 +1,55 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//$Date:=Date(Request("Enter the Agreement movein date:";String(Current date)))
+//CONFIRM("Clear all rent increases for agreements with a movein date greater than "+String($Date)+"?")
+//If (OK=1)
+//QUERY([Agreement];[Agreement]MoveIn>$Date;*)
+//QUERY([Agreement]; & ;[Agreement]NewRentFrom>!00/00/00!)
+//For ($i;1;Records in selection([Agreement]))
+//RELATE MANY([Agreement]RAgreeNo)
+//For ($j;1;Records in selection([Unit]))
+//[Unit]IncreaseFrom:=!00/00/00!
+//[Unit]NewRentAmt:=0
+//SAVE RECORD([Unit])
+//NEXT RECORD([Unit])
+//End for 
+//[Agreement]NewRegularRent:=0
+//[Agreement]NewRentAmt:=0
+//[Agreement]NewRentFrom:=!00/00/00!
+//SAVE RECORD([Agreement])
+//NEXT RECORD([Agreement])
+//End for 
+//End if 
+READ WRITE([Agreement])
+
+READ WRITE([Unit])
+
+QUERY([Agreement];[Agreement]NewRentFrom>!00-00-00!)
+CREATE EMPTY SET([Unit];"FixUnitDates")
+For ($i;1;Records in selection([Agreement]))
+RELATE MANY([Agreement]RAgreeNo)
+FIRST RECORD([Unit])
+For ($j;1;Records in selection([Unit]))
+If ([Unit]IncreaseFrom<[Agreement]NewRentFrom)
+If ([Unit]IncreaseFrom<Add to date(Current date;0;0;30))
+ADD TO SET([Unit];"FixUnitDates")
+[Unit]IncreaseFrom:=[Agreement]NewRentFrom
+Else 
+ADD TO SET([Unit];"FixUnitDates")
+[Agreement]NewRentFrom:=[Unit]IncreaseFrom
+End if 
+SAVE RECORD([Unit])
+End if 
+NEXT RECORD([Unit])
+End for 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+If (Records in set("FixUnitDates")>0)
+USE SET("FixUnitDates")
+FORM SET OUTPUT([Unit];"DailyRentIncrease")
+BREAK LEVEL(2)
+ACCUMULATE([Unit]RentedValue;[Unit]NewRentAmt)
+ORDER BY([Unit];[Unit]IncreaseFrom;>;[Unit]RentedValue;>;[Unit]NewRentAmt;>)
+PRINT SELECTION([Unit])
+CLEAR SET("FixUnitDates")
+End if 

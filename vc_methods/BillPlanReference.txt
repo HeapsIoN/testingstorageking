@@ -1,0 +1,52 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 26/04/11, 12:06:32
+// ----------------------------------------------------
+// Method: BillPlanReference
+// Description
+// Generates billing plan quotes for an agreement
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($Free)
+C_REAL($Total;$Monthly)
+
+[Agreement]BillPlanQuote:=""
+
+//Base = [Agreement]RegularRent
+
+QUERY([BillPlan];[BillPlan]IncReference=True;*)
+QUERY([BillPlan]; & ;[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]FreePeriods#0)
+
+
+If (Records in selection([BillPlan])>0)
+$Free:=True
+End if 
+
+QUERY([BillPlan];[BillPlan]IncReference=True;*)
+QUERY([BillPlan]; & ;[BillPlan]Code=<>sFacility+"@")
+
+ORDER BY([BillPlan];[BillPlan]SortOrder;>;[BillPlan]Code;>)
+
+For ($i;1;Records in selection([BillPlan]))
+
+$Total:=RoundAmt ((([Agreement]RegularRent*[BillPlan]PeriodstoPay)*(1-([BillPlan]DiscPercentage/100)))-[BillPlan]DiscFixedAmt)
+$Monthly:=Round($Total/[BillPlan]PeriodstoPay;2)
+
+If ($Free)
+[Agreement]BillPlanQuote:=[Agreement]BillPlanQuote+[BillPlan]Description+Char(Tab)+Char(Tab)\
++<>sCurrency+String($Monthly;<>sFormat)+Char(Tab)+Char(Tab)+<>sCurrency+String($Total;<>sFormat)\
++Char(Tab)+Char(Tab)+String([BillPlan]FreePeriods)+Char(Carriage return)
+Else 
+[Agreement]BillPlanQuote:=[Agreement]BillPlanQuote+[BillPlan]Description+Char(Tab)+Char(Tab)\
++<>sCurrency+String($Monthly;<>sFormat)+Char(Tab)+Char(Tab)+<>sCurrency+String($Total;<>sFormat)\
++Char(Carriage return)
+End if 
+NEXT RECORD([BillPlan])
+End for 
+
+SAVE RECORD([Agreement])

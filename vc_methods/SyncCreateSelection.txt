@@ -1,0 +1,329 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($Table)//TriggerLog
+C_TEXT($Facility)
+C_BOOLEAN(<>tSendWrite)//True to send 4D Write areas
+C_LONGINT($i)
+C_BOOLEAN(vbSyncingOn)
+
+If (Current user#"Designer") & (<>sCurrentUser#"Adminsupport")
+AlertMessage (Get localized string("Please contact Storman Support about using this feature"))
+Else 
+//Set variables to values passed by 'SyncCreateAll'
+vbSyncingOn:=True
+$Table:=<>iTable
+$Facility:=<>sFacility
+$vbUploadContinue:=False
+//Determine values to refer to exported datafile both before archiving and after
+$Code:=""
+
+$MethodCalledOnError:=Method called on error
+ON ERR CALL("errorlog")
+
+QUERY([Facility];[Facility]FacilityCode=$Facility)//This needed for client / server
+
+$Name:=SetSyncUser ("SyncAdd";1)//Don't record activity
+
+$vbUploadContinue:=False
+If ([UserLogins]RecordStatus=-1) | ([UserLogins]RecordStatus=1)
+<>tSendWrite:=True
+Open window(20;50;450;150;0;Get localized string("Progress"))
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+If ($Table=1) | ($Table=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Facilities")+"...                ")
+QUERY SELECTION([Facility];[Facility]FacilityCode=$Facility+"@")
+TriggerLog (1;"145";"";!00-00-00!;0;"F";[Facility]FacilityCode;[Facility]FacilityCode)
+End if 
+If ($Table=7) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing AnalysisCodes")+"...                ")
+QUERY SELECTION([Analysis];[Analysis]Code=$Facility+"@")
+For ($i;1;Records in selection([Analysis]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Analysis]))+"          ")
+TriggerLog (7;"031";"";!00-00-00!;0;"H";Substring([Analysis]Code;1;5);[Analysis]Code)
+NEXT RECORD([Analysis])
+End for 
+End if 
+If ($Table=8) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing BillingPlans")+"...                ")
+QUERY SELECTION([BillPlan];[BillPlan]Code=$Facility+"@")
+For ($i;1;Records in selection([BillPlan]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([BillPlan]))+"          ")
+TriggerLog (8;"024";"";!00-00-00!;0;"B";Substring([BillPlan]Code;1;5);[BillPlan]Code)
+NEXT RECORD([BillPlan])
+End for 
+End if 
+If ($Table=9) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Notices")+"...                ")
+QUERY SELECTION([Notices];[Notices]FacilityCode=$Facility)
+For ($i;1;Records in selection([Notices]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Notices]))+"          ")
+TriggerLog (9;"041";"";!00-00-00!;0;"S";[Notices]FacilityCode;[Notices]FacilityCode)
+NEXT RECORD([Notices])
+End for 
+End if 
+
+If ($Table=15) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing MarketTypes")+"...                ")
+QUERY SELECTION([MarketingTypes];[MarketingTypes]Facility=$Facility)
+For ($i;1;Records in selection([MarketingTypes]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([MarketingTypes]))+"          ")
+TriggerLog (15;"008";"";!00-00-00!;0;"M";[MarketingTypes]Facility;[MarketingTypes]Facility)
+NEXT RECORD([MarketingTypes])
+End for 
+End if 
+If ($Table=2) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing UnitTypes")+"...                ")
+QUERY SELECTION([UnitType];[UnitType]RUnitType=$Facility+"@")
+For ($i;1;Records in selection([UnitType]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitType]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (2;"027";"";!00-00-00!;0;"U";Substring([UnitType]RUnitType;1;5);[UnitType]RUnitType)
+NEXT RECORD([UnitType])
+End for 
+End if 
+If ($Table=3) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Units")+"...                ")
+QUERY SELECTION([Unit];[Unit]RUnitNo=$Facility+"@")
+For ($i;1;Records in selection([Unit]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Unit]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (3;"056";"";!00-00-00!;0;"U";Substring([Unit]RUnitNo;1;5);[Unit]RUnitNo)
+NEXT RECORD([Unit])
+End for 
+End if 
+If ($Table=4) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreements")+"...                ")
+QUERY SELECTION([Agreement];[Agreement]RAgreeNo=$Facility+"@")
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (4;"113";Old([Agreement]BillingPlanCode);Old([Agreement]MoveIn);Old([Agreement]RegularRent);$Code;Substring([Agreement]RAgreeNo;1;5);[Agreement]RAgreeNo)
+NEXT RECORD([Agreement])
+End for 
+End if 
+If ($Table=5) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Customers")+"...                ")
+QUERY SELECTION([Customer];[Customer]CustomerCode=$Facility+"@")
+For ($i;1;Records in selection([Customer]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Customer]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (5;"114";"";!00-00-00!;0;$Code;Substring([Customer]CustomerCode;1;5);[Customer]CustomerCode)
+NEXT RECORD([Customer])
+End for 
+End if 
+If ($Table=6) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Transactions")+"...                ")
+QUERY SELECTION([Trxs];[Trxs]CustomerCode=$Facility+"@")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>)
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs])))
+TriggerLog (6;"037";$BillP;$TrxDate;$TrxAmt;$Code;Substring([Trxs]AgreeNo;1;5);[Trxs]AgreeNo)
+NEXT RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+If ($Table=11) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Letters")+"...                ")
+QUERY SELECTION([Letters];[Letters]AgreeNo=$Facility+"@";*)
+QUERY SELECTION([Letters]; | ;[Letters]ContactNo=$Facility+"@")
+For ($i;1;Records in selection([Letters]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Letters]))+"            ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+If ([Letters]ContactNo#"")
+TriggerLog (11;"019";"";!00-00-00!;0;$Code;Substring([Letters]ContactNo;1;5);[Letters]ContactNo)
+Else 
+TriggerLog (11;"019";"";!00-00-00!;0;$Code;Substring([Letters]AgreeNo;1;5);[Letters]AgreeNo)
+End if 
+NEXT RECORD([Letters])
+End for 
+End if 
+If ($Table=12) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Contacts")+"...                ")
+QUERY SELECTION([Contacts];[Contacts]Facility=$Facility)
+For ($i;1;Records in selection([Contacts]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Contacts]))+"           ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (12;"048";"";!00-00-00!;0;"";[Contacts]Facility;[Contacts]ContactNo)
+NEXT RECORD([Contacts])
+End for 
+End if 
+If ($Table=14) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing PhotoCards")+"...                ")
+QUERY SELECTION([PhotosCards];[PhotosCards]Code=$Facility+"@")
+For ($i;1;Records in selection([PhotosCards]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([PhotosCards]))+"         ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (14;"013";"";!00-00-00!;0;"";Substring([PhotosCards]Code;1;5);[PhotosCards]Code)
+NEXT RECORD([PhotosCards])
+End for 
+End if 
+If ($Table=17) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Reservations")+"...                ")
+QUERY SELECTION([Reservation];[Reservation]RReserveNo=$Facility+"@")
+For ($i;1;Records in selection([Reservation]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Reservation]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (17;"020";"";!00-00-00!;0;$Code;Substring([Reservation]RReserveNo;1;5);[Reservation]RReserveNo)
+NEXT RECORD([Reservation])
+End for 
+End if 
+If ($Table=20) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Unit History")+"...                ")
+QUERY SELECTION([UnitHistory];[UnitHistory]UnitNo=$Facility+"@")
+For ($i;1;Records in selection([UnitHistory]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (20;"007";"";!00-00-00!;0;"";Substring([UnitHistory]UnitNo;1;5);[UnitHistory]AgreeNo)
+NEXT RECORD([UnitHistory])
+End for 
+End if 
+If ($Table=29) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Pictures")+"...                ")
+QUERY SELECTION([Pictures];[Pictures]Facility=$Facility)
+For ($i;1;Records in selection([Pictures]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Pictures]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (29;"007";"";!00-00-00!;0;"";[Pictures]Facility;[Pictures]Facility)
+NEXT RECORD([Pictures])
+End for 
+End if 
+If ($Table=28) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Notes History")+"...                ")
+QUERY SELECTION([NotesHistory];[NotesHistory]CustomerCode=$Facility+"@")
+For ($i;1;Records in selection([NotesHistory]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([NotesHistory]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+If ([NotesHistory]ContactNo#"")
+TriggerLog (28;"009";"";!00-00-00!;0;$Code;Substring([NotesHistory]ContactNo;1;5);[NotesHistory]ContactNo)
+Else 
+TriggerLog (28;"009";"";!00-00-00!;0;$Code;Substring([NotesHistory]CustomerCode;1;5);[NotesHistory]CustomerCode)//Maybe should use a sequence number
+End if 
+NEXT RECORD([NotesHistory])
+End for 
+End if 
+If ($Table=32) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Unit Status Trx")+"...                ")
+QUERY SELECTION([UnitStatusTrx];[UnitStatusTrx]UnitNo=$Facility+"@")
+For ($i;1;Records in selection([UnitStatusTrx]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitStatusTrx]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (32;"008";"";!00-00-00!;0;"";Substring([UnitStatusTrx]UnitNo;1;5);[UnitStatusTrx]UnitNo)
+NEXT RECORD([UnitStatusTrx])
+End for 
+End if 
+If ($Table=33) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Quote")+"...                ")
+QUERY SELECTION([Quote];[Quote]ContactNo=$Facility+"@")
+For ($i;1;Records in selection([Quote]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Quote]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (33;"010";"";!00-00-00!;0;"";Substring([Quote]ContactNo;1;5);[Quote]ContactNo)
+NEXT RECORD([Quote])
+End for 
+End if 
+If ($Table=34) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Insurance Rates")+"...                ")
+QUERY SELECTION([InsuranceRates];[InsuranceRates]Facility=$Facility+"@")
+For ($i;1;Records in selection([InsuranceRates]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([InsuranceRates]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (34;"006";"";!00-00-00!;0;"IR";[InsuranceRates]Facility;[InsuranceRates]Facility)
+NEXT RECORD([InsuranceRates])
+End for 
+End if 
+If ($Table=35) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Merchandise Discount Plans")+"...                ")
+QUERY SELECTION([MerchPlan];[MerchPlan]MerchPlanID=$Facility+"@")
+For ($i;1;Records in selection([MerchPlan]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([MerchPlan]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (35;"013";"";!00-00-00!;0;"B";Substring([MerchPlan]MerchPlanID;1;5);[MerchPlan]MerchPlanID)
+NEXT RECORD([MerchPlan])
+End for 
+End if 
+If ($Table=46) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Promotions")+"...                ")
+QUERY SELECTION([Promotions];[Promotions]PromoCode=$Facility+"@")
+For ($i;1;Records in selection([Promotions]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Promotions]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (46;"001";"";!00-00-00!;0;"B";Substring([Promotions]PromoCode;1;5);[Promotions]PromoCode)
+NEXT RECORD([Promotions])
+End for 
+End if 
+If ($Table=47) | ($Table<=0)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Promotions History")+"...                ")
+QUERY SELECTION([PromotionHistory];[PromotionHistory]AgreeNo=$Facility+"@")
+For ($i;1;Records in selection([PromotionHistory]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([PromotionHistory]))+"          ")
+//QUERY([Facility];[Facility]FacilityCode=$Facility)
+TriggerLog (47;"001";"";!00-00-00!;0;"B";Substring([PromotionHistory]AgreeNo;1;5);[PromotionHistory]AgreeNo)
+NEXT RECORD([PromotionHistory])
+End for 
+End if 
+
+If ($Table=10) | ($Table<=0)//Activity table not normally replicated - Can only be done on it's own
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Activity")+"...                ")
+QUERY SELECTION([Activity];[Activity]FacilityCode=$Facility)
+For ($i;1;Records in selection([Activity]))
+GOTO XY(2;3)
+MESSAGE(String($i)+" "+Get localized string("of")+" "+String(Records in selection([Activity]))+"          ")
+TriggerLog (10;"011001";"";[Activity]ActivityDate;0;"";[Activity]FacilityCode;[Activity]FacilityCode)
+NEXT RECORD([Activity])
+End for 
+End if 
+
+CLOSE WINDOW
+End if 
+
+<>tSendWrite:=True
+SetSyncUser ($Name)
+
+ON ERR CALL($MethodCalledOnError)
+End if 

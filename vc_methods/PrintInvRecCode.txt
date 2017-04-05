@@ -1,0 +1,199 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+C_BOOLEAN($0;$3;vDontReset;$OldInvoice)//$0 - True if printed False if not //$3 - If true use old Invoice
+C_LONGINT($1)//1=Do first part  >2=Do second part
+//2=Force print dialogs, 3=Optional, 4=Always no dialogs
+C_TEXT($2;$Reserve)//Reservation Customer if present
+C_DATE($Date)
+C_REAL(vFooterBal)
+$0:=False
+vDontReset:=False
+OK:=1
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+
+Case of 
+: (Count parameters=1)
+$Reserve:=""
+$OldInvoice:=False
+: (Count parameters=2)
+$Reserve:=$2
+$OldInvoice:=False
+: (Count parameters=3)
+$Reserve:=$2
+$OldInvoice:=$3
+End case 
+If ($1=1)
+//If ($OldInvoice=False)
+//QUERY SELECTION([Transaction];[Transaction]Charge=True)  //Added as EmailAutoCC last trx is receipt 22/10/10 NGBW
+//End if 
+LAST RECORD([Trxs])
+If ([Trxs]TrxDate>Current date)
+$Date:=Current date
+Else 
+$Date:=[Trxs]TrxDate
+End if 
+If ([Facility]BalFwdDateOpt) & ([Agreement]LastBillDate>!00-00-00!)//false in versions preceding 3.1.3
+vDate:=[Agreement]LastBillDate
+If (vDate>Current date)
+If ([Agreement]PriorLastBill<!2000-01-01!) | ([Agreement]PriorLastBill>=[Agreement]LastBillDate)
+[Agreement]PriorLastBill:=Add to date([Agreement]LastBillDate;0;-1;0)
+End if 
+vDate:=[Agreement]PriorLastBill+1
+End if 
+Else 
+vDate:=GetDate (1;Month of($Date-30);Year of($Date-30))
+End if 
+//If (Shift down)
+//vDontReset:=True
+//vDate:=Date(RequestMessage (Get localized string("Please enter balance forward date")+":";String(vDate)))
+//End if 
+If (OK=1)
+If ([Facility]InvUseAgrBalFwd)
+$p1:=Field(4;37)
+
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=vDate)
+[Agreement]BalFwd:=[Agreement]BalanceOwing
+If ([Facility]InvStatement=1) & ($OldInvoice=False) & (bPrtRec=0) & (bEmailReceipt=0)
+[Agreement]BalFwd:=0
+End if 
+$p2:=->[Agreement]BalFwdDate
+Else 
+If ($Reserve#"")
+QUERY([Trxs];[Trxs]AgreeNo=$Reserve;*)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=[Agreement]CustomerCode;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate)
+$p1:=Field(5;13)
+[Customer]BalFwd:=[Customer]Balance
+If ([Facility]InvStatement=1) & ($OldInvoice=False) & (bPrtRec=0) & (bEmailReceipt=0)
+[Customer]BalFwd:=0
+End if 
+$p2:=->[Customer]BalFwdDate
+End if 
+
+//If (Records in selection([Transaction])>9) & ([Facility]BalFwdDateOpt=False) & (vDontReset=False)
+//vDate:=GetDate (1;Month of($Date);Year of($Date))
+//QUERY SELECTION([Transaction];[Transaction]TrxDate>=vDate)
+//End if 
+//If ($OldInvoice=False)
+//QUERY SELECTION([Transaction];[Transaction]Charge=True)  //Added as EmailAutoCC last trx is receipt 22/10/10 NGBW
+//End if 
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+LAST RECORD([Trxs])
+//If ($OldInvoice=False)
+//$InvoiceNumber:=[Transaction]InvNo
+//QUERY SELECTION([Transaction];[Transaction]InvNo=$InvoiceNumber)
+//End if 
+$p2->:=vDate
+[Agreement]FooterBalance:=0
+[Customer]FooterBalance:=0
+If ([Facility]InvUseAgrBalFwd)
+Repeat 
+If ([Trxs]Charge)
+$p1->:=$p1->-[Trxs]TotAmt
+[Agreement]FooterBalance:=[Agreement]FooterBalance+[Trxs]TotAmt
+Else 
+$p1->:=$p1->+[Trxs]TotAmt
+[Agreement]FooterBalance:=[Agreement]FooterBalance-[Trxs]TotAmt
+End if 
+ADD TO SET([Trxs];"ToPrint")
+PREVIOUS RECORD([Trxs])
+Until (Before selection([Trxs]))
+[Agreement]FooterBalance:=[Agreement]FooterBalance+Round([Agreement]BalFwd;2)
+Else 
+Repeat 
+If ([Trxs]Charge)
+$p1->:=$p1->-[Trxs]TotAmt
+[Customer]FooterBalance:=[Customer]FooterBalance+[Trxs]TotAmt
+Else 
+$p1->:=$p1->+[Trxs]TotAmt
+[Customer]FooterBalance:=[Customer]FooterBalance-[Trxs]TotAmt
+End if 
+ADD TO SET([Trxs];"ToPrint")
+PREVIOUS RECORD([Trxs])
+Until (Before selection([Trxs]))
+[Customer]FooterBalance:=[Customer]FooterBalance+Round([Customer]BalFwd;2)
+End if 
+CREATE SET([Trxs];"SearchInv2No")
+If ((bPrtRec#1) & (bEmailReceipt#1))
+InvState2Calc 
+End if 
+USE SET("SearchInv2No")
+CLEAR SET("SearchInv2No")
+End if 
+End if 
+If ($1>1) & (OK=1)
+tNewInv:=True
+//tBoolean:=True
+vLeg5:=""
+SetFacility (False)
+
+//SVG Test
+C_TEXT($vRef;$vXML)
+C_PICTURE(PicInvHeader;PicInvFooter)
+OBJECT SET VISIBLE(*;"Field91";[Facility]GraphiconInv)
+
+
+//If (Is record loaded([Agreement])=False)
+//LOAD RECORD([Agreement])
+//End if 
+
+//14/07/14 DAM Commented to fix vAddr1..vAddr7 variables
+//If (BLOB size([Facility]InvHeader_)#0) & ([Facility]GraphiconInv)
+//LoadReferences (1)
+//End if 
+
+OBJECT SET VISIBLE(*;"HeaderField2@";Not([Facility]GraphiconInv))
+
+//14/07/14 DAM Commented to fix vAddr1..vAddr7 variables
+//If ([Facility]CustomInvFooter) & (BLOB size([Facility]InvFooter_)#0)
+//LoadReferences (2)
+//End if 
+
+//UNLOAD RECORD([Agreement])
+//ALERT("")
+TRACE
+If (False)
+FORM SET OUTPUT([Trxs];"InvRecNarrow")
+Else 
+Case of 
+: (<>tWinLetterFormat#"A4") & ([Facility]InvStatement=2) & ($OldInvoice=False)
+FORM SET OUTPUT([Trxs];"InvReceiptUSTwo")
+: (<>tWinLetterFormat#"A4") & ([Facility]InvStatement=1) & ($OldInvoice=False)
+FORM SET OUTPUT([Trxs];"InvReceiptUSNew")
+: (<>tWinLetterFormat#"A4")
+FORM SET OUTPUT([Trxs];"InvReceiptUS")
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False) & ([Facility]InvStatement=2) & ($OldInvoice=False)
+FORM SET OUTPUT([Trxs];"InvReceiptFooterTwo")
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False) & ([Facility]InvStatement=1) & ($OldInvoice=False)
+FORM SET OUTPUT([Trxs];"InvReceiptFooterNew")
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False)//coming here
+FORM SET OUTPUT([Trxs];"InvReceiptFooter")
+: ([Facility]InvStatement=2) & ((vMisc) | ((bPrtRec=1) | (bEmailReceipt=1)))
+FORM SET OUTPUT([Trxs];"InvReceiptTwoCash")
+: ([Facility]InvStatement=1) & ((vMisc) | ((bPrtRec=1) | (bEmailReceipt=1)))
+FORM SET OUTPUT([Trxs];"InvReceiptNewCash")
+: ([Facility]InvStatement=2) & ((bPrtRec#1) & (bEmailReceipt#1))
+FORM SET OUTPUT([Trxs];"InvReceiptTwo")
+: ([Facility]InvStatement=1) & ((bPrtRec#1) & (bEmailReceipt#1))
+FORM SET OUTPUT([Trxs];"InvReceiptNew")
+Else 
+FORM SET OUTPUT([Trxs];"InvReceipt")//should be here???
+End case 
+End if 
+BREAK LEVEL(1;1)
+ACCUMULATE([Trxs]TotAmt)
+vtInvAgree:=""
+vtMoveAddress:=True
+vtMoveFooter:=True
+Case of 
+: (($1=4) | (($1=3) & ([Facility]PrtDialogInv=False)))//(([Facility]PrtDialogInv) | ($1=2)) & ($1#4)
+$0:=PrintSelection ("P*";->[Trxs];False;False)
+Else 
+$0:=PrintSelection ("P";->[Trxs];False;False)
+End case 
+CLEAR SET("ToPrint")
+CLEAR SET("To2Print")
+End if 

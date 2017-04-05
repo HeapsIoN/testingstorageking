@@ -1,0 +1,263 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 07/03/16, 15:29:15
+// ----------------------------------------------------
+// Method: WS_CloudUsers
+// Description
+// 
+// This method is used to bulk send Users from a site to Storman Hub
+// 
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_Username;Is string var;SOAP input)
+SOAP DECLARATION(WS_UserID;Is string var;SOAP input)
+SOAP DECLARATION(WS_Password;Is string var;SOAP input)
+SOAP DECLARATION(WS_FullName;Is text;SOAP input)
+SOAP DECLARATION(WS_Language;Is text;SOAP input)
+SOAP DECLARATION(WS_Actiontext;Is text;SOAP input)// A - Add, E- Edit, D - Remove, R - review
+SOAP DECLARATION(WS_Permissions;Is text;SOAP input)// Permissions for A,E
+SOAP DECLARATION(WS_asUserGroups;Text array;SOAP input)// Checks if new user is to be added to a User Group
+SOAP DECLARATION(WS_AccessFacility;Is text;SOAP input)
+SOAP DECLARATION(WS_ORFacilityCode;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)// Check WS password for HOF record or one record in selection
+
+SOAP DECLARATION(WS_PermissionsOut;Is text;SOAP output)
+SOAP DECLARATION(WS_AccessFacOut;Is text;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+C_TEXT($String)
+C_TEXT(vName)
+$String:=""
+$String:=$String+"Start WS_CloudUsers"+Char(13)
+$String:=$String+"WS_Inputname: "+WS_Inputname+Char(13)
+$String:=$String+"WS_Password: "+WS_Password+" "+Char(13)
+$String:=$String+"WS_FullName: "+WS_FullName+" "+Char(13)
+$String:=$String+"WS_Language: "+WS_Language+" "+Char(13)
+$String:=$String+"WS_Actiontext: "+WS_Actiontext+" "+Char(13)
+$String:=$String+"WS_Permissions: "+WS_Permissions+" "+Char(13)
+//WS_asUserGroups
+$String:=$String+"WS_AccessFacility: "+WS_AccessFacility+" "+Char(13)
+C_TEXT($pass;$temp)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+$String:=""
+
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+WS_ORSuccess:=True
+
+If ((WS_Language=""))
+WS_Language:="EN"
+End if 
+
+
+QUERY([Facility];[Facility]FacilityCode=WS_ORFacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If ([Facility]ODBCPassword#"") & ([Facility]ODBCPassword=WS_WebServicePassword)
+
+READ WRITE([UserLogins])
+READ WRITE([UserGroup])
+READ WRITE([Groups])
+
+If (WS_Actiontext="A") | (WS_Actiontext="E") | (WS_Actiontext="D") | (WS_Actiontext="R")
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1059
+WS_ORErrorDescription:="Passed WS_Actiontext paramter is not correct"
+End if 
+
+
+If (WS_Actiontext="A") | (WS_Actiontext="E") | (WS_Actiontext="D")
+
+QUERY([UserLogins];[UserLogins]UserID=WS_UserID)
+
+If (Locked([UserLogins])) | (Locked([UserGroup])) | (Locked([Groups])) | (Read only state([UserLogins])) | (Read only state([UserGroup])) | (Read only state([Groups]))
+WS_ORSuccess:=False
+WS_ORErrorCode:=1058
+WS_ORErrorDescription:="UserLogin record lockstatus - "+String(Locked([UserLogins]))+" UserGroup record lockstatus - "+String(Locked([UserGroup]))+" Groups record lockstatus - "+String(Locked([Groups]))
+WS_ORErrorDescription:=WS_ORErrorDescription+" Read Only UserLogin: "+String(Read only state([UserLogins]))+" Read Only [UserGroup]: "+String(Read only state([UserGroup]))+" Read Only [Groups]: "+String(Read only state([Groups]))
+Else 
+Case of 
+: ((WS_Actiontext="A"))//CREATE NEW USER
+
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]UserID:=WS_UserID
+[UserLogins]Name:=WS_UserName
+[UserLogins]ActualName:=WS_FullName
+[UserLogins]Password:=WS_Password
+[UserLogins]Permissions:=WS_Permissions
+[UserLogins]Language:=WS_Language
+[UserLogins]AccessFacility:=WS_AccessFacility
+SAVE RECORD([UserLogins])
+
+QUERY([UserGroup];[UserGroup]UserID=WS_UserID)
+DELETE SELECTION([UserGroup])
+
+For ($i;1;Size of array(WS_asUserGroups))
+CREATE RECORD([UserGroup])
+[UserGroup]UserID:=WS_UserID
+[UserGroup]GroupID:=WS_asUserGroups{$i}
+SAVE RECORD([UserGroup])
+End for 
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1050
+WS_ORErrorDescription:="Unable to add new user into database Storman, this user already exists."
+End if 
+//
+//: ((WS_Actiontext="E"))  //EDIT AN EXISTING USER
+//
+//  //QUERY([UserLogins];[UserLogins]Name=WS_Inputname)
+//
+//If (Records in selection([UserLogins])=1)
+//[UserLogins]Name:=WS_Inputname
+//[UserLogins]ActualName:=WS_FullName
+//[UserLogins]Password:=WS_Password
+//[UserLogins]Permissions:=WS_Permissions
+//[UserLogins]Language:=WS_Language
+//[UserLogins]AccessFacility:=WS_AccessFacility
+//
+//If (WS_Inputname#"")
+//
+//SAVE RECORD([UserLogins])
+//
+//$UserID:=[UserLogins]UserID
+//QUERY([UserGroup];[UserGroup]UserID=$UserID)
+//DELETE SELECTION([UserGroup])
+//
+//If (Size of array(WS_asUserGroups)>0)
+//For ($i;1;Size of array(WS_asUserGroups))
+//CREATE RECORD([UserGroup])
+//[UserGroup]UserID:=$UserID
+//[UserGroup]GroupID:=WS_asUserGroups{$i}
+//SAVE RECORD([UserGroup])
+//End for 
+//End if 
+//
+//WS_ORSuccess:=True
+//WS_ORErrorCode:=0
+//WS_ORErrorDescription:=""
+//
+//Else 
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1057
+//WS_ORErrorDescription:="Unable to add new user into database Storman, invalid username requested."
+//End if 
+//
+//Else 
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1051
+//WS_ORErrorDescription:="User record not found in database Storman."
+//End if 
+//
+//: (WS_Actiontext="D")  //DELETE USER
+//
+//  //QUERY([UserLogins];[UserLogins]Name=WS_Inputname)
+//
+//If (Records in selection([UserLogins])=1)
+//DELETE RECORD([UserLogins])
+//WS_ORSuccess:=True
+//WS_ORErrorCode:=0
+//WS_ORErrorDescription:=""
+//  //WS_ORErrorDescription:="User deleted successfully."
+//Else 
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1051
+//WS_ORErrorDescription:="User record not found in database Storman."
+//End if 
+//
+//
+//
+//
+//
+End case 
+End if 
+End if 
+
+//If ((WS_Actiontext="R"))  //REVIEW A USER
+//QUERY([UserLogins];[UserLogins]Name=WS_Inputname)
+//
+//If (Records in selection([UserLogins])=1)
+//QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+//QUERY([Groups];[Groups]GroupID=[UserGroup]GroupID)
+//
+//If (Records in selection([Groups])#0)
+//For ($i;1;Records in selection([Groups]))
+//If ([Groups]Override=True)
+//  //Need to overwrite permissions No by Yes
+//WS_PermissionsOut:=[Groups]Permissions
+//WS_ORSuccess:=True
+//WS_ORErrorCode:=0
+//WS_ORErrorDescription:=""
+//  //WS_ORErrorDescription:="User reviewed successfully."
+//Else 
+//WS_ORSuccess:=True
+//WS_ORErrorCode:=0
+//WS_ORErrorDescription:=""
+//  //WS_ORErrorDescription:="User reviewed successfully."
+//WS_PermissionsOut:=[UserLogins]Permissions
+//WS_AccessFacOut:=[UserLogins]AccessFacility
+//End if 
+//NEXT RECORD([Groups])
+//End for 
+//Else 
+//QUERY([UserLogins];[UserLogins]Name=WS_Inputname)
+//WS_ORSuccess:=True
+//WS_ORErrorCode:=0
+//WS_ORErrorDescription:=""
+//  //WS_ORErrorDescription:="User reviewed successfully."
+//WS_PermissionsOut:=[UserLogins]Permissions
+//WS_AccessFacOut:=[UserLogins]AccessFacility
+//End if 
+//
+//Else 
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1051
+//WS_ORErrorDescription:="User record not found in database Storman."
+//End if 
+//End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+UNLOAD RECORD([Groups])
+UNLOAD RECORD([UserGroup])
+UNLOAD RECORD([UserLogins])
+READ ONLY([UserLogins])
+READ ONLY([UserGroup])
+READ ONLY([Groups])
+
+$String:="End WS_CloudUsers"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

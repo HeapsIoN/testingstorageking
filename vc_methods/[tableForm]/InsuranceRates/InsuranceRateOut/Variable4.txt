@@ -1,0 +1,87 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 23/04/15, 15:21:28
+// ----------------------------------------------------
+// Method: [InsuranceRates].InsuranceRateOut.Variable4
+// Description:
+// Used to copy selected Insurance Rates from the selected
+// site, to the requested Sites/Site. From MV Enviroment.
+// 
+// ----------------------------------------------------
+
+
+C_LONGINT($i;$j)
+C_TEXT($FromSite)
+CREATE SET([InsuranceRates];"ToDo")
+USE SET("UserSet")
+If (Records in selection([InsuranceRates])=0)
+USE SET("ToDo")
+End if 
+CREATE SET([InsuranceRates];"ToDo")
+FIRST RECORD([InsuranceRates])
+$FromSite:=[InsuranceRates]Facility
+////OK:=ConfirmThree (Get localized string("Duplicate")+" "+String(Records in selection([InsuranceRates]))+" "+Get localized string("Insurance Rates to")+" "+String(Size of array(<>asSiteCodes))+" "+Get localized string("other facilities?");Get localized string("Yes");Get localized string("Select Sites");Get localized string("No"))
+
+OK:=ConfirmThree (Get localized string("Duplicate")+" "+String(Records in selection([InsuranceRates]))+" "+Get localized string("Insurance Rates to")+" "+Get localized string("other facilities?");Get localized string("Yes");Get localized string("Select Sites");Get localized string("No"))
+If (OK=1) | (OK=2)
+ARRAY TEXT(asFields;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSiteCodes;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSigns;Size of array(<>asSiteCodes))
+For ($i;1;Size of array(<>asSiteCodes))
+asFields{$i}:=<>asFacilities{$i}
+asSiteCodes{$i}:=<>asSiteCodes{$i}
+asSigns{$i}:=""
+End for 
+End if 
+If (OK=2)
+vTitle:=Get localized string("Select Sites")+"..."
+Open window((Screen width/2)-146;(Screen height/2)-150;(Screen width/2)+146;(Screen height/2)+150;5;Get localized string("Select Sites"))
+DIALOG([Facility];"SelectSites")
+CLOSE WINDOW
+For ($i;Size of array(asSiteCodes);1;-1)
+If (asSigns{$i}#"•")
+DELETE FROM ARRAY(asSiteCodes;$i;1)
+End if 
+End for 
+End if 
+If (OK=1)
+//Delete all existing records that are in selection
+ConfirmTwo ("Delete all Insurance Rates before duplication?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+For ($i;1;Size of array(asSiteCodes))
+If (asSiteCodes{$i}#$FromSite)
+For ($j;1;Records in set("ToDo"))
+USE SET("ToDo")
+GOTO SELECTED RECORD([InsuranceRates];$j)
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$i})
+If (Records in selection([InsuranceRates])>0)
+DELETE SELECTION([InsuranceRates])
+End if 
+End for 
+End if 
+End for 
+End if 
+//Pause to ensure at least 1 sec delay so that deletions occur b4 adds in replication
+$Tickcount:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+90))
+//Duplicate new codes to selection
+For ($i;1;Size of array(asSiteCodes))
+If (asSiteCodes{$i}#$FromSite)
+For ($j;1;Records in set("ToDo"))
+USE SET("ToDo")
+GOTO SELECTED RECORD([InsuranceRates];$j)
+DUPLICATE RECORD([InsuranceRates])
+[InsuranceRates]PrimaryKey:=0
+[InsuranceRates]Facility:=asSiteCodes{$i}
+SAVE RECORD([InsuranceRates])
+End for 
+End if 
+End for 
+End if 
+//JOHNNO
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility+"@")
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+//JOHNNO

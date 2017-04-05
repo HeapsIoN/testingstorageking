@@ -1,0 +1,149 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(vDaysLate)
+C_DATE(vDateInvoice)
+
+SOAP DECLARATION(WS_vtReservationNumber;Is text;SOAP input;"WS_vtReservationNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+
+SOAP DECLARATION(WS_CCName;Is text;SOAP input;"WS_CCName")
+SOAP DECLARATION(WS_CCNo;Is text;SOAP input;"WS_CCNo")
+SOAP DECLARATION(WS_CCValidFrom;Is text;SOAP input;"WS_CCValidFrom")
+SOAP DECLARATION(WS_CCExpiry;Is text;SOAP input;"WS_CCExpiry")
+SOAP DECLARATION(WS_CCInfo;Is text;SOAP input;"WS_CCInfo")
+SOAP DECLARATION(WS_AutoEmailCC;Is Boolean;SOAP input;"WS_AutoMailCC")
+SOAP DECLARATION(WS_customerProfileID;Is text;SOAP input;"WS_customerProfileID")
+SOAP DECLARATION(WS_customerPaymentProfID;Is text;SOAP input;"WS_customerPaymentProfID")
+SOAP DECLARATION(WS_BankAccountName;Is text;SOAP input;"WS_BankAccountName")
+SOAP DECLARATION(WS_BankAcct;Is text;SOAP input;"WS_BankAcct")
+SOAP DECLARATION(WS_BankName;Is text;SOAP input;"WS_BankName")
+SOAP DECLARATION(WS_AccountType;Is integer;SOAP input;"WS_AccountType")
+
+
+$String:="Start WS_GetAutoPayNotices"+Char(13)
+$String:=$String+"WS_vtReservationNumber: "+WS_vtReservationNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRecordLog ($String)
+READ WRITE([Customer])
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtReservationNumber)
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+Case of 
+: (Records in selection([Reservation])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement found"
+: (Records in selection([Reservation])=1)
+RELATE ONE([Reservation]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+If (Records in selection([Customer])=1) & (Locked([Customer])=False)
+If (Records in selection([Agreement])=1) & (Locked([Agreement])=False)
+[Customer]CCName:=WS_CCName
+If ([Customer]customerProfileID>"") | ([Customer]custPaymentProfID>"")
+[Customer]CCNo:="000000000000"+Substring(WS_CCNo;(Length(WS_CCNo)-4))
+Else 
+//[Customer]CCNo:=WS_CCNo
+[Customer]CCNo:=Tokenizer (WS_CCNo)//FB11185
+
+End if 
+[Customer]CCValidFrom:=WS_CCValidFrom
+[Customer]CCExpiry:=WS_CCExpiry
+[Customer]CCInfo:=WS_CCInfo
+[Customer]AutoEmailCC:=WS_AutoEMailCC
+[Customer]customerProfileID:=WS_customerProfileID
+[Customer]custPaymentProfID:=WS_customerPaymentProfID
+[Customer]BankAccountName:=WS_BankAccountName
+[Customer]BankAcct:=WS_BankAcct
+[Customer]BankName:=WS_BankName
+[Customer]AccountType:=WS_AccountType
+
+SAVE RECORD([Customer])
+
+Else 
+If (Locked([Agreement]))
+LOCKED BY([Agreement];$Process;$User;$Machine;$ProcName)
+WS_ORSuccess:=False
+WS_ORErrorCode:=5//Record locked
+WS_ORErrorDescription:="Records in Selection= "+String(Records in selection([Agreement]))+" Read/Write= "+String(Read only state([Agreement]))+" Locked= "+String(Locked([Agreement]))+"Details: "+String($Process)+" "+String($User)+" "+String($Machine)+" "+String($ProcName)
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=6// No records in selection
+WS_ORErrorDescription:="Records in Selection= "+String(Records in selection([Agreement]))+" Read/Write= "+String(Read only state([Agreement]))+" Locked= "+String(Locked([Agreement]))
+End if 
+End if 
+Else 
+If (Locked([Customer]))
+LOCKED BY([Customer];$Process;$User;$Machine;$ProcName)
+WS_ORSuccess:=False
+WS_ORErrorCode:=5//Record locked
+WS_ORErrorDescription:="Records in Selection= "+String(Records in selection([Customer]))+" Read/Write= "+String(Read only state([Customer]))+" Locked= "+String(Locked([Customer]))+"Details: "+String($Process)+" "+String($User)+" "+String($Machine)+" "+String($ProcName)
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=6// No records in selection
+WS_ORErrorDescription:="Records in Selection= "+String(Records in selection([Customer]))+" Read/Write= "+String(Read only state([Customer]))+" Locked= "+String(Locked([Customer]))
+End if 
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+
+
+End case 
+End if 
+
+$String:="End WS_EditNoticesAndPhotosInfo"+Char(13)
+$String:=$String+"WS_DaysLate: "+String(WS_DaysLate)+Char(13)
+$String:=$String+"WS_LateCycleStartDate: "+String(WS_LateCycleStartDate)+Char(13)
+$String:=$String+"WS_LastRentIncreaseDate: "+String(WS_LastRentIncreaseDate)+Char(13)
+$String:=$String+"WS_DisableAutoIncreases: "+String(WS_DisableAutoIncreases)+Char(13)
+$String:=$String+"WS_LienNoticeDate: "+String(WS_LienNoticeDate)+Char(13)
+$String:=$String+"WS_NewBillingPlan: "+WS_NewBillingPlan+Char(13)
+$String:=$String+"WS_DateInvoice: "+String(WS_DateInvoice)+Char(13)
+$String:=$String+"WS_SendNotices: "+String(WS_DisableAutoIncreases)+Char(13)
+$String:=$String+"WS_ReceiveNoticeDays: "+String(WS_ReceiveNoticeDays)+Char(13)
+$String:=$String+"WS_SendOptionalInvoices: "+String(WS_SendOptionalInvoices)+Char(13)
+$String:=$String+"WS_SendOptionalStatements: "+String(WS_SendOptionalStatements)+Char(13)
+$String:=$String+"WS_SendNoticesEmail: "+String(WS_SendNoticesEmail)+Char(13)
+$String:=$String+"WS_AutopayValidFrom: "+String(WS_AutopayValidFrom)+Char(13)
+$String:=$String+"WS_AutopayValidTo: "+String(WS_AutopayValidTo)+Char(13)
+$String:=$String+"WS_UseAutopay: "+String(WS_UseAutopay)+Char(13)
+$String:=$String+"WS_AutopayAmt: "+String(WS_AutopayAmt)+Char(13)
+$String:=$String+"WS_AutopayType: "+String(WS_AutopayType)+Char(13)
+$String:=$String+"WS_CCName: "+WS_CCName+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_CCValidFrom: "+WS_CCValidFrom+Char(13)
+$String:=$String+"WS_CCExpiry: "+WS_CCExpiry+Char(13)
+$String:=$String+"WS_CCInfo: "+WS_CCInfo+Char(13)
+$String:=$String+"WS_AutoEmailCC: "+String(WS_AutoEmailCC)+Char(13)
+$String:=$String+"WS_customerProfileID: "+WS_customerProfileID+Char(13)
+$String:=$String+"WS_customerPaymentProfID: "+WS_customerPaymentProfID+Char(13)
+$String:=$String+"WS_BankAccountName: "+WS_BankAccountName+Char(13)
+$String:=$String+"WS_BankAcct: "+WS_BankAcct+Char(13)
+$String:=$String+"WS_BankName: "+WS_BankName+Char(13)
+$String:=$String+"WS_AccountType: "+String(WS_AccountType)+Char(13)
+
+WSRecordLog ($String)
+
+READ ONLY([Customer])
+READ ONLY([Agreement])
+
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+
+ReadOnlyAll 
+UnloadAll 

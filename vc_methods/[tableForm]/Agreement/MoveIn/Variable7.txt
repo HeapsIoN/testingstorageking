@@ -1,0 +1,39 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (vNoteHistBody>"")
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+If (asNotesList>0)
+If (asNotesList{asNotesList}#"<None>")
+[NotesHistory]Category:=asNotesList{asNotesList}
+End if 
+End if 
+If (Length(vLegend)>20000)
+AlertMessage (Get localized string("Your note is longer than 20000 characters and will be truncated."))
+[NotesHistory]Note:=Substring(vNoteHistBody;1;20000)
+Else 
+[NotesHistory]Note:=vNoteHistBody
+End if 
+[NotesHistory]UserLogin:=<>sCurrentUser
+QUERY([MarketingTypes];[MarketingTypes]Facility=Substring([NotesHistory]CustomerCode;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[NotesHistory]Category)
+If ([MarketingTypes]Security=True)
+[Customer]ThreatLevel:=[Customer]ThreatLevel+1
+[Customer]ThreatLevelDate:=[NotesHistory]NoteDate
+[NotesHistory]Security:=True
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+AlertMessage (Get localized string("This customer has exceeded the company threat level."))
+End if 
+End if 
+SAVE RECORD([NotesHistory])
+vNoteHistBody:=""
+Else 
+AlertMessage (Get localized string("Type a new note before clicking on Add button!"))
+End if 
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Agreement]CustomerCode)
+If (tClear=False)
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+Else 
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;>;[NotesHistory]NoteTime;>)
+End if 

@@ -1,0 +1,74 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($0)
+C_BOOLEAN($1)
+If ($1)//vPlus was set
+If (vPlus>=0)
+vMinus:=0
+Else 
+AlertMessage (Get localized string("WARNING - You have changed from a Charge or Receipt to a Credit or Refund. Please check this carefully."))
+vMinus:=Round(vPlus*(-1);2)
+vPlus:=0
+End if 
+Else //vMinus was set
+If (vMinus>=0)
+vPlus:=0
+Else 
+AlertMessage (Get localized string("WARNING - You have changed from a Credit or Refund to a Charge or Receipt. Please check this carefully."))
+vPlus:=Round(vMinus*(-1);2)
+vMinus:=0
+End if 
+End if 
+If (vPlus>0)
+C_REAL($Surcharge)
+$Surcharge:=0
+//18/06/15 DAM Added option for modifying existing receipts
+If (bAddRec=1)//DAM Added for new receipts only
+If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)))
+If ([Trxs]CustomerCode="@MISCL@")// 10/06/15 DAM Cash sale
+[Trxs]TotAmt:=vPlus
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=vPlus-[Trxs]TotAmt
+AlertMessage ("This analysis code has a surcharge. The receipt amount of "+String([Trxs]TotAmt)+", will incur a surcharge of "+String($Surcharge)+", The total amount including the surcharge will be "+String(vPlus))
+Else 
+ConfirmTwo ("Do you want the receipt amount to be "+String(vPlus)+" including or excluding the surcharge?";"Excluding";"Including")
+If (OK=1)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+Else 
+
+//30/06/15 DAM Added a message for Surhcarge amount change
+If (vPlus<[Analysis]ReceiptFeeFixed)
+AlertMessage ("The surcharge for this transaction might not be correct because the receipt amount is less than the fixed surcharge amount, for this analysis code.")
+End if 
+
+End if 
+End if 
+End if 
+Else // for Modifying amount of the existing receipt
+If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))) & (bMod=1)
+
+If (vPlus#[Trxs]TotAmt)
+If ([Trxs]CustomerCode="@MISCL@")
+[Trxs]TotAmt:=vPlus
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=vPlus-[Trxs]TotAmt
+AlertMessage ("You are modifying an existing receipt with a surcharge, if there is an old Surcharge transacion it will not be removed. The new analysis code has a surcharge. The receipt amount of "+String([Trxs]TotAmt)+", will incur a surcharge of "+String($Surcharge)+", The total amount including the surcharge will be "+String(vPlus))
+Else 
+ConfirmTwo ("You are modifying an existing receipt with a surcharge, if there is an old Surcharge transacion it will not be removed. Do you want the receipt amount to be "+String(vPlus)+" including or excluding the surcharge?";"Excluding";"Including")
+If (OK=1)
+vPlus:=Round((vPlus*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+End if 
+End if 
+TrxOldAmt:=[Trxs]TotAmt
+End if 
+End if 
+End if 
+
+$0:=Round(vPlus;2)
+OBJECT SET VISIBLE(*;"@Pos";True)
+OBJECT SET VISIBLE(*;"@Neg";False)
+End if 
+If (vMinus>0) | ((vMinus=0) & (vtReverse=True))
+$0:=Round(vMinus*(-1);2)
+OBJECT SET VISIBLE(*;"@Pos";False)
+OBJECT SET VISIBLE(*;"@Neg";True)
+End if 

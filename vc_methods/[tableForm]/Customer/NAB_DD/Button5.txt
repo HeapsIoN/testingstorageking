@@ -1,0 +1,97 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($Valid)
+$Country:=[Facility]Country
+If (Form event=On Clicked)
+If (vBankAccName="") | (vBankBSB="") | (vBankAccNo="")
+AlertMessage (Get localized string("Please check Direct Debit Details are entered"))
+If (bEdit=1) | (bDelCC=1)
+$Valid:=True
+End if 
+Else 
+$Valid:=True
+End if 
+
+If ($Valid=True)
+
+Case of 
+: ((GetTextNo ([Facility]DDAccountDetails;4;",")="BPOINT"))
+If ([Customer]DDProfileID="")
+$error:=HTTP_BpointDDAddGetToken (GetTextNo ([Facility]DDAccountDetails;2;",");GetTextNo ([Facility]DDAccountDetails;3;",");GetTextNo ([Facility]DDAccountDetails;1;",");[Customer]CustomerCode;"";"";vBankBSB;vBankAccNo;vBankAccName)
+Else 
+$error:=HTTP_BpointDDUpdateGetToken (GetTextNo ([Facility]DDAccountDetails;2;",");GetTextNo ([Facility]DDAccountDetails;3;",");GetTextNo ([Facility]DDAccountDetails;1;",");[Customer]DDProfileID;vBankBSB;vBankAccNo;vBankAccName)
+End if 
+If ($error#"ERR@")
+[Customer]DDProfileID:=$error
+[Customer]DDPaymentProfileID:=$error
+vBankAccName:=""
+vBankBSB:=""
+vBankAccNo:=""
+OBJECT SET ENABLED(bEdit1;True)
+OBJECT SET ENABLED(bDel1;True)
+OBJECT SET ENABLED(bNew1;False)
+
+SAVE RECORD([Customer])
+ACCEPT
+OBJECT SET VISIBLE(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+Else 
+AlertMessage ($error)
+End if 
+
+: ((GetTextNo ([Facility]DDAccountDetails;4;",")="Transaction Express"))
+If ([Customer]DDProfileID="")
+$error:=TrxEpressAddCustWallet (GetTextNo ([Facility]DDAccountDetails;2;",");GetTextNo ([Facility]DDAccountDetails;3;",");"4";"0";"";"";"1")
+//$error:=TrxEpressAddCustWallet (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");"4";"0";"";"";"1") //- Commented by Hamid - 10586
+Else 
+$error:=TrxEpressAddCustWallet (GetTextNo ([Facility]DDAccountDetails;2;",");GetTextNo ([Facility]DDAccountDetails;3;",");"4";"1";"";"";"1")
+//$error:=TrxEpressAddCustWallet (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");"4";"1";"";"";"1") //- Commented by Hamid - 10586
+End if 
+If ($error#"ERR@")
+[Customer]BankAccountName:=vBankAccName
+[Customer]BSB:=vBankBSB
+[Customer]BankAcct:=vBankAccNo
+
+vBankAccName:=""
+vBankBSB:=""
+vBankAccNo:=""
+SAVE RECORD([Customer])
+ACCEPT
+End if 
+Else 
+If (bNew1=1)
+$Error:=WSC_NAB (GetTextNo ([Facility]DDAccountDetails;2;",");GetTextNo ([Facility]DDAccountDetails;3;",");"0";"addcrn";"5";[Customer]CustomerCode;"";"";vBankBSB;vBankAccNo;vBankAccName;0;$Country;"")
+End if 
+If (bEdit1=1)
+$Error:=WSC_NAB (GetTextNo ([Facility]DDAccountDetails;2;",");GetTextNo ([Facility]DDAccountDetails;3;",");"0";"editcrn";"5";[Customer]CustomerCode;"";"";vBankBSB;vBankAccNo;vBankAccName;0;$Country;"")
+End if 
+
+If ($Error#"ERR@")
+[Customer]DDProfileID:=[Customer]CustomerCode
+vBankAccName:=""
+vBankBSB:=""
+vBankAccNo:=""
+//Four lines commented by Hamid - 20/4/2016 - 10594
+//OBJECT SET ENABLED(bEdit1;True)
+//OBJECT SET ENABLED(bDel1;True)
+//OBJECT SET ENABLED(bNew1;False)
+SAVE RECORD([Customer])
+ACCEPT
+//OBJECT SET VISIBLE(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+End case 
+
+End if 
+End if 

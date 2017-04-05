@@ -1,0 +1,121 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($Compress;$Width;$Height)
+C_BOOLEAN($Limit;$Delete)
+C_TIME($Doc)
+C_REAL($Compression)
+
+If ([Customer]CustomerCode>"")
+//If (IsQuicktimeAvail )
+$Delete:=False
+OK:=ConfirmThree (Get localized string("Take picture using Remote Capture and then Load from Photos folder or select file:");Get localized string("Load from Photos");Get localized string("Select Pict File");Get localized string("Cancel"))
+If (OK=1) | (OK=2)
+If (OK=1)
+If (Test path name(<>sStormanPath+"Photos")=Is a folder)
+ARRAY TEXT($aNames;0)
+DOCUMENT LIST(<>sStormanPath+"Photos";$aNames)
+SORT ARRAY($aNames;>)
+$Logitech:=Find in array($aNames;"watch.wtc")
+If ($Logitech>0)
+DELETE FROM ARRAY($aNames;$Logitech)
+End if 
+If (Size of array($aNames)>0)
+$File:=<>sStormanPath+"Photos"+<>sSeparator+$aNames{Size of array($aNames)}
+OK:=1
+$Extension:=Substring($File;Position(".";$File;Length($File)-5))
+Else 
+AlertMessage (Get localized string("There are no files in the")+" '"+<>sStormanPath+Get localized string("Photos' folder!"))
+OK:=0
+End if 
+Else 
+CREATE FOLDER(<>sStormanPath+"Photos")
+AlertMessage (Get localized string("There are no files in the")+" '"+<>sStormanPath+Get localized string("Photos' folder!"))
+OK:=0
+End if 
+$Delete:=True
+Else 
+$Doc:=Open document("";"";Get pathname)
+If (OK=1)
+$File:=Document
+ConfirmTwo (Get localized string("Delete photo file from disk after importing into Storman?");Get localized string("Keep File");Get localized string("Delete"))
+$Delete:=(OK=0)
+OK:=1
+$Extension:=Substring($File;Position(".";$File;Length($File)-5))
+End if 
+End if 
+//$Extension:=Substring($File;Position(".";$File;Length($File)-5))
+If (OK=1)
+$Limit:=([Facility]PhotoCompression>10)
+$Compress:=Abs([Facility]PhotoCompression)//Value to be between 1-1000 with 1000 being no compression require slider control
+If ($Compress<20) | ($Compress>1000)
+$Compress:=1000
+End if 
+//$Err:=AP Read picture file ($File;$Picture)6.5 command Change OK to $Err below
+READ PICTURE FILE($File;$Picture)
+//If ($Limit)
+//CREATE THUMBNAIL($Picture;$Thumbnail;400;300)
+//Else 
+//$Thumbnail:=$Picture
+//End if 
+If (OK=1)
+If ($Compress>0) & ($Compress<=1000) & ($Extension#".pdf")
+ON ERR CALL("ErrorPhoto")
+If ($Compress#0)
+$Compression:=0.25+((0.75/1000)*$Compress)
+Else 
+$Compression:=0.25
+End if 
+CONVERT PICTURE($Picture;".jpg";$Compression)
+ON ERR CALL("ErrorLog")
+End if 
+OK:=1
+
+If ($Extension#".pdf")
+While (Picture size($Picture)>500000) & (OK=1)
+ConfirmTwo (Get localized string("The picture is")+" "+String(Round(Picture size($Picture)/1024/1024;2))+"MB.  Max=0.5MB.  "+Get localized string("Scale to 50%?"))
+If (OK=1)
+PICTURE PROPERTIES($Picture;$Width;$Height)
+CREATE THUMBNAIL($Picture;$Thumbnail;$Width/2;$Height/2)
+$Picture:=$Thumbnail
+End if 
+End while 
+End if 
+If (OK=1)
+CREATE RECORD([PhotosCards])
+[PhotosCards]Code:=[Customer]CustomerCode
+[PhotosCards]Photo:=$Picture
+[PhotosCards]Size:=Picture size([PhotosCards]Photo)
+[PhotosCards]UnitAccess:=$Extension
+[PhotosCards]DateTaken:=Current date
+[PhotosCards]Name:=RequestMessage (Get localized string("Photo name:"))
+[PhotosCards]Name:=[PhotosCards]Name
+If ([PhotosCards]Size>0) & (OK=1)
+[PhotosCards]SeqNo:=1
+While (Find in array(aiCheck;[PhotosCards]SeqNo)>0)
+[PhotosCards]SeqNo:=[PhotosCards]SeqNo+1
+End while 
+INSERT IN ARRAY(aiCheck;0;1)
+aiCheck{1}:=[PhotosCards]SeqNo
+SAVE RECORD([PhotosCards])
+End if 
+If ($Delete)
+DELETE DOCUMENT($File)
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("The photo file")+" "+$File+" "+Get localized string("could not be opened!"))
+End if 
+CLEAR VARIABLE($Picture)
+CLEAR VARIABLE($Thumbnail)
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size>0)
+End if 
+End if 
+//Else 
+//ConfirmTwo ("WARNING - It appears Quicktime is not installed.  This is required for the photo "+"module.  Would you like to download?";"Yes";"No")
+//If (OK=1)
+//OPEN WEB URL("http://www.apple.com/quicktime";*)
+//End if 
+//End if 
+Else 
+AlertMessage (Get localized string("You must enter a customer name prior to taking the picture!"))
+End if 

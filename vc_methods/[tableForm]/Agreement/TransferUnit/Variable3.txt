@@ -1,0 +1,113 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+If (Form event=On Clicked)
+If (Size of array(aUnitNoMI)>0)
+
+For ($i;1;Size of array(aUnitNoMI))// Create transactions for ADD Agreement
+
+Case of 
+: (<>sProduct="@B")
+APPEND TO ARRAY(aDescription;Get localized string("Prorata for berth")+" "+aUnitNoMI{$i})
+: (<>sProduct="@R")
+APPEND TO ARRAY(aDescription;Get localized string("Prorata for appliance")+" "+aUnitNoMI{$i})
+: (<>sProduct="@C")
+APPEND TO ARRAY(aDescription;Get localized string("Prorata for space")+" "+aUnitNoMI{$i})
+Else 
+APPEND TO ARRAY(aDescription;Get localized string("Prorata for unit")+" "+aUnitNoMI{$i})
+End case 
+APPEND TO ARRAY(aAmount;aProrateMI{$i})
+APPEND TO ARRAY(aBill;True)
+
+
+If (aDepositMI{$i}=True)
+Case of 
+: (<>sProduct="@B")
+APPEND TO ARRAY(aDescription;Get localized string("Deposit for berth")+" "+aUnitNoMI{$i})
+: (<>sProduct="@R")
+APPEND TO ARRAY(aDescription;Get localized string("Deposit for appliance")+" "+aUnitNoMI{$i})
+: (<>sProduct="@C")
+APPEND TO ARRAY(aDescription;Get localized string("Deposit for space")+" "+aUnitNoMI{$i})
+Else 
+APPEND TO ARRAY(aDescription;Get localized string("Deposit for unit")+" "+aUnitNoMI{$i})
+End case 
+
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+aUnitTypeMI{$i})
+APPEND TO ARRAY(aAmount;[UnitType]DepositAmt)
+APPEND TO ARRAY(aBill;True)
+End if 
+End for 
+
+
+vTotMoveIn:=0
+For ($i;1;Size of array(aBill))
+If (aBill{$i}=True)
+vTotMoveIn:=vTotMoveIn+aAmount{$i}
+End if 
+End for 
+
+If (vTransfer=3)// For creation 2 arrays when transfering
+FORM GOTO PAGE(5)
+
+//$size:=Size of array(aUnitNoMI)  // Delete all records for MI array
+//While ($size>0)
+//DELETE FROM ARRAY(aUnitNoMI;$size)
+//DELETE FROM ARRAY(aUnitTypeMI;$size)
+//DELETE FROM ARRAY(aUnitRateMI;$size)
+//DELETE FROM ARRAY(aProrateMI;$size)
+//DELETE FROM ARRAY(aDepositMI;$size)
+//$size:=Size of array(aUnitNoMI)
+//End while 
+
+//For ($k;1;Size of array(aUnitNo))
+//APPEND TO ARRAY(aUnitNoMI;aUnitNo{$k})
+//APPEND TO ARRAY(aUnitTypeMI;aUnitType{$k})
+//APPEND TO ARRAY(aUnitRateMI;aUnitRate{$k})
+//End for 
+
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+FIRST RECORD([Unit])
+For ($z;1;Records in selection([Unit]))
+APPEND TO ARRAY(aUnitNo;[Unit]UnitNo)
+APPEND TO ARRAY(aUnitType;Substring([Unit]UnitTypeCode;5))
+Case of 
+: ([BillPlan]CasualBilling=True)
+APPEND TO ARRAY(aUnitRate;[Unit]DailyRentedValue)
+: ([BillPlan]PlanPeriod="Week")
+APPEND TO ARRAY(aUnitRate;[Unit]WeeklyRentedValue)
+Else 
+APPEND TO ARRAY(aUnitRate;[Unit]RentedValue)
+End case 
+APPEND TO ARRAY(aMoveOut;False)
+APPEND TO ARRAY(aReal;True)
+RemoveUnitTransfer 
+NEXT RECORD([Unit])
+End for 
+Else 
+FORM NEXT PAGE
+End if 
+
+Else 
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("Please select a berth"))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("Please select an appliance"))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("Please select a unit"))
+Else 
+AlertMessage (Get localized string("Please select a unit"))
+End case 
+
+End if 
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text31";"On the "+String(vDate)+" "+Get localized string("into berth(s)"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text31";"On the "+String(vDate)+" "+Get localized string("into applicanes(s)"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text31";"On the "+String(vDate)+" "+Get localized string("into spaces(s)"))
+Else 
+OBJECT SET TITLE(*;"Text31";"On the "+String(vDate)+" "+Get localized string("into unit(s)"))
+End case 
+End if 

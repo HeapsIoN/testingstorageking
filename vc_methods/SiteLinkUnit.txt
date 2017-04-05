@@ -1,0 +1,442 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 12/10/16, 10:25:24
+// ----------------------------------------------------
+// Method: SiteLinkUnit
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($1)
+
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Unit])
+READ WRITE([UnitHistory])
+READ WRITE([Trxs])
+
+ARRAY DATE($arPTD;0)
+ARRAY DATE($arNBD;0)
+ARRAY TEXT($arCustCodes;0)
+C_DATE($AgreePTD)
+C_TEXT($AgreeToUse)
+C_REAL($RegularRent)
+C_BOOLEAN($PTDPass;$NBDPass;$Force)
+$Force:=False
+
+If (Count parameters>0)
+$Force:=$1
+End if 
+$Force:=True
+
+ALL RECORDS([Agreement])
+DISTINCT VALUES([Agreement]CustomerCode;$arCustCodes)
+
+For ($i;1;Size of array($arCustCodes))
+QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i})
+
+If (Records in selection([Agreement])>1)
+SyncRecordLog ("Customer Code "+$arCustCodes{$i})
+
+DISTINCT VALUES([Agreement]PaidToDate;$arPTD)
+QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i})
+DISTINCT VALUES([Agreement]NextBillDate;$arNBD)
+QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i})
+
+$PTDPass:=False
+$NBDPass:=False
+
+If (Size of array($arPTD)=1)// One PTD for all agreements
+$PTDPass:=True
+End if 
+
+If (Size of array($arNBD)=1)// One NBD for all agreements
+$NBDPass:=True
+End if 
+
+If ($Force=True)
+$NBDPass:=True
+$PTDPass:=True
+End if 
+
+If ($NBDPass) & ($PTDPass)//All agreements one PTD and NBD
+$AgreeToUse:=""
+FIRST RECORD([Agreement])
+$AgreeToUse:=[Agreement]RAgreeNo
+$AgreePTD:=[Agreement]PaidToDate
+$RegularRent:=0
+SyncRecordLog ("AgreeNo main "+$AgreeToUse)
+
+For ($j;1;Records in selection([Agreement]))
+If ($j>1)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+SyncRecordLog ("Agreement number replaiced "+[Agreement]RAgreeNo)
+SyncRecordLog ("Unit number  "+[Unit]RUnitNo)
+[Unit]AgreeNo:=$AgreeToUse
+SAVE RECORD([Unit])
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+[UnitHistory]AgreeNo:=$AgreeToUse
+SAVE RECORD([UnitHistory])
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=$AgreeToUse)
+
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$AgreeToUse)
+
+[Agreement]MoveOut:=[Agreement]MoveIn
+[Agreement]ActiveAgreemt:=False
+[Agreement]UnitsOccup:=""
+$RegularRent:=$RegularRent+[Agreement]LastBillAmt
+
+SAVE RECORD([Agreement])
+
+If ($Force) & (([Agreement]PaidToDate-$AgreePTD)#0) & ([Unit]AgreeNo#"")
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=$AgreeToUse
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]TrxDate:=Current date
+[Trxs]TrxTime:=Current time
+[Trxs]TotAmt:=(([Agreement]PaidToDate-$AgreePTD)*[Agreement]RegularRent)/([Agreement]NextBillDate-[Agreement]LastBillDate)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]Description:="Prorate for agreement "+[Agreement]CustomerCode
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+SAVE RECORD([Trxs])
+End if 
+
+End if 
+NEXT RECORD([Agreement])
+End for 
+
+QUERY([Customer];[Customer]CustomerCode=$arCustCodes{$i})
+[Customer]AgreemtsOperating:=""
+FIRST RECORD([Agreement])
+
+For ($l;1;Records in selection([Customer]))
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+","+[Agreement]AgreeNo
+End for 
+[Customer]NoActiveAgreemts:=Records in selection([Agreement])
+SAVE RECORD([Customer])
+
+//Set the last bill amount for the main agreement
+[Agreement]LastBillAmt:=[Agreement]LastBillAmt+$RegularRent
+[Agreement]RegularRent:=[Agreement]RegularRent+$RegularRent
+[Agreement]RentAmt:=[Agreement]RegularRent
+[Agreement]RentAmt:=[Agreement]RentAmt*[Agreement]MthsAdv
+[Agreement]NewRentAmt:=[Agreement]RentAmt
+[Agreement]NewRegularRent:=[Agreement]RegularRent
+
+If ([Agreement]AutoPay=True)
+[Agreement]AutoPayAmt:=[Agreement]RentAmt
+End if 
+
+SAVE RECORD([Agreement])
+
+Else 
+//Do not do anything for 2 records
+
+If (Records in selection([Agreement])>2)
+
+CLEAR VARIABLE($arPTD)
+CLEAR VARIABLE($arNBD)
+ARRAY DATE($arPTD;0)
+ARRAY DATE($arNBD;0)
+ARRAY TEXT($arAgreeNo;0)
+
+SELECTION TO ARRAY([Agreement]PaidToDate;$arPTD;[Agreement]NextBillDate;$arNBD;[Agreement]AgreeNo;$arAgreeNo)
+
+For ($z;1;Size of array($arAgreeNo))
+QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i};*)
+QUERY([Agreement]; & ;[Agreement]PaidToDate=$arPTD{$z};*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]NextBillDate=$arNBD{$z})
+
+$AgreeToUse:=""
+$RegularRent:=0
+FIRST RECORD([Agreement])
+$AgreeToUse:=[Agreement]RAgreeNo
+
+If (Records in selection([Agreement])>1)
+For ($j;1;Records in selection([Agreement]))
+If ($j>1)
+SyncRecordLog ("PTD/NBD. AgreeNo main "+$AgreeToUse)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+SyncRecordLog ("Agreement number replaiced "+[Agreement]RAgreeNo)
+SyncRecordLog ("Unit number  "+[Unit]RUnitNo)
+
+[Unit]AgreeNo:=$AgreeToUse
+SAVE RECORD([Unit])
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+[UnitHistory]AgreeNo:=$AgreeToUse
+SAVE RECORD([UnitHistory])
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=$AgreeToUse)
+
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$AgreeToUse)
+
+[Agreement]MoveOut:=[Agreement]MoveIn
+[Agreement]ActiveAgreemt:=False
+[Agreement]UnitsOccup:=""
+$RegularRent:=$RegularRent+[Agreement]LastBillAmt
+
+SAVE RECORD([Agreement])
+
+End if 
+NEXT RECORD([Agreement])
+End for 
+
+End if 
+
+FIRST RECORD([Agreement])
+[Agreement]LastBillAmt:=[Agreement]LastBillAmt+$RegularRent
+//viMatch:=0
+//bPrtRec:=0
+//bEmailReceipt:=0
+//bAll:=0
+//asShowHistory:=1
+//ReCalc 
+SAVE RECORD([Agreement])
+
+End for 
+End if 
+End if 
+End if 
+End for 
+
+AlertMessage ("SiteLink Unit finished!")
+READ ONLY([Agreement])
+READ ONLY([Customer])
+READ ONLY([Unit])
+READ ONLY([UnitHistory])
+//  // ----------------------------------------------------
+//  // User name (OS): denis.mikheev
+//  // Date and time: 12/10/16, 10:25:24
+//  // ----------------------------------------------------
+//  // Method: SiteLinkUnit
+//  // Description
+//  // 
+//  //
+//  // Parameters
+//  // ----------------------------------------------------
+
+//C_BOOLEAN($1)
+
+//READ WRITE([Agreement])
+//READ WRITE([Customer])
+//READ WRITE([Unit])
+//READ WRITE([UnitHistory])
+
+//ARRAY DATE($arPTD;0)
+//ARRAY DATE($arNBD;0)
+//ARRAY TEXT($arCustCodes;0)
+//C_DATE($AgreePTD)
+//C_TEXT($AgreeToUse)
+//C_REAL($RegularRent)
+//C_BOOLEAN($PTDPass;$NBDPass;$Force)
+//$Force:=False
+
+//If (Count parameters>0)
+//$Force:=$1
+//End if 
+//$Force:=True
+
+//ALL RECORDS([Agreement])
+//DISTINCT VALUES([Agreement]CustomerCode;$arCustCodes)
+
+//For ($i;1;Size of array($arCustCodes))
+//QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i})
+
+//If (Records in selection([Agreement])>1)
+//SyncRecordLog ("Customer Code "+$arCustCodes{$i})
+
+//DISTINCT VALUES([Agreement]PaidToDate;$arPTD)
+//QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i})
+//DISTINCT VALUES([Agreement]NextBillDate;$arNBD)
+//QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i})
+
+//$PTDPass:=False
+//$NBDPass:=False
+
+//If (Size of array($arPTD)=1)  // One PTD for all agreements
+//$PTDPass:=True
+//End if 
+
+//If (Size of array($arNBD)=1)  // One NBD for all agreements
+//$NBDPass:=True
+//End if 
+
+//If ($Force=True)
+//$NBDPass:=True
+//$PTDPass:=True
+//End if 
+
+//If ($NBDPass) & ($PTDPass)  //All agreements one PTD and NBD
+//$AgreeToUse:=""
+//FIRST RECORD([Agreement])
+//$AgreeToUse:=[Agreement]RAgreeNo
+//$AgreePTD:=[Agreement]PaidToDate
+//$RegularRent:=0
+//SyncRecordLog ("AgreeNo main "+$AgreeToUse)
+
+//  //If ($AgreeToUse="@72685")
+//  //ALERT("!")
+//  //End if 
+
+
+//For ($j;1;Records in selection([Agreement]))
+//If ($j>1)
+//QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+//SyncRecordLog ("Agreement number replaiced "+[Agreement]RAgreeNo)
+//SyncRecordLog ("Unit number  "+[Unit]RUnitNo)
+//[Unit]AgreeNo:=$AgreeToUse
+//SAVE RECORD([Unit])
+
+//QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+//[UnitHistory]AgreeNo:=$AgreeToUse
+//SAVE RECORD([UnitHistory])
+
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+//APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=$AgreeToUse)
+
+//QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+//APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$AgreeToUse)
+
+//[Agreement]MoveOut:=[Agreement]MoveIn
+//[Agreement]ActiveAgreemt:=False
+//[Agreement]UnitsOccup:=""
+//$RegularRent:=$RegularRent+[Agreement]LastBillAmt
+
+//SAVE RECORD([Agreement])
+
+//If ($Force) & (([Agreement]PaidToDate-$AgreePTD)#0)
+//CREATE RECORD([Trxs])
+//[Trxs]AgreeNo:=$AgreeToUse
+//[Trxs]CustomerCode:=[Agreement]CustomerCode
+//[Trxs]TrxDate:=Current date
+//[Trxs]TrxTime:=Current time
+//[Trxs]TotAmt:=(([Agreement]PaidToDate-$AgreePTD)*[Agreement]RegularRent)/([Agreement]NextBillDate-[Agreement]LastBillDate)
+//  //[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+//[Trxs]AnalysisCode:=<>sFacility+"RF"
+//[Trxs]Description:="Prorate for agreement "+[Agreement]CustomerCode
+//[Trxs]DateFrom:=[Agreement]LastBillDate
+//[Trxs]DateTo:=[Agreement]NextBillDate
+//[Trxs]Charge:=True
+//[Trxs]Confirmed:=True
+//SAVE RECORD([Trxs])
+//End if 
+
+//End if 
+//NEXT RECORD([Agreement])
+//End for 
+
+//QUERY([Customer];[Customer]CustomerCode=$arCustCodes{$i})
+//[Customer]AgreemtsOperating:=""
+//FIRST RECORD([Agreement])
+
+//For ($l;1;Records in selection([Customer]))
+//[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+","+[Agreement]AgreeNo
+//End for 
+//[Customer]NoActiveAgreemts:=Records in selection([Agreement])
+//SAVE RECORD([Customer])
+
+//  //Set the last bill amount for the main agreement
+//[Agreement]LastBillAmt:=[Agreement]LastBillAmt+$RegularRent
+//  //viMatch:=0
+//  //bPrtRec:=0
+//  //bEmailReceipt:=0
+//  //bAll:=0
+//  //asShowHistory:=1
+//  //ReCalc 
+//SAVE RECORD([Agreement])
+
+//Else 
+//  //Do not do anything for 2 records
+
+//If (Records in selection([Agreement])>2)
+
+//CLEAR VARIABLE($arPTD)
+//CLEAR VARIABLE($arNBD)
+//ARRAY DATE($arPTD;0)
+//ARRAY DATE($arNBD;0)
+//ARRAY TEXT($arAgreeNo;0)
+
+//SELECTION TO ARRAY([Agreement]PaidToDate;$arPTD;[Agreement]NextBillDate;$arNBD;[Agreement]AgreeNo;$arAgreeNo)
+
+//For ($z;1;Size of array($arAgreeNo))
+//QUERY([Agreement];[Agreement]CustomerCode=$arCustCodes{$i};*)
+//QUERY([Agreement]; & ;[Agreement]PaidToDate=$arPTD{$z};*)
+//QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+//QUERY([Agreement]; & ;[Agreement]NextBillDate=$arNBD{$z})
+
+//$AgreeToUse:=""
+//$RegularRent:=0
+//FIRST RECORD([Agreement])
+//$AgreeToUse:=[Agreement]RAgreeNo
+
+//If (Records in selection([Agreement])>1)
+//For ($j;1;Records in selection([Agreement]))
+//If ($j>1)
+//SyncRecordLog ("PTD/NBD. AgreeNo main "+$AgreeToUse)
+//QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+//SyncRecordLog ("Agreement number replaiced "+[Agreement]RAgreeNo)
+//SyncRecordLog ("Unit number  "+[Unit]RUnitNo)
+
+//[Unit]AgreeNo:=$AgreeToUse
+//SAVE RECORD([Unit])
+
+//QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+//[UnitHistory]AgreeNo:=$AgreeToUse
+//SAVE RECORD([UnitHistory])
+
+//QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+//APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=$AgreeToUse)
+
+//QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+//APPLY TO SELECTION([Letters];[Letters]AgreeNo:=$AgreeToUse)
+
+//[Agreement]MoveOut:=[Agreement]MoveIn
+//[Agreement]ActiveAgreemt:=False
+//[Agreement]UnitsOccup:=""
+//$RegularRent:=$RegularRent+[Agreement]LastBillAmt
+
+//SAVE RECORD([Agreement])
+
+//End if 
+//NEXT RECORD([Agreement])
+//End for 
+
+//End if 
+
+//FIRST RECORD([Agreement])
+//[Agreement]LastBillAmt:=[Agreement]LastBillAmt+$RegularRent
+//  //viMatch:=0
+//  //bPrtRec:=0
+//  //bEmailReceipt:=0
+//  //bAll:=0
+//  //asShowHistory:=1
+//  //ReCalc 
+//SAVE RECORD([Agreement])
+
+//End for 
+//End if 
+//End if 
+//End if 
+//End for 
+
+//AlertMessage ("SiteLink Unit finished!")
+//READ ONLY([Agreement])
+//READ ONLY([Customer])
+//READ ONLY([Unit])
+//READ ONLY([UnitHistory])

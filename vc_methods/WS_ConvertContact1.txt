@@ -1,0 +1,435 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 27/08/15, 15:25:32
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_ConvertConact1
+// Description
+// This method is used to convert a Contact into a Reservation
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_CTContactNo;Is string var;SOAP input;"WS_CTContactNo")//[contact] number to be converted
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP input;"WS_MoveInDate")//[reservation]expectedmovein
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input;"WS_WebServicePassword")
+
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")//new reservation's customer code
+SOAP DECLARATION(WS_ReservationID;Is string var;SOAP output;"WS_ReservationID")//new reservation number
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_ConvertConact1"+Char(13)
+$String:=$String+"WS_CTContactNo: "+WS_CTContactNo+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+//C_BOOLEAN($0)  //If successful
+C_LONGINT($i)
+C_POINTER($p)
+C_TEXT($SendToCustomer;$SendToFacility)
+C_TEXT($Analysis)
+C_TEXT(vtDepositAmt;vtDateUnitRequired)
+
+//$0:=False
+WS_ReservationID:=""
+WS_CTFacility:=Substring(WS_CTContactNo;1;5)
+READ WRITE([Unit])
+READ WRITE([Contacts])
+READ WRITE([Customer])
+READ WRITE([NotesHistory])
+READ WRITE([Reservation])
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+QUERY([Facility];[Facility]FacilityCode=WS_CTFacility)
+
+If (Records in selection([Facility])=1)
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Contacts];[Contacts]ContactNo=WS_CTContactNo)
+If (Locked([Contacts])=False)
+
+// Create Customer
+C_BOOLEAN($CreateSalesCustomer;$KosmoInv;$KSSNat)
+C_TEXT($Temp;$Code)
+C_LONGINT($j;$k)
+$CreateSalesCustomer:=False
+$Name:=Substring([Contacts]ContactName;1;5)
+QUERY([Customer];[Customer]CustomerName=$Name+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=[Contacts]Facility+"@")
+
+$Temp:=Uppercase(Substring([Contacts]ContactName;1;10);*)
+$Temp:=RemoveSpecial ($Temp)
+$Temp:=Substring($Temp;1;5)
+SET QUERY DESTINATION(3;$j)
+$Code:=$Temp
+QUERY([Customer];[Customer]CustomerCode=[Contacts]Facility+$Code)
+$k:=0
+CreateCustCode_Web 
+While ($j>0) & ($k<9)
+$k:=$k+1
+If (Length([Contacts]ContactName)>4) & ($k<5)
+$j:=Position(" ";[Contacts]ContactName)
+If ($j>2)
+$Code:=Substring([Contacts]ContactName;$j+1;10)
+Else 
+$Code:=Substring([Contacts]ContactName;1;10)
+End if 
+$Code:=Uppercase(Substring($Temp;1;(5-$k));*)+Uppercase(Substring($Code;1;$k);*)
+Else 
+$Code:=Uppercase(Substring($Temp;1;4);*)+String($k)
+End if 
+QUERY([Customer];[Customer]CustomerCode=[Contacts]Facility+$Code)
+End while 
+If ($k>=9)
+$i:=0
+Repeat 
+$j:=5-Length(String($i;"##"))
+$Code:=Substring($Temp;1;$j)+String($i;"##")
+$i:=$i+1
+QUERY([Customer];[Customer]CustomerCode=[Contacts]Facility+$Code)
+Until ($j=0)
+End if 
+SET QUERY DESTINATION(0)
+
+If (OK=1)
+CREATE RECORD([Customer])
+[Customer]CustomerCode:=[Contacts]Facility+$Code
+[Customer]CustomerName:=[Contacts]ContactName
+[Customer]FirstName:=[Contacts]Firstname
+[Customer]Title:=[Contacts]Title
+
+[Customer]MailCountryCode:=[Contacts]MailCountryCode
+[Customer]CountryCode:=[Contacts]MailCountryCode
+[Customer]AltCountryCode:=[Contacts]MailCountryCode
+[Customer]UserName:=[Contacts]UserName
+[Customer]MailAddress:=[Contacts]MailAddress
+[Customer]MailCity:=[Contacts]MailCity
+[Customer]MailCountry:=[Contacts]MailCountry
+[Customer]PhonePrivate:=[Contacts]ContactPhone
+[Customer]PhoneBus:=[Contacts]PhoneBus
+[Customer]MailState:=[Contacts]MailState
+[Customer]MailPostZIPCode:=[Contacts]MailZIPCode
+[Customer]MobilePhone:=[Contacts]MobilePhone
+[Customer]FaxNo:=[Contacts]FaxNumber
+[Customer]Notes:=[Contacts]Comments
+[Customer]EmailAddress:=[Contacts]EmailAddress
+[Customer]MailSuburb:=[Contacts]MailSuburb
+[Customer]Organization:=[Contacts]Organization
+[Customer]MarketSrce:=[Contacts]MarketSrce
+[Customer]CustType:=[Contacts]CustType
+[Customer]GateTimeZone:=[Facility]GateTimeZoneDefault
+[Customer]PrimaryPhone:=[Contacts]PrimaryPhone
+[Customer]ThreatLevel:=[Contacts]ThreatLevel
+[Customer]ThreatLevelDate:=[Contacts]ThreatLevelDate
+[Customer]Password:=[Customer]CustomerCode
+
+SAVE RECORD([Customer])
+
+CREATE RECORD([Reservation])
+//SET QUERY DESTINATION(3;$i)
+$Continue:=False
+If (Not(Semaphore("<>bNextResNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//If (Application type=4D Remote Mode)
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+//End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+Repeat 
+
+[Reservation]ReserveNo:=String(<>aiNextResNo{$arraypos};"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+
+<>aiNextResNo{$arraypos}:=[Facility]NextReserveNo
+$Key:=[Facility]FacilityCode+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+//End if 
+CLEAR SEMAPHORE("<>bNextResNo")
+Else 
+Repeat 
+
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+
+$Key:=[Facility]FacilityCode+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+End if 
+[Reservation]RReserveNo:=[Contacts]Facility+[Reservation]ReserveNo
+[Reservation]TaxExempt:=[Facility]TaxFreeDefault
+[Reservation]CustomerCode:=[Customer]CustomerCode
+[Reservation]OnlineRes:=True
+[Reservation]ReservedDate:=Current date
+[Reservation]ReservedTime:=Current time
+[Reservation]ActiveReserve:=True
+[Reservation]ExpMoveIn:=[Contacts]WhenRequired
+[Reservation]ContactNo:=[Contacts]ContactNo
+[Reservation]CallTakenBy:=[Contacts]CallTakenBy
+[Reservation]KQ1:=[Contacts]KQ1
+[Reservation]KQ2:=[Contacts]KQ2
+[Reservation]KQ3:=[Contacts]KQ3
+[Reservation]KQ4:=[Contacts]KQ4
+[Reservation]KQ5:=[Contacts]KQ5
+[Reservation]KQ6:=[Contacts]KQ6
+[Reservation]KQ7:=[Contacts]KQ7
+[Reservation]KQ8:=[Contacts]KQ8
+[Reservation]KQ9:=[Contacts]KQ9
+[Reservation]KQ10:=[Contacts]KQ10
+[Reservation]KTS:=[Contacts]KTS
+[Reservation]KCN:=[Contacts]KCN
+
+QUERY([Quote];[Quote]ContactNo=[Contacts]ContactNo;*)
+QUERY([Quote]; & ;[Quote]UnitTypeCode>"")
+
+If (Records in selection([Quote])>0)
+$Date:=Current date
+
+For ($i;1;Records in selection([Quote]))
+QUERY([Unit];[Unit]Vacant=False;*)
+QUERY([Unit]; & ;[Unit]MoveOut#!00-00-00!;*)
+QUERY([Unit]; & ;[Unit]MoveOut<$Date;*)//Extra condition added 12/6/05
+QUERY([Unit]; | ;[Unit]Vacant=True;*)
+QUERY([Unit]; & ;[Unit]UnitTypeCode=[Quote]UnitTypeCode;*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail")
+ORDER BY([Unit];[Unit]Status;<;[Unit]UnitNo;>)
+If (Records in selection([Unit])>0)
+
+$Found:=True
+
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]ReservedTo:=[Reservation]RReserveNo
+If ([Unit]Status#<>asUnitStatus{1})
+[Unit]Status:=<>asUnitStatus{3}
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+
+[Unit]QuotedRate:=[Quote]Price
+[Unit]ReservedDate:=Current date
+[Unit]ReserveDeposit:=[UnitType]DepositAmt
+If ([Facility]AgreeOnlyDeposit=True)
+[Unit]ReserveDeposit:=0
+End if 
+[Reservation]DepositAmt:=[Reservation]DepositAmt+[Unit]ReserveDeposit
+[Reservation]UnitsReserved:=[Reservation]UnitsReserved+[Unit]UnitNo+", "
+SAVE RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+If ([UnitType]DepositAmt>0)
+If ([Facility]AgreeOnlyDeposit=True)
+OK:=0
+Else 
+//QUERY([Analysis];[Analysis]SortOrder=2)
+//READ WRITE([Trxs])
+//CREATE RECORD([Trxs])
+//[Trxs]CustomerCode:=[Reservation]CustomerCode
+//[Trxs]AgreeNo:=[Reservation]RReserveNo
+//[Trxs]Charge:=True
+//[Trxs]AnalysisCode:=<>sFacility+"DP"
+//[Trxs]Description:=[Analysis]Description+" "+<>vtUnitsCap+" "+[Unit]UnitNo
+//[Trxs]TrxDate:=GetValidDate ([Unit]ReservedDate)
+//[Trxs]DateFrom:=[Unit]ReservedDate
+//[Trxs]DateTo:=[Unit]ReservedDate
+//[Trxs]TotAmt:=RoundAmt ([UnitType]DepositAmt)
+//[Trxs]Confirmed:=True
+//[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+//SAVE RECORD([Trxs])
+//[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+//If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+//[Customer]LatestTrxDate:=[Trxs]TrxDate
+//End if 
+//vRecalc:=True
+//READ ONLY([Trxs])
+//Else 
+//[Unit]ReserveDeposit:=0
+End if 
+End if 
+
+//QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+//FIRST RECORD([Unit])
+//
+//For ($j;1;Records in selection([Unit]))
+//RELATE ONE([Unit]UnitTypeCode)
+//
+//NEXT RECORD([Unit])
+//End for 
+Else 
+WS_ORErrorCode:=2100
+WS_ORErrorDescription:="Not all units have been converted to Reserverd"
+End if 
+NEXT RECORD([Quote])
+End for 
+
+If (Length([Reservation]UnitsReserved)>2)
+[Reservation]UnitsReserved:=Substring([Reservation]UnitsReserved;1;Length([Reservation]UnitsReserved)-2)
+End if 
+
+End if 
+
+SAVE RECORD([Reservation])
+
+WS_CustomerID:=[Customer]CustomerCode
+WS_ReservationID:=[Reservation]RReserveNo
+vtDepositAmt:=String([Reservation]DepositAmt)
+vtDateUnitRequired:=String(WS_MoveInDate)
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+SKCallURL (WS_ReservationID)
+
+//Convert Sale Eqn only if Reservation is success
+
+//UpdateCalendar (!00/00/0000!;[Contacts]FollowUpDate;"Contact "+[Contacts]ContactName+", Followup")  //vName
+[Contacts]Outcome:="Reserved"
+[Contacts]OutComeDate:=Current date
+[Contacts]FollowUpDone:=True
+[Contacts]FollowUpDate:=!00-00-00!
+[Contacts]OnWaitingList:=False
+SAVE RECORD([Contacts])
+
+$CurrencySymbol:=GetTextNo ([Facility]CurrencyFormat;1;";")
+QUERY([Facility];[Facility]FacilityCode=WS_CTFacility)
+
+If ([Facility]ResSendFacEmail=True)
+$cr:=Char(13)+Char(10)
+$MessageBody:="A new Online Reservation has been created:"+$cr
+$MessageBody:=$MessageBody+"Reservation Number: "+[Facility]FacilityCode+[Reservation]ReserveNo+$cr
+$MessageBody:=$MessageBody+"Date: "+String(Current date;5)+$cr
+$MessageBody:=$MessageBody+"Time: "+String(Current time)+$cr
+$MessageBody:=$MessageBody+"Customer Name: "+[Customer]CustomerName+";"+$cr
+$MessageBody:=$MessageBody+"Email Address: "+[Customer]EmailAddress+$cr
+$MessageBody:=$MessageBody+"Phone Number: "+WS_ORCustomerPhone+$cr
+$MessageBody:=$MessageBody+"Sales Enquiry: "+[Contacts]ContactNo+$cr
+$MessageBody:=$MessageBody+"Facility: "+[Facility]FacilityName+$cr
+$MessageBody:=$MessageBody+"Description: "+[UnitType]Description+$cr
+$MessageBody:=$MessageBody+"Reservation Deposit Cost: "+$CurrencySymbol+String(([Contacts]ResDeposit);"#####0.00")+$cr
+$MessageBody:=$MessageBody+"Reservation Payment Received: "+$CurrencySymbol+String((WS_TotAmt);"#####0.00")+$cr
+$MessageBody:=$MessageBody+"Date Required: "+WS_ORDateUnitRequired+$cr
+If ([Reservation]Weekly=True)
+$WeeklyMonthly:="Weekly"
+Else 
+$WeeklyMonthly:="Monthly"
+End if 
+$MessageBody:=$MessageBody+"Weekly / Monthly: "+$WeeklyMonthly+$cr
+CREATE RECORD([Message])
+[Message]Subject:=[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Your Online Reservation has been created."
+[Message]Address:=[Facility]OResFacNotifEmail
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=$MessageBody
+[Message]Attachments:=""
+[Message]Facility:=[Facility]FacilityCode
+SAVE RECORD([Message])
+WSRecordLog ("Send email to facility start")
+$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - New Online Reservation";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")//Notification Email to Facility
+WSRecordLog ("Send email to facility end")
+If ($OK=True)
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+Else 
+WS_ORErrorCode:=9
+WS_ORErrorDescription:="Facility Notification Email failed!"
+End if 
+Else 
+$SendToFacility:="Online Reservation Successfull. Email Facility not enabled."+Char(13)
+End if 
+
+//SET AUTOMATIC RELATIONS(True;True)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+If ([Facility]ResSendCustEmail=True)
+$OK:=OR_EmailCust 
+If ($OK=False)
+WS_ORErrorCode:=10
+WS_ORErrorDescription:="Customer Notification Email failed!"
+End if 
+Else 
+$SendToCustomer:="Online Reservation Successfull. Email Customer not enabled."+Char(13)
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2099
+WS_ORErrorDescription:="Sales Enquiry could not be converted in database Storman"
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1017
+WS_ORErrorDescription:="Contact record locked in database Storman. Please try again later."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+//SET AUTOMATIC RELATIONS(False;False)
+
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+READ ONLY([Contacts])
+UNLOAD RECORD([Contacts])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+READ ONLY([Quote])
+UNLOAD RECORD([Quote])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+READ ONLY([NotesHistory])
+UNLOAD RECORD([NotesHistory])
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+
+$String:="End WS_ConvertConact1"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_ReservationID: "+WS_ReservationID+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"Sent to Customer: "+$SendToCustomer+Char(13)
+$String:=$String+"Sent to Facility: "+$SendToFacility+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

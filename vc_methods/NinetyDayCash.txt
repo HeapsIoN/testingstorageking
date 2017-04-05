@@ -1,0 +1,102 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 13/04/10 Modified report to use iPrinttoFile setting rather than Excel dialog
+//SDD 27/10/10 Report was not totalling correctly
+LogAction (False;"90 Day Cash Actual Report started.")// records the report being started in the eventlog
+C_DATE(vMthDate;vDate)
+C_LONGINT($i;$j;$k;vLDay;vPDay;vDay)
+C_REAL(vCash1;vCash2;vCash3;vCash4;vTotCash1;vTotCash2;vTotCash3;vTotCash4)
+C_BOOLEAN(forCompleted)
+vTotCash1:=0
+vTotCash2:=0
+vTotCash3:=0
+vTotCash4:=0
+forCompleted:=False
+If (PermissionsControl (147))
+SetFacility 
+If (<>tBatch=False)
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vMthDate:=RequestDate (Get localized string("Enter Month End Date for Report:");vMthDate)
+End if 
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+vTitle:=Get localized string("90 Day Cash Actual Report")
+vLegend:=Get localized string("For Month Ended")+" "+String(vMthDate)
+QUERY([Activity];[Activity]ActivityDate>=vDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=vMthDate)
+CREATE SET([Activity];"CashAct")
+$SetSize:=Records in selection([Activity])
+ARRAY REAL(aCurrMth;Records in selection([Activity]))
+
+ORDER BY([Activity];[Activity]ActivityDate;>)
+For ($i;1;Records in selection([Activity]))
+aCurrMth{$i}:=[Activity]CashRec+[Activity]CreditRec-[Activity]Refunds
+NEXT RECORD([Activity])
+End for 
+
+vDate:=Add to date(vDate;0;-1;0)
+vMthDate:=CalcNxtBillDate (vMthDate;-1;31;"Month")
+QUERY([Activity];[Activity]ActivityDate>=vDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=vMthDate)
+
+If ($SetSize<31)
+
+Repeat 
+ADD TO SET([Activity];"CashAct")
+NEXT RECORD([Activity])
+$SetSize:=$SetSize+1
+Until ($SetSize>=31) | (End selection([Activity]))
+
+End if 
+
+ORDER BY([Activity];[Activity]ActivityDate;>)
+ARRAY REAL(aLastMth;Records in selection([Activity]))
+vLDay:=Records in selection([Activity])
+For ($j;1;Records in selection([Activity]))
+aLastMth{$j}:=[Activity]CashRec+[Activity]CreditRec-[Activity]Refunds
+NEXT RECORD([Activity])
+End for 
+vDate:=Add to date(vDate;0;-1;0)
+vMthDate:=CalcNxtBillDate (vMthDate;-1;31;"Month")
+QUERY([Activity];[Activity]ActivityDate>=vDate;*)
+QUERY([Activity]; & ;[Activity]FacilityCode=<>sFacility;*)
+QUERY([Activity]; & ;[Activity]ActivityDate<=vMthDate)
+
+If ($SetSize<31)
+
+Repeat 
+ADD TO SET([Activity];"CashAct")
+NEXT RECORD([Activity])
+$SetSize:=$SetSize+1
+Until ($SetSize>=31) | (End selection([Activity]))
+
+End if 
+
+ORDER BY([Activity];[Activity]ActivityDate;>)
+ARRAY REAL(aPriorMth;Records in selection([Activity]))
+vPDay:=Records in selection([Activity])
+For ($k;1;Records in selection([Activity]))
+aPriorMth{$k}:=[Activity]CashRec+[Activity]CreditRec-[Activity]Refunds
+NEXT RECORD([Activity])
+End for 
+vDay:=0
+USE SET("CashAct")
+ORDER BY([Activity];[Activity]ActivityDate;>)
+If (<>iPrinttoFile=3)
+ARRAY TEXT(aFieldNames;5)
+aFieldNames{1}:=Get localized string("OnDetailDay")
+aFieldNames{2}:=Get localized string("This Month")
+aFieldNames{3}:=Get localized string("Last Month")
+aFieldNames{4}:=Get localized string("Prior Month")
+aFieldNames{5}:=Get localized string("Average")
+vpTable:=->[Activity]
+CreateExcelReport (5;Records in selection([Activity]);"MethodCalc90DayCash";[Facility]FacilityName;vTitle)//no of columns on report, no of rows, lines to execute, header 1, header 2, footer
+Else 
+FORM SET OUTPUT([Activity];"90DayCash")
+BREAK LEVEL(0)
+ACCUMULATE(vCash1;vCash2;vCash3;vCash4)//Now accumulating the variables correctly instead of fields
+PrintSelection ("P";->[Activity])
+FORM SET OUTPUT([Activity];"Output")
+End if 
+End if 
+LogAction (True;"90 Day Cash Actual Report ended.")

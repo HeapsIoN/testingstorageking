@@ -1,0 +1,411 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Facility)
+If (([Facility]MirrorSendLogEveryMins>0) & ([Facility]MirrorSendLogEveryMins<30))
+AlertMessage ("The minimum amount of time for incremental backups is 10mins")
+[Facility]MirrorSendLogEveryMins:=0
+Else 
+If (InvalidURLCheck)
+If (([Facility]CurrencyCode="") & (aDescriptions=11))
+AlertMessage (Get localized string("Please enter the Currency Code"))
+Else 
+
+If (<>sProduct#"M@") | ([Facility]FacilityCode=<>sHOFacility)
+<>sProduct:=[Facility]ProductCode
+<>tCashbook:=[Facility]UseCashBook
+<>sHOGoogleAPI:=[Facility]GoogleMapsAPI
+End if 
+[Facility]BackupInfo:=String(bCont)+String(bCode)+String(bLoad)+String(aAnlys)+String(bImport;"00")+String(bIndex;"00")
+
+If (aDescriptions#4)
+
+If (aDescriptions{aDescriptions}#"None")//code256none
+[Facility]MerchantDetails:=aDescriptions{aDescriptions}+","+vLeg1+","+vLeg2+","+vLeg3+","+vLeg4+","+vLeg5+","+String(bSwipe)+","
+End if 
+
+If (aDescriptions=3)
+[Facility]MerchantDetails2:=aDescriptions{aDescriptions}+","+vLeg1+","+vLeg2Auth+","+vLeg3Auth+","+vLeg4+","+vLeg5+","+String(bSwipe)+","
+End if 
+
+Else //Ezi
+[Facility]MerchantDetails2:=vCCKeyp1+","+vCCKeyp2+","+vCCKeyp3+","+vCCKeyp4+","+vCCKeyp5+","+vDDKeyp1+","+vDDKeyp2+","+vDDKeyp3+","+vDDKeyp4+","+vDDKeyp5
+[Facility]MerchantDetails:=aDescriptions{aDescriptions}+","+vCCKey1+","+vCCKey2+","+vCCKey3+","+vCCKey4+","+vCCKey5+","+vLeg4+","+vLeg5+","+String(bSwipe)+","+String(chkEziDebit)+","+String(ShowTrx)
+End if 
+
+[Facility]SMSAcctDetails:=vSMSLeg1+","+vSMSLeg4+","+vSMSLeg2+","+vSMSLeg3+","+aSMSProvider{aSMSProvider}+","
+
+If ([Facility]Country="AU")//10781
+[Facility]BPay:=aBPayProvider
+[Facility]BPayDigitalKey:=vBPayKey1+","+vBPayKey2+","+vBPayKey3+","+vBPayKey4+","+vBPayKey5+","+aBPayProvider{aBPayProvider}+","
+End if 
+
+Case of 
+: (aDDProvider=5)
+[Facility]DDAccountDetails:=vDDKey1+","+vDDKey2+","+vDDKey3+","+vDDKey4+","+vDDKey5+","+aDDProvider{aDDProvider}+","
+[Facility]MerchantDetails2:=vCCKeyp1+","+vCCKeyp2+","+vCCKeyp3+","+vCCKeyp4+","+vCCKeyp5+","+vDDKeyp1+","+vDDKeyp2+","+vDDKeyp3+","+vDDKeyp4+","+vDDKeyp5//Added by Hamid - 10779
+: (aDDProvider=10)// GoCardless
+// Merchant ID + App Identifier + App secret + Access Token + Storman APP ID + Storman App Secret 
+
+//If (vDDLeg3="******")
+//vDDLeg3:=VDDLEG3Mask
+//End if 
+[Facility]DDAccountDetails:=vDDLeg1+","+vDDLeg2+","+vDDLeg3+","+vDDLeg4+","+vDDLegGoCardless+","+vDDLeg2GoCardless+","+aDDProvider{aDDProvider}+","
+//If ((vDDLeg3=VDDLEG3Mask) & (vDDLeg3#""))
+//vDDLeg3:="******"
+//Else 
+//VDDLEG3Mask:=vDDLeg3
+//vDDLeg3:="******"
+//End if 
+Else 
+//If (vDDLeg3="******")
+//vDDLeg3:=VDDLEG3Mask
+//End if 
+[Facility]DDAccountDetails:=vDDLeg1+","+vDDLeg2+","+vDDLeg3+","+aDDProvider{aDDProvider}+","
+//If ((vDDLeg3=VDDLEG3Mask) & (vDDLeg3#""))
+//vDDLeg3:="******"
+//Else 
+//VDDLEG3Mask:=vDDLeg3
+//vDDLeg3:="******"
+//End if 
+End case 
+
+[Facility]SCAccountDetails:=vSCLeg1+","+vSCLeg2+","+vSCLeg3+","
+
+//Kennards SQL Server Connection Details
+
+If ([Facility]FacilityCode="KE@")
+[Facility]SQLConnection:=vKSSSQLDSN+","+vKSSSQLUser+","+vKSSSQLPass+","
+End if 
+
+Case of 
+: (vPhotoSettings=0)
+[Facility]PhotoCompression:=805
+: (vPhotoSettings=25)
+[Facility]PhotoCompression:=609
+: (vPhotoSettings=50)
+[Facility]PhotoCompression:=413
+: (vPhotoSettings=75)
+[Facility]PhotoCompression:=217
+: (vPhotoSettings=100)
+[Facility]PhotoCompression:=20
+Else 
+//Do Nothing
+End case 
+If (bClone=1)
+[Facility]PhotoCompression:=Abs([Facility]PhotoCompression)
+Else 
+[Facility]PhotoCompression:=Abs([Facility]PhotoCompression)*(-1)
+End if 
+[Facility]APBankDetails:=vsAutoPayAccountNo+Char(Carriage return)+vsAutoPayAccountName+Char(Carriage return)+vsAutoPayBankName+Char(Carriage return)+vsAutoPayBankBranch
+
+
+If (chkDDEnable)
+[Facility]DirectDebitOption:="1,"
+Else 
+[Facility]DirectDebitOption:="0,"
+End if 
+[Facility]DirectDebitOption:=[Facility]DirectDebitOption+vDDOptionCode+","
+
+SET TIMER(0)
+$Accept:=True
+
+
+If (((vtSchedulerDailyEvery="0") & (vtSchedulerFrequency=Get localized string("Daily1"))) | ((vtSchedulerWeeklyEvery="0") & (vtSchedulerFrequency=Get localized string("Weekly1"))))//Added by Hamid 29/6/2015 - 9315
+
+If (vtSchedulerFrequency=Get localized string("Daily1"))
+AlertMessage (Get localized string("Please enter correct backup schedule hours."))
+Else 
+AlertMessage (Get localized string("Please enter correct backup schedule weeks."))
+End if 
+
+$Accept:=False
+Else 
+If ((vbInitialBackup=True) & (vtBackupDestinationFolder=""))//------- Added by Hamid - 23/4/2015 - 9008
+AlertMessage (Get localized string("Please select a location for the initial backup"))
+$Accept:=False
+Else 
+
+If (vbBackupPrefsLoaded=True)
+$Accept:=False
+//Save the Backup Preferences
+If (vbBackupActive=True)
+Case of 
+: (vtSchedulerFrequency="Hourly")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Hourly";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Hourly/Every";vtSchedulerHourlyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Hourly/StartingAt";"0000-00-00T"+String(vtmHourlyBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+: (vtSchedulerFrequency="Daily")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Daily";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Daily/Every";vtSchedulerDailyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Daily/Hour";"0000-00-00T"+String(vtmDailyBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+: (vtSchedulerFrequency="Weekly")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Weekly";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Every";vtSchedulerDailyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Save";vtMondaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Hour";"0000-00-00T"+String(vtmMondayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Save";vtTuesdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Hour";"0000-00-00T"+String(vtmTuesdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Save";vtWednesdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Hour";"0000-00-00T"+String(vtmWednesdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Save";vtThursdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Hour";"0000-00-00T"+String(vtmThursdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Save";vtFridaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Hour";"0000-00-00T"+String(vtmFridayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Save";vtSaturdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Hour";"0000-00-00T"+String(vtmSaturdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Save";vtSundaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Hour";"0000-00-00T"+String(vtmSundayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+: (vtSchedulerFrequency="Monthly")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Monthly";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Every";vtSchedulerMonthlyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Hour";"0000-00-00T"+String(vtmMonthlyBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Day";vtmMonthlyDay;->vtaBackupParameter;->vtaBackupParameterValue)
+Else 
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Never";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";BooleanToString (vbSetNumberEnable);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";vtSetNumberValue;->vtaBackupParameter;->vtaBackupParameterValue)
+End case 
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeStructureFile";BooleanToString (vbBackupStructure);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeDataFile";BooleanToString (vbBackupDatafile);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";vtBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";BooleanToString (vbSetNumberEnable);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";vtSetNumberValue;->vtaBackupParameter;->vtaBackupParameterValue)
+If (SaveBackupPrefsFile )
+ACCEPT
+Else 
+AlertMessage (Get localized string("There was a problem saving the Backup Preferences.")+" "+vtBackupPrefsErrorMessage)
+End if 
+Else 
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Never";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";BooleanToString (vbSetNumberEnable);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";vtSetNumberValue;->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeStructureFile";BooleanToString (vbBackupStructure);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeDataFile";BooleanToString (vbBackupDatafile);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";vtBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";BooleanToString (vbSetNumberEnable);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";vtSetNumberValue;->vtaBackupParameter;->vtaBackupParameterValue)
+If (SaveBackupPrefsFile )
+$Accept:=True
+End if 
+End if 
+If (vbPerformBackup=True) | (vbInitialBackup=True)
+If (Application type=4D Remote mode)//4D Client
+ConfirmTwo (Get localized string("This may take some time if you have a large datafile. Please check with the Administrator before continuing.");Get localized string("Continue");Get localized string("Cancel"))
+End if 
+If (OK=1)
+Open window(20;50;300;150;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Waiting for backup to complete...")+"    ")
+//***
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";vtBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+$BackupPrefsSaved:=SaveBackupPrefsFile 
+//***
+BACKUP
+If (OK=1)
+$Q:=Execute on server("DeleteLogFiles";400000;"DeleteLogFiles")//10776
+SET TIMER(1)
+AlertMessage (Get localized string("Backup completed successfully!"))
+$Accept:=True
+End if 
+Else 
+AlertMessage (Get localized string("Backup cancelled"))
+End if 
+Else 
+$Accept:=True
+End if 
+End if 
+
+
+
+
+//26/05/14 DAM Added for Initial backup execution
+If (vbInitialBackup=True)
+If (Application type=4D Remote mode)//4D Client
+ConfirmTwo (Get localized string("This may take some time if you have a large datafile. Please check with the Administrator before continuing.");Get localized string("Continue");Get localized string("Cancel"))
+End if 
+If (OK=1)
+Open window(20;50;300;150;0;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Waiting for backup to complete...")+"    ")
+$tempvtBackupDestinationFolder:=vtBackupDestinationFolder
+
+
+//****   By Hamid - 17/4/2015 - 8668
+
+$i:=Execute on server("CreateBackupXML";128000)
+
+
+$BackupPrefsLoaded:=LoadBackupPrefs 
+vtBackupDestinationFolder:=$tempvtBackupDestinationFolder
+
+$Accept:=False
+Case of 
+: (vtSchedulerFrequency="Hourly")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Hourly";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Hourly/Every";vtSchedulerHourlyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Hourly/StartingAt";"0000-00-00T"+String(vtmHourlyBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+: (vtSchedulerFrequency="Daily")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Daily";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Daily/Every";vtSchedulerDailyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Daily/Hour";"0000-00-00T"+String(vtmDailyBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+: (vtSchedulerFrequency="Weekly")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Weekly";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Every";vtSchedulerDailyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Save";vtMondaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Hour";"0000-00-00T"+String(vtmMondayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Save";vtTuesdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Hour";"0000-00-00T"+String(vtmTuesdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Save";vtWednesdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Hour";"0000-00-00T"+String(vtmWednesdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Save";vtThursdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Hour";"0000-00-00T"+String(vtmThursdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Save";vtFridaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Hour";"0000-00-00T"+String(vtmFridayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Save";vtSaturdaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Hour";"0000-00-00T"+String(vtmSaturdayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Save";vtSundaySave;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Hour";"0000-00-00T"+String(vtmSundayBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+
+: (vtSchedulerFrequency="Monthly")
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Monthly";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Every";vtSchedulerMonthlyEvery;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Hour";"0000-00-00T"+String(vtmMonthlyBackupTime);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Monthly/Day";vtmMonthlyDay;->vtaBackupParameter;->vtaBackupParameterValue)
+Else 
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Never";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";BooleanToString (vbSetNumberEnable);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";vtSetNumberValue;->vtaBackupParameter;->vtaBackupParameterValue)
+End case 
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeStructureFile";BooleanToString (vbBackupStructure);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/IncludeDataFile";BooleanToString (vbBackupDatafile);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";vtBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/DataBase/LastBackupLogPath/ItemsCount";"1";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";BooleanToString (vbSetNumberEnable);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";vtSetNumberValue;->vtaBackupParameter;->vtaBackupParameterValue)
+If (SaveBackupPrefsFile )
+ACCEPT
+Else 
+AlertMessage (Get localized string("There was a problem saving the Backup Preferences.")+" "+vtBackupPrefsErrorMessage)
+End if 
+SetArrayPairValue ("Preferences4D/Backup/Settings/Scheduler/Frequency";"Never";->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Enable";BooleanToString (vbSetNumberEnable);->vtaBackupParameter;->vtaBackupParameterValue)
+SetArrayPairValue ("Preferences4D/Backup/Settings/Advanced/SetNumber/Value";vtSetNumberValue;->vtaBackupParameter;->vtaBackupParameterValue)
+//****
+BACKUP
+$BackupPrefsLoaded:=LoadBackupPrefs 
+If (OK=1)
+$Q:=Execute on server("DeleteLogFiles";400000;"DeleteLogFiles")//10776
+SET TIMER(1)
+AlertMessage (Get localized string("Backup completed successfully!"))
+$Accept:=True
+End if 
+Else 
+AlertMessage (Get localized string("Backup cancelled"))
+End if 
+Else 
+$Accept:=True
+End if 
+
+//If the Online Reservation Storpay URL Host Name has been changed at HOF, ask the user if they want to change it for all site Facilities as well.
+If ($Accept=True) & ([Facility]OResStorpayURL#Old([Facility]OResStorpayURL)) & ([Facility]SortOrder<0) & (Records in selection([Facility])=1) & (Records in table([Facility])>1)
+ConfirmTwo (Get localized string("You have changed the Online Reservations Storpay URL Host Name - do you want to use this setting for all site Facilities?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$Facility:=[Facility]FacilityCode
+$TempOnlineResStorpayURL:=[Facility]OResStorpayURL
+READ WRITE([Facility])
+QUERY([Facility];[Facility]FacilityCode#[Facility]FacilityCode)
+APPLY TO SELECTION([Facility];[Facility]OResStorpayURL:=$TempOnlineResStorpayURL)
+READ ONLY([Facility])
+QUERY([Facility];[Facility]FacilityCode=$Facility)
+End if 
+End if 
+
+//12/08/13 DAM Added to read arrays values from the server before writing in it
+
+//10285
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+GET PROCESS VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+End if 
+
+//13/11/13 DAM Added for changing Facility Code correctly
+If (Old([Facility]FacilityCode)#[Facility]FacilityCode)
+$arraypos:=Find in array(<>asAllSiteCodes;Old([Facility]FacilityCode))
+Else 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+End if 
+
+
+<>aiNextInvNo{$arraypos}:=[Facility]NextInvNo
+<>aiNextCreditSaleNo{$arraypos}:=[Facility]NextCreditSaleNo
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+<>aiNextResNo{$arraypos}:=[Facility]NextReserveNo
+<>aiNextSalesInqNo{$arraypos}:=[Facility]NextContactNo
+
+//24/10/14 DAM Added for Key stat calculation
+If ([Facility]UseBadDebts#Old([Facility]UseBadDebts))
+//Execute on Server if Server 
+If (Application type=4D Remote mode)
+$Q:=Execute on server("InitArrays";400000;"InitArrays")
+InitArrays 
+Else 
+InitArrays 
+End if 
+End if 
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+VARIABLE TO VARIABLE(-1;<>aiNextCreditSaleNo;<>aiNextCreditSaleNo)
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+VARIABLE TO VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+VARIABLE TO VARIABLE(-1;<>aiNextSalesInqNo;<>aiNextSalesInqNo)
+End if 
+
+/////////////
+If (asDRCReport=4) | (asDRCReport=5) | (asDRCReport=6) | (asDRCReport=7)//emails
+$Address:=[Facility]DRCEmails
+$Accept:=True
+//$pattern_T:="(?i)^([A-Z0-9._%+-]+)@(?:[A-Z0-9_-]+\\.)+([A-Z]{2,4})$(.*)"
+//$vfnd1:=Match regex($pattern_T;$Address)
+If ($Address="")
+$Accept:=False
+AlertMessage ("Please enter an email address for DRC Reporting. Under the Reports & Refunds tab.")//xliffme
+End if 
+End if 
+///////////////
+
+If ($Accept=True)
+$Accept:=VerifyPrimaryKeyRanges 
+End if 
+
+If ($Accept=True)
+ACCEPT
+End if 
+End if 
+End if 
+End if 
+
+Else 
+AlertMessage (Get localized string("Please enter a valid Facility web address. Under the Licence tab."))
+End if 
+End if 
+

@@ -1,0 +1,108 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Storman Update: AU_UpdateReady: Start";"UpdateLog")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 14/04/16, 19:24:14
+// ----------------------------------------------------
+// Method: AU_UpdateReady
+// Description
+// 
+// This method is used to display a notification to the user that
+// a new Version of Storman is downloaded and ready to install.
+//
+// Parameters
+// ----------------------------------------------------
+//autoupdates
+
+C_BOOLEAN($1)
+C_TEXT($2)
+
+
+If (Count parameters=1)
+//this has come logmonloop overnight so we want to be silent
+$Silent:=True
+$Overnight:=True
+SyncRecordLog ("Storman Update: AU_UpdateReady: Overnight";"UpdateLog")
+End if 
+
+
+SyncRecordLog ("Storman Update: AU_UpdateReady: Update Ready";"UpdateLog")
+
+
+If ($Silent=False)
+DISPLAY NOTIFICATION("Storman Update";"A new version of Storman is ready to install.";15)
+End if 
+
+
+
+If (Records in selection([Facility])=0)
+If (<>sFacility="ST@")
+QUERY([Facility];[Facility]FacilityCode="STHOF")
+Else 
+SetFacility 
+End if 
+End if 
+
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+
+
+If ($Silent=True)
+OK:=1
+
+Else 
+
+If ([AutoUpdates]EnforceUpdates=True)
+AlertMessage ("Storman will now install the latest version.")
+OK:=1
+Else 
+ConfirmTwo ("A new version of Storman is ready to install. Would you like to update now?";"Yes";"No")
+End if 
+
+End if 
+
+
+
+
+If (OK=1)
+
+If (<>tClient)
+$WinRef:=Open window(20;50;450;150;0;"Please wait")
+GOTO XY(2;2)
+MESSAGE("Installing update...")
+
+If ($Silent=True)
+Else 
+AlertMessage ("Storman will now perform a backup before installing the update, this may take sometime if you have a large database.")
+End if 
+
+UNLOAD RECORD([AutoUpdates])
+
+//If ($Overnight=True)
+//$Q:=Execute on server("AU_UpdateInstallerServer";400000;"AU_UpdateInstallerServer";True)
+//Else 
+$Q:=Execute on server("AU_UpdateInstallerServer";400000;"AU_UpdateInstallerServer")
+//End if 
+
+CLOSE WINDOW($WinRef)
+
+
+Else 
+
+If ($Silent=True)
+AU_UpdateInstaller (True)
+Else 
+AU_UpdateInstaller 
+End if 
+
+End if 
+
+
+Else 
+//do nothing
+End if 
+
+SyncRecordLog ("Storman Update: AU_UpdateReady: End";"UpdateLog")

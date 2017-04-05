@@ -1,0 +1,680 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 23/05/13 Modified to handle Days as well as Months & Weeks
+//SDD 04/09/13 Take away reset dialogs
+C_BOOLEAN($WasWeekly;$WasDaily;$WasCasual;$FromWeb)
+C_LONGINT($i)
+If (asBillingPlan<1)
+asBillingPlan:=1
+asBillingDesc:=1
+End if 
+$FromWeb:=False
+If (Count parameters>0)
+$FromWeb:=True
+End if 
+
+$WasDaily:=([BillPlan]PlanPeriod="Day")
+$WasWeekly:=([BillPlan]PlanPeriod="Week")//| ([BillPlan]PlanPeriod="Day")
+$WasCasual:=[BillPlan]CasualBilling
+asBillingPlan:=asBillingDesc
+[Agreement]BillingPlanCode:=asBillingPlan{asBillingPlan}
+RELATE ONE([Agreement]BillingPlanCode)
+OBJECT SET VISIBLE(btnCasual;[BillPlan]CasualBilling)
+
+If (Records in selection([UnitAgree])=0)
+FIRST RECORD([Unit])
+vTotal:=0
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([Unit])
+End for 
+Case of 
+: ($WasCasual=True) & ([BillPlan]CasualBilling=False)
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+If ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month")
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+If ([BillPlan]PlanPeriod="Week")
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default weekly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+If ($Reset=True)
+[Unit]WeeklyRentedValue:=CalculateBaseRate (2;0)
+[Unit]WeeklyNewRentAmt:=[Unit]WeeklyRentedValue
+Else 
+[Unit]WeeklyRentedValue:=Round(([Unit]DailyRentedValue*7);2)
+[Unit]WeeklyNewRentAmt:=Round(([Unit]DailyNewRent*7);2)
+End if 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]WeeklyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]WeeklyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[Unit]WeeklyNewRentAmt
+Else 
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default monthly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+If ($Reset=True)
+[Unit]RentedValue:=CalculateBaseRate (2;0)
+[Unit]NewRentAmt:=[Unit]RentedValue
+Else 
+[Unit]RentedValue:=Round((([Unit]DailyRentedValue*7)/0.2308);2)
+[Unit]NewRentAmt:=Round((([Unit]DailyNewRent*7)/0.2308);2)
+End if 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]RentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]RentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[Unit]NewRentAmt
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: ($WasCasual=False) & ([BillPlan]CasualBilling=True)
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default daily rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+If ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month")
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+If ($Reset)
+[Unit]DailyRentedValue:=CalculateBaseRate (2;0)
+[Unit]DailyNewRent:=[Unit]DailyRentedValue
+Else 
+If ($WasWeekly=True)
+[Unit]DailyRentedValue:=Round(([Unit]WeeklyRentedValue/7);2)
+[Unit]DailyNewRent:=Round(([Unit]WeeklyNewRentAmt/7);2)
+Else 
+[Unit]DailyRentedValue:=Round((([Unit]RentedValue*0.2308)/7);2)
+[Unit]DailyNewRent:=Round((([Unit]NewRentAmt*0.2308)/7);2)
+End if 
+End if 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]DailyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]DailyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[Unit]DailyNewRent
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: (($WasWeekly=True) | ($WasDaily=True)) & ([BillPlan]PlanPeriod="Month") & ([BillPlan]CasualBilling=False)
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default monthly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+If ($Reset)
+[Unit]RentedValue:=CalculateBaseRate (2;0)
+[Unit]NewRentAmt:=[Unit]RentedValue
+Else 
+[Unit]RentedValue:=Round(([Unit]WeeklyRentedValue/0.2308);2)
+[Unit]NewRentAmt:=Round(([Unit]WeeklyNewRentAmt/0.2308);2)
+End if 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]RentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]RentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[Unit]NewRentAmt
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: ($WasWeekly=False) & ([BillPlan]PlanPeriod="Week") & ([BillPlan]CasualBilling=False)
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default weekly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+If ($Reset)
+[Unit]WeeklyRentedValue:=CalculateBaseRate (2;0)
+[Unit]WeeklyNewRentAmt:=[Unit]WeeklyRentedValue
+Else 
+[Unit]WeeklyRentedValue:=Round(([Unit]RentedValue*0.2308);2)
+[Unit]WeeklyNewRentAmt:=Round(([Unit]NewRentAmt*0.2308);2)
+End if 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]WeeklyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]WeeklyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[Unit]WeeklyNewRentAmt
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: ([BillPlan]PlanPeriod="Day") & ([BillPlan]CasualBilling=False)
+//25/07/13 DAM Added to reset values if the method is called from WS
+
+If ($FromWeb=True)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default daily rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+FIRST RECORD([Unit])
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([Unit]))
+If ($Reset)
+[Unit]DailyRentedValue:=CalculateBaseRate (2;0)
+[Unit]DailyNewRent:=[Unit]DailyRentedValue
+Else 
+[Unit]DailyRentedValue:=Round(([Unit]RentedValue*0.03287);2)
+[Unit]DailyNewRent:=Round(([Unit]NewRentAmt*0.03287);2)
+End if 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]DailyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[Unit]DailyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[Unit]DailyNewRent
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End case 
+Else 
+FIRST RECORD([UnitAgree])
+vTotal:=0
+For ($i;1;Records in selection([UnitAgree]))
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([UnitAgree])
+End for 
+Case of 
+: ($WasCasual=True) & ([BillPlan]CasualBilling=False)
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+If ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month")
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+FIRST RECORD([UnitAgree])
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([UnitAgree]))
+If ([BillPlan]PlanPeriod="Week")
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default weekly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+If ($Reset=True)
+[UnitAgree]WeeklyRentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]WeeklyNewRentAmt:=[UnitAgree]WeeklyRentedValue
+Else 
+[UnitAgree]WeeklyRentedValue:=Round(([UnitAgree]DailyRentedValue*7);2)
+[UnitAgree]WeeklyNewRentAmt:=Round(([UnitAgree]DailyNewRentAmt*7);2)
+End if 
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]WeeklyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[UnitAgree]WeeklyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[UnitAgree]WeeklyNewRentAmt
+Else 
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default monthly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+If ($Reset=True)
+[UnitAgree]RentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]NewRentAmt:=[UnitAgree]RentedValue
+Else 
+[UnitAgree]RentedValue:=Round((([UnitAgree]DailyRentedValue*7)/0.2308);2)
+[UnitAgree]NewRentAmt:=Round((([UnitAgree]DailyNewRentAmt*7)/0.2308);2)
+End if 
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]RentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[UnitAgree]RentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[UnitAgree]NewRentAmt
+End if 
+SAVE RECORD([UnitAgree])
+NEXT RECORD([UnitAgree])
+End for 
+: ($WasCasual=False) & ([BillPlan]CasualBilling=True)
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default daily rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+If ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month")
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+FIRST RECORD([UnitAgree])
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([UnitAgree]))
+If ($Reset)
+[UnitAgree]DailyRentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]DailyNewRentAmt:=[UnitAgree]DailyRentedValue
+Else 
+If ($WasWeekly=True)
+[UnitAgree]DailyRentedValue:=Round(([UnitAgree]WeeklyRentedValue/7);2)
+[UnitAgree]DailyNewRentAmt:=Round(([UnitAgree]WeeklyNewRentAmt/7);2)
+Else 
+[UnitAgree]DailyRentedValue:=Round((([UnitAgree]RentedValue*0.2308)/7);2)
+[UnitAgree]DailyNewRentAmt:=Round((([UnitAgree]NewRentAmt*0.2308)/7);2)
+End if 
+End if 
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]DailyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[UnitAgree]DailyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[UnitAgree]DailyNewRentAmt
+SAVE RECORD([UnitAgree])
+NEXT RECORD([UnitAgree])
+End for 
+: ($WasWeekly=True) & ([BillPlan]PlanPeriod="Month") & ([BillPlan]CasualBilling=False)
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default monthly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+FIRST RECORD([UnitAgree])
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([UnitAgree]))
+If ($Reset)
+[UnitAgree]RentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]NewRentAmt:=[UnitAgree]RentedValue
+Else 
+[UnitAgree]RentedValue:=Round(([UnitAgree]WeeklyRentedValue/0.2308);2)
+[UnitAgree]NewRentAmt:=Round(([UnitAgree]WeeklyNewRentAmt/0.2308);2)
+End if 
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]RentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[UnitAgree]RentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[UnitAgree]NewRentAmt
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+: ($WasWeekly=False) & ([BillPlan]PlanPeriod="Week") & ([BillPlan]CasualBilling=False)
+//25/07/13 DAM Added to reset values if the method is called from WS
+If ($FromWeb=False)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default weekly rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+FIRST RECORD([UnitAgree])
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([UnitAgree]))
+If ($Reset)
+[UnitAgree]WeeklyRentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]WeeklyNewRentAmt:=[UnitAgree]WeeklyRentedValue
+Else 
+[UnitAgree]WeeklyRentedValue:=Round(([UnitAgree]RentedValue*0.2308);2)
+[UnitAgree]WeeklyNewRentAmt:=Round(([UnitAgree]NewRentAmt*0.2308);2)
+End if 
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]WeeklyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[UnitAgree]WeeklyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[UnitAgree]WeeklyNewRentAmt
+SAVE RECORD([UnitAgree])
+NEXT RECORD([UnitAgree])
+End for 
+: ([BillPlan]PlanPeriod="Day") & ([BillPlan]CasualBilling=False)
+//25/07/13 DAM Added to reset values if the method is called from WS
+
+If ($FromWeb=True)
+Case of 
+: ([Facility]ChangePeriod=2)
+ConfirmTwo (Get localized string("Do you want to reset all units to the default daily rate?");Get localized string("No");Get localized string("Yes"))
+If (OK=1)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+: ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End case 
+Else 
+If ([Facility]ChangePeriod=2)
+$Reset:=False
+Else 
+$Reset:=True
+End if 
+End if 
+
+[Agreement]RegularRent:=0
+[Agreement]NewRegularRent:=0
+FIRST RECORD([UnitAgree])
+QUERY([Unit];[Unit]RUnitNo=[UnitAgree]UnitNo)
+RELATE ONE([Unit]UnitTypeCode)
+For ($i;1;Records in selection([UnitAgree]))
+If ($Reset)
+[UnitAgree]DailyRentedValue:=CalculateBaseRate (2;0)
+[UnitAgree]DailyNewRentAmt:=[UnitAgree]DailyRentedValue
+Else 
+[UnitAgree]DailyRentedValue:=Round(([UnitAgree]RentedValue*0.03287);2)
+[UnitAgree]DailyNewRentAmt:=Round(([UnitAgree]NewRentAmt*0.03287);2)
+End if 
+[UnitAgree]ExtraDisc:=Round(CalculateBaseRate (2;0)-[UnitAgree]DailyRentedValue;2)
+[Agreement]RegularRent:=[Agreement]RegularRent+[UnitAgree]DailyRentedValue
+[Agreement]NewRegularRent:=[Agreement]NewRegularRent+[UnitAgree]DailyNewRentAmt
+SAVE RECORD([UnitAgree])
+NEXT RECORD([UnitAgree])
+End for 
+End case 
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+vOthTotal:=Sum([OtherChgs]Amount)
+vNewOthTotal:=Sum([OtherChgs]NewAmount)
+[Agreement]AgreedDisc:=Round(vTotal-[Agreement]RegularRent;2)
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+If ([BillPlan]CasualBilling)
+If ([BillPlan]PlanPeriod="Week")
+$CasualAmount:=Round([Agreement]RegularRent*7;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7;2)
+Else 
+$CasualAmount:=Round([Agreement]RegularRent*7/0.2308;2)
+$NewCasualAmount:=Round([Agreement]NewRegularRent*7/0.2308;2)
+End if 
+Else 
+$CasualAmount:=[Agreement]RegularRent
+$NewCasualAmount:=[Agreement]NewRegularRent
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]RentAmt:=RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((RoundAmt ($CasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((RoundAmt ($NewCasualAmount*(100-[BillPlan]DiscPercentage)/100))*[Agreement]MthsAdv-[BillPlan]DiscFixedAmt)+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]NewRentAmt:=RoundAmt (($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+vRentAmt:=Round(RoundAmt ((($CasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vOthTotal;2)
+vNewRentAmt:=Round(RoundAmt ((($NewCasualAmount*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt))+vNewOthTotal;2)
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+$PosDate:=Add to date([Agreement]NextBillDate;0;([Agreement]PeriodicBillingPosition*-1);0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (($PosDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+Else 
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+vRentAmt:=Round(RoundAmt ($CasualAmount*[Agreement]MthsAdv)+vOthTotal;2)
+[Agreement]RentAmt:=RoundAmt ($CasualAmount*[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)
+vNewRentAmt:=Round(RoundAmt ($NewCasualAmount*[Agreement]MthsAdv)+vNewOthTotal;2)
+vAgreeDiscount:=0
+vNewDiscAmount:=0
+End if 
+End if 
+
+If ([BillPlan]FixedBill#0)
+If ([BillPlan]DiscOnlyMoveIn=True) & (([Agreement]NextBillDate-[Agreement]MoveIn)>28)
+Else 
+If ([BillPlan]FixedBillPeriod)
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount *[Agreement]MthsAdv)
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+Else 
+[Agreement]RentAmt:=RoundAmt (CalculateFixedAmount )
+[Agreement]NewRentAmt:=RoundAmt (CalculateFixedAmount )
+vRentAmt:=Round([Agreement]RentAmt+vOthTotal;2)
+vNewRentAmt:=Round([Agreement]NewRentAmt+vNewOthTotal;2)
+End if 
+End if 
+End if 
+
+If ([BillPlan]PeriodicBilling=True)
+[Agreement]DiscountAmt:=Round((RoundAmt ($CasualAmount)*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round((RoundAmt ($NewCasualAmount)*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+Else 
+[Agreement]DiscountAmt:=Round(($CasualAmount*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+[Agreement]NewDiscAmt:=Round(($NewCasualAmount*[Agreement]MthsAdv)-[Agreement]NewRentAmt;2)
+End if 
+
+[Agreement]NewBillingPlan:=[BillPlan]SwaptoCode
+If ([BillPlan]DefltNoticePlan#[Agreement]NoticePlanNo)
+ConfirmTwo (Get localized string("Do you want to change to the Bill Plan default notice plan of")+" "+String([BillPlan]DefltNoticePlan)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+aiNoticePlan:=Find in array(aiNoticePlan;[Agreement]NoticePlanNo)
+End if 
+End if 
+If ([Agreement]RegularRent#Old([Agreement]RegularRent))
+vPrevRegRent:=Old([Agreement]RegularRent)
+Else 
+vPrevRegRent:=0
+End if 
+If ([BillPlan]PlanPeriod="Week")
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied weekly")
+Else 
+vtPeriodicBilling:=Get localized string("periodic billing enabled, charges will be applied monthly")
+End if 
+
+OBJECT SET VISIBLE(vtPeriodicBilling;[BillPlan]PeriodicBilling)
+
+If (([Facility]UnitPerAgreement=True) | ([BillPlan]CasualBilling)) & (Records in selection([Unit])>0)
+OBJECT SET VISIBLE(bSelect;False)
+OBJECT SET VISIBLE(*;"Picture33";False)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use this icon to delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use  this icon to delete appliances")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use  this icon to delete support plans")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use  this icon to delete spaces")
+Else 
+varm15:=Get localized string("Use  this icon to delete units")
+End case 
+End if 
+
+MoveInChangeMthsAdv (($WasWeekly=True) & ([BillPlan]PlanPeriod="Month");($WasWeekly=False) & ([BillPlan]PlanPeriod="Week");$FromWeb)

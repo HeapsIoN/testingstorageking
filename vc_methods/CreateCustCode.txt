@@ -1,0 +1,148 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//C_BOOLEAN($1;$2;$Silent)
+C_BOOLEAN($1;$2;$Silent)
+C_LONGINT($i;$j)
+C_TEXT($Code;$Base)
+C_TEXT(vCName)
+
+$Silent:=False
+If (Count parameters=2)
+$Silent:=$2
+End if 
+
+If (vName>"")
+$New:=True
+If ($1)
+$p1:=->[Reservation]ReserveNo
+$p2:=->[Reservation]CustomerCode
+$p3:=->[Reservation]UnitsReserved
+Else 
+$p1:=->[Agreement]AgreeNo
+$p2:=->[Agreement]CustomerCode
+$p3:=->[Agreement]UnitsOccup
+End if 
+vCName:=vName
+vName:=RemoveSpecial (vName)
+If (vName="")
+If ($Silent=False)
+AlertMessage (Get localized string("The customer name you entered is not valid, please re-enter the customer name..."))
+End if 
+ABORT
+End if 
+QUERY([Customer];[Customer]CustomerName=Substring(vCName;1;5)+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+
+
+If (Records in selection([Customer])>0) & (Not($Silent))
+bSales:=False
+FORM SET OUTPUT([Customer];"SelectCust")
+DISPLAY SELECTION([Customer];Single selection;*)
+FORM SET OUTPUT([Customer];"Output")
+If (OK=1)
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+","+[Agreement]AgreeNo
+$p2->:=[Customer]CustomerCode
+vName:=[Customer]CustomerName
+vText:=$p1->+", "+$p2->+", "+[Customer]CustomerName+", "+$p3->
+OBJECT SET ENTERABLE(vName;False)
+$New:=False
+End if 
+If (bCancelCust=1)
+$New:=False
+End if 
+End if 
+If ($New)
+$i:=0
+$Base:=Substring(Uppercase(Replace string(Replace string(vName;" ";"";*);",";"";*);*);1;6)
+Repeat 
+$j:=5-Length(String($i;"#####"))
+$Code:=<>sFacility+Substring($Base;1;$j)+String($i;"#####")
+$i:=$i+1
+Until ((Find in field([Customer]CustomerCode;$Code)<0) & (Length($Code)=10))
+If ($Silent)
+OK:=1
+Else 
+ConfirmTwo (Get localized string("Create new customer details for")+" "+vCName+"?";Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+CREATE RECORD([Customer])
+[Customer]CustomerCode:=$Code
+vCName:=RemoveSpace (vCName)//-10129
+[Customer]CustomerName:=vCName
+vName:=vCName
+If ([Customer]FirstName="")
+$i:=Position(",";[Customer]CustomerName)
+If ($i>0) & ([Facility]AutoFirstName>1)
+[Customer]FirstName:=Reverse ([Customer]CustomerName;[Facility]AutoFirstName)
+End if 
+End if 
+[Customer]GateTimeZone:=[Facility]GateTimeZoneDefault
+ReadCountryCodeXML 
+[Customer]MailCountryCode:=[Facility]Country
+[Customer]CountryCode:=[Facility]Country
+[Customer]AltCountryCode:=[Facility]Country
+$Pos:=Find in array(asCountryCodes;[Facility]Country)
+If ($Pos>0)
+[Customer]MailCountry:=asCountries{$Pos}
+[Customer]Country:=asCountries{$Pos}
+[Customer]AltCountry:=asCountries{$Pos}
+End if 
+
+SAVE RECORD([Customer])
+$p2->:=$Code
+vText:=$p1->+", "+$p2->+", "+[Customer]CustomerName+", "+$p3->
+OBJECT SET ENTERABLE(vName;False)
+Else 
+GOTO OBJECT(vName)
+End if 
+End if 
+If ($p2->#Old($p2->)) & (Old($p2->)#<>sFacility) & (Old($p2->)#"")
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([Trxs])>0)
+$State:=Read only state([Trxs])
+If ($State)
+READ WRITE([Trxs])
+End if 
+APPLY TO SELECTION([Trxs];[Trxs]CustomerCode:=$p2->)
+If ($State)
+READ ONLY([Trxs])
+End if 
+End if 
+QUERY([PhotosCards];[PhotosCards]Code=Old($p2->))
+If (Records in selection([PhotosCards])>0)
+$State:=Read only state([PhotosCards])
+If ($State)
+READ WRITE([PhotosCards])
+End if 
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Code:=$p2->)
+If ($State)
+READ ONLY([PhotosCards])
+End if 
+End if 
+QUERY([GateLog];[GateLog]CustCode=Old($p2->))
+If ($1=False) & (Records in selection([GateLog])>0)
+$State:=Read only state([GateLog])
+If ($State)
+READ WRITE([GateLog])
+End if 
+APPLY TO SELECTION([GateLog];[GateLog]CustCode:=$p2->)
+If ($State)
+READ ONLY([GateLog])
+End if 
+End if 
+QUERY([NotesHistory];[NotesHistory]CustomerCode=Old($p2->))
+If (Records in selection([NotesHistory])>0)
+$State:=Read only state([NotesHistory])
+If ($State)
+READ WRITE([NotesHistory])
+End if 
+APPLY TO SELECTION([NotesHistory];[NotesHistory]CustomerCode:=$p2->)
+If ($State)
+READ ONLY([NotesHistory])
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Please enter a customer name before continuing..."))
+GOTO OBJECT(vName)
+End if 

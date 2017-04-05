@@ -1,0 +1,260 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_Cust_Code;Is text;SOAP input)
+SOAP DECLARATION(WS_Item_ID;Is text;SOAP input)
+SOAP DECLARATION(WS_PaymAmount;Is real;SOAP input)
+SOAP DECLARATION(WS_PaymMethod;Is text;SOAP input)
+SOAP DECLARATION(WS_CCType;Is text;SOAP input)
+SOAP DECLARATION(WS_CCNo;Is text;SOAP input)
+SOAP DECLARATION(WS_RoutingN;Is text;SOAP input)
+SOAP DECLARATION(WS_Expirdate;Is text;SOAP input)
+SOAP DECLARATION(WS_CCStreetAdr;Is text;SOAP input)
+SOAP DECLARATION(WS_CCPostCode;Is text;SOAP input)
+SOAP DECLARATION(WS_CCCVV;Is text;SOAP input)
+SOAP DECLARATION(WS_Track;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_POSpurchase"+Char(13)
+$String:=$String+"WS_Cust_Code: "+WS_Cust_Code+Char(13)
+$String:=$String+"WS_Item_ID: "+WS_Item_ID+Char(13)
+$String:=$String+"WS_PaymAmount: "+String(WS_PaymAmount)+Char(13)
+$String:=$String+"WS_PaymMethod: "+WS_PaymMethod+Char(13)
+$String:=$String+"WS_CCType: "+WS_CCType+Char(13)
+$String:=$String+"WS_CCNo: "+WS_CCNo+Char(13)
+$String:=$String+"WS_RoutingN: "+WS_RoutingN+Char(13)
+$String:=$String+"WS_Expirdate: "+WS_Expirdate+Char(13)
+$String:=$String+"WS_CCStreetAdr: "+WS_CCStreetAdr+Char(13)
+$String:=$String+"WS_CCPostCode: "+WS_CCPostCode+Char(13)
+$String:=$String+"WS_CCCVV: "+WS_CCCVV+Char(13)
+$String:=$String+"WS_Track: "+WS_Track+Char(13)
+
+WSRecordLog ($String)
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+READ WRITE([Trxs])
+READ WRITE([Analysis])
+
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sProduct:=[Facility]ProductCode
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sFacility:=Substring(WS_Cust_Code;1;5)
+
+C_REAL($vTax)
+$vTax:=0
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_Cust_Code;1;5))
+If (Records in selection([Facility])#0)
+QUERY([Analysis];[Analysis]Code=WS_Item_ID;*)
+QUERY([Analysis]; & ;[Analysis]InvItem=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+
+If (Records in selection([Analysis])#0) & ([Analysis]InvQtyonHand>1)
+WS_RET_CODE:=True
+$Create:=False
+Case of 
+: (WS_PaymMethod="CC")
+$SpecOptions:=54
+If (WS_CCNo="37@") | (WS_CCNo="34@")//It is an Amex card
+$SpecOptions:=55
+End if 
+If ((WS_CCNo="300@") | (WS_CCNo="301@") | (WS_CCNo="38@") | (WS_CCNo="39@") | (WS_CCNo="309@") | (WS_CCNo="302@") | (WS_CCNo="303@") | (WS_CCNo="304@") | (WS_CCNo="305@") | (WS_CCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$SpecOptions:=56
+End if 
+QUERY([Analysis];[Analysis]Code=Substring(WS_Cust_Code;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="CA")
+QUERY([Analysis];[Analysis]Code=Substring(WS_Cust_Code;1;5)+"CA")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="CK")
+QUERY([Analysis];[Analysis]Code=Substring(WS_Cust_Code;1;5)+"CH")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="DB")
+QUERY([Analysis];[Analysis]Code=Substring(WS_Cust_Code;1;5)+"EF")
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+$Create:=False
+End if 
+: (WS_PaymMethod="ACH")
+//Need adhoc direct debit support added
+Else 
+WS_ERROR:="Payment method is Unavailable"
+WS_RET_CODE:=False
+End case 
+
+If ($Create=True)
+CREATE RECORD([Trxs])
+
+If (Length(WS_Cust_Code)=5)// MISCL
+[Trxs]AgreeNo:=WS_Cust_Code+"MISCL"
+[Trxs]CustomerCode:=WS_Cust_Code+"MISCL"
+QUERY([Agreement];[Agreement]AgreeNo="MISCL")
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+$arraypos:=Find in array(<>asSiteCodes;WS_Cust_Code)
+
+bNext:=<>aiNextCashSaleNo{$arraypos}
+<>aiNextCashSaleNo{$arraypos}:=<>aiNextCashSaleNo{$arraypos}+1
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+Else 
+//Existing Customer
+QUERY([Agreement];[Agreement]CustomerCode=WS_Cust_Code;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & [Agreement]MoveIn=Current date)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+bNext:=[Customer]NextMatch
+[Customer]NextMatch:=[Customer]NextMatch+1
+If (Records in selection([Agreement])#1)
+[Trxs]CCAuthNo:="ERR - SM Rec"
+End if 
+End if 
+
+[Trxs]Match:=bNext
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]Qty:=1
+If (WS_PaymMethod="CK")
+[Trxs]Confirmed:=False
+[Trxs]Narration:="Check:"+WS_CCNo+"/"+WS_RoutingN
+[Trxs]Description:="Check:"+WS_CCNo+"/"+WS_RoutingN
+[Trxs]Drawer:="Check:"+WS_CCNo+"/"+WS_RoutingN
+Else 
+[Trxs]Confirmed:=True
+End if 
+
+[Trxs]TrxTime:=Current time
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+[Trxs]DiscountCalc:=True
+If ([Analysis]SetBankedDate=True) & (Records in selection([Analysis])=1)
+[Trxs]DateBanked:=Current date
+End if 
+[Trxs]UserLogin:="Insomniac"
+
+// Calculate tax for merchant Analysis Code
+QUERY([Analysis];[Analysis]Code=WS_Item_ID;*)
+QUERY([Analysis]; & ;[Analysis]InvItem=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If ([Analysis]Taxable)
+If ([Analysis]TaxRate#0)
+$vTax:=Round((WS_PaymAmount*[Analysis]TaxRate)/100;2)
+Else 
+$vTax:=Round((WS_PaymAmount*[Facility]TaxRate)/100;2)
+End if 
+Else 
+$vTax:=0
+End if 
+[Trxs]TotAmt:=WS_PaymAmount+$vTax
+
+If (WS_PaymMethod="CC")
+WS_Expirdate:=Substring(WS_Expirdate;1;2)+Substring(WS_Expirdate;5;2)
+If (CheckCCExpiry (WS_Expirdate))
+[Trxs]CCAuthNo:=ProcCreditCard (False;"P";[Trxs]TotAmt;WS_CCNo;WS_Expirdate;"";[Agreement]RAgreeNo;[Analysis]Description;[Agreement]CustomerCode;[Customer]CustomerName;WS_CCStreetAdr;WS_CCPostCode;"";"";"";[Agreement]TaxExempt;True;"";False)
+Else 
+[Trxs]CCAuthNo:="ERR: CC- Expiry"
+End if 
+
+End if 
+
+[Trxs]CashReceived:=[Trxs]TotAmt
+
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+SAVE RECORD([Trxs])// For Receipt
+
+CREATE RECORD([Trxs])
+If (Length(WS_Cust_Code)=5)
+[Trxs]AgreeNo:=WS_Cust_Code+"MISCL"
+[Trxs]CustomerCode:=WS_Cust_Code+"MISCL"
+Else 
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+End if 
+
+// DAM Added as after save transaction the Analysis record is lost
+QUERY([Analysis];[Analysis]Code=WS_Item_ID;*)
+QUERY([Analysis]; & ;[Analysis]InvItem=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+[Analysis]InvQtyonHand:=[Analysis]InvQtyonHand-1
+SAVE RECORD([Analysis])
+
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]Qty:=1
+[Trxs]TotAmt:=WS_PaymAmount+$vTax
+[Trxs]TaxAmt:=$vTax
+[Trxs]Confirmed:=True
+[Trxs]TrxTime:=Current time
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=True
+If ([Analysis]SetBankedDate=True) & (Records in selection([Analysis])=1)
+[Trxs]DateBanked:=Current date
+End if 
+[Trxs]UserLogin:="Insomniac"
+READ WRITE([Customer])
+RELATE ONE([Trxs]CustomerCode)
+If ([Trxs]Match=0)
+[Trxs]Match:=bNext
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+End if 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+SAVE RECORD([Trxs])
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Payment by Credit Card is not Successful"+[Trxs]CCAuthNo
+If ([Trxs]CCAuthNo="ERR - SM Rec")
+WS_ERROR:="No Customer or agreements found"
+End if 
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Payment method is Unavailable"
+End if 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="Merchandises Not Found"
+End if 
+Else 
+WS_ERROR:="Facility Not Found"
+WS_RET_CODE:=False
+End if 
+
+$String:="End WS_Insomniac_POSpurchase"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

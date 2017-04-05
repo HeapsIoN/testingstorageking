@@ -1,0 +1,119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 22/02/13 Changed so that it cannot import Admin, Manager, Daily, ODBCUser or Sync users
+C_TEXT($Buffer;$Field)
+C_TEXT($Status)
+C_LONGINT($i;$j)
+//If (Locked([UserLogins])=False) There is no point in this as no record has yet been loaded
+If (Test path name(<>sAttachPath+"UserLogins.txt")=Is a document)
+GET DOCUMENT PROPERTIES(<>sAttachPath+"UserLogins.txt";$Locked;$Inv;$Date1;$Time1;$Date2;$Time2)
+If ($Locked=False)
+UserRecordLog (Get localized string("Read")+" UserLogins.txt")
+$Doc:=Open document(<>sAttachPath+"UserLogins.txt")
+SET AUTOMATIC RELATIONS(True;False)
+READ WRITE([UserLogins])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+While (Length($Buffer)>=1)//Otherwise EOF
+If ($Buffer#"Admin@") & ($Buffer#"Sync@") & ($Buffer#"Daily@") & (Buffer#"ODBC@") & ($Buffer#"Manager@")
+$Password:=False
+For ($i;1;12)//Twelve fields
+$j:=Position(";";$Buffer)
+If ($j>=1)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)
+Case of 
+: ($Field="ADD")
+$Status:="ADD"
+: ($Field="MOD")
+$Status:="MOD"
+: ($Field="DEL")
+$Status:="DEL"
+Else 
+//Do nothing
+End case 
+: ($i=2)
+$UserID:=$Field
+Case of 
+: ($Status="ADD")
+QUERY([UserLogins];[UserLogins]UserID=$Field)
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]UserID:=$Field
+Else 
+$Status:="ABR"
+End if 
+: ($Status="MOD")
+QUERY([UserLogins];[UserLogins]UserID=$Field)
+: ($Status="DEL")
+QUERY([UserLogins];[UserLogins]UserID=$Field)
+If (Records in selection([UserLogins])=1) & (Locked([UserLogins])=False)
+DELETE RECORD([UserLogins])
+Else 
+$Status:="DBR"
+End if 
+Else 
+//Do nothing
+End case 
+: ($i=3) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]Name:=$Field
+: ($i=4) & ($Status#"DEL") & ($Status#"@BR")
+If ($Status#"MOD") | ($Field#"")
+[UserLogins]Password:=$Field
+$Password:=True
+End if 
+: ($i=5) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]Facility:=$Field
+: ($i=6) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]AccessFacility:=$Field
+: ($i=7) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]Permissions:=$Field
+: ($i=8) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]PinCode:=$Field
+: ($i=9) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]UserNo:=Num($Field)
+: ($i=10) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]Timezone:=Num($Field)
+: ($i=11) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]KeypadZone:=Num($Field)
+: ($i=12) & ($Status#"DEL") & ($Status#"@BR")
+[UserLogins]ActualName:=$Field
+Else 
+//Do nothing
+End case 
+End if 
+End for 
+If ($Status#"DEL") & ($Status#"@BR")
+If ([Facility]ComplexPassword=True) & ($Password=True)
+[UserLogins]Password:=GetMD5 ([UserLogins]Password)
+End if 
+If ([UserLogins]Password#Old([UserLogins]Password)) & ($Password=True)
+[UserLogins]PasswordChangeDate:=Current date
+End if 
+If (Locked([UserLogins])=False)
+SAVE RECORD([UserLogins])
+Else 
+LOCKED BY([UserLogins];$Process;$4DUser;$SessionUser;$ProcessName)
+UserRecordLog ("UserLogins table Locked for record "+[UserLogins]Name+" : "+String($Process)+" "+$4DUser+" "+$SessionUser+" "+$ProcessName)
+End if 
+End if 
+UserRecordLog ("Status: "+$Status+" - "+$UserID)
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+SET AUTOMATIC RELATIONS(False;False)
+CLOSE DOCUMENT($Doc)
+DELETE DOCUMENT(<>sAttachPath+"UserLogins.txt")
+UserRecordLog ("Remove UserLogins.txt")
+READ ONLY([UserLogins])
+UNLOAD RECORD([UserLogins])
+Else 
+UserRecordLog ("UserLogins.txt is locked")
+End if 
+Else 
+UserRecordLog ("No UserLogins.txt present - "+<>sAttachPath+"UserLogins.txt")
+End if 
+//Else 
+//LOCKED ATTRIBUTES([UserLogins];$Process;$4DUser;$SessionUser;$ProcessName)
+//SyncRecordLog ("UserLogins table Locked "+String($Process)+" "+$4DUser+" "+$SessionUser+" "+$ProcessName)
+//End if 

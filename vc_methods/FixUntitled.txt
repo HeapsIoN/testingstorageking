@@ -1,0 +1,35 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("FixUntitled Commenced")
+C_BOOLEAN($Found)
+C_LONGINT($Pos;$qty)
+$Pos:=0
+$qty:=0
+$Found:=False
+READ WRITE([Notices])
+QUERY([Notices];[Notices]EmailBlank=False)
+FIRST RECORD([Notices])
+If (Records in selection([Notices])#0)
+For ($z;1;Records in selection([Notices]))
+BLOB PROPERTIES([Notices]Email;$comp)
+If ($comp#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+
+$textContent:=Convert to text([Notices]Email;"UTF-8")
+$Pos:=Position("UNTITLED";$textContent)
+
+If ($Pos>0)
+$Found:=True
+$qty:=$qty+1
+End if 
+
+$textContent:=Replace string($textContent;"UNTITLED";"")
+CONVERT FROM TEXT($textContent;"UTF-8";[Notices]Email)
+COMPRESS BLOB([Notices]Email)
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+End if 
+READ ONLY([Notices])
+
+SyncRecordLog ("FixUntitled Finished Found : "+String($Found)+" qty: "+String($qty))

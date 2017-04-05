@@ -1,0 +1,65 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_REAL($0)//Result of Balance
+C_LONGINT($1;$j;$2;$RunTotal;$LastTotal)
+If (Count parameters>1)
+If ($2=1)
+//$TaxAmt:=Abs([Transaction]TaxAmt)
+$TaxAmt:=[Trxs]TaxAmt
+Else 
+$TaxAmt:=0
+End if 
+Else 
+$TaxAmt:=0
+End if 
+$CalcAfter:=False
+Case of 
+: ([Trxs]Match=-999) & ([Trxs]OriginalReceipt="ADJUSTMENT")
+vQtyBal:=vQtyBal+[Trxs]Qty
+If ($1=1)
+vTot3:=vTot3+[Trxs]Qty
+$CalcAfter:=True
+End if 
+: ([Trxs]Match=-999) & ([Trxs]OriginalReceipt="TRANSFER") & ([Trxs]Qty<0)
+vQtyBal:=vQtyBal+[Trxs]Qty
+If ($1=1)
+vTot3:=vTot3+[Trxs]Qty
+$CalcAfter:=True
+End if 
+: ([Trxs]Match=-999)//Inventory Purchase
+If ([Trxs]Qty#0)
+vQtyBal:=vQtyBal+[Trxs]Qty
+INSERT IN ARRAY(aDataIn;0)
+INSERT IN ARRAY(aTotal;0)
+aDataIn{1}:=[Trxs]Qty
+aTotal{1}:=[Trxs]TotAmt-$TaxAmt
+End if 
+If ($1=1)
+vTot3:=vTot3+[Trxs]Qty
+vTot4:=vTot4+[Trxs]TotAmt-$TaxAmt
+End if 
+Else 
+vQtyBal:=vQtyBal-[Trxs]Qty
+If ($1=1)
+vTot5:=vTot5+[Trxs]Qty
+vTot6:=vTot6+[Trxs]TotAmt-$TaxAmt
+End if 
+End case 
+$Balance:=0
+$RunTotal:=0
+$LastTotal:=0
+For ($j;1;Size of array(aTotal))
+$RunTotal:=$RunTotal+aDataIn{$j}
+If ($RunTotal<=vQtyBal)
+$Balance:=$Balance+aTotal{$j}
+$LastTotal:=$RunTotal
+Else 
+$Balance:=$Balance+((vQtyBal-$LastTotal)*(aTotal{$j}/aDataIn{$j}))
+$LastTotal:=vQtyBal
+$j:=Size of array(aTotal)+1//To exit the loop
+End if 
+End for 
+If ($CalcAfter)
+vTot4:=vTot4-vLastQtyBalance+$Balance
+End if 
+vLastQtyBalance:=$Balance
+$0:=Round($Balance;2)

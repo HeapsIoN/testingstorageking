@@ -1,0 +1,119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text6";Get localized string("Berth"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text6";Get localized string("Appliance"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text6";Get localized string("Space"))
+Else 
+OBJECT SET TITLE(*;"Text6";Get localized string("Unit"))
+End case 
+
+LoadGradients 
+End if 
+C_LONGINT($Read;$Gate)
+C_TEXT($Cust;$Date;$Time)
+C_TEXT($Mess)
+C_TEXT(vGate;vCusto)
+C_DATE(vPDate;vEDate)
+C_BOOLEAN(bCGate)
+$Read:=0
+$Cust:=""
+$Date:=""
+$Time:=""
+$Mess:=""
+If (Form event=On Header)
+//SetColours 
+If (<>sCurrentUser#"AdminSupport")
+OBJECT SET VISIBLE(bMod;False)
+End if 
+End if 
+If (Form event=On Display Detail)
+Case of 
+: ((Length([Facility]RemoteNames)>0))
+vGate:=GetTextNo ([Facility]RemoteNames;[GateLog]GateNo;",")
+If (Length(vGate)<=0)
+vGate:=String([GateLog]GateNo)
+End if 
+Else 
+vGate:=String([GateLog]GateNo)
+End case 
+If (Length([GateLog]CustCode)>5)
+RELATE ONE([GateLog]CustCode)
+Case of 
+: ([Facility]GateSysType=2) | ([Facility]GateSysType=4) | ([Facility]GateSysType=5) | ([Facility]GateSysType=7) | ([Facility]GateSysType=8)
+QUERY([PhotosCards];[PhotosCards]Code=[GateLog]CustCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]PINCardNo=[GateLog]GateKeyed)
+If (Records in selection([PhotosCards])=1)
+vCusto:=[PhotosCards]Name
+Else 
+vCusto:=[Customer]CustomerName
+End if 
+: ([Facility]GateSysType=3)
+If (Substring([GateLog]GateKeyed;1;3)="%# ")
+vCusto:=Substring([GateLog]GateKeyed;4)
+[GateLog]GateKeyed:=""
+Else 
+QUERY([PhotosCards];[PhotosCards]Code=[GateLog]CustCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]UnitSuffix=[GateLog]UnitLetter)
+If (Records in selection([PhotosCards])=1)
+vCusto:=[PhotosCards]Name
+Else 
+vCusto:=[Customer]CustomerName
+End if 
+End if 
+Else 
+vCusto:=[Customer]CustomerName
+End case 
+Else 
+REDUCE SELECTION([Customer];0)
+vCusto:=""
+End if 
+End if 
+bLastButton:=bLast
+If (bAdd=1)
+READ WRITE([GateLog])
+While ($Read=500) & ($Gate#0)//Don't do this
+CREATE RECORD([GateLog])
+[GateLog]CustCode:=$Cust
+[GateLog]GateNo:=$Gate
+[GateLog]GateDate:=Date($Date)
+[GateLog]GateTime:=Time($Time)
+[GateLog]GateActionText:=$Mess
+SAVE RECORD([GateLog])
+End while 
+If ($Read=13)
+ConfirmTwo (Get localized string("The log was uploaded successfully. Purge the log now?"))
+If (OK=1)
+//      $Read:=KP_PurgeLog 
+If ($Read=0)
+AlertMessage (Get localized string("The log was purged successfully!"))
+Else 
+AlertMessage (Get localized string("There was an error purging the log file!"))
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("There was an error reading the log file!"))
+End if 
+READ ONLY([GateLog])
+//ALL RECORDS([GateLog])
+QUERY([GateLog];[GateLog]CustCode=<>sFacility+"@")
+ORDER BY([GateLog];[GateLog]GateDate;<;[GateLog]GateTime;<)
+End if 
+If (bMod=1)
+$PDate:=RequestDate (Get localized string("Purge all entries prior to:");Current date-365)
+If (OK=1)
+READ WRITE([GateLog])
+QUERY([GateLog];[GateLog]GateDate<$PDate)
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection)+" "+Get localized string("from gate log?"))
+If (OK=1)
+DELETE SELECTION([GateLog])
+End if 
+READ ONLY([GateLog])
+QUERY([GateLog];[GateLog]CustCode=<>sFacility+"@")
+//ALL RECORDS([GateLog])
+ORDER BY([GateLog];[GateLog]GateDate;<;[GateLog]GateTime;<)
+End if 
+End if 

@@ -1,0 +1,557 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: ConvToAgreemt
+// Description
+// 
+// This method converts a Reservation into an Agreement
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($0;$Valid;$NewAgree)//If successful
+C_LONGINT($i)
+C_TEXT($AgreeNo)
+
+$0:=False
+
+SET QUERY DESTINATION(Into variable;$i)
+QUERY SELECTION([Unit];[Unit]Vacant=False)
+SET QUERY DESTINATION(Into current selection)
+
+Case of 
+: (Records in selection([Unit])<1)
+AlertMessage (Get localized string("You must have a unit for to this reservation before it can be converted to an agreement."))
+: ($i>0)
+AlertMessage (Get localized string("This reservation cannot be converted because a unit(s) is rented to another customer."))
+: ([Reservation]RReserveNo#(<>sFacility+"@"))
+AlertMessage (Get localized string("This reservation is not for the selected facility - unable to convert!"))
+Else 
+Repeat 
+SetFacility 
+$NewAgree:=True
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+If (Records in selection([Agreement])>0) & ([Facility]UnitPerAgreement=False)
+vTitle:=Get localized string("Select Agreement")
+Open window((Screen width/2)-199;(Screen height/2)-180;(Screen width/2)+199;(Screen height/2)+180;5;Get localized string("Select Agreement"))
+DIALOG([Agreement];"SelectAgreement")
+CLOSE WINDOW
+If (OK=1)
+If (asAgreeListing>=1)
+QUERY SELECTION([Agreement];[Agreement]AgreeNo=asAgreeListing{asAgreeListing})
+$Valid:=True
+$NewAgree:=False
+$AgreeNo:=[Agreement]AgreeNo
+End if 
+End if 
+End if 
+If ($NewAgree=True)
+$Continue:=False
+If (Not(Semaphore("<>bNextAgreeNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+If (<>aiNextAgreeNo{$arraypos}>[Facility]NextAgreeNo)
+ConfirmTwo (Get localized string("It appears the next agreement number of")+" "+String([Facility]NextAgreeNo;"000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+$AgreeNo:=String(<>aiNextAgreeNo{$arraypos};"000000000")
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$arraypos}+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+Else 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+Else 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+vOldUser:=[Facility]NextAgreeNo
+
+$Key:=<>sFacility+$AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+End if 
+Else 
+AlertMessage ("Could not get next agreement number")
+Repeat 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+vOldUser:=[Facility]NextAgreeNo
+$Key:=<>sFacility+$AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+End if 
+If ($Continue)
+CLEAR SEMAPHORE("<>bNextAgreeNo")
+End if 
+$AgreeNo:=RequestMessage (Get localized string("New Agreement No for Reservation")+" "+[Reservation]ReserveNo+", "+Get localized string("Customer")+" "+[Reservation]CustomerCode+":";$AgreeNo)
+If (OK#1)
+ABORT
+End if 
+$Valid:=True
+$Found:=Match regex("^[0-9]+$";$AgreeNo)
+$Found2:=Match regex("\\d+";$AgreeNo)
+If (Length($AgreeNo)#9) | (Num($AgreeNo)<=0) | ($Found=False) | ($Found2=False)
+AlertMessage (Get localized string("Agreement number must be five digits"))
+$Valid:=False
+End if 
+SET QUERY DESTINATION(Into variable;$i)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+$AgreeNo)
+SET QUERY DESTINATION(Into current selection)
+If ($i>0)
+AlertMessage (Get localized string("There is already an agreement number")+" "+$AgreeNo+" "+Get localized string("on file. Please try again!"))
+$Valid:=False
+End if 
+End if 
+Until ($Valid=True)
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("You are about to convert this reservation (including ALL of its attached berths) for customer")+" "+[Reservation]CustomerCode+", "+Get localized string("into agreement")+" "+$AgreeNo+".  "+Get localized string("You will not be able to undo this operation. Are you sure you want to continue?");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("You are about to convert this reservation (including ALL of its attached appliances) for customer")+" "+[Reservation]CustomerCode+", "+Get localized string("into agreement")+" "+$AgreeNo+".  "+Get localized string("You will not be able to undo this operation. Are you sure you want to continue?");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("You are about to convert this reservation (including ALL of its attached spaces) for customer")+" "+[Reservation]CustomerCode+", "+Get localized string("into agreement")+" "+$AgreeNo+".  "+Get localized string("You will not be able to undo this operation. Are you sure you want to continue?");Get localized string("Yes");Get localized string("No"))
+Else 
+ConfirmTwo (Get localized string("You are about to convert this reservation (including ALL of its attached units) for customer")+" "+[Reservation]CustomerCode+", "+Get localized string("into agreement")+" "+$AgreeNo+".  "+Get localized string("You will not be able to undo this operation. Are you sure you want to continue?");Get localized string("Yes");Get localized string("No"))
+End case 
+If (OK=1)
+If ([Reservation]ExpMoveIn<Current date)
+$Date:=Current date
+Else 
+$Date:=[Reservation]ExpMoveIn
+End if 
+Repeat 
+$Date:=RequestDate (Get localized string("Please confirm Move-In Date")+":";$Date)
+Until (OK#1) | ($Date>=(Current date-10))
+If (OK=1) & ($Date>=(Current date-10)) & ($Date<=(Current date+[Facility]FutureMoveIns))
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+LOAD RECORD([Agreement])
+If ($NewAgree=True)
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:=$AgreeNo
+[Agreement]RAgreeNo:=<>sFacility+$AgreeNo
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+[Agreement]CustomerCode:=[Reservation]CustomerCode
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+[Agreement]MoveIn:=$Date
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+[Agreement]BalanceOwing:=[Reservation]Balance
+//[Agreement]RegularRent:=vTotal
+//[Agreement]RentAmt:=vTotal
+[Agreement]NextBillDate:=[Agreement]MoveIn
+If ([Facility]BillonFirst)
+[Agreement]DaytoBill:=1
+[Agreement]NextBillDate:=GetDate (1;Month of([Agreement]MoveIn+30);Year of([Agreement]MoveIn+30))
+End if 
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+[Agreement]LastBillDate:=[Agreement]MoveIn
+[Agreement]ActiveAgreemt:=True
+[Agreement]BillUtilities:=<>tUtilities
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]CasualBilling=False;*)
+If ([Reservation]Weekly=True)
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod="Week")
+Else 
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod#"Week")
+End if 
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+FIRST RECORD([BillPlan])
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+FIRST RECORD([Unit])
+For ($q;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([UnitType]BillPlanCode>"") & ([UnitType]BillPlanCode#[Agreement]BillingPlanCode)//SDD 13/4/10 Added first condition to ensure this does not activate for every single UnitType
+QUERY([BillPlan];[BillPlan]Code=[UnitType]BillPlanCode)
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("This Berth Type has a special billing plan named")+" "+[BillPlan]Description+", "+Get localized string("do you wish to switch to it? This will affect all berths on the agreement");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("This Appliance Type has a special billing plan named")+" "+[BillPlan]Description+", "+Get localized string("do you wish to switch to it? This will affect all appliances on the agreement");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("This Space Type has a special billing plan named")+" "+[BillPlan]Description+", "+Get localized string("do you wish to switch to it? This will affect all spaces on the agreement");Get localized string("Yes");Get localized string("No"))
+Else 
+ConfirmTwo (Get localized string("This Unit Type has a special billing plan named")+" "+[BillPlan]Description+", "+Get localized string("do you wish to switch to it? This will affect all units on the agreement");Get localized string("Yes");Get localized string("No"))
+End case 
+If (OK=1)
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+FIRST RECORD([Unit])
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+
+If (<>sFacility="KE@") & ([Customer]CustType="National Account")
+ARRAY DATE(asSQLNBD;0)
+ARRAY LONGINT(asSQLBillMths;0)
+ARRAY REAL(asSQLDisc;0)
+ARRAY TEXT(asSQLBillPlan;0)
+KSSKosmoKustomers ("SelectMoveIn";[Customer]CustomerName)
+If (Size of array(asSQLNBD)>0)
+[Agreement]NextBillDate:=asSQLNBD{1}
+[Agreement]DaytoBill:=Day of([Agreement]NextBillDate)
+End if 
+If (Size of array(asSQLBillMths)>0)
+[Agreement]MthsAdv:=asSQLBillMths{1}
+End if 
+If (Size of array(asSQLBillPlan)>0)
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]Description=asSQLBillPlan{1})
+If (Records in selection([BillPlan])>0)
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+Else 
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+If ([Reservation]Weekly=True)
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod="Week")
+Else 
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod#"Week")
+End if 
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+FIRST RECORD([BillPlan])
+End if 
+End if 
+End if 
+[Agreement]ContactNo:=[Reservation]ContactNo
+[Agreement]CallTakenBy:=[Reservation]CallTakenBy
+[Agreement]KQ1:=[Reservation]KQ1
+[Agreement]KQ2:=[Reservation]KQ2
+[Agreement]KQ3:=[Reservation]KQ3
+[Agreement]KQ4:=[Reservation]KQ4
+[Agreement]KQ5:=[Reservation]KQ5
+[Agreement]KQ6:=[Reservation]KQ6
+[Agreement]KQ7:=[Reservation]KQ7
+[Agreement]KQ8:=[Reservation]KQ8
+[Agreement]KQ9:=[Reservation]KQ9
+[Agreement]KQ10:=[Reservation]KQ10
+[Agreement]KTS:=[Reservation]KTS
+[Agreement]KCN:=[Reservation]KCN
+Else 
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+End if 
+FIRST RECORD([Unit])
+If ([BillPlan]PlanPeriod="Week")
+For ($i;1;Records in selection([Unit]))
+[Unit]WeeklyRentedValue:=[Unit]QuotedRate
+[Unit]RentedValue:=Round([Unit]QuotedRate/0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]ExtraDisc:=CalculateBaseRate (2;0)-[Unit]WeeklyRentedValue
+[Unit]NewRentAmt:=[Unit]RentedValue
+[Unit]WeeklyNewRentAmt:=[Unit]WeeklyRentedValue
+[Unit]DailyNewRent:=[Unit]DailyRentedValue
+[Unit]Deposit:=[Unit]ReserveDeposit
+If ([Facility]AgreeOnlyDeposit=True) & ([Unit]Deposit=0)
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]Deposit:=[UnitType]DepositAmt
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Unit]Deposit
+End if 
+[Unit]ReserveDeposit:=0
+[Unit]UpdateGate:=[Facility]UseGateSys
+If ($NewAgree=False)
+[Unit]AgreeNo:=<>sFacility+$AgreeNo
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+Else 
+For ($i;1;Records in selection([Unit]))
+[Unit]RentedValue:=[Unit]QuotedRate
+[Unit]WeeklyRentedValue:=Round([Unit]QuotedRate*0.2308;2)
+[Unit]DailyRentedValue:=Round([Unit]WeeklyRentedValue/7;2)
+[Unit]ExtraDisc:=CalculateBaseRate (2;0)-[Unit]RentedValue
+[Unit]NewRentAmt:=[Unit]RentedValue
+[Unit]WeeklyNewRentAmt:=[Unit]WeeklyRentedValue
+[Unit]DailyNewRent:=[Unit]DailyRentedValue
+[Unit]Deposit:=[Unit]ReserveDeposit
+If ([Facility]AgreeOnlyDeposit=True) & ([Unit]Deposit=0)
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]Deposit:=[UnitType]DepositAmt
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Unit]Deposit
+End if 
+[Unit]ReserveDeposit:=0
+If ($NewAgree=False)
+[Unit]AgreeNo:=<>sFacility+$AgreeNo
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End if 
+If ($NewAgree=True)
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]RefDateField=11;*)
+QUERY([Notices]; & ;[Notices]DaysAfter<0)
+If (Records in selection([Notices])>0)
+[Agreement]NoticeDaysPrior:=Abs([Notices]DaysAfter)
+End if 
+End if 
+If ($NewAgree=False)
+CREATE SET([Unit];"ReservationUnits")
+QUERY([Unit];[Unit]AgreeNo=<>sFacility+$AgreeNo)
+End if 
+FIRST RECORD([Unit])
+If ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=Sum([Unit]WeeklyRentedValue)
+Else 
+[Agreement]RegularRent:=Sum([Unit]RentedValue)
+End if 
+[Agreement]RentAmt:=RoundAmt (([Agreement]RegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]DiscountAmt:=Round(([Agreement]RegularRent*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+//QUERY([Analysis];[Analysis]Code=<>sFacility+"DP")
+If ($NewAgree=True)
+
+
+//Code for Kennards to charge out Per Agreement Deposit even though chose not to charge Reservation deposit
+If ([Reservation]DepositAmt=0) & ([Facility]AgreeOnlyDeposit=True)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If ([Analysis]DfltSellAmt#0)
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Analysis]DfltSellAmt
+End if 
+Else 
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Reservation]DepositAmt
+End if 
+Else 
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Reservation]DepositAmt
+End if 
+//This should not be otherwise Deposit is refunded on MoveOut incorrectly
+//SAVE RECORD([Agreement])
+If (Records in set("ReservationUnits")>0)
+USE SET("ReservationUnits")
+CLEAR SET("ReservationUnits")
+End if 
+READ WRITE([Unit])
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+FIRST RECORD([Unit])
+vtRUnitNo:=[Unit]UnitNo
+If ($NewAgree=True)
+[Agreement]UnitsOccup:=""
+Else 
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+", "
+End if 
+For ($q;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+[Unit]UnitNo+", "
+If ($NewAgree=True)
+[Unit]AgreeNo:=<>sFacility+$AgreeNo
+End if 
+[Unit]Vacant:=False
+[Unit]Status:=<>asUnitStatus{1}
+If ($NewAgree=True)
+[Unit]MoveIn:=[Agreement]MoveIn
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+Else 
+[Unit]MoveIn:=$Date
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+End if 
+[Unit]ReservedTo:=""
+[Unit]ReservedDate:=!00-00-00!
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]UpdatePULS:=<>tUtilities
+
+If ([UnitType]VariableLength)
+$UseQuote:=True
+ConfirmTwo (Get localized string("Was this quote on a per increment basis or total length?");Get localized string("Per Incr");Get localized string("Total1"))
+If (OK=1)
+$UseQuote:=False
+End if 
+$Continue:=False
+Repeat 
+$Length:=Num(RequestMessage (Get localized string("Please enter the length used. Do not exceed maximum length of")+" "+String([UnitType]UnitTypeLength);String([UnitType]UnitTypeLength)))
+If ($Length<=[UnitType]UnitTypeLength)
+$Continue:=True
+End if 
+Until ($Continue)
+If ($UseQuote=False)
+If ($Length<[UnitType]VariableMinimum)
+[Unit]RentedValue:=Round([Unit]RentedValue*[UnitType]VariableMinimum;2)
+Else 
+[Unit]RentedValue:=Round([Unit]RentedValue*$Length;2)
+End if 
+End if 
+[Unit]UnitLength:=$Length
+[Unit]UnitAreaSize:=Round([Unit]UnitLength*[Unit]UnitWidth;2)
+End if 
+
+If ($NewAgree=False) & ([Unit]MoveIn<[Agreement]NextBillDate)
+$MonthlyRate:=[Unit]RentedValue
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String([Agreement]LastBillDate;6)+", "+Get localized string("Next Bill Date")+" "+Get localized string("is")+" "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+Else 
+$xDays:=[Agreement]NextBillDate-[Unit]MoveIn
+If ($xDays#0)
+Repeat 
+$Rate:=$MonthlyRate*(1-([BillPlan]DiscPercentage/100))
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+Case of 
+: (<>sProduct="@B")
+$i:=ConfirmThree (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Move In Date for this Berth")+" = "+String([Unit]MoveIn)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($MonthlyRate;<>sFormat)+" "+Get localized string("Berth to Next Bill Date of")+" "+String([Agreement]NextBillDate)+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No");Get localized string("Change Rent"))
+: (<>sProduct="@R")
+$i:=ConfirmThree (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Move In Date for this Appliance")+" = "+String([Unit]MoveIn)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($MonthlyRate;<>sFormat)+" "+Get localized string("Appliance to Next Bill Date of")+" "+String([Agreement]NextBillDate)+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No");Get localized string("Change Rent"))
+: (<>sProduct="@C")
+$i:=ConfirmThree (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Move In Date for this Space")+" = "+String([Unit]MoveIn)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($MonthlyRate;<>sFormat)+" "+Get localized string("Space to Next Bill Date of")+" "+String([Agreement]NextBillDate)+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No");Get localized string("Change Rent"))
+Else 
+$i:=ConfirmThree (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Move In Date for this Unit")+" = "+String([Unit]MoveIn)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($MonthlyRate;<>sFormat)+" "+Get localized string("Unit to Next Bill Date of")+" "+String([Agreement]NextBillDate)+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No");Get localized string("Change Rent"))
+End case 
+//$i:=ConfirmThree (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Move In Date for this Unit")+" = "+String([Unit]MoveIn)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($MonthlyRate;<>sFormat)+" "+Get localized string("Unit to Next Bill Date of")+" "+String([Agreement]NextBillDate)+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No");Get localized string("Change Rent"))
+If ($i=3)
+$MonthlyRate:=Num(RequestMessage (Get localized string("Enter new rate for this unit")+" "+[Unit]UnitNo+" "+Get localized string("to be rented at")+":";String(CalculateBaseRate (2;0);<>sFormat)))
+If (OK#1)
+$MonthlyRate:=CalculateBaseRate (2;0)
+End if 
+End if 
+Until ($i<3)
+If ($i=1)
+READ WRITE([Trxs])
+GetAnalysis (True)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Unit]MoveIn)
+[Trxs]Charge:=True
+If (Records in selection([Analysis])=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+$Desc:=[Analysis]Description
+$i:=Position(" ";$Desc)-1
+If ($i<2)
+$i:=Length($Desc)
+End if 
+Else 
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+$Desc:="Rental Fee"
+$i:=6
+End if 
+
+Case of 
+: (<>sProduct="@B")
+[Trxs]Description:=Get localized string("Prorata")+" "+Substring($Desc;1;$i)+" "+Get localized string("Berth")+" "+[Unit]UnitNo
+: (<>sProduct="@R")
+[Trxs]Description:=Get localized string("Prorata")+" "+Substring($Desc;1;$i)+" "+Get localized string("Appliance")+" "+[Unit]UnitNo
+: (<>sProduct="@C")
+[Trxs]Description:=Get localized string("Prorata")+" "+Substring($Desc;1;$i)+" "+Get localized string("Space")+" "+[Unit]UnitNo
+Else 
+[Trxs]Description:=Get localized string("Prorata")+" "+Substring($Desc;1;$i)+" "+Get localized string("Unit")+" "+[Unit]UnitNo
+End case 
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:=Get localized string("X = No of Days to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Unit]MoveIn)+" = "+String($xDays)+" "+Get localized string("Days")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+Get localized string("Y = No of Days from LastBillDate to NextBillDate")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" "+Get localized string("Days")+Char(13)
+If ([BillPlan]PlanPeriod="Week")
+[Trxs]Narration:=[Trxs]Narration+Get localized string("M = Weekly Rate for Unit")+" = "+String(CalculateBaseRate (2;0);<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    "+Get localized string("less Billing Plan Disc")+" "+String([BillPlan]DiscPercentage)+"% = "+String($Rate;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Weeks")+" = "+String($Mths;"##0")+Char(13)
+Else 
+[Trxs]Narration:=[Trxs]Narration+Get localized string("M = Monthly Rate for Unit")+" = "+String(CalculateBaseRate (2;0);<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    "+Get localized string("less Billing Plan Disc")+" "+String([BillPlan]DiscPercentage)+"% = "+String($Rate;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = "+Get localized string("No of Months")+" = "+String($Mths;"##0")+Char(13)
+End if 
+[Trxs]Narration:=[Trxs]Narration+"N x M x X / Y = "+String($Amt;<>sFormat)+Char(13)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("You will need to manually adjust the rent."))
+End if 
+End if 
+End if 
+End if 
+SAVE RECORD([Unit])
+READ WRITE([UnitHistory])
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+RELATE ONE([Unit]UnitTypeCode)
+//If ([UnitType]DepositAmt>0) & ([Agreement]DepositAmt<=0)
+//[Agreement]DepositAmt:=[UnitType]DepositAmt
+//End if 
+[UnitType]NoVacant:=[UnitType]NoVacant-1
+SAVE RECORD([UnitType])
+NEXT RECORD([Unit])
+End for 
+[Agreement]UnitsOccup:=Substring([Agreement]UnitsOccup;1;Length([Agreement]UnitsOccup)-2)
+If ([Agreement]UserLogin="")
+[Agreement]UserLogin:=<>sCurrentUser
+End if 
+SAVE RECORD([Agreement])
+READ ONLY([Unit])
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode)
+QUERY SELECTION BY FORMULA([Trxs];(Length([Trxs]AgreeNo)<14))//Do not convert a prior agreement to new one.  Only reservation trxs.
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=<>sFacility+$AgreeNo)//Added the above line in 4.0.0 22/3/04
+vRecalc:=True
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([UnitType])
+UNLOAD RECORD([RCHistory])
+UNLOAD RECORD([Agreement])
+If ($NewAgree=True)//Update [Facility]NextAgreeNo only if new agreement is created
+UpdateSystem (20;->vOldUser;"";True)
+End if 
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Rented"
+[Reservation]OutcomeDate:=Current date
+vActive:="Non-Active"
+$0:=True
+Else 
+AlertMessage (Get localized string("Move in date cannot be prior to")+" "+String(Current date-10)+" "+Get localized string("and after")+" "+String(Current date+[Facility]FutureMoveIns))
+$0:=False
+End if 
+End if 
+End case 

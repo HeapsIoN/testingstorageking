@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Printing Detail)
+vAmt1:=[Trxs]TaxAmt
+vAmt2:=[Trxs]TotAmt-[Trxs]TaxAmt
+vAmt3:=[Trxs]TotAmt
+vLeg:=Get localized string("No")
+If ([Analysis]Taxable)
+vLeg:=Get localized string("Yes")
+End if 
+End if 
+If (Form event=On Printing Break)
+C_LONGINT($posArray)
+RELATE ONE([Trxs]AnalysisCode)
+
+If (bAdjIncomePre)
+
+If ([Trxs]AnalysisCode#"")
+$posArray:=0
+$posArray:=Find in array(asAnalysisCode;[Trxs]AnalysisCode)
+If ($posArray>0)
+vAmt1:=asAdIncomeTaxAmt{$posArray}
+vAmt2:=asAdIncomeAmt{$posArray}-asAdIncomeTaxAmt{$posArray}
+vAmt3:=asAdIncomeAmt{$posArray}
+vAmt4:=Round(vAmt1+vAmt2;2)
+End if 
+
+Else 
+vAmt1:=Sum(asAdIncomeTaxAmt)
+vAmt2:=Sum(asAdIncomeAmt)-Sum(asAdIncomeTaxAmt)
+vAmt3:=Sum(asAdIncomeAmt)
+vAmt4:=Round(vAmt1+vAmt2;2)
+vAmt5:=0
+End if 
+OBJECT SET VISIBLE(*;"Text9";True)//10782
+Else 
+vAmt1:=Subtotal([Trxs]TaxAmt)
+vAmt2:=Subtotal(vAmt2)//I used same way but I recieved error
+vAmt3:=Subtotal([Trxs]TotAmt)
+vAmt4:=Round(vAmt1+vAmt2;2)
+vAmt5:=0
+OBJECT SET VISIBLE(*;"Text9";False)//10782
+End if 
+[Trxs]AnalysisCode:=Substring([Trxs]AnalysisCode;6)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-2)
+End for 
+forCompleted:=True
+End if 
+End if 
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+
+SetFormats 

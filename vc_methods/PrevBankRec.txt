@@ -1,0 +1,169 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//16/5/08 NLT Changed how this is printed, so doesn't matter if TaxAmt field has been wiped previously, or if transaction has been deleted
+//now recreates TaxAmt field for printing this report.
+C_LONGINT($i;$j)
+C_DATE(vBSDate;vRptDate)
+ARRAY TEXT($aaAnlysCode;0)
+
+If (PermissionsControl (108))
+SetFacility 
+DEFAULT TABLE([Trxs])
+QUERY([Trxs];[Trxs]AnalysisCode=(<>sFacility+"@");*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled>(Current date-185))
+ARRAY DATE(aDates;0)
+DISTINCT VALUES([Trxs]DateReconciled;aDates)
+SORT ARRAY(aDates;<)
+Open window((Screen width/2)-176;(Screen height/2)-157;(Screen width/2)+176;(Screen height/2)+157;5;Get localized string("Print Previous Bank Reconciliation"))
+DIALOG([Trxs];"PrintOldBankRec")
+CLOSE WINDOW
+If (OK=1) & (Records in selection([Trxs])>0)
+READ WRITE([Trxs])
+$v:=aDates
+$r:=$v+1
+If ($r>Size of array(aDates))
+vRFDate:=aDates{$v}//necessary if they have selected the earliest one in the array
+QUERY([Trxs];[Trxs]DateReconciled<(Current date-185);*)
+QUERY([Trxs]; & ;[Trxs]DateReconciled>=(Current date-215))//a month earlier than the earliest trx date
+If (Records in selection([Trxs])>0)
+DISTINCT VALUES([Trxs]DateReconciled;aFDates)
+SORT ARRAY(aFDates;>)
+vRFDate:=aFDates{1}
+End if 
+Else 
+vRFDate:=aDates{$r}
+End if 
+vBSDate:=vRptDate
+QUERY([ChartAccts];[ChartAccts]AcctType="b@")
+If (<>sProduct="M@")
+QUERY SELECTION([ChartAccts];[ChartAccts]ReportName=<>sFacility)
+End if 
+vBankBal:=[ChartAccts]OpeningBal
+$ChartDte:=[ChartAccts]BankBalDate
+If (vRFDate=aDates{$v})
+QUERY([Trxs];[Trxs]DateReconciled>=vRFDate;*)
+vRFDate:=vRptDate
+vBBDate:=vRFDate//this is in header of Bank Rec Rpt & in case vBBDate has been set in a recent bank rec
+Else 
+QUERY([Trxs];[Trxs]DateReconciled>vRFDate;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]DateReconciled<=$ChartDte;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"@")
+//QUERY([Transaction]; & ;[Transaction]TaxAmt#0)  `to get only the totals trxs
+CREATE SET([Trxs];"LaterTrx")
+$LaterSum:=Sum([Trxs]TotAmt)//TaxAmt)
+vOpenBal:=vBankBal-$LaterSum
+QUERY SELECTION([Trxs];[Trxs]DateReconciled=vBSDate)
+$CurrSum:=Sum([Trxs]TotAmt)//TaxAmt)
+vTotal:=vOpenBal+$CurrSum
+CREATE SET([Trxs];"ToPrint")
+ORDER BY([Trxs];[Trxs]DateReconciled;>;[Trxs]AnalysisCode;>;[Trxs]DateBanked;>;[Trxs]TaxAmt;>)
+//*********************TAKEN FROM RECONCILENEW*****************************
+//USE SET("ToPrint")
+CREATE SET([Trxs];"ToSum")
+DISTINCT VALUES([Trxs]DateBanked;aBankDte)// to allow to sum totals for different dates banked
+DISTINCT VALUES([Trxs]AnalysisCode;$aaAnlysCode)
+CREATE EMPTY SET([Trxs];"ToPrint")
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50)
+ORDER BY([Analysis];[Analysis]GLCode;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Code;$aAnlysCode;[Analysis]GLCode;$aGLCode)
+For ($r;Size of array($aAnlysCode);1;-1)
+If (Find in array($aaAnlysCode;$aAnlysCode{$r})<1)
+DELETE FROM ARRAY($aAnlysCode;$r;1)
+DELETE FROM ARRAY($aGLCode;$r;1)
+End if 
+End for 
+$Amt:=0
+For ($r;1;Size of array(aBankDte))
+USE SET("ToSum")
+QUERY SELECTION([Trxs];[Trxs]DateBanked=aBankDte{$r})
+ORDER BY([Trxs];[Trxs]AnalysisCode;>)
+CREATE SET([Trxs];"DateBanked")
+If (Size of array($aAnlysCode)>0)
+$LastCode:=$aGLCode{1}
+For ($j;1;Size of array($aAnlysCode))
+USE SET("DateBanked")
+QUERY SELECTION([Trxs];[Trxs]AnalysisCode=$aAnlysCode{$j})//this should ensure checks and cash summed together
+RELATE ONE([Trxs])//relate the Analysis table
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+If ([Supplier]UserName="SUM")
+For ($l;1;Records in selection([Trxs]))
+$Amt:=$Amt+[Trxs]TotAmt
+[Trxs]TaxAmt:=0//in case anything has been saved to the tax field previously
+SAVE RECORD([Trxs])
+$TrxNo:=Record number([Trxs])//added 24/1/06 NLT
+NEXT RECORD([Trxs])
+End for 
+$l:=0
+Else 
+For ($k;1;Records in selection([Trxs]))
+[Trxs]TaxAmt:=[Trxs]TotAmt//so can search on tax field to show lines to display
+ADD TO SET([Trxs];"ToPrint")
+SAVE RECORD([Trxs])
+$TrxNo:=Record number([Trxs])
+NEXT RECORD([Trxs])
+End for 
+$k:=0
+End if 
+$GLCode:=""
+If ($j+1<=Size of array($aGLCode))
+$GLCode:=$aGLCode{$j+1}
+End if 
+If ($GLCode#$LastCode)
+If ($Amt#0)
+//PREVIOUS RECORD([Transaction])`didn't work if you had 2 lots of trxs with diff anlys code but same GLCode
+GOTO RECORD([Trxs];$TrxNo)
+[Trxs]TaxAmt:=$Amt
+ADD TO SET([Trxs];"ToPrint")
+SAVE RECORD([Trxs])
+End if 
+$LastCode:=$GLCode
+$Amt:=0
+End if 
+CREATE SET([Trxs];"Temp")
+DIFFERENCE("ToSum";"Temp";"ToSum")
+End for 
+End if 
+End for 
+USE SET("ToPrint")
+ORDER BY([Trxs];[Trxs]DateBanked;>;[Trxs]AnalysisCode;>;[Trxs]TaxAmt;>)//refunds will have the same analysis code
+//******************OLD CODE********************************************
+FIRST RECORD([Trxs])
+$Bal:=vOpenBal
+$Bal:=$Bal+[Trxs]TaxAmt
+[Trxs]Balance:=$Bal
+vTot1:=0
+vTot2:=0
+If ([Trxs]Reconciled=True)
+If ([Trxs]TaxAmt<0)
+vTot2:=([Trxs]TaxAmt*(-1))
+Else 
+vTot1:=[Trxs]TaxAmt
+End if 
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+For ($i;2;Records in selection([Trxs]))
+If ([Trxs]Reconciled=True)
+If ([Trxs]TaxAmt<0)//if it's a refund or returned cheque
+vTot2:=vTot2+([Trxs]TaxAmt*(-1))
+Else 
+vTot1:=vTot1+[Trxs]TaxAmt
+End if 
+End if 
+$Bal:=$Bal+[Trxs]TaxAmt
+[Trxs]Balance:=$Bal
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+USE SET("ToPrint")
+vBankBal:=vTotal//vCloseBal:=vTotal
+PrintRec 
+CLEAR SET("ToPrint")
+CLEAR SET("ToSum")
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+End if 
+End if 

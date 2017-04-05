@@ -1,0 +1,41 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($1)
+C_TEXT($0;vtMessageResponse)
+C_DATE(vdMessageDate)
+C_LONGINT(vliMessageTime)
+C_LONGINT(viMessagePriority;vliMessageID)
+C_TEXT(vtMessageSubject;$vtStatus)
+C_BLOB(vblMessageBody)
+C_BLOB(vblMessageAttachments)
+WEB SERVICE SET PARAMETER("vliFacilityID";$1)
+WEB SERVICE CALL("https://"+GetDNS ("SUV1")+":443/4DSOAP/";"StormanUsersV2#WS_GetSupportEmail";"WS_GetSupportEmail";"StormanUsersV2";Web Service dynamic)
+If (OK=1)
+WEB SERVICE GET RESULT(vtMessageResponse;"vtMessageResponse")
+WEB SERVICE GET RESULT(vdMessageDate;"vdMessageDate")
+WEB SERVICE GET RESULT(vliMessageTime;"vliMessageTime")
+WEB SERVICE GET RESULT(viMessagePriority;"viMessagePriority")
+WEB SERVICE GET RESULT(vliMessageID;"vliMessageID")
+WEB SERVICE GET RESULT(vtMessageSubject;"vtMessageSubject")
+WEB SERVICE GET RESULT(vblMessageBody;"vblMessageBody")
+WEB SERVICE GET RESULT(vblMessageAttachments;"vblMessageAttachments";*)// Memory clean-up on the final return value.
+If (Length(vtMessageResponse)<=2) & (Num(vtMessageResponse)>0)
+CREATE RECORD([Message])
+[Message]Address:="Storman Support"
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]PriorityCategory:=viMessagePriority
+[Message]Subject:=vtMessageSubject
+[Message]EmailMsg:=vblMessageBody
+[Message]Facility:=<>sFacility
+SAVE RECORD([Message])
+$vtStatus:="Sent"
+WEB SERVICE SET PARAMETER("vliFacilityID";$1)
+WEB SERVICE SET PARAMETER("vliMessageID";vliMessageID)
+WEB SERVICE SET PARAMETER("vtStatus";$vtStatus)
+WEB SERVICE CALL("https://"+GetDNS ("SUV1")+":443/4DSOAP/";"StormanUsersV2#WS_EmailStatus";"WS_EmailStatus";"StormanUsersV2";Web Service dynamic)
+AlertMessage (Get localized string("A new message from Storman support has been received."))
+End if 
+$0:=vtMessageResponse
+Else 
+$0:=Get localized string("Cound not connect to StormanUsers Server!")
+End if 

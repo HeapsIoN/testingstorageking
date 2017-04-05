@@ -1,0 +1,103 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+///TRACE
+C_BOOLEAN($1;$Abort)//If true then quit without messages
+C_LONGINT($i)
+$Abort:=False
+If (Count parameters>0)
+$Abort:=$1
+End if 
+If ($Abort) | (<>tMirror)
+<>tLoggingOn:=False
+QUIT 4D
+Else 
+If (GetProcessNames >"")
+AlertMessage (Get localized string("All processes other than the main Dashboard should be closed before quitting otherwise data may be lost!"))
+End if 
+If (<>tClient)
+ConfirmTwo (Get localized string("Quit1")+" "+<>sOEMName+"?";Get localized string("Yes");Get localized string("No"))
+Else 
+vAutoBackupNote:=""
+bCont:=Num(Substring([Facility]BackupInfo;1;1))
+bCode:=Num(Substring([Facility]BackupInfo;2;1))
+bLoad:=Num(Substring([Facility]BackupInfo;3;1))
+$i:=Num(Substring([Facility]BackupInfo;4;1))
+If ($i>=1) & ($i<=3)
+aAnlys:=$i
+End if 
+bImport:=Num(Substring([Facility]BackupInfo;5;2))
+bIndex:=Num(Substring([Facility]BackupInfo;7;2))
+If (bLoad=1)
+Case of 
+: ($i=1)
+If (bIndex>=0) & (bIndex<=9)
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Daily at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on the night of")+" "+String(Add to date([Facility]BackupNextDate;0;0;-1))+"."
+Else 
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Daily at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on that night")+"."
+End if 
+: ($i=2)
+Case of 
+: (bImport=1)
+$BackupDay:=Get localized string("Sunday")
+$PriorDay:=Get localized string("Saturday")
+: (bImport=2)
+$BackupDay:=Get localized string("Monday")
+$PriorDay:=Get localized string("Sunday")
+: (bImport=3)
+$BackupDay:=Get localized string("Tuesday")
+$PriorDay:=Get localized string("Monday")
+: (bImport=4)
+$BackupDay:=Get localized string("Wednesday")
+$PriorDay:=Get localized string("Tuesday")
+: (bImport=5)
+$BackupDay:=Get localized string("Thursday")
+$PriorDay:=Get localized string("Wednesday")
+: (bImport=6)
+$BackupDay:=Get localized string("Friday")
+$PriorDay:=Get localized string("Thursday")
+: (bImport=7)
+$BackupDay:=Get localized string("Saturday")
+$PriorDay:=Get localized string("Friday")
+Else 
+//Do Nothing
+End case 
+If (bIndex>=0) & (bIndex<=9)
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Weekly on a")+" "+$BackupDay+" "+Get localized string("at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on the night of")+" "+$PriorDay+" "+Get localized string("The")+" "+String(Add to date([Facility]BackupNextDate;0;0;-1))+"."
+Else 
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Weekly on a")+" "+$BackupDay+" "+Get localized string("at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on that night")+"."
+End if 
+: ($i=2)
+If (bIndex>=0) & (bIndex<=9)
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Monthly on the")+" "+String(bImport)+" "+Get localized string("of each Month at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on the night of")+" "+String(Add to date([Facility]BackupNextDate;0;0;-1))+"."
+Else 
+vAutoBackupNote:=Get localized string("Your Backup is scheduled to happen Monthly on the")+" "+String(bImport)+" "+Get localized string("of each Month at")+" "+String(bIndex)+":00. "+Get localized string("Your next backup will occur on the")+" "+String([Facility]BackupNextDate)+". "+Get localized string("Please leave your computer on that night")+"."
+End if 
+Else 
+//Do Nothing
+End case 
+If (Current date>=([Facility]BackupNextDate-1))
+AlertMessage (vAutoBackupNote)
+End if 
+End if 
+ConfirmTwo (Get localized string("Are you sure you want to quit")+" "+<>sOEMName+"? "+Get localized string("(Backups are your responsibility - Have you done a backup today?)");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+// Modified by: nicholas.wykes (6/10/2011) Added setting of preferences file to save window dimensions
+
+
+If (<>iPlatform<3)
+GET WINDOW RECT($iL;$iT;$iR;$iB)
+Else 
+GET WINDOW RECT($iL;$iT;$iR;$iB;-1)
+$iB:=$iB+12//Adjustment for Windows
+End if 
+
+ON ERR CALL("ErrorNone")
+UpdatePrefs ("ScreenX";String($iL))
+UpdatePrefs ("ScreenY";String($iT))
+UpdatePrefs ("ScreenW";String($iR-$iL))
+UpdatePrefs ("ScreenH";String($iB-$iT))
+ON ERR CALL("ErrorLog")
+<>tLoggingOn:=False
+QUIT 4D
+End if 
+End if 

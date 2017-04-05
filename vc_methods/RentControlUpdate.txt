@@ -1,0 +1,327 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+C_REAL(Fixed_r;Percent_r;RCNewRent_r)
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+QUERY([UnitType];[UnitType]RUnitType=<>sFacility+"@";*)
+QUERY([UnitType]; & ;[UnitType]RentControlOn=True)
+ORDER BY([UnitType];[UnitType]UnitTypeCode;>)
+For ($i;1;Records in selection([UnitType]))
+Case of 
+: ((([UnitType]NoTotal-[UnitType]NoVacant)*100/[UnitType]NoTotal)>[UnitType]RCUpperActivate)
+If ([UnitType]RCDays<0)
+[UnitType]RCDays:=0
+End if 
+[UnitType]RCDays:=[UnitType]RCDays+1
+SAVE RECORD([UnitType])
+: ((([UnitType]NoTotal-[UnitType]NoVacant)*100/[UnitType]NoTotal)<[UnitType]RCLowerActivate)
+If ([UnitType]RCDays<0)
+[UnitType]RCDays:=0
+End if 
+[UnitType]RCDays:=[UnitType]RCDays+1
+SAVE RECORD([UnitType])
+Else 
+[UnitType]RCDays:=0
+SAVE RECORD([UnitType])
+End case 
+If (Current date>([UnitType]RCLastModDate+[UnitType]RCIntervalDays)) & ([UnitType]NoTotal>0) & (Abs([UnitType]RCDays)>=[UnitType]RCOccDays)
+If ((([UnitType]NoTotal-[UnitType]NoVacant)*100/[UnitType]NoTotal)>[UnitType]RCUpperActivate)
+If ([UnitType]RCEmailAddress>"")
+$RCEmailAddress:=[UnitType]RCEmailAddress
+Repeat 
+$RCEmailPos:=Position(",";$RCEmailAddress)
+If ($RCEmailPos>3)
+$RCEmail:=Substring($RCEmailAddress;1;$RCEmailPos-1)
+$RCEmailAddress:=Substring($RCEmailAddress;$RCEmailPos+1)
+Else 
+$RCEmail:=$RCEmailAddress
+$RCEmailAddress:=""
+End if 
+
+
+If ([UnitType]RCPercentIncr>0)
+Percent_r:=[UnitType]MonthlyRate+(Round([UnitType]MonthlyRate*[UnitType]RCPercentIncr/100;1))
+Else 
+Percent_r:=0
+End if 
+
+//23/05/13 DAM Fix DRC if the fixed amount is = 0 so the DRC still process the % increase or decrease
+If ([UnitType]RCFixedIncr>0)
+Fixed_r:=Round([UnitType]MonthlyRate+[UnitType]RCFixedIncr;1)
+Else 
+Fixed_r:=0
+End if 
+
+Case of 
+: (Percent_r>Fixed_r)
+RCNewRent_r:=Percent_r
+: (Fixed_r>=Percent_r)// on the offchance the Fixed & Percent come out with the same answer
+RCNewRent_r:=Fixed_r
+Else 
+//Do Nothing
+End case 
+If ([UnitType]RCRoundRent=True)
+RCNewRent_r:=RoundAmt (RCNewRent_r;<>iRoundMethod;[UnitType]RCRoundCents)
+End if 
+If (RCNewRent_r>[UnitType]RCUpperLimit) & ([UnitType]RCUpperLimit#0)
+RCNewRent_r:=[UnitType]RCUpperLimit
+End if 
+If (RCNewRent_r<[UnitType]RCLowerLimit)
+RCNewRent_r:=[UnitType]RCLowerLimit
+End if 
+
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="VacantDRC")
+If (Records in selection([Notices])=1)
+BLOB PROPERTIES([Notices]Email;$comp)
+If ($comp#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+CREATE RECORD([Message])
+[Message]Address:=$RCEmail
+[Message]Subject:=[Notices]EmailSubject
+[Message]Facility:=<>sFacility
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+SAVE RECORD([Message])
+Else 
+
+CREATE RECORD([Message])
+[Message]Address:=$RCEmail
+[Message]Subject:=Get localized string("Vacant Unit DRC suggested changes for")+[UnitType]RUnitType+" - "+[UnitType]Description
+If ([UnitType]BillPlanCode="") & ([UnitType]RCBillPlan>"")
+QUERY([BillPlan];[BillPlan]Code=[UnitType]RCBillPlan)
+[Message]MsgBody:=Get localized string("The unit type")+" "+[UnitType]RUnitType+" - "+[UnitType]Description+" "+Get localized string("has indicated it may need adjusting. The current rate is")+" "+String([UnitType]MonthlyRate)+" "+Get localized string("the suggested rate is")+" "+String(RCNewRent_r)+" "+Get localized string("a change of unit type bill plan to")+" "+[BillPlan]Description+" "+Get localized string("is also suggested.")
+Else 
+[Message]MsgBody:=Get localized string("The unit type")+" "+[UnitType]RUnitType+" - "+[UnitType]Description+" "+Get localized string("has indicated it may need adjusting. The current rate is")+" "+String([UnitType]MonthlyRate)+" "+Get localized string("the suggested rate is")+" "+String(RCNewRent_r)
+End if 
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=<>sFacility
+SAVE RECORD([Message])
+End if 
+SendMail 
+Until ($RCEmailPos=0)
+[UnitType]RCDays:=0
+SAVE RECORD([UnitType])
+Else 
+CREATE RECORD([RCHistory])
+[RCHistory]UnitType:=[UnitType]RUnitType
+[RCHistory]RCDate:=Current date
+If ([UnitType]RCPercentIncr>0)
+Percent_r:=[UnitType]MonthlyRate+(Round([UnitType]MonthlyRate*[UnitType]RCPercentIncr/100;1))
+Else 
+Percent_r:=0
+End if 
+
+//23/05/13 DAM Fix DRC if the fixed amount is = 0 so the DRC still process the % increase or decrease
+If ([UnitType]RCFixedIncr>0)
+Fixed_r:=Round([UnitType]MonthlyRate+[UnitType]RCFixedIncr;1)
+Else 
+Fixed_r:=0
+End if 
+
+Case of 
+: (Percent_r>Fixed_r)
+[RCHistory]RCNewRent:=Percent_r
+: (Fixed_r>=Percent_r)
+[RCHistory]RCNewRent:=Fixed_r
+Else 
+//Do Nothing
+End case 
+
+If ([UnitType]RCRoundRent=True)
+[RCHistory]RCNewRent:=RoundAmt ([RCHistory]RCNewRent;<>iRoundMethod;[UnitType]RCRoundCents)
+End if 
+If ([RCHistory]RCNewRent>[UnitType]RCUpperLimit) & ([UnitType]RCUpperLimit#0)
+[RCHistory]RCNewRent:=[UnitType]RCUpperLimit
+End if 
+If ([RCHistory]RCNewRent<[UnitType]RCLowerLimit)
+[RCHistory]RCNewRent:=[UnitType]RCLowerLimit
+End if 
+[RCHistory]RCPrevRent:=[UnitType]MonthlyRate
+[UnitType]RCLastModDate:=Current date
+[UnitType]MonthlyRate:=[RCHistory]RCNewRent
+[UnitType]WeeklyRate:=Round([UnitType]MonthlyRate*[Facility]RentWeeklyMthly;1)
+If ([UnitType]BillPlanCode="")
+[UnitType]BillPlanCode:=[UnitType]RCBillPlan
+If ([UnitType]BillPlanCode>"")
+[UnitType]RCSpecial:=True
+Else 
+[UnitType]RCSpecial:=False
+End if 
+End if 
+[UnitType]RCDays:=0
+RCUpdateArray (False)
+UpdateUnitTypeSpecial 
+SAVE RECORD([RCHistory])
+SAVE RECORD([UnitType])
+End if 
+End if 
+If ((([UnitType]NoTotal-[UnitType]NoVacant)*100/[UnitType]NoTotal)<[UnitType]RCLowerActivate)
+If ([UnitType]RCEmailAddress>"")
+$RCEmailAddress:=[UnitType]RCEmailAddress
+Repeat 
+$RCEmailPos:=Position(",";$RCEmailAddress)
+If ($RCEmailPos>3)
+$RCEmail:=Substring($RCEmailAddress;1;$RCEmailPos-1)
+$RCEmailAddress:=Substring($RCEmailAddress;$RCEmailPos+1)
+Else 
+$RCEmail:=$RCEmailAddress
+$RCEmailAddress:=""
+End if 
+
+If ([UnitType]RCPercentIncrL>0)
+Percent_r:=[UnitType]MonthlyRate-(Round([UnitType]MonthlyRate*[UnitType]RCPercentIncrL/100;1))
+Else 
+Percent_r:=0
+End if 
+If ([UnitType]RCFixedIncrL>0)
+Fixed_r:=Round([UnitType]MonthlyRate-[UnitType]RCFixedIncrL;1)
+Else 
+Fixed_r:=0
+End if 
+Case of 
+: (Percent_r>Fixed_r)
+RCNewRent_r:=Percent_r
+: (Fixed_r>=Percent_r)// on the offchance the Fixed & Percent come out with the same answer
+RCNewRent_r:=Fixed_r
+Else 
+//Do Nothing
+End case 
+If ([UnitType]RCRoundRent=True)
+RCNewRent_r:=RoundAmt (RCNewRent_r;<>iRoundMethod;[UnitType]RCRoundCents)
+End if 
+If (RCNewRent_r>[UnitType]RCUpperLimit) & ([UnitType]RCUpperLimit#0)
+RCNewRent_r:=[UnitType]RCUpperLimit
+End if 
+If (RCNewRent_r<[UnitType]RCLowerLimit)
+RCNewRent_r:=[UnitType]RCLowerLimit
+End if 
+
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="VacantDRC")
+If (Records in selection([Notices])=1)
+BLOB PROPERTIES([Notices]Email;$comp)
+If ($comp#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+CREATE RECORD([Message])
+[Message]Address:=$RCEmail
+[Message]Subject:=[Notices]EmailSubject
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=<>sFacility
+SAVE RECORD([Message])
+Else 
+CREATE RECORD([Message])
+[Message]Address:=$RCEmail
+[Message]Subject:=Get localized string("Vacant Unit DRC suggested changes for")+[UnitType]RUnitType+" - "+[UnitType]Description
+If ([UnitType]BillPlanCode="") & ([UnitType]RCBillPlan>"")
+QUERY([BillPlan];[BillPlan]Code=[UnitType]RCBillPlan)
+[Message]MsgBody:=Get localized string("The unit type")+" "+[UnitType]RUnitType+" - "+[UnitType]Description+" "+Get localized string("has indicated it may need adjusting. The current rate is")+" "+String([UnitType]MonthlyRate)+" "+Get localized string("the suggested rate is")+" "+String(RCNewRent_r)+" "+Get localized string("a change of unit type bill plan to")+" "+[BillPlan]Description+" "+Get localized string("is also suggested.")
+Else 
+[Message]MsgBody:=Get localized string("The unit type")+" "+[UnitType]RUnitType+" - "+[UnitType]Description+" "+Get localized string("has indicated it may need adjusting. The current rate is")+" "+String([UnitType]MonthlyRate)+" "+Get localized string("the suggested rate is")+" "+String(RCNewRent_r)
+End if 
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+[Message]Facility:=<>sFacility
+SAVE RECORD([Message])
+End if 
+SendMail 
+Until ($RCEmailPos=0)
+[UnitType]RCDays:=0
+SAVE RECORD([UnitType])
+Else 
+CREATE RECORD([RCHistory])
+[RCHistory]UnitType:=[UnitType]RUnitType
+[RCHistory]RCDate:=Current date
+If ([UnitType]RCPercentIncrL>0)
+Percent_r:=[UnitType]MonthlyRate-(Round([UnitType]MonthlyRate*[UnitType]RCPercentIncrL/100;1))
+Else 
+Percent_r:=0
+End if 
+If ([UnitType]RCFixedIncrL>0)
+Fixed_r:=Round([UnitType]MonthlyRate-[UnitType]RCFixedIncrL;1)
+Else 
+Fixed_r:=0
+End if 
+Case of 
+: (Percent_r>Fixed_r)
+[RCHistory]RCNewRent:=Percent_r
+: (Fixed_r>=Percent_r)// on the offchance the Fixed & Percent come out with the same answer
+[RCHistory]RCNewRent:=Fixed_r
+Else 
+//Do Nothing
+End case 
+If ([UnitType]RCRoundRent=True)
+[RCHistory]RCNewRent:=RoundAmt ([RCHistory]RCNewRent;<>iRoundMethod;[UnitType]RCRoundCents)
+End if 
+If ([RCHistory]RCNewRent>[UnitType]RCUpperLimit) & ([UnitType]RCUpperLimit#0)
+[RCHistory]RCNewRent:=[UnitType]RCUpperLimit
+End if 
+If ([RCHistory]RCNewRent<[UnitType]RCLowerLimit)
+[RCHistory]RCNewRent:=[UnitType]RCLowerLimit
+End if 
+[RCHistory]RCPrevRent:=[UnitType]MonthlyRate
+[UnitType]RCLastModDate:=Current date
+[UnitType]MonthlyRate:=[RCHistory]RCNewRent
+[UnitType]WeeklyRate:=Round([UnitType]MonthlyRate*[Facility]RentWeeklyMthly;1)
+If ([UnitType]BillPlanCode="")
+[UnitType]BillPlanCode:=[UnitType]RCBillPlan
+If ([UnitType]BillPlanCode>"")
+[UnitType]RCSpecial:=True
+Else 
+[UnitType]RCSpecial:=False
+End if 
+End if 
+[UnitType]RCDays:=0
+RCUpdateArray (True)
+UpdateUnitTypeSpecial 
+SAVE RECORD([RCHistory])
+SAVE RECORD([UnitType])
+End if 
+End if 
+End if 
+NEXT RECORD([UnitType])
+End for 
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+UNLOAD RECORD([UnitType])
+UNLOAD RECORD([RCHistory])

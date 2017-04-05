@@ -1,0 +1,166 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0;$1;$Web)// $1 TRUE from Web - silent mode
+C_LONGINT($i)
+C_DATE($LastDate;$LinkDate)
+C_TEXT($LastUnit)
+$Web:=False
+If (Count parameters=1)
+$Web:=$1
+End if 
+READ WRITE([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]UnitNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+QUERY SELECTION BY FORMULA([UnitHistory];([UnitHistory]MoveIn>=[UnitHistory]MoveOut) & ([UnitHistory]MoveOut>!00-00-00!))
+If (Records in selection([UnitHistory])>0)
+For ($i;1;Records in selection([UnitHistory]))
+If (Abs([UnitHistory]MoveIn-[UnitHistory]MoveOut)<=1)
+DELETE RECORD([UnitHistory])
+Else 
+RELATE ONE([UnitHistory]AgreeNo)
+If (Records in selection([Agreement])=1) & ([Agreement]MoveIn<[Agreement]MoveOut)
+[UnitHistory]MoveIn:=[Agreement]MoveIn
+[UnitHistory]MoveOut:=[Agreement]MoveOut
+SAVE RECORD([UnitHistory])
+End if 
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+End if 
+QUERY([UnitHistory];[UnitHistory]UnitNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+CREATE SET([UnitHistory];"All")
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@")
+RELATE MANY SELECTION([UnitHistory]UnitNo)
+CREATE SET([UnitHistory];"Valid")
+DIFFERENCE("All";"Valid";"All")
+USE SET("All")
+CLEAR SET("All")
+CLEAR SET("Valid")
+If (Records in selection([UnitHistory])>0)//Remove records that are not connected to a current unit
+DELETE SELECTION([UnitHistory])
+End if 
+QUERY([UnitHistory];[UnitHistory]UnitNo=<>sFacility+"@";*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>;[UnitHistory]MoveIn;>;[UnitHistory]MoveOut;>)
+RELATE ONE([UnitHistory]UnitNo)
+$LastDate:=[UnitHistory]MoveIn
+$LinkDate:=[UnitHistory]MoveOut
+$LastUnit:=[UnitHistory]UnitNo
+$LastAgree:=[UnitHistory]AgreeNo
+vtFormula:=""
+Open window(20;150;400;250;0;Get localized string("Progress"))
+NEXT RECORD([UnitHistory])
+For ($i;2;Records in selection([UnitHistory]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Unit History")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([UnitHistory]))+"    ")
+RELATE ONE([UnitHistory]AgreeNo)
+If (Records in selection([Agreement])=0) & ([UnitHistory]MoveOut=!00-00-00!)
+DELETE RECORD([UnitHistory])
+Else 
+//If ($Fix)
+//If ([UnitHistory]UnitNo=$LastUnit)
+//If ([UnitHistory]MoveIn=$LastDate) & ([UnitHistory]AgreeNo=$LastAgree)  `Maybe we should not test AgreeNo as duplicates should be delete anyway
+//PREVIOUS RECORD([UnitHistory])
+//DELETE RECORD([UnitHistory])  `It is a duplicate so we need to delete
+//NEXT RECORD([UnitHistory])
+//End if 
+//If ([UnitHistory]AgreeNo=$LastAgree) & ($LinkDate=!00/00/00!)
+//PREVIOUS RECORD([UnitHistory])
+//DELETE RECORD([UnitHistory])  `It is an invalid record so we need to delete
+//NEXT RECORD([UnitHistory])
+//End if 
+//If ([UnitHistory]MoveIn<$LinkDate)
+//$MoveIn:=[UnitHistory]MoveIn-1
+//PREVIOUS RECORD([UnitHistory])
+//[UnitHistory]MoveOut:=$MoveIn
+//SAVE RECORD([UnitHistory])
+//NEXT RECORD([UnitHistory])
+//End if 
+//If ([UnitHistory]MoveOut<[UnitHistory]MoveIn)
+//[UnitHistory]MoveOut:=[UnitHistory]MoveIn+1
+//SAVE RECORD([UnitHistory])
+//End if 
+//Else 
+//If ([Unit]Vacant)
+//If ($LinkDate=!00/00/00!)
+//PREVIOUS RECORD([UnitHistory])
+//RELATE ONE([UnitHistory]AgreeNo)
+//[UnitHistory]MoveOut:=[Agreement]MoveOut
+//SAVE RECORD([UnitHistory])
+//NEXT RECORD([UnitHistory])
+//End if 
+//Else 
+//If ($LastDate#[Unit]MoveIn)
+//PREVIOUS RECORD([UnitHistory])
+//[UnitHistory]MoveIn:=[Unit]MoveIn
+//SAVE RECORD([UnitHistory])
+//NEXT RECORD([UnitHistory])
+//End if 
+//If ($LinkDate#!00/00/00!)
+//PREVIOUS RECORD([UnitHistory])
+//[UnitHistory]MoveOut:=!00/00/00!
+//SAVE RECORD([UnitHistory])
+//NEXT RECORD([UnitHistory])
+//End if 
+//End if 
+//End if 
+//Else 
+If ([UnitHistory]UnitNo=$LastUnit)
+If ([UnitHistory]MoveIn<$LastDate)//added 19/7/06, as 4D's sort is case sensitive
+If ($Web=True)
+SyncRecordLog (Get localized string("OccupRptMethod21")+$LastUnit+Get localized string("OccupRptMethod22"))
+Else 
+AlertMessage (Get localized string("OccupRptMethod21")+$LastUnit+Get localized string("OccupRptMethod22"))
+End if 
+
+ABORT
+End if 
+If ([UnitHistory]MoveIn<$LinkDate)
+vtFormula:=vtFormula+Get localized string("Unit No")+":"+[UnitHistory]UnitNo+Get localized string("OccupRptMethod17")+Char(13)
+End if 
+If ($LinkDate<$LastDate)
+vtFormula:=vtFormula+Get localized string("Unit No")+":"+$LastUnit+", "+Get localized string("AgreeNo")+":"+$LastAgree+Get localized string(" - Invalid move out date in Unit History.")+Char(13)
+End if 
+Else 
+If ([Unit]Vacant)
+If ($LinkDate=!00-00-00!)
+vtFormula:=vtFormula+Get localized string("Unit No")+":"+$LastUnit+Get localized string("OccupRptMethod18")+Char(13)
+End if 
+Else 
+If ($LastDate#[Unit]MoveIn)
+vtFormula:=vtFormula+Get localized string("Unit No")+":"+$LastUnit+Get localized string("OccupRptMethod19")+Char(13)
+End if 
+If ($LinkDate#!00-00-00!)
+vtFormula:=vtFormula+Get localized string("Unit No")+":"+$LastUnit+Get localized string("OccupRptMethod20")+Char(13)
+End if 
+End if 
+End if 
+//End if 
+$LastUnit:=[UnitHistory]UnitNo
+$LastDate:=[UnitHistory]MoveIn
+$LinkDate:=[UnitHistory]MoveOut
+$LastAgree:=[UnitHistory]AgreeNo
+RELATE ONE([UnitHistory]UnitNo)
+End if 
+NEXT RECORD([UnitHistory])
+End for 
+CLOSE WINDOW
+READ ONLY([UnitHistory])
+If (vtFormula>"") & ($Web=False)
+vTitle:=Get localized string("Unit History Errors")
+vtFormula:=Get localized string("The following errors must be corrected before printing an Occupancy Report for a date other than today.")+":"+Char(13)+Char(13)+vtFormula
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Unit History Errors"))
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+//CONFIRM("Attempt to correct the UnitHistory errors? (This will require changing some UnitH"+"istory Moveout Dates)";"Yes, Correct";"No, Cancel")
+//If (OK=1)
+//$0:=CheckUnitHistSeq (True)
+//Else 
+$0:=False
+//End if 
+Else 
+$0:=True
+End if 

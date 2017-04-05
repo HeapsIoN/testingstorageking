@@ -1,0 +1,260 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//18/08/15 DAM Commented the code below as it triggers an alertmessage during processing payment for customers
+//LogAction (False;"Emails sent.")  // records this in the eventlog
+
+C_LONGINT($i;$j;$x;$y;$z)
+C_TEXT($Pathname;$Body;$Attach;$Host;$IT_SetTimeOut;$IT_Version;$IT_SetPort;$moreDetails)
+C_TEXT($vName;$vName1)// Initialize the variables
+C_LONGINT($vState;$vState1)
+C_LONGINT($vTimeSpent;$vTimeSpent1)
+
+$moreDetails:=""
+Open window(20;50;300;150;0;Get localized string("Progress"))
+For ($m;1;Records in selection([Message]))
+GOTO XY(2;2)
+MESSAGE("Sending "+String($m)+" of "+String(Records in selection([Message]))+"    ")
+ARRAY TEXT(aText;0)
+$Attach:=[Message]Attachments
+$Pathname:=""
+For ($z;1;2)
+$BlobPointer:=Field(19;13+$z)
+If (BLOB size($BlobPointer->)>0)
+EXPAND BLOB($BlobPointer->)
+$j:=Position(Char(13);$Attach;0;*)
+If ($j>0)
+$File:=Substring($Attach;1;$j-1)
+$Attach:=Substring($Attach;$j+1)
+Else 
+$File:=$Attach
+$Attach:=""
+End if 
+$File:=<>sPDFDocsPath+$File
+If ((Test path name($File)=Is a document))
+GET DOCUMENT PROPERTIES($File;$Locked;$Inv;$Date1;$Time1;$Date2;$Time2)
+If ($Locked)
+$File:=Replace string($File;".pdf";"a.pdf")
+End if 
+DELETE DOCUMENT($File)
+End if 
+BLOB TO DOCUMENT($File;$BlobPointer->)
+COMPRESS BLOB($BlobPointer->)
+$Pathname:=$Pathname+$File+Char(13)
+End if 
+End for 
+$Attach:=$Pathname+$Attach
+While (Length($Attach)>1)
+$j:=Position(Char(13);$Attach;0;*)
+If ($j<1)
+$j:=1000
+End if 
+$Pathname:=Substring($Attach;1;$j-1)
+If (Test path name($Pathname)=Is a document)
+INSERT IN ARRAY(aText;0)
+aText{1}:=$Pathname
+Else 
+[Message]Attachments:=Replace string([Message]Attachments;$Pathname;"")
+[Message]Attachments:=Replace string([Message]Attachments;Char(13)+Char(13);Char(13);*)
+End if 
+$Attach:=Substring($Attach;$j+1)
+End while 
+//[Message]Address:=CheckEmailAddr ([Message]Address)
+If ([Message]Address#"")
+C_LONGINT($PositionComa;$start;$vlResult;$i;$lengthfound)
+ARRAY INTEGER($ArrayPositionComa;0)
+
+$PositionComa:=0
+$email:=""
+$start:=1
+$PositionComa:=Length([Message]Address)
+$look:=","
+$i:=1
+APPEND TO ARRAY($ArrayPositionComa;0)
+//fb10422
+//Repeat 
+//$vlResult:=Position($look;[Message]Address;$start;$lengthfound)
+//$start:=$start+$lengthfound
+//$lengthfound:=Length([Message]Address)-$start
+//If ($vlResult>0)
+//$PositionComa:=$vlResult
+//If ($PositionComa#$ArrayPositionComa{$i})
+//If ($i=1)
+//$ArrayPositionComa{$i}:=$PositionComa
+//Else 
+//APPEND TO ARRAY($ArrayPositionComa;$PositionComa)
+//$i:=$i+1
+//End if 
+//End if 
+//End if 
+//Until ($vlResult=0)
+
+Repeat 
+$vlResult:=Position($look;[Message]Address;$start)
+If ($vlResult>0)
+$PositionComa:=$vlResult
+APPEND TO ARRAY($ArrayPositionComa;$PositionComa)
+$start:=$start+$PositionComa-$ArrayPositionComa{$i}
+$i:=$i+1
+End if 
+Until ($vlResult=0)
+
+
+If (($i=1) & ($ArrayPositionComa{$i}=0))
+[Message]Address:=CheckEmailAddr ([Message]Address;True)
+Else 
+$i:=1
+$start:=1
+$emailCheck:=""
+$emailResualt:=""
+For ($i;1;Size of array($ArrayPositionComa)-1)
+//For ($i;1;Size of array($ArrayPositionComa))//fb10422
+//$email:=Substring([Message]Address;$start;$ArrayPositionComa{$i}-1)
+//$start:=$ArrayPositionComa{$i}+1
+
+$email:=Substring([Message]Address;$start;$ArrayPositionComa{$i+1}-$ArrayPositionComa{$i}-1)
+$start:=$ArrayPositionComa{$i+1}+1
+$emailCheck:=CheckEmailAddr ($email;True)
+
+If ($emailCheck="")
+$i:=Size of array($ArrayPositionComa)
+[Message]Address:=""
+Else 
+$emailResualt:=$emailResualt+$emailCheck+$look
+End if 
+End for 
+$email:=""
+If ([Message]Address#"")
+$i:=Size of array($ArrayPositionComa)
+$i:=$ArrayPositionComa{$i}+1
+$email:=Substring([Message]Address;$i;Length([Message]Address))
+$emailCheck:=CheckEmailAddr ($email;True)
+If ($emailCheck="")
+$i:=Size of array($ArrayPositionComa)
+[Message]Address:=""
+$emailResualt:=""
+Else 
+$emailResualt:=$emailResualt+$emailCheck
+End if 
+[Message]Address:=$emailResualt
+End if 
+End if 
+End if 
+If ([Message]Address="@storman.com@") & ([Message]Address#"@userlist@") & (Current user#"Designer")//Don't want them sending details to the whole list
+SetFacility (False)
+If (BLOB size([Message]EmailMsg)>0)
+$Body:=Convert to text([Message]EmailMsg;"UTF-8")+Char(13)+Char(13)+"Licence Details: Code "+[Facility]UserCode+Char(13)
+Else 
+$Body:=[Message]MsgBody+Char(13)+Char(13)+"Licence Details: Code "+[Facility]UserCode+Char(13)
+End if 
+$Body:=$Body+[Facility]BusinessName+":"+String(Length([Facility]BusinessName))+Char(13)
+$Body:=$Body+[Facility]FacilityName+":"+String(Length([Facility]FacilityName))+Char(13)
+$Body:=$Body+[Facility]CompanyName+":"+String(Length([Facility]CompanyName))+Char(13)
+$Body:=$Body+String([Facility]MaxUnits)+":Country "+String([Facility]Country)+":"+String([Facility]Version)
+$Body:=$Body+":Gate "+GetStringfromBoolean (<>tGateSys;"On";"Off")+":GateType "+String([Facility]GateSysType)
+$Body:=$Body+":Rented "+GetStringfromBoolean ([Facility]LicRentExpWarn;"Yes";"No")+":Tutorial "+GetStringfromBoolean ([Facility]TutorialData;"Yes";"No")
+$Body:=$Body+":Upgrades/Rent PaidTo "+String([Facility]UpgradesPaidTo)+":Expiry "+String([Facility]LicExpiryDate)+Char(13)
+PLATFORM PROPERTIES($x;$y;$z)
+$Body:=$Body+":Platform "+String($x)+","+String($y)+","+String($z)+" :Engine "+Application version(*)+" :Datafile "+Data file+Char(13)
+For ($j;1;Get last table number)
+$Body:=$Body+String(Records in table(Table($j)->))+":"
+End for 
+If (<>tClient)
+$Body:=$Body+"Client/Server"
+Else 
+$Body:=$Body+"Size "+String(Round(Get document size(Data file)/1024/1024;3);"#,###.000")+"MB"
+End if 
+$Body:=$Body+Char(13)+"Phone "+[Facility]Phone+":Fax "+[Facility]Fax+":Email "+[Facility]EmailAddress+Char(13)
+Else 
+If (BLOB size([Message]EmailMsg)>0)
+$Body:=Convert to text([Message]EmailMsg;"UTF-8")
+Else 
+$Body:=[Message]MsgBody
+End if 
+End if 
+vtEmail:=[Message]Address
+
+//16/04/14
+If (<>IPLATFORM#3)
+$Pos:=Position("file://";$Body)
+While ($Pos>0)
+$PosNext:=Position("/";$Body;$Pos+7)
+$Nochar:=$PosNext-$Pos-7
+$HardDrive:=Substring($Body;$Pos+7;$Nochar)
+$Body:=Replace string($Body;"file://"+$HardDrive;"")
+$Pos:=Position("file://";$Body)
+End while 
+Else 
+$Body:=Replace string($Body;"file:///";"")
+End if 
+
+
+$PortPos:=Position(":";[Facility]SmtpHostName)
+If ($PortPos>0)
+$PortString:=Substring([Facility]SmtpHostName;$PortPos+1)
+Else 
+$PortString:="25"
+End if 
+If ($PortPos>0)
+$Host:=Substring([Facility]SmtpHostName;1;$PortPos-1)
+Else 
+$Host:=[Facility]SmtpHostName
+End if 
+$SMTPSSL:=[Facility]SMTPSSL
+$POP3SSL:=[Facility]POP3SSL
+$Port:=Num($PortString)
+If ($SMTPSSL=1)
+$err:=IT_SetPort (12;$Port)
+Else 
+$err:=IT_SetPort (2;$Port)
+End if 
+$IT_SetPort:=String($err)
+$moreDetails:=$moreDetails+Char(13)
+$moreDetails:=" IT_SetPort:"+$IT_SetPort+Char(13)
+$moreDetails:=" IT_SetPort Description:"+IT_ErrorText ($err)+Char(13)
+C_BLOB($SubjectBlob)
+CONVERT FROM TEXT([Message]Subject;"UTF-8";$SubjectBlob)
+$Subject:=Convert to text($SubjectBlob;"UTF-8")
+EMail_Send_SetPreferences ($Host;[Facility]EmailAddress;[Facility]SMTPLogin;[Facility]SMTPPassword)
+PROCESS PROPERTIES(Current process;$vName1;$vState1;$vTimeSpent1)
+$err:=IT_SetTimeOut (120)
+$IT_SetTimeOut:=String($err)
+$IT_Version:=IT_Version 
+$moreDetails:=$moreDetails+" IT_SetTimeOut:"+$IT_SetTimeOut+Char(13)
+$moreDetails:=$moreDetails+" IT_SetTimeOut Description:"+IT_ErrorText ($err)+Char(13)
+$moreDetails:=$moreDetails+" IT_Version:"+$IT_Version+Char(13)
+$err:=IT_TCPversion ($stackKind;$stackVersion)
+$moreDetails:=$moreDetails+" IT_TCPversion: "+String($err)+" (stackKind:"+String($stackKind)+" / stackVersion:"+String($stackVersion)+")"+Char(13)
+$err:=IT_MyTCPAddr ($ip_Address;$subnet)
+$moreDetails:=$moreDetails+" IT_MyTCPAddr: "+String($err)+" (ip_Address:"+String($ip_Address)+" / subnet:"+String($subnet)+")"+Char(13)
+$err:=EMail_Send ($Subject;$Body;[Message]Address;"";"";->aText;$SMTPSSL)
+PROCESS PROPERTIES(Current process;$vName;$vState;$vTimeSpent)
+$moreDetails:=$moreDetails+" The cumulative time that the EMail_Send_SetPreferences process has used since it started, in ticks (1/60th of a second) is :"+String($vTimeSpent1)+Char(13)
+$moreDetails:=$moreDetails+" The cumulative time that the EMail_Send process has used since it started, in ticks (1/60th of a second) is :"+String($vTimeSpent)+Char(13)
+//RNE1 Added to resolve  FB:11219
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")//is ezidebit
+If (Num(Substring(GetTextNo ([Facility]MerchantDetails;7;",");1;1))=1) | (Num(Substring(GetTextNo ([Facility]MerchantDetails;7;",");1;1))=2)
+SyncRecordLog ("SendEmail Address: "+[Message]Address+" Body: "+String(Length($Body))+" Error: "+String($err)+" "+Get localized string("Description")+": "+IT_ErrorText ($err)+" "+$moreDetails)
+End if 
+Else 
+If (Num(Substring(GetTextNo ([Facility]MerchantDetails;5;",");1;1))=1) | (Num(Substring(GetTextNo ([Facility]MerchantDetails;5;",");1;1))=2)
+SyncRecordLog ("SendEmail Address: "+[Message]Address+" Body: "+String(Length($Body))+" Error: "+String($err)+" "+Get localized string("Description")+": "+IT_ErrorText ($err)+" "+$moreDetails)
+End if 
+End if 
+If ($err=0)
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]SentRead:=True
+SAVE RECORD([Message])
+Else 
+ErrorMail ("SMTP";$err)
+End if 
+$err:=IT_SetTimeOut (30)
+
+//If (SendEmail ([Message]Address;[Message]Subject;$Body;(Size of array(aText)>0)))
+//[Message]MsgDate:=Current date
+//[Message]MsgTime:=Current time
+//[Message]SentRead:=True
+//SAVE RECORD([Message])
+//End if 
+NEXT RECORD([Message])
+End for 
+CLOSE WINDOW

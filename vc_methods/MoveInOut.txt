@@ -1,0 +1,312 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//Unit or customer to find if specified
+C_LONGINT($2)//No of ticks to pause
+C_BOOLEAN($3)//If converted
+C_BOOLEAN($4)
+SET MENU BAR(3)
+READ ONLY(*)
+If (Count parameters=2)
+DELAY PROCESS(Current process;$2)
+End if 
+SetCurrentUser 
+SetFacility 
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Letters])
+READ WRITE([PhotosCards])
+READ WRITE([NotesHistory])
+READ WRITE([Unit])
+vConverted:=False
+vEditMode:=False
+If (Count parameters>2)
+vConverted:=$3
+If (Count parameters>3)
+vEditMode:=True
+End if 
+End if 
+ARRAY TEXT(ArrivedBoxes;0)
+tRejectPIN:=False
+tRejectBankAcct:=False
+tRentTrx:=False
+//04/07/13 for Vault Ins
+vInsureValue:=0
+vInsureCertNo:=""
+//Define arrays
+bFind:=0
+bImport:=0
+vWords:=""
+vtFormula:=""
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+vLegend:=""
+vbFrom:=False
+vReportSettings:=[Facility]ReportSettings
+If (vReportSettings[[7]]="C") & (Current user#"Designer")//Code to be removed in final release
+vReportSettings[[7]]:="Z"
+End if 
+If (vReportSettings[[7]]#"A") & (vReportSettings[[7]]#"B") & (vReportSettings[[7]]#"C")
+vReportSettings[[7]]:="B"
+Case of 
+: (Screen width>1000)
+vReportSettings[[7]]:="A"//In the future this will be "C"
+: (Screen width>750)
+vReportSettings[[7]]:="A"
+Else 
+//Do Nothing
+End case 
+End if 
+Case of 
+: (<>sProduct="@R")
+FORM SET INPUT([Agreement];"MoveInRR")
+ARRAY TEXT(aPageNo;9)
+aPageNo{1}:=Get localized string("Agreement Info")
+aPageNo{2}:=Get localized string("Customer Info")+" 1"
+aPageNo{3}:=Get localized string("Customer Info")+" 2"
+aPageNo{4}:=Get localized string("Autopay/Notices")
+aPageNo{5}:=Get localized string("Insurance")
+aPageNo{6}:=Get localized string("Transactions")
+aPageNo{7}:=Get localized string("Terminations")
+aPageNo{8}:=Get localized string("Notes & Alerts")
+aPageNo{9}:=Get localized string("Event Log")
+: (<>sProduct="@B")
+FORM SET INPUT([Agreement];"MoveIn")
+ARRAY TEXT(aPageNo;10)//29/05/13 DAM Moved Boad Info to the second place
+aPageNo{1}:=Get localized string("Agreement Info")
+aPageNo{2}:=Get localized string("Customer Info")+" 1"
+aPageNo{3}:=Get localized string("Customer Info")+" 2"
+aPageNo{4}:=Get localized string("Autopay/Notices")
+aPageNo{5}:=Get localized string("Access & Insrnc")
+aPageNo{6}:=Get localized string("Transactions")
+aPageNo{7}:=Get localized string("Departure")
+aPageNo{8}:=Get localized string("Notes & Alerts")
+aPageNo{9}:=Get localized string("Event Log")
+aPageNo{10}:=Get localized string("Boat Info")
+//aPageNo{10}:=Get localized string("Boat Info")
+
+: (<>sProduct="@T")
+FORM SET INPUT([Agreement];"MoveIn")
+ARRAY TEXT(aPageNo;10)
+aPageNo{1}:=Get localized string("Agreement Info")
+aPageNo{2}:=Get localized string("Customer Info")+" 1"
+aPageNo{3}:=Get localized string("Customer Info")+" 2"
+aPageNo{4}:=Get localized string("Autopay/Notices")
+aPageNo{5}:=Get localized string("Access & Insrnc")
+aPageNo{6}:=Get localized string("Transactions")
+aPageNo{7}:=Get localized string("Move Out")
+aPageNo{8}:=Get localized string("Notes & Alerts")
+aPageNo{9}:=Get localized string("Event Log")
+aPageNo{10}:=Get localized string("Customer Info")+" 3"
+Else 
+FORM SET INPUT([Agreement];"MoveIn")
+ARRAY TEXT(aPageNo;9)
+aPageNo{1}:=Get localized string("Agreement Info")
+aPageNo{2}:=Get localized string("Customer Info")+" 1"
+aPageNo{3}:=Get localized string("Customer Info")+" 2"
+aPageNo{4}:=Get localized string("Autopay/Notices")
+aPageNo{5}:=Get localized string("Access & Insrnc")
+aPageNo{6}:=Get localized string("Transactions")
+If (<>sProduct="@B")
+aPageNo{7}:=Get localized string("Departure")
+Else 
+aPageNo{7}:=Get localized string("Move Out")
+End if 
+aPageNo{8}:=Get localized string("Notes & Alerts")
+aPageNo{9}:=Get localized string("Event Log")
+If ([Facility]FacilityCode="ST@")
+ARRAY TEXT(aPageNo;10)
+aPageNo{10}:="SU"
+End if 
+//If (<>sFacility="KE@") Removed till CC is active
+//INSERT IN ARRAY(aPageNo;10)
+//aPageNo{10}:="Responses & Story"
+//End if 
+End case 
+
+//If (Is compiled mode=False)
+//ConfirmTwo ("Do you want to use the new agreement form?")
+//If (OK=1)
+//FORM SET INPUT([Agreement];"MoveInNew")
+//End if 
+//End if 
+
+If (vEditMode=True)
+FORM SET INPUT([Agreement];"MoveInEdit")
+End if 
+
+aPageNo:=1
+ARRAY TEXT(aDesc;3)
+aDesc{1}:=Get localized string("Customer Code")
+aDesc{2}:=Get localized string("Agreement Number")
+aDesc{3}:=Get localized string("Unit Number")
+aDesc:=1
+ARRAY TEXT(asAgreemt;3)
+asAgreemt{1}:=Get localized string("All Agreements")
+asAgreemt{2}:=Get localized string("Active Agreements")
+asAgreemt{3}:=Get localized string("Inactive Agreements")
+asAgreemt:=2
+ARRAY TEXT(asSortby;5)
+asSortBy{1}:=Get localized string("Agree't")
+asSortBy{2}:=Get localized string("Alpha Order")
+asSortBy{3}:=Get localized string("Move In Date")
+asSortBy{4}:=<>vtUnitsCap+Get localized string("No1")
+asSortBy{5}:=Get localized string("Move Out Date")
+asSortBy:=[Facility]AgreemtSortDefault
+If (asSortBy<1)
+asSortBy:=1
+End if 
+ReadCountryCodeXML 
+ARRAY TEXT(asMailCountries;246)
+ARRAY TEXT(asAltCountries;246)
+ARRAY TEXT(asTerCountries;246)
+ARRAY TEXT(asQuadCountries;246)
+COPY ARRAY(asCountries;asTerCountries)
+COPY ARRAY(asCountries;asQuadCountries)
+COPY ARRAY(asCountries;asMailCountries)
+COPY ARRAY(asCountries;asAltCountries)
+ARRAY TEXT(asNotesList;0)
+ARRAY TEXT(asNotesSortList;0)
+ARRAY TEXT(asList1;0)
+ARRAY TEXT(asList2;0)
+ARRAY TEXT(asList3;0)
+ARRAY TEXT(asList4;0)
+ARRAY TEXT(asList5;0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MS";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList1)
+INSERT IN ARRAY(asList1;1)
+asList1{1}:="<None>"
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList2)
+INSERT IN ARRAY(asList2;1)
+asList2{1}:="<None>"
+QUERY([MarketingTypes];[MarketingTypes]ListCode="BT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList3)
+INSERT IN ARRAY(asList3;1)
+asList3{1}:="<None>"
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MW";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList4)
+INSERT IN ARRAY(asList4;1)
+asList4{1}:="<None>"
+ARRAY TEXT(asListIDType;0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="FI";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asListIDType)
+INSERT IN ARRAY(asListIDType;1)
+asListIDType{1}:="<None>"
+QUERY([MarketingTypes];[MarketingTypes]ListCode="RM";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asList5)
+INSERT IN ARRAY(asList5;1)
+asList5{1}:="<None>"
+QUERY([MarketingTypes];[MarketingTypes]ListCode="NC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asNotesList)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="NC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+SELECTION TO ARRAY([MarketingTypes]Description;asNotesSortList)
+INSERT IN ARRAY(asNotesList;1)
+asNotesList{1}:="<None>"
+INSERT IN ARRAY(asNotesSortList;1)
+asNotesSortList{1}:="All"
+asNotesSortList:=1
+vtReverse:=False
+LoadAnlsArrays (True;False)
+DEFAULT TABLE([Agreement])
+FORM SET OUTPUT([Agreement];"UnitHistOut")
+Open window((Screen width/2)-425;(Screen height/2)-306;(Screen width/2)+425;(Screen height/2)+346;4;Get localized string("Processing Customer"))
+bAdd:=0
+tFindWindow:=False
+vExisting:=""
+If (<>tFind=True)
+If (Count parameters>0)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+$1)
+If (Records in selection([Agreement])=1)
+FindCust ($1;3)//Find by agreement no
+Else 
+If (Records in selection([Agreement])>1)
+If (asUnit>0) & (asUnit<Size of array(asUnit))//SDD 31/08/11 Added this line to stop Array Range Check Error on next line
+$1:=asUnit{asUnit}
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+asUnit{asUnit})
+End if 
+If (Records in selection([Unit])=1) & ([Unit]Vacant=False)
+FindCust ($1)//Find by unit
+Else 
+bAdd:=1
+vExisting:=$1
+ADD RECORD(*)
+End if 
+Else 
+QUERY([Agreement];[Agreement]CustomerCode=$1;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)//This added in v4 in case there is an old agreem't
+If (Records in selection([Agreement])=1)
+FindCust ($1;2)//Find by cust code
+Else 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+$1)
+If (Records in selection([Unit])=1) & ([Unit]Vacant=False) & (<>vSubletUnitNo="")
+FindCust ($1)//Find by unit
+Else 
+bAdd:=1
+vExisting:=$1
+ADD RECORD(*)
+End if 
+End if 
+End if 
+End if 
+Else 
+FindCust 
+End if 
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"#@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo#"@MISCL";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+Case of 
+: (asSortBy=1)
+ORDER BY([Agreement];[Agreement]AgreeNo;<)
+: (asSortBy=2)
+//ORDER BY([Agreement];[Agreement]CustomerCode;>)
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Agreement];[Customer]CustomerName;>)
+SET AUTOMATIC RELATIONS(False;False)
+: (asSortBy=3)
+ORDER BY([Agreement];[Agreement]MoveIn;<)
+: (asSortBy=4)
+ORDER BY([Agreement];[Agreement]UnitsOccup;>)
+: (asSortBy=5)
+ORDER BY([Agreement];[Agreement]MoveOut;<)
+Else 
+//Do Nothing
+End case 
+If (Screen height>401) | (Records in selection=1)
+MODIFY SELECTION(*)
+Else 
+MODIFY SELECTION
+End if 
+End if 
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]FieldSettings:=<>FieldSettings
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+CloseWindow 

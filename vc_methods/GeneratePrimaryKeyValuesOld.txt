@@ -1,0 +1,935 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+//For every Facility record in the current selection, generate PrimaryKey for each Syncing Table.   Verify that no tables already have PrimaryKey values and regenerate if optional parameter is 'true'
+
+C_BOOLEAN($1;$Regenerate;vbSyncingOn;vbGateOn)//Optionally regenerate PrimaryKey values if parameter is 'true'
+$Regenerate:=False
+$NoPrimaryKeys:=False
+vbSyncingOn:=False
+vbGateOn:=<>tGateOn//Store the Gate on state
+
+AlertMessage (Get localized string("The Gate System will now be temporarily be disabled while the Primary Keys are being generated."))
+If (vbGateOn=True)
+<>iSetGate:=9//Temporarily turn Gate System off
+End if 
+
+If (UpdateSystem (60;->vbSyncingOn;Get localized string("Unable to disable syncing as Facility record is locked, Primary Key generation has been cancelled! - Please correct and run 'GeneratePrimaryKeyValues' method."))=True)//Syncing has been successfully been turned off 
+
+FLUSH BUFFERS
+
+$WinRef:=Open window(Screen width-260;35;Screen width-20;135;-Palette form window)
+
+
+//If Multiple Facilities have Product Code 'M@' then error
+CREATE SET([Facility];"StoreFacilities")
+QUERY([Facility];[Facility]ProductCode="M@")
+If (Records in selection([Facility])<=1) | (Records in table([Facility])=1)
+USE SET("StoreFacilities")
+CLEAR SET("StoreFacilities")
+
+//Disable Activity and EventLog record creation
+READ WRITE([UserLogins])
+LOAD RECORD([UserLogins])
+[UserLogins]RecordStatus:=3
+SAVE RECORD([UserLogins])
+READ ONLY([UserLogins])
+LOAD RECORD([UserLogins])
+
+//If 'Regenerate' parameter = true then do not overwrite if already present
+LOAD RECORD([Facility])
+CREATE SET([Facility];"SelectedFacilities")
+QUERY SELECTION([Facility];[Facility]PrimaryKeyMin#0;*)
+QUERY SELECTION([Facility]; & ;[Facility]PrimaryKeyMax#0)
+CREATE SET([Facility];"SelectedFacilitiesWithRanges")
+
+FIRST RECORD([Facility])
+For ($FacilityCounter;1;Records in selection([Facility]))
+C_LONGINT($PrimaryKeyMin)
+$PrimaryKeyMin:=[Facility]PrimaryKeyMin
+$PrimaryKeyMax:=[Facility]PrimaryKeyMax
+$ProductCode:=[Facility]ProductCode
+
+
+QUERY([Unit];[Unit]RUnitNo=[Facility]FacilityCode+"@")//[Unit]UnitNo  `A15
+CREATE SET([Unit];"UnitAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Unit];[Unit]PrimaryKey>=0)
+End if 
+CREATE SET([Unit];"UnitBad")
+
+
+QUERY([Agreement];[Agreement]CustomerCode=[Facility]FacilityCode+"@")//[Agreement]CustomerCode  `A10
+CREATE SET([Agreement];"AgreementAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Agreement];[Agreement]PrimaryKey>=0)
+End if 
+CREATE SET([Agreement];"AgreementBad")
+
+
+QUERY([Customer];[Customer]CustomerCode=[Facility]FacilityCode+"@")//[Customer]CustomerCode  `A10
+CREATE SET([Customer];"CustomerAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Customer];[Customer]PrimaryKey>=0)
+End if 
+CREATE SET([Customer];"CustomerBad")
+
+
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@")//[Transaction]AgreeNo  `A10
+CREATE SET([Trxs];"TransactionAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Trxs];[Trxs]PrimaryKey>=0)
+End if 
+CREATE SET([Trxs];"TransactionBad")
+
+
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"@")//[Analysis]Code  `A8
+CREATE SET([Analysis];"AnalysisAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Analysis];[Analysis]PrimaryKey>=0)
+End if 
+CREATE SET([Analysis];"AnalysisBad")
+
+
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode)//[Notices]FacilityCode  `A5
+CREATE SET([Notices];"NoticesAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Notices];[Notices]PrimaryKey>=0)
+End if 
+CREATE SET([Notices];"NoticesBad")
+
+QUERY([Letters];[Letters]ContactNo=[Facility]FacilityCode+"@";*)//[Letters]ContactNo | [Letters]AgreeNo  `A10
+QUERY([Letters]; | ;[Letters]AgreeNo=[Facility]FacilityCode+"@")
+CREATE SET([Letters];"LettersAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Letters];[Letters]PrimaryKey>=0)
+End if 
+CREATE SET([Letters];"LettersBad")
+
+QUERY([Contacts];[Contacts]Facility=[Facility]FacilityCode)//[Contacts]Facility  `A5
+CREATE SET([Contacts];"ContactsAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Contacts];[Contacts]PrimaryKey>=0)
+End if 
+CREATE SET([Contacts];"ContactsBad")
+
+
+QUERY([GateLog];[GateLog]CustCode=[Facility]FacilityCode+"@")//[GateLog]CustCode  `A10
+CREATE SET([GateLog];"GateLogAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([GateLog];[GateLog]PrimaryKey>=0)
+End if 
+CREATE SET([GateLog];"GateLogBad")
+
+
+QUERY([PhotosCards];[PhotosCards]Code=[Facility]FacilityCode+"@")//[PhotosCards]Code  `A10
+CREATE SET([PhotosCards];"PhotosCardsAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([PhotosCards];[PhotosCards]PrimaryKey>=0)
+End if 
+CREATE SET([PhotosCards];"PhotosCardsBad")
+
+
+QUERY([MarketingTypes];[MarketingTypes]Facility=[Facility]FacilityCode)//[MarketingTypes]Facility  `A5
+CREATE SET([MarketingTypes];"MarketingTypesAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([MarketingTypes];[MarketingTypes]PrimaryKey>=0)
+End if 
+CREATE SET([MarketingTypes];"MarketingTypesBad")
+
+
+QUERY([Reservation];[Reservation]CustomerCode=[Facility]FacilityCode+"@")//[Reservation]CustomerCode  `A10
+CREATE SET([Reservation];"ReservationAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Reservation];[Reservation]PrimaryKey>=0)
+End if 
+CREATE SET([Reservation];"ReservationBad")
+
+
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Facility]FacilityCode+"@")//[UnitHistory]AgreeNo  `A10
+CREATE SET([UnitHistory];"UnitHistoryAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([UnitHistory];[UnitHistory]PrimaryKey>=0)
+End if 
+CREATE SET([UnitHistory];"UnitHistoryBad")
+
+
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Facility]FacilityCode+"@")//[NotesHistory]CustomerCode  `A10
+CREATE SET([NotesHistory];"NotesHistoryAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([NotesHistory];[NotesHistory]PrimaryKey>=0)
+End if 
+CREATE SET([NotesHistory];"NotesHistoryBad")
+
+
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=[Facility]FacilityCode+"@")
+CREATE SET([UnitStatusTrx];"UnitStatusTrxAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([UnitStatusTrx];[UnitStatusTrx]PrimaryKey>=0)
+End if 
+CREATE SET([UnitStatusTrx];"UnitStatusTrxBad")
+
+
+QUERY([Quote];[Quote]AnalysisCode=[Facility]FacilityCode+"@")
+CREATE SET([Quote];"QuoteAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Quote];[Quote]PrimaryKey>=0)
+End if 
+CREATE SET([Quote];"QuoteBad")
+
+
+QUERY([Pictures];[Pictures]Facility=[Facility]FacilityCode)
+CREATE SET([Pictures];"PicturesAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([Pictures];[Pictures]PrimaryKey>=0)
+End if 
+CREATE SET([Pictures];"PicturesBad")
+
+
+QUERY([UnitType];[UnitType]RUnitType=[Facility]FacilityCode+"@")
+CREATE SET([UnitType];"UnitTypeAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([UnitType];[UnitType]PrimaryKey>=0)
+End if 
+CREATE SET([UnitType];"UnitTypeBad")
+
+
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=[Facility]FacilityCode+"@")
+CREATE SET([MerchPlan];"MerchPlanAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([MerchPlan];[MerchPlan]PrimaryKey>=0)
+End if 
+CREATE SET([MerchPlan];"MerchPlanBad")
+
+
+QUERY([BillPlan];[BillPlan]Code=[Facility]FacilityCode+"@")
+CREATE SET([BillPlan];"BillPlanAll")
+If ($ProductCode#"M@")
+QUERY SELECTION([BillPlan];[BillPlan]PrimaryKey>=0)
+End if 
+CREATE SET([BillPlan];"BillPlanBad")
+
+
+$Choice:=0
+$Choice:=ConfirmThree (Get localized string("Do you wish to assign Primary Key values to")+" "+[Facility]FacilityCode+" "+Get localized string("records created at MV AND the Site, or only records created at the Site?");Get localized string("Site Only");Get localized string("MV AND Site");Get localized string("Cancel"))
+
+If ($Choice=1) | ($Choice=2)//Records out of range or All Records
+SET INDEX([Unit]PrimaryKey;False)
+SET INDEX([Agreement]PrimaryKey;False)
+SET INDEX([Customer]PrimaryKey;False)
+SET INDEX([Trxs]PrimaryKey;False)
+SET INDEX([Analysis]PrimaryKey;False)
+SET INDEX([Notices]PrimaryKey;False)
+SET INDEX([Letters]PrimaryKey;False)
+SET INDEX([Contacts]PrimaryKey;False)
+SET INDEX([GateLog]PrimaryKey;False)
+SET INDEX([PhotosCards]PrimaryKey;False)
+SET INDEX([MarketingTypes]PrimaryKey;False)
+SET INDEX([Reservation]PrimaryKey;False)
+SET INDEX([UnitHistory]PrimaryKey;False)
+SET INDEX([NotesHistory]PrimaryKey;False)
+SET INDEX([UnitStatusTrx]PrimaryKey;False)
+SET INDEX([Quote]PrimaryKey;False)
+SET INDEX([Pictures]PrimaryKey;False)
+SET INDEX([UnitType]PrimaryKey;False)
+SET INDEX([MerchPlan]PrimaryKey;False)
+SET INDEX([BillPlan]PrimaryKey;False)
+
+//Generate Primary Key values for [Unit] table
+READ WRITE([Unit])
+If ($Choice=1)
+USE SET("UnitBad")
+Else 
+USE SET("UnitAll")
+End if 
+ORDER BY([Unit];[Unit]RUnitNo;>)
+APPLY TO SELECTION([Unit];[Unit]PrimaryKey:=0)
+$UnitCount:=Records in selection([Unit])
+ERASE WINDOW
+FIRST RECORD([Unit])
+LOAD RECORD([Unit])
+For ($UnitCounter;1;$UnitCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Unit")+" "+String($UnitCounter)+" "+Get localized string("of")+" "+String($UnitCount)+"    ")
+If ($ProductCode="M@")
+[Unit]PrimaryKey:=$PrimaryKeyMin-$UnitCounter+1
+Else 
+[Unit]PrimaryKey:=$PrimaryKeyMin+$UnitCounter-1
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+ERASE WINDOW
+
+//Generate Primary Key values for [Agreement] table
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+If ($Choice=1)
+USE SET("AgreementBad")
+Else 
+USE SET("AgreementAll")
+End if 
+ORDER BY([Agreement];[Agreement]RAgreeNo;>)
+APPLY TO SELECTION([Agreement];[Agreement]PrimaryKey:=0)
+$AgreementCount:=Records in selection([Agreement])
+ERASE WINDOW
+FIRST RECORD([Agreement])
+LOAD RECORD([Agreement])
+For ($AgreementCounter;1;$AgreementCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Agreement")+" "+String($AgreementCounter)+" "+Get localized string("of")+" "+String($AgreementCount)+"    ")
+If ($ProductCode="M@")
+[Agreement]PrimaryKey:=$PrimaryKeyMin-$AgreementCounter+1
+Else 
+[Agreement]PrimaryKey:=$PrimaryKeyMin+$AgreementCounter-1
+End if 
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+ERASE WINDOW
+
+//Generate Primary Key values for [Customer] table
+READ WRITE([Customer])
+If ($Choice=1)
+USE SET("CustomerBad")
+Else 
+USE SET("CustomerAll")
+End if 
+ORDER BY([Customer];[Customer]CustomerCode;>)
+APPLY TO SELECTION([Customer];[Customer]PrimaryKey:=0)
+$CustomerCount:=Records in selection([Customer])
+ERASE WINDOW
+FIRST RECORD([Customer])
+LOAD RECORD([Customer])
+For ($CustomerCounter;1;$CustomerCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Customer")+" "+String($CustomerCounter)+" "+Get localized string("of")+" "+String($CustomerCount)+"    ")
+If ($ProductCode="M@")
+[Customer]PrimaryKey:=$PrimaryKeyMin-$CustomerCounter+1
+Else 
+[Customer]PrimaryKey:=$PrimaryKeyMin+$CustomerCounter-1
+End if 
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End for 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+ERASE WINDOW
+
+//Generate Primary Key values for [Transaction] table
+READ WRITE([Trxs])
+If ($Choice=1)
+USE SET("TransactionBad")
+Else 
+USE SET("TransactionAll")
+End if 
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]SeqNo;>)
+APPLY TO SELECTION([Trxs];[Trxs]PrimaryKey:=0)
+$TransactionCount:=Records in selection([Trxs])
+ERASE WINDOW
+FIRST RECORD([Trxs])
+LOAD RECORD([Trxs])
+For ($TransactionCounter;1;$TransactionCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Transaction")+" "+String($TransactionCounter)+" "+Get localized string("of")+" "+String($TransactionCount)+"    ")
+If ($ProductCode="M@")
+[Trxs]PrimaryKey:=$PrimaryKeyMin-$TransactionCounter+1
+Else 
+[Trxs]PrimaryKey:=$PrimaryKeyMin+$TransactionCounter-1
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+ERASE WINDOW
+
+//Generate Primary Key values for [Analysis] table
+READ WRITE([Analysis])
+If ($Choice=1)
+USE SET("AnalysisBad")
+Else 
+USE SET("AnalysisAll")
+End if 
+ORDER BY([Analysis];[Analysis]Code;>)
+APPLY TO SELECTION([Analysis];[Analysis]PrimaryKey:=0)
+$AnalysisCount:=Records in selection([Analysis])
+ERASE WINDOW
+FIRST RECORD([Analysis])
+LOAD RECORD([Analysis])
+For ($AnalysisCounter;1;$AnalysisCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Analysis1")+" "+String($AnalysisCounter)+" "+Get localized string("of")+" "+String($AnalysisCount)+"    ")
+If ($ProductCode="M@")
+[Analysis]PrimaryKey:=$PrimaryKeyMin-$AnalysisCounter+1
+Else 
+[Analysis]PrimaryKey:=$PrimaryKeyMin+$AnalysisCounter-1
+End if 
+SAVE RECORD([Analysis])
+NEXT RECORD([Analysis])
+End for 
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+ERASE WINDOW
+
+//Generate Primary Key values for [Notices] table
+READ WRITE([Notices])
+If ($Choice=1)
+USE SET("NoticesBad")
+Else 
+USE SET("NoticesAll")
+End if 
+ORDER BY([Notices];[Notices]FacilityCode;>;[Notices]NoticePlanNo;>;[Notices]Description;>)
+APPLY TO SELECTION([Notices];[Notices]PrimaryKey:=0)
+$NoticesCount:=Records in selection([Notices])
+ERASE WINDOW
+FIRST RECORD([Notices])
+LOAD RECORD([Notices])
+For ($NoticesCounter;1;$NoticesCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Notices")+" "+String($NoticesCounter)+" "+Get localized string("of")+" "+String($NoticesCount)+"    ")
+If ($ProductCode="M@")
+[Notices]PrimaryKey:=$PrimaryKeyMin-$NoticesCounter+1
+Else 
+[Notices]PrimaryKey:=$PrimaryKeyMin+$NoticesCounter-1
+End if 
+SAVE RECORD([Notices])
+NEXT RECORD([Notices])
+End for 
+READ ONLY([Notices])
+UNLOAD RECORD([Notices])
+ERASE WINDOW
+
+//Generate Primary Key values for [Letters] table
+READ WRITE([Letters])
+If ($Choice=1)
+USE SET("LettersBad")
+Else 
+USE SET("LettersAll")
+End if 
+ORDER BY([Letters];[Letters]ContactNo;>;[Letters]DateSent;>;[Letters]LetterDesc;>)
+APPLY TO SELECTION([Letters];[Letters]PrimaryKey:=0)
+$LettersCount:=Records in selection([Letters])
+ERASE WINDOW
+FIRST RECORD([Letters])
+LOAD RECORD([Letters])
+For ($LettersCounter;1;$LettersCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Letters")+" "+String($LettersCounter)+" "+Get localized string("of")+" "+String($LettersCount)+"    ")
+If ($ProductCode="M@")
+[Letters]PrimaryKey:=$PrimaryKeyMin-$LettersCounter+1
+Else 
+[Letters]PrimaryKey:=$PrimaryKeyMin+$LettersCounter-1
+End if 
+SAVE RECORD([Letters])
+NEXT RECORD([Letters])
+End for 
+READ ONLY([Letters])
+UNLOAD RECORD([Letters])
+ERASE WINDOW
+
+//Generate Primary Key values for [Contacts] table
+READ WRITE([Contacts])
+If ($Choice=1)
+USE SET("ContactsBad")
+Else 
+USE SET("ContactsAll")
+End if 
+ORDER BY([Contacts];[Contacts]Facility;>;[Contacts]CallDate;>;[Contacts]CallTime;>)
+APPLY TO SELECTION([Contacts];[Contacts]PrimaryKey:=0)
+$ContactsCount:=Records in selection([Contacts])
+ERASE WINDOW
+FIRST RECORD([Contacts])
+LOAD RECORD([Contacts])
+For ($ContactsCounter;1;$ContactsCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Contacts")+" "+String($ContactsCounter)+" "+Get localized string("of")+" "+String($ContactsCount)+"    ")
+If ($ProductCode="M@")
+[Contacts]PrimaryKey:=$PrimaryKeyMin-$ContactsCounter+1
+Else 
+[Contacts]PrimaryKey:=$PrimaryKeyMin+$ContactsCounter-1
+End if 
+SAVE RECORD([Contacts])
+NEXT RECORD([Contacts])
+End for 
+READ ONLY([Contacts])
+UNLOAD RECORD([Contacts])
+ERASE WINDOW
+
+//Generate Primary Key values for [GateLog] table
+READ WRITE([GateLog])
+If ($Choice=1)
+USE SET("GateLogBad")
+Else 
+USE SET("GateLogAll")
+End if 
+ORDER BY([GateLog];[GateLog]CustCode;>;[GateLog]GateDate;>;[GateLog]GateTime;>)
+APPLY TO SELECTION([GateLog];[GateLog]PrimaryKey:=0)
+$GateLogCount:=Records in selection([GateLog])
+ERASE WINDOW
+FIRST RECORD([GateLog])
+LOAD RECORD([GateLog])
+For ($GateLogCounter;1;$GateLogCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("GateLog")+" "+String($GateLogCounter)+" "+Get localized string("of")+" "+String($GateLogCount)+"    ")
+If ($ProductCode="M@")
+[GateLog]PrimaryKey:=$PrimaryKeyMin-$GateLogCounter+1
+Else 
+[GateLog]PrimaryKey:=$PrimaryKeyMin+$GateLogCounter-1
+End if 
+SAVE RECORD([GateLog])
+NEXT RECORD([GateLog])
+End for 
+READ ONLY([GateLog])
+UNLOAD RECORD([GateLog])
+ERASE WINDOW
+
+//Generate Primary Key values for [PhotosCards] table
+READ WRITE([PhotosCards])
+If ($Choice=1)
+USE SET("PhotosCardsBad")
+Else 
+USE SET("PhotosCardsAll")
+End if 
+ORDER BY([PhotosCards];[PhotosCards]Code;>;[PhotosCards]SeqNo;>)
+APPLY TO SELECTION([PhotosCards];[PhotosCards]PrimaryKey:=0)
+$PhotosCardsCount:=Records in selection([PhotosCards])
+ERASE WINDOW
+FIRST RECORD([PhotosCards])
+LOAD RECORD([PhotosCards])
+For ($PhotosCardsCounter;1;$PhotosCardsCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("PhotosCards")+" "+String($PhotosCardsCounter)+" "+Get localized string("of")+" "+String($PhotosCardsCount)+"    ")
+If ($ProductCode="M@")
+[PhotosCards]PrimaryKey:=$PrimaryKeyMin-$PhotosCardsCounter+1
+Else 
+[PhotosCards]PrimaryKey:=$PrimaryKeyMin+$PhotosCardsCounter-1
+End if 
+SAVE RECORD([PhotosCards])
+NEXT RECORD([PhotosCards])
+End for 
+READ ONLY([PhotosCards])
+UNLOAD RECORD([PhotosCards])
+ERASE WINDOW
+
+//Generate Primary Key values for [MarketingTypes] table
+READ WRITE([MarketingTypes])
+If ($Choice=1)
+USE SET("MarketingTypesBad")
+Else 
+USE SET("MarketingTypesAll")
+End if 
+ORDER BY([MarketingTypes];[MarketingTypes]Facility;>;[MarketingTypes]ListCode;>;[MarketingTypes]Description;>)
+APPLY TO SELECTION([MarketingTypes];[MarketingTypes]PrimaryKey:=0)
+$MarketingTypesCount:=Records in selection([MarketingTypes])
+ERASE WINDOW
+FIRST RECORD([MarketingTypes])
+LOAD RECORD([MarketingTypes])
+For ($MarketingTypesCounter;1;$MarketingTypesCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("MarketingTypes")+" "+String($MarketingTypesCounter)+" "+Get localized string("of")+" "+String($MarketingTypesCount)+"    ")
+If ($ProductCode="M@")
+[MarketingTypes]PrimaryKey:=$PrimaryKeyMin-$MarketingTypesCounter+1
+Else 
+[MarketingTypes]PrimaryKey:=$PrimaryKeyMin+$MarketingTypesCounter-1
+End if 
+SAVE RECORD([MarketingTypes])
+NEXT RECORD([MarketingTypes])
+End for 
+READ ONLY([MarketingTypes])
+UNLOAD RECORD([MarketingTypes])
+ERASE WINDOW
+
+//Generate Primary Key values for [Reservation] table
+READ WRITE([Reservation])
+If ($Choice=1)
+USE SET("ReservationBad")
+Else 
+USE SET("ReservationAll")
+End if 
+ORDER BY([Reservation];[Reservation]RReserveNo;>)
+APPLY TO SELECTION([Reservation];[Reservation]PrimaryKey:=0)
+$ReservationCount:=Records in selection([Reservation])
+ERASE WINDOW
+FIRST RECORD([Reservation])
+LOAD RECORD([Reservation])
+For ($ReservationCounter;1;$ReservationCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("MarketingTypes")+" "+String($ReservationCounter)+" "+Get localized string("of")+" "+String($ReservationCount)+"    ")
+If ($ProductCode="M@")
+[Reservation]PrimaryKey:=$PrimaryKeyMin-$ReservationCounter+1
+Else 
+[Reservation]PrimaryKey:=$PrimaryKeyMin+$ReservationCounter-1
+End if 
+SAVE RECORD([Reservation])
+NEXT RECORD([Reservation])
+End for 
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+ERASE WINDOW
+
+//Generate Primary Key values for [UnitHistory] table
+READ WRITE([UnitHistory])
+If ($Choice=1)
+USE SET("UnitHistoryBad")
+Else 
+USE SET("UnitHistoryAll")
+End if 
+ORDER BY([UnitHistory];[UnitHistory]UnitNo;>;[UnitHistory]AgreeNo;>;[UnitHistory]MoveIn;>)
+APPLY TO SELECTION([UnitHistory];[UnitHistory]PrimaryKey:=0)
+$UnitHistoryCount:=Records in selection([UnitHistory])
+ERASE WINDOW
+FIRST RECORD([UnitHistory])
+LOAD RECORD([UnitHistory])
+For ($UnitHistoryCounter;1;$UnitHistoryCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("UnitHistory")+" "+String($UnitHistoryCounter)+" "+Get localized string("of")+" "+String($UnitHistoryCount)+"    ")
+If ($ProductCode="M@")
+[UnitHistory]PrimaryKey:=$PrimaryKeyMin-$UnitHistoryCounter+1
+Else 
+[UnitHistory]PrimaryKey:=$PrimaryKeyMin+$UnitHistoryCounter-1
+End if 
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+ERASE WINDOW
+
+//Generate Primary Key values for [NotesHistory] table
+READ WRITE([NotesHistory])
+If ($Choice=1)
+USE SET("NotesHistoryBad")
+Else 
+USE SET("NotesHistoryAll")
+End if 
+ORDER BY([NotesHistory];[NotesHistory]CustomerCode;>;[NotesHistory]NoteDate;>;[NotesHistory]NoteTime;>)
+APPLY TO SELECTION([NotesHistory];[NotesHistory]PrimaryKey:=0)
+$NotesHistoryCount:=Records in selection([NotesHistory])
+ERASE WINDOW
+FIRST RECORD([NotesHistory])
+LOAD RECORD([NotesHistory])
+For ($NotesHistoryCounter;1;$NotesHistoryCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("NotesHistory")+" "+String($NotesHistoryCounter)+" "+Get localized string("of")+" "+String($NotesHistoryCount)+"    ")
+If ($ProductCode="M@")
+[NotesHistory]PrimaryKey:=$PrimaryKeyMin-$NotesHistoryCounter+1
+Else 
+[NotesHistory]PrimaryKey:=$PrimaryKeyMin+$NotesHistoryCounter-1
+End if 
+SAVE RECORD([NotesHistory])
+NEXT RECORD([NotesHistory])
+End for 
+READ ONLY([NotesHistory])
+UNLOAD RECORD([NotesHistory])
+ERASE WINDOW
+
+//Generate Primary Key values for [UnitStatusTrx] table
+READ WRITE([UnitStatusTrx])
+If ($Choice=1)
+USE SET("UnitStatusTrxBad")
+Else 
+USE SET("UnitStatusTrxAll")
+End if 
+ORDER BY([UnitStatusTrx];[UnitStatusTrx]UnitNo;>;[UnitStatusTrx]DateUnitStatus;>;[UnitStatusTrx]Status;>)
+APPLY TO SELECTION([UnitStatusTrx];[UnitStatusTrx]PrimaryKey:=0)
+$UnitStatusTrxCount:=Records in selection([UnitStatusTrx])
+ERASE WINDOW
+FIRST RECORD([UnitStatusTrx])
+LOAD RECORD([UnitStatusTrx])
+For ($UnitStatusTrxCounter;1;$UnitStatusTrxCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("UnitStatusTrx")+" "+String($UnitStatusTrxCounter)+" "+Get localized string("of")+" "+String($UnitStatusTrxCount)+"    ")
+If ($ProductCode="M@")
+[UnitStatusTrx]PrimaryKey:=$PrimaryKeyMin-$UnitStatusTrxCounter+1
+Else 
+[UnitStatusTrx]PrimaryKey:=$PrimaryKeyMin+$UnitStatusTrxCounter-1
+End if 
+SAVE RECORD([UnitStatusTrx])
+NEXT RECORD([UnitStatusTrx])
+End for 
+READ ONLY([UnitStatusTrx])
+UNLOAD RECORD([UnitStatusTrx])
+ERASE WINDOW
+
+//Generate Primary Key values for [Quote] table
+READ WRITE([Quote])
+If ($Choice=1)
+USE SET("QuoteBad")
+Else 
+USE SET("QuoteAll")
+End if 
+ORDER BY([Quote];[Quote]ContactNo;>;[Quote]Size;>;[Quote]SeqNo;>)
+APPLY TO SELECTION([Quote];[Quote]PrimaryKey:=0)
+$QuoteCount:=Records in selection([Quote])
+ERASE WINDOW
+FIRST RECORD([Quote])
+LOAD RECORD([Quote])
+For ($QuoteCounter;1;$QuoteCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Quote")+" "+String($QuoteCounter)+" "+Get localized string("of")+" "+String($QuoteCount)+"    ")
+If ($ProductCode="M@")
+[Quote]PrimaryKey:=$PrimaryKeyMin-$QuoteCounter+1
+Else 
+[Quote]PrimaryKey:=$PrimaryKeyMin+$QuoteCounter-1
+End if 
+SAVE RECORD([Quote])
+NEXT RECORD([Quote])
+End for 
+READ ONLY([Quote])
+UNLOAD RECORD([Quote])
+ERASE WINDOW
+
+//Generate Primary Key values for [Pictures] table
+READ WRITE([Pictures])
+If ($Choice=1)
+USE SET("PicturesBad")
+Else 
+USE SET("PicturesAll")
+End if 
+ORDER BY([Pictures];[Pictures]Facility;>)
+APPLY TO SELECTION([Pictures];[Pictures]PrimaryKey:=0)
+$PicturesCount:=Records in selection([Pictures])
+ERASE WINDOW
+FIRST RECORD([Pictures])
+LOAD RECORD([Pictures])
+For ($PicturesCounter;1;$PicturesCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Pictures")+" "+String($PicturesCounter)+" "+Get localized string("of")+" "+String($PicturesCount)+"    ")
+If ($ProductCode="M@")
+[Pictures]PrimaryKey:=$PrimaryKeyMin-$PicturesCounter+1
+Else 
+[Pictures]PrimaryKey:=$PrimaryKeyMin+$PicturesCounter-1
+End if 
+SAVE RECORD([Pictures])
+NEXT RECORD([Pictures])
+End for 
+READ ONLY([Pictures])
+UNLOAD RECORD([Pictures])
+ERASE WINDOW
+
+//Generate Primary Key values for [UnitType] table
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+If ($Choice=1)
+USE SET("UnitTypeBad")
+Else 
+USE SET("UnitTypeAll")
+End if 
+ORDER BY([UnitType];[UnitType]RUnitType;>)
+APPLY TO SELECTION([UnitType];[UnitType]PrimaryKey:=0)
+$UnitTypeCount:=Records in selection([UnitType])
+ERASE WINDOW
+FIRST RECORD([UnitType])
+LOAD RECORD([UnitType])
+For ($UnitTypeCounter;1;$UnitTypeCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("UnitType")+" "+String($UnitTypeCounter)+" "+Get localized string("of")+" "+String($UnitTypeCount)+"    ")
+If ($ProductCode="M@")
+[UnitType]PrimaryKey:=$PrimaryKeyMin-$UnitTypeCounter+1
+Else 
+[UnitType]PrimaryKey:=$PrimaryKeyMin+$UnitTypeCounter-1
+End if 
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])
+End for 
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+UNLOAD RECORD([UnitType])
+UNLOAD RECORD([RCHistory])
+ERASE WINDOW
+
+//Generate Primary Key values for [MerchPlan] table
+READ WRITE([MerchPlan])
+If ($Choice=1)
+USE SET("MerchPlanBad")
+Else 
+USE SET("MerchPlanAll")
+End if 
+ORDER BY([MerchPlan];[MerchPlan]MerchPlanID;>)
+APPLY TO SELECTION([MerchPlan];[MerchPlan]PrimaryKey:=0)
+$MerchPlanCount:=Records in selection([MerchPlan])
+ERASE WINDOW
+FIRST RECORD([MerchPlan])
+LOAD RECORD([MerchPlan])
+For ($MerchPlanCounter;1;$MerchPlanCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("MerchPlan")+" "+String($MerchPlanCounter)+" "+Get localized string("of")+" "+String($MerchPlanCount)+"    ")
+If ($ProductCode="M@")
+[MerchPlan]PrimaryKey:=$PrimaryKeyMin-$MerchPlanCounter+1
+Else 
+[MerchPlan]PrimaryKey:=$PrimaryKeyMin+$MerchPlanCounter-1
+End if 
+SAVE RECORD([MerchPlan])
+NEXT RECORD([MerchPlan])
+End for 
+READ ONLY([MerchPlan])
+UNLOAD RECORD([MerchPlan])
+ERASE WINDOW
+
+//Generate Primary Key values for [BillPlan] table
+READ WRITE([BillPlan])
+If ($Choice=1)
+USE SET("BillPlanBad")
+Else 
+USE SET("BillPlanAll")
+End if 
+ORDER BY([BillPlan];[BillPlan]Code;>)
+APPLY TO SELECTION([BillPlan];[BillPlan]PrimaryKey:=0)
+$BillPlanCount:=Records in selection([BillPlan])
+ERASE WINDOW
+FIRST RECORD([BillPlan])
+LOAD RECORD([BillPlan])
+For ($BillPlanCounter;1;$BillPlanCount)
+GOTO XY(1;2)
+MESSAGE(Get localized string("Billing Plan")+" "+String($BillPlanCounter)+" "+Get localized string("of")+" "+String($BillPlanCount)+"    ")
+If ($ProductCode="M@")
+[BillPlan]PrimaryKey:=$PrimaryKeyMin-$BillPlanCounter+1
+Else 
+[BillPlan]PrimaryKey:=$PrimaryKeyMin+$BillPlanCounter-1
+End if 
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+End for 
+READ ONLY([BillPlan])
+UNLOAD RECORD([BillPlan])
+ERASE WINDOW
+
+End if 
+
+NEXT RECORD([Facility])
+End for 
+
+SET INDEX([Unit]PrimaryKey;Default index type)
+SET INDEX([Agreement]PrimaryKey;Default index type)
+SET INDEX([Customer]PrimaryKey;Default index type)
+SET INDEX([Trxs]PrimaryKey;Default index type)
+SET INDEX([Analysis]PrimaryKey;Default index type)
+SET INDEX([Notices]PrimaryKey;Default index type)
+SET INDEX([Letters]PrimaryKey;Default index type)
+SET INDEX([Contacts]PrimaryKey;Default index type)
+SET INDEX([GateLog]PrimaryKey;Default index type)
+SET INDEX([PhotosCards]PrimaryKey;Default index type)
+SET INDEX([MarketingTypes]PrimaryKey;Default index type)
+SET INDEX([Reservation]PrimaryKey;Default index type)
+SET INDEX([UnitHistory]PrimaryKey;Default index type)
+SET INDEX([NotesHistory]PrimaryKey;Default index type)
+SET INDEX([UnitStatusTrx]PrimaryKey;Default index type)
+SET INDEX([Quote]PrimaryKey;Default index type)
+SET INDEX([Pictures]PrimaryKey;Default index type)
+SET INDEX([UnitType]PrimaryKey;Default index type)
+SET INDEX([MerchPlan]PrimaryKey;Default index type)
+SET INDEX([BillPlan]PrimaryKey;Default index type)
+
+
+CLEAR SET("UnitBad")
+CLEAR SET("AgreementBad")
+CLEAR SET("CustomerBad")
+CLEAR SET("TransactionBad")
+CLEAR SET("AnalysisBad")
+CLEAR SET("NoticesBad")
+CLEAR SET("ActivityBad")
+CLEAR SET("LettersBad")
+CLEAR SET("ContactsBad")
+CLEAR SET("GateLogBad")
+CLEAR SET("PhotosCardsBad")
+CLEAR SET("MarketingTypesBad")
+CLEAR SET("ReservationBad")
+CLEAR SET("UnitHistoryBad")
+CLEAR SET("NotesHistoryBad")
+CLEAR SET("UnitStatusTrxBad")
+CLEAR SET("QuoteBad")
+CLEAR SET("PicturesBad")
+CLEAR SET("UnitTypeBad")
+CLEAR SET("MerchPlanBad")
+CLEAR SET("BillPlanBad")
+
+CLEAR SET("UnitAll")
+CLEAR SET("AgreementAll")
+CLEAR SET("CustomerAll")
+CLEAR SET("TransactionAll")
+CLEAR SET("AnalysisAll")
+CLEAR SET("NoticesAll")
+CLEAR SET("ActivityAll")
+CLEAR SET("LettersAll")
+CLEAR SET("ContactsAll")
+CLEAR SET("GateLogAll")
+CLEAR SET("PhotosCardsAll")
+CLEAR SET("MarketingTypesAll")
+CLEAR SET("ReservationAll")
+CLEAR SET("UnitHistoryAll")
+CLEAR SET("NotesHistoryAll")
+CLEAR SET("UnitStatusTrxAll")
+CLEAR SET("QuoteAll")
+CLEAR SET("PicturesAll")
+CLEAR SET("UnitTypeAll")
+CLEAR SET("MerchPlanAll")
+CLEAR SET("BillPlanAll")
+
+
+USE SET("SelectedFacilities")
+CLEAR SET("SelectedFacilities")
+CLEAR SET("SelectedFacilitiesWithRanges")
+
+READ WRITE([UserLogins])
+LOAD RECORD([UserLogins])
+[UserLogins]RecordStatus:=0
+SAVE RECORD([UserLogins])
+READ ONLY([UserLogins])
+LOAD RECORD([UserLogins])
+
+
+QUERY([Unit];[Unit]PrimaryKey=0)
+QUERY([Agreement];[Agreement]PrimaryKey=0)
+QUERY([Customer];[Customer]PrimaryKey=0)
+QUERY([Trxs];[Trxs]PrimaryKey=0)
+QUERY([Analysis];[Analysis]PrimaryKey=0)
+QUERY([Notices];[Notices]PrimaryKey=0)
+QUERY([Letters];[Letters]PrimaryKey=0)
+QUERY([Contacts];[Contacts]PrimaryKey=0)
+QUERY([GateLog];[GateLog]PrimaryKey=0)
+QUERY([PhotosCards];[PhotosCards]PrimaryKey=0)
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=0)
+QUERY([Reservation];[Reservation]PrimaryKey=0)
+QUERY([UnitHistory];[UnitHistory]PrimaryKey=0)
+QUERY([NotesHistory];[NotesHistory]PrimaryKey=0)
+QUERY([UnitStatusTrx];[UnitStatusTrx]PrimaryKey=0)
+QUERY([Quote];[Quote]PrimaryKey=0)
+QUERY([Pictures];[Pictures]PrimaryKey=0)
+QUERY([UnitType];[UnitType]PrimaryKey=0)
+QUERY([MerchPlan];[MerchPlan]PrimaryKey=0)
+QUERY([BillPlan];[BillPlan]PrimaryKey=0)
+
+
+VerifyPrimaryKeyValues 
+
+InitNextPrimaryKeys 
+
+AlertMessage (Get localized string("Syncing has been automatically disabled - Please only re-enable syncing after datafile is imported into MV. Note: If automatically importing into MV, syncing will be automatically re-enabled."))
+
+Else //Warn the user that there are multiple 'MV' facilities
+ORDER BY([Facility];[Facility]FacilityCode;>)
+$Facilities:=""
+FIRST RECORD([Facility])
+For ($FacilityCounter;1;Records in selection([Facility]))
+$Facilities:=$Facilities+", "+[Facility]FacilityCode
+NEXT RECORD([Facility])
+End for 
+$Facilities:=Substring($Facilities;3)
+AlertMessage (Get localized string("The following Facilities all have the Product Code of a Central Facility,  this will cause problems!  Please correct and try again!")+Char(Carriage return)+Char(Carriage return)+$Facilities)
+End if 
+CLOSE WINDOW($WinRef)
+FLUSH BUFFERS
+
+End if 
+
+//If the Gate System was on at the start, then restart it now.
+If (vbGateOn=True)
+<>iSetGate:=1
+AlertMessage (Get localized string("The Gate System has now been restarted."))
+End if 

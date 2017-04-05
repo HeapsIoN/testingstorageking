@@ -1,0 +1,86 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_vtReservationNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+SOAP DECLARATION(WS_ReservedDate;Is date;SOAP input;"WS_ReservedDate")
+SOAP DECLARATION(WS_ExpMoveIn;Is date;SOAP input;"WS_ExpMoveIn")
+SOAP DECLARATION(WS_ExpectedMoveInTime;Is time;SOAP input;"WS_ExpectedMoveInTime")
+SOAP DECLARATION(WS_ReasonDeclined;Is text;SOAP input;"WS_ReasonDeclined")
+SOAP DECLARATION(WS_Weekly;Is Boolean;SOAP input;"WS_Weekly")
+
+//SOAP DECLARATION(WS_asReasonDeclinedList;Text array;SOAP Output;"WS_asReasonDeclinedList")
+//SOAP DECLARATION(WS_asCustTypeList;Text array;SOAP Output;"WS_asCustTypeList")
+//SOAP DECLARATION(WS_asUnitNo;Text array;SOAP Output;"WS_asUnitNo")
+//SOAP DECLARATION(WS_asUnitTypeCode;Text array;SOAP Output;"WS_asUnitTypeCode")
+//SOAP DECLARATION(WS_adReservedDate;Date array;SOAP Output;"WS_asReservedDate")
+//SOAP DECLARATION(WS_arReserveDeposit;Real array;SOAP Output;"WS_arReserveDeposit")
+//SOAP DECLARATION(WS_arWeeklyRate;Real array;SOAP Output;"WS_arWeeklyRate")
+//SOAP DECLARATION(WS_arMonthlyRate;Real array;SOAP Output;"WS_arMonthlyRate")
+//SOAP DECLARATION(WS_arQuotedRate;Real array;SOAP Output;"WS_arQuotedRate")
+
+
+
+$String:="Start WS_GetReservationInfoWebClient"+Char(13)
+$String:=$String+"WS_vtReservationNumber: "+WS_vtReservationNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtReservationNumber)
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+READ WRITE([Reservation])
+
+If (WS_IsWebID=False)
+Case of 
+: (Records in selection([Reservation])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No reservation found"
+: (Records in selection([Reservation])=1)
+RELATE ONE([Reservation]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+[Reservation]ReservedDate:=WS_ReservedDate
+[Reservation]ExpMoveIn:=WS_ExpMoveIn
+[Reservation]CallTakenBy:=WS_CallTakenBy
+[Reservation]ExpectedMoveInTime:=WS_ExpectedMoveInTime
+[Reservation]ReasonDeclined:=WS_ReasonDeclined
+[Reservation]Weekly:=WS_Weekly
+SAVE RECORD([Reservation])
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=4//There is a duplicate of agreement. 
+WS_ORErrorDescription:="There are duplicate agreements."
+
+End case 
+End if 
+
+
+$String:="End WS_GetReservationInfoWebClient"+Char(13)
+$String:=$String+"WS_ReservedDate: "+String(WS_ReservedDate)+Char(13)
+$String:=$String+"WS_ExpMoveIn: "+String(WS_ExpMoveIn)+Char(13)
+$String:=$String+"WS_ExpectedMoveInTime: "+String(WS_ExpectedMoveInTime)+Char(13)
+$String:=$String+"WS_ReasonDeclined: "+WS_ReasonDeclined+Char(13)
+$String:=$String+"WS_CustType: "+WS_CustType+Char(13)
+$String:=$String+"WS_Weekly: "+String(WS_Weekly)+Char(13)
+
+READ ONLY([Reservation])
+UNLOAD RECORD([Reservation])
+
+ReadOnlyAll 
+UnloadAll 
+
+WSRECORDLOG ($String)

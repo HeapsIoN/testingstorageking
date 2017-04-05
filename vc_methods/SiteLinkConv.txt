@@ -1,0 +1,2777 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+//03/11 from 4D
+
+//C:\Users\eugene.dorokhov\AppData\Roaming\4D\C
+C_TEXT($SQLStm;$tmpr_str;$Name13;$tmpr_str1;$tmpr_str3)
+C_LONGINT($vlElem;$vlElem2;$vlElem3;$vlElem4;$vlElem5;$vlfind;$vlfind2;$vlfind3;$vlfind4;$vlfind5;$vlfind6;$vlfind7;$lng_str;site_id;$counter;$bperiod)
+C_TEXT(str_descr;site_code)
+C_REAL($charged_bal1;$charged_bal2;$paid_bal;$balance;Tax_percents;$LateFee;$RentalFee;$OtherFee;$Credits;$Refund;$Insurance)
+C_DATE($curr_date;$tmp_date)
+C_BOOLEAN($show_progress;$SetInsuCoverage)
+C_TIME($time_start)
+C_LONGINT($AdvMnth;$und)
+C_REAL($wwdth)
+
+AlertMessage ("Storman will now connect to the SQL Server, and retrieve information from any Sitelink datafiles.")
+
+$show_progress:=True//true or false
+vtFormula:=""
+//SyncRecordLog ("Start before ODBC")
+SQL LOGIN("ODBC:sl";"";"")
+//SyncRecordLog ("Start after odbc")
+
+If (OK=1)
+
+SetFacility 
+
+$WinRef:=Open window(20;50;450;150;0)
+
+READ WRITE([Analysis])
+READ WRITE([Unit])
+READ WRITE([UnitType])
+READ WRITE([BillPlan])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([UnitHistory])
+READ WRITE([TrxsHistorical])
+READ WRITE([Notices])
+READ WRITE([OtherChgs])
+READ WRITE([Reservation])
+READ WRITE([Facility])
+
+
+TRUNCATE TABLE([Reservation])
+TRUNCATE TABLE([Unit])
+TRUNCATE TABLE([UnitType])
+TRUNCATE TABLE([BillPlan])
+TRUNCATE TABLE([Agreement])
+TRUNCATE TABLE([Customer])
+TRUNCATE TABLE([UnitHistory])
+TRUNCATE TABLE([Trxs])
+TRUNCATE TABLE([TrxsHistorical])
+TRUNCATE TABLE([Notices])
+TRUNCATE TABLE([NotesHistory])
+TRUNCATE TABLE([OtherChgs])
+
+ARRAY REAL($lb_amount;0)
+ARRAY REAL($lb_tax;0)
+ARRAY DATE($lb_date;0)
+
+
+ARRAY LONGINT($latefee_chargeid;0)
+ARRAY LONGINT($latefee_chargedescid;0)
+ARRAY REAL($latefee_dcamt;0)
+ARRAY REAL($latefee_dctax1;0)
+
+///////////// to analysis///////0311
+QUERY([Analysis];[Analysis]Code=<>sFacility+"OTH")
+If (Records in selection([Analysis])=0)
+CREATE RECORD([Analysis])
+[Analysis]Code:=<>sFacility+"OTH"
+[Analysis]Description:="Other from SL"
+[Analysis]Taxable:=True
+[Analysis]DontShowBank:=True
+[Analysis]WholeNumbers:=True
+[Analysis]SortOrder:=4
+SAVE RECORD([Analysis])
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"ADV")
+If (Records in selection([Analysis])=0)
+CREATE RECORD([Analysis])
+[Analysis]Code:=<>sFacility+"ADV"
+[Analysis]Description:="Advanced payment"
+[Analysis]WholeNumbers:=True
+[Analysis]SortOrder:=55
+SAVE RECORD([Analysis])
+End if 
+
+//////////////////////////////////////////////////////
+//SyncRecordLog ("Start after truncate")
+/////------------Sites table------------------------
+ARRAY LONGINT($Sites_SiteID;0)
+ARRAY TEXT($Sites_sLocationCode;0)
+$SQLStm:="SELECT SiteID, sLocationCode FROM [sldbclnt].[dbo].[Sites]"
+SQL EXECUTE($SQLStm;$Sites_SiteID;$Sites_sLocationCode)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//SyncRecordLog ("Start after site ID")
+For ($vlElem;1;Size of array($Sites_SiteID))
+$tmpr_str:=$tmpr_str+$Sites_sLocationCode{$vlElem}+" "
+End for 
+//site_code:=RequestMessage ("Next SL Site Codes found: "+$tmpr_str+" Please type a code you need and press Ok ";"";"Run";"Cancel")
+site_code:=RequestMessage ("The following Sitelink Facility Codes have been found: "+$tmpr_str+"."+Char(13)+" Please enter the Facility Code you would like to convert into Storman and click Run.";"";"Run";"Cancel")
+
+If (OK=1)
+Else 
+ABORT
+End if 
+
+$vlfind3:=Find in array($Sites_sLocationCode;site_code)
+
+If ($vlfind3>0)
+site_id:=$Sites_SiteID{$vlfind3}
+Else 
+AlertMessage ("Facility Code not found! Conversion cancelled.")
+ABORT
+End if 
+
+$tmpr_str1:=RequestMessage ("Please enter the tax percentage amount for this Facility:")
+Tax_percents:=Num($tmpr_str1)
+
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+[Facility]TaxRate:=Tax_percents
+SAVE RECORD([Facility])
+
+Tax_percents:=1+(Tax_percents/100)
+
+If (OK#1)
+ABORT
+End if 
+
+$SetInsuCoverage:=False
+ConfirmTwo ("Do you wish to set the Insurance coverage amount for units with ratio $1.5 per $1000";"Yes";"No")
+If (OK=1)
+$SetInsuCoverage:=True
+Else 
+$SetInsuCoverage:=False
+End if 
+
+////////////------combi types ------------
+
+ARRAY REAL($combi_dcWidth;0)
+ARRAY REAL($combi_dcLength;0)
+ARRAY TEXT($combi_sUnitName;0)
+ARRAY REAL($combi_Rate;0)
+C_REAL($tmp_rate)
+
+$SQLStm:="SELECT distinct dcWidth,dcLength from [sldbclnt].[dbo].[Units] where siteid="+String(site_id)+" and dcWidth!=0"
+SQL EXECUTE($SQLStm;$combi_dcWidth;$combi_dcLength)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+For ($vlElem;1;Size of array($combi_dcWidth))
+APPEND TO ARRAY($combi_sUnitName;"")
+$combi_sUnitName{$vlElem}:=String($combi_dcWidth{$vlElem})+"x"+String($combi_dcLength{$vlElem})
+$SQLStm:="SELECT max([dcStdRate]) FROM [sldbclnt].[dbo].[Units] where siteid="+String(site_id)+" and dcWidth="+String($combi_dcWidth{$vlElem})+" and dcLength="+String($combi_dcLength{$vlElem})
+SQL EXECUTE($SQLStm;$tmp_rate)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+APPEND TO ARRAY($combi_Rate;0)
+$combi_Rate{$vlElem}:=Round(Tax_percents*$tmp_rate;2)
+End for 
+/////////////
+$SQLStm:="SELECT dcWidth, count([dcWidth]) from [sldbclnt].[dbo].[Units] where (siteid="+String(site_id)+" and dcWidth=0) GROUP BY dcWidth"
+SQL EXECUTE($SQLStm;$wwdth;$und)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+If ($und>0)
+APPEND TO ARRAY($combi_dcWidth;0.1)
+APPEND TO ARRAY($combi_dcLength;0.1)
+APPEND TO ARRAY($combi_sUnitName;"UND")
+APPEND TO ARRAY($combi_Rate;0)
+
+End if 
+/////////////////
+
+//--------------tenants table-------------------------
+
+ARRAY LONGINT($Tenant_TenantID;0)
+ARRAY LONGINT($Tenant_SiteID;0)
+ARRAY LONGINT($Tenant_EmployeeID;0)
+ARRAY TEXT($Tenant_sMrMrs;0)
+ARRAY TEXT($Tenant_sFName;0)
+ARRAY TEXT($Tenant_sLName;0)
+ARRAY TEXT($Tenant_sCompany;0)
+ARRAY TEXT($Tenant_sAddr1;0)
+ARRAY TEXT($Tenant_sAddr2;0)
+ARRAY TEXT($Tenant_sCity;0)
+ARRAY TEXT($Tenant_sRegion;0)
+ARRAY TEXT($Tenant_sPostalCode;0)
+ARRAY TEXT($Tenant_sCountry;0)
+ARRAY TEXT($Tenant_sPhone;0)
+ARRAY TEXT($Tenant_sEmail;0)
+ARRAY TEXT($Tenant_sMobile;0)
+ARRAY TEXT($Tenant_sTenNote;0)
+ARRAY LONGINT($tblMatchingTenantID;0)
+ARRAY TEXT($tblMatchingCustomerCode;0)
+
+$SQLStm:="SELECT TenantID, SiteID, EmployeeID, sMrMrs,sFName,sLName,sCompany,sAddr1,sAddr2,sCity,sRegion,sPostalCode,sCountry,sPhone,sEmail,sMobile,sTenNote FROM [sldbclnt].[dbo].[Tenants] where SiteId="+String(site_id)
+SQL EXECUTE($SQLStm;$Tenant_TenantID;$Tenant_SiteID;$Tenant_EmployeeID;$Tenant_sMrMrs;$Tenant_sFName;$Tenant_sLName;$Tenant_sCompany;$Tenant_sAddr1;$Tenant_sAddr2;$Tenant_sCity;$Tenant_sRegion;$Tenant_sPostalCode;$Tenant_sCountry;$Tenant_sPhone;$Tenant_sEmail;$Tenant_sMobile;$Tenant_sTenNote)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//---------------reservation table-----------
+
+ARRAY LONGINT($Waitings_WaitingID;0)
+ARRAY LONGINT($Waitings_SiteID;0)
+ARRAY LONGINT($Waitings_LedgerID;0)
+ARRAY LONGINT($Waitings_TenantID;0)
+ARRAY LONGINT($Waitings_UnitID1;0)
+ARRAY DATE($Waitings_dPlaced;0)
+ARRAY DATE($Waitings_dNeeded;0)
+ARRAY REAL($Waitings_dcPaidReserveFee;0)
+
+///$SQLStm:="SELECT SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL and dneeded>=GETDATE())"
+////$SQLStm:="SELECT WaitingID,SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL )"  //for test 26/10
+//$SQLStm:="SELECT WaitingID,SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL and dneeded>=GETDATE() )"  //for test 26/10
+
+$SQLStm:="SELECT WaitingID,SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL and dcPaidReserveFee>0 )"//for test 26/10
+SQL EXECUTE($SQLStm;$Waitings_WaitingID;$Waitings_SiteID;$Waitings_LedgerID;$Waitings_TenantID;$Waitings_UnitID1;$Waitings_dPlaced;$Waitings_dNeeded;$Waitings_dcPaidReserveFee)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+//[Reservation]CustomerCode
+
+//--------------ledgers table-------------------------
+
+ARRAY LONGINT($Ledgers_LedgerID;0)
+ARRAY LONGINT($Ledgers_SiteID;0)
+ARRAY LONGINT($Ledgers_unitID;0)
+ARRAY LONGINT($Ledgers_BillingFreqID;0)
+ARRAY LONGINT($Ledgers_iLeaseNum;0)
+ARRAY DATE($Ledgers_dMovedIn;0)
+ARRAY DATE($Ledgers_dMovedOut;0)
+ARRAY LONGINT($Ledgers_iInvoiceDeliveryType;0)
+ARRAY LONGINT($Ledgers_iInvoiceDaysBefore;0)
+ARRAY REAL($Ledgers_dcRent;0)
+ARRAY DATE($Ledgers_dPaidThru;0)
+ARRAY REAL($Ledgers_dcRentBal;0)
+ARRAY DATE($Ledgers_dPmtLast;0)//dPmtLast
+ARRAY REAL($dcInsurPremium;0)// Insurance Premium
+ARRAY DATE($Ledgers_dAutoBillEnabled;0)
+
+//Balance field arrays
+
+
+
+
+//$SQLStm:="SELECT LedgerID,SiteID,unitID,BillingFreqID,iLeaseNum,dMovedIn,dMovedOut,iInvoiceDeliveryType,iInvoiceDaysBefore,dcRent,dPaidThru,gBal,dPmtLast FROM [sldbclnt].[dbo].[Ledgers] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$Ledgers_LedgerID;$Ledgers_SiteID;$Ledgers_unitID;$Ledgers_BillingFreqID;$Ledgers_iLeaseNum;$Ledgers_dMovedIn;$Ledgers_dMovedOut;$Ledgers_iInvoiceDeliveryType;$Ledgers_iInvoiceDaysBefore;$Ledgers_dcRent;$Ledgers_dPaidThru;$Ledgers_dcRentBal;$Ledgers_dPmtLast)
+
+//11/10/16 DAM Added new field - Insurance
+$SQLStm:="SELECT LedgerID,SiteID,unitID,BillingFreqID,iLeaseNum,dMovedIn,dMovedOut,iInvoiceDeliveryType,iInvoiceDaysBefore,dcRent,dPaidThru,dcRentBal,dPmtLast,dcInsurPremium,dAutoBillEnabled FROM [sldbclnt].[dbo].[Ledgers] where siteid="+String(site_id)+" and dDeleted is  null"//25/10
+SQL EXECUTE($SQLStm;$Ledgers_LedgerID;$Ledgers_SiteID;$Ledgers_unitID;$Ledgers_BillingFreqID;$Ledgers_iLeaseNum;$Ledgers_dMovedIn;$Ledgers_dMovedOut;$Ledgers_iInvoiceDeliveryType;$Ledgers_iInvoiceDaysBefore;$Ledgers_dcRent;$Ledgers_dPaidThru;$Ledgers_dcRentBal;$Ledgers_dPmtLast;$dcInsurPremium;$Ledgers_dAutoBillEnabled)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------Access table-------------------------
+ARRAY LONGINT($Access_AccessID;0)
+ARRAY LONGINT($Access_SiteID;0)
+ARRAY LONGINT($Access_LedgerID;0)
+ARRAY LONGINT($Access_TenantID;0)
+
+$SQLStm:="SELECT AccessID,SiteID,LedgerID,TenantID FROM [sldbclnt].[dbo].[Access] where siteid="+String(site_id)
+SQL EXECUTE($SQLStm;$Access_AccessID;$Access_SiteID;$Access_LedgerID;$Access_TenantID)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------Units table-------------------------
+ARRAY LONGINT($Units_UnitID;0)
+ARRAY LONGINT($Units_SiteID;0)
+ARRAY LONGINT($Units_UnitTypeID;0)
+ARRAY REAL($Units_dcWidth;0)
+ARRAY REAL($Units_dcLength;0)
+ARRAY REAL($Units_dcPushRate;0)
+ARRAY REAL($Units_dcStdRate;0)
+ARRAY REAL($Units_dcStdWeeklyRate;0)
+ARRAY REAL($Units_dcStdSecDep;0)
+ARRAY REAL($Units_dcStdLateFee;0)
+ARRAY TEXT($Units_sUnitName;0)
+////ARRAY LONGINT($Units_UnitID;0)
+
+
+$SQLStm:="SELECT UnitID,SiteID,UnitTypeID,dcWidth,dcLength,dcPushRate,dcStdRate,dcStdWeeklyRate,dcStdSecDep,dcStdLateFee,sUnitName FROM [sldbclnt].[dbo].[Units] where siteid="+String(site_id)+" and dDeleted is  null"
+SQL EXECUTE($SQLStm;$Units_UnitID;$Units_SiteID;$Units_UnitTypeID;$Units_dcWidth;$Units_dcLength;$Units_dcPushRate;$Units_dcStdRate;$Units_dcStdWeeklyRate;$Units_dcStdSecDep;$Units_dcStdLateFee;$Units_sUnitName)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------Units types-------------------------
+
+ARRAY LONGINT($UnitTypes_UnitTypeID;0)
+ARRAY LONGINT($UnitTypes_SiteID;0)
+ARRAY LONGINT($UnitTypes_UnitType_TermID;0)
+ARRAY TEXT($UnitTypes_sDefTypeName;0)
+ARRAY TEXT($UnitTypes_sTypeName;0)
+ARRAY TEXT($UnitTypes_sCategory;0)
+ARRAY LONGINT($UnitTypes_iDefLeaseNum;0)
+
+$SQLStm:="SELECT UnitTypeID,SiteID,UnitType_TermID,sDefTypeName,sTypeName,sCategory,iDefLeaseNum FROM [sldbclnt].[dbo].[UnitTypes] where siteid="+String(site_id)
+SQL EXECUTE($SQLStm;$UnitTypes_UnitTypeID;$UnitTypes_SiteID;$UnitTypes_UnitType_TermID;$UnitTypes_sDefTypeName;$UnitTypes_sTypeName;$UnitTypes_sCategory;$UnitTypes_iDefLeaseNum)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------Charges-------------------------
+ARRAY LONGINT($Charges_ChargeID;0)
+ARRAY LONGINT($Charges_ChargeDescID;0)
+ARRAY LONGINT($Charges_SiteID;0)
+ARRAY LONGINT($Charges_LedgerID;0)
+ARRAY LONGINT($Charges_ACHID;0)
+ARRAY REAL($Charges_dcAmt;0)
+ARRAY REAL($Charges_dcTax1;0)
+ARRAY REAL($Charges_dcQty;0)
+ARRAY DATE($Charges_dCreated;0)
+ARRAY BOOLEAN($Charges_bMoveIn;0)
+ARRAY BOOLEAN($Charges_bMoveOut;0)
+
+$SQLStm:="SELECT ChargeID,ChargeDescID,SiteID,LedgerID,ACHID,dcAmt,dcTax1,dcQty,dCreated,bMoveIn,bMoveOut FROM [sldbclnt].[dbo].[Charges] where siteid="+String(site_id)
+SQL EXECUTE($SQLStm;$Charges_ChargeID;$Charges_ChargeDescID;$Charges_SiteID;$Charges_LedgerID;$Charges_ACHID;$Charges_dcAmt;$Charges_dcTax1;$Charges_dcQty;$Charges_dCreated;$Charges_bMoveIn;$Charges_bMoveOut)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------ChargeDesc-------------------------
+ARRAY LONGINT($ChargeDesc_ChargeDescID;0)
+ARRAY LONGINT($ChargeDesc_SiteID;0)
+ARRAY LONGINT($ChargeDesc_ChartOfAcctID;0)
+ARRAY TEXT($ChargeDesc_sDefChgDesc;0)
+ARRAY TEXT($ChargeDesc_sChgDesc;0)
+ARRAY TEXT($ChargeDesc_sChgCategory;0)
+ARRAY BOOLEAN($ChargeDesc_bApplyAtMoveIn;0)
+ARRAY REAL($ChargeDesc_dcPrice;0)
+
+$SQLStm:="SELECT ChargeDescID,SiteID,ChartOfAcctID,sDefChgDesc,sChgDesc,sChgCategory,bApplyAtMoveIn,dcPrice FROM [sldbclnt].[dbo].[ChargeDesc] where siteid="+String(site_id)
+SQL EXECUTE($SQLStm;$ChargeDesc_ChargeDescID;$ChargeDesc_SiteID;$ChargeDesc_ChartOfAcctID;$ChargeDesc_sDefChgDesc;$ChargeDesc_sChgDesc;$ChargeDesc_sChgCategory;$ChargeDesc_bApplyAtMoveIn;$ChargeDesc_dcPrice)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------Payments-------------------------
+ARRAY LONGINT($Payments_PaymentID;0)
+ARRAY LONGINT($Payments_SiteID;0)
+ARRAY LONGINT($Payments_LedgerID;0)
+ARRAY LONGINT($Payments_ChargeID;0)
+ARRAY LONGINT($Payments_PmtTypeID;0)
+ARRAY LONGINT($Payments_FiscalID;0)
+ARRAY LONGINT($Payments_ReceiptID;0)
+ARRAY LONGINT($Payments_CreditTagID;0)
+ARRAY LONGINT($Payments_ChartOfAcctID;0)
+ARRAY LONGINT($Payments_MemoID;0)
+ARRAY DATE($Payments_dPmt;0)
+ARRAY REAL($Payments_dcPmtAmt;0)
+
+$SQLStm:="SELECT PaymentID,SiteID,LedgerID,ChargeID,PmtTypeID,FiscalID,ReceiptID,CreditTagID,ChartOfAcctID,MemoID,dPmt,dcPmtAmt FROM [sldbclnt].[dbo].[Payments] where siteid="+String(site_id)
+SQL EXECUTE($SQLStm;$Payments_PaymentID;$Payments_SiteID;$Payments_LedgerID;$Payments_ChargeID;$Payments_PmtTypeID;$Payments_FiscalID;$Payments_ReceiptID;$Payments_CreditTagID;$Payments_ChartOfAcctID;$Payments_MemoID;$Payments_dPmt;$Payments_dcPmtAmt)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------PaymentTypes-------------------------
+ARRAY LONGINT($PaymentTypes_PmtTypeID;0)
+ARRAY LONGINT($PaymentTypes_SiteID;0)
+ARRAY LONGINT($PaymentTypes_sDefAcctCode;0)
+ARRAY LONGINT($PaymentTypes_iPmtGroup;0)
+ARRAY LONGINT($PaymentTypes_PmtType_TermID;0)
+ARRAY TEXT($PaymentTypes_sDefPmtTypeDesc;0)
+ARRAY TEXT($PaymentTypes_sPmtTypeDesc;0)
+ARRAY TEXT($PaymentTypes_sCategory;0)
+
+$SQLStm:="SELECT PmtTypeID,SiteID,sDefAcctCode,iPmtGroup,PmtType_TermID,sDefPmtTypeDesc,sPmtTypeDesc,sCategory  FROM [sldbclnt].[dbo].[PaymentTypes] where siteid="+String(site_id)
+SQL EXECUTE($SQLStm;$PaymentTypes_PmtTypeID;$PaymentTypes_SiteID;$PaymentTypes_sDefAcctCode;$PaymentTypes_iPmtGroup;$PaymentTypes_PmtType_TermID;$PaymentTypes_sDefPmtTypeDesc;$PaymentTypes_sPmtTypeDesc;$PaymentTypes_sCategory)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//--------------Memos-------------------------
+
+//ARRAY LONGINT($Memos_MemoID;0)
+//ARRAY LONGINT($Memos_SiteID;0)
+//ARRAY TEXT($Memos_sMemo;0)
+
+//$SQLStm:="SELECT MemoID,SiteID,sMemo  FROM [sldbclnt].[dbo].[Memos] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$Memos_MemoID;$Memos_SiteID;$Memos_sMemo)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//--------------BillingFreq-------------------------
+ARRAY LONGINT($BillingFreq_BillingFreqID;0)
+ARRAY LONGINT($BillingFreq_BillingFreq_TermID;0)
+ARRAY TEXT($BillingFreq_sBillingFreqDesc;0)
+
+$SQLStm:="SELECT  BillingFreqID,BillingFreq_TermID,sBillingFreqDesc FROM [sldbclnt].[dbo].[BillingFreq]"
+SQL EXECUTE($SQLStm;$BillingFreq_BillingFreqID;$BillingFreq_BillingFreq_TermID;$BillingFreq_sBillingFreqDesc)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+//Eugene to complete for Noteshistory
+
+//--------------CallsAndLetters-------------------------
+ARRAY LONGINT($CallsAndLetters_CallsAndLetters;0)
+ARRAY LONGINT($CallsAndLetters_SiteID;0)
+ARRAY LONGINT($CallsAndLetters_LedgerID;0)
+ARRAY DATE($CallsAndLetters_dOccurred;0)
+ARRAY TEXT($CallsAndLetters_sDesc;0)
+
+
+//$SQLStm:="SELECT CallsAndLettersID,SiteID,LedgerID,dOccurred,sDesc  FROM [sldbclnt].[dbo].[CallsAndLetters] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$CallsAndLetters_CallsAndLetters;$CallsAndLetters_SiteID;$CallsAndLetters_LedgerID;$CallsAndLetters_dOccurred;$CallsAndLetters_sDesc)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+
+//`` =================================build UnitType table==================================
+
+READ WRITE([UnitType])
+DEFAULT TABLE([UnitType])
+
+For ($vlElem;1;Size of array($combi_dcWidth))
+
+GOTO XY(2;2)
+MESSAGE("Creating Unit Types "+String($vlElem)+" of "+String(Size of array($combi_dcWidth)))
+
+CREATE RECORD([UnitType])
+///////////////
+If ($combi_sUnitName{$vlElem}="UND")
+[UnitType]Description:="Undefined"
+Else 
+[UnitType]Description:=[UnitType]UnitTypeCode
+End if 
+//////////////
+
+[UnitType]UnitTypeCode:=$combi_sUnitName{$vlElem}
+[UnitType]RUnitType:=<>sFacility+[UnitType]UnitTypeCode
+//[UnitType]Description:=[UnitType]UnitTypeCode
+[UnitType]MonthlyRate:=$combi_Rate{$vlElem}
+[UnitType]UnitTypeLength:=$combi_dcLength{$vlElem}
+[UnitType]UnitTypeWidth:=$combi_dcWidth{$vlElem}
+[UnitType]NoTotal:=1
+[UnitType]NoVacant:=1
+[UnitType]RentAnalysis:="RF"
+[UnitType]OrgAnalysis:="RF"
+
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])
+End for 
+
+//` =================================build Unit table==================================
+
+//If ($show_progress=True)
+//<>ProgressInd:=0
+//Progress ("Build Unit table...")
+//End if 
+
+ARRAY LONGINT($AgrRentableUnitID;0)
+ARRAY TEXT($SMUnitNo;0)
+
+DEFAULT TABLE([Unit])
+READ WRITE([Unit])
+READ WRITE([UnitType])
+C_TEXT($un_type)// the same as in the beginning
+
+For ($vlElem;1;Size of array($Units_UnitID))
+
+GOTO XY(2;2)
+MESSAGE("Building Units "+String($vlElem)+" of "+String(Size of array($Units_UnitID)))
+
+//If ($show_progress=True)
+//<>ProgressInd:=Trunc(($vlElem/Size of array($Units_UnitID))*100;0)
+//End if 
+
+CREATE RECORD([Unit])
+
+If ($Units_dcWidth{$vlElem}=0)
+$un_type:="UND"
+[Unit]UnitTypeCode:=<>sFacility+"UND"
+Else 
+$un_type:=String($Units_dcWidth{$vlElem})+"x"+String($Units_dcLength{$vlElem})
+[Unit]UnitTypeCode:=<>sFacility+$un_type//String($Units_sUnitName{$vlElem})  ///String($Units_UnitTypeID{$vlElem})
+End if 
+//$un_type:=String($Units_dcWidth{$vlElem})+"x"+String($Units_dcLength{$vlElem})
+//[Unit]UnitTypeCode:=<>sFacility+$un_type  //String($Units_sUnitName{$vlElem})  ///String($Units_UnitTypeID{$vlElem})
+[Unit]UnitNo:=String($Units_sUnitName{$vlElem})
+[Unit]RUnitNo:=<>sFacility+[Unit]UnitNo
+[Unit]UnitWidth:=$Units_dcWidth{$vlElem}
+[Unit]UnitLength:=$Units_dcLength{$vlElem}
+[Unit]UnitSize:=$un_type
+[Unit]WeeklyRentedValue:=Round($Units_dcStdWeeklyRate{$vlElem};2)
+[Unit]RentedValue:=Round(Tax_percents*$Units_dcStdRate{$vlElem};2)
+[Unit]Vacant:=True
+[Unit]Status:="Vacant"
+
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+
+//If ($show_progress=True)
+//<>ProgressInd:=100
+//End if 
+
+
+//  //` =================================build Billing plans table==================================
+READ WRITE([BillPlan])
+DEFAULT TABLE([BillPlan])
+//C_TEXT(str_descr)
+
+For ($vlElem;1;Size of array($BillingFreq_BillingFreqID))
+
+GOTO XY(2;2)
+MESSAGE("Creating Billing Plans "+String($vlElem)+" of "+String(Size of array($BillingFreq_BillingFreqID)))
+
+CREATE RECORD([BillPlan])
+str_descr:=$BillingFreq_sBillingFreqDesc{$vlElem}
+/////str_descr:="Monthly"
+
+Case of 
+: (str_descr="Daily")
+[BillPlan]Code:=<>sFacility+"Day"/// 
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+[BillPlan]PlanPeriod:="Day"
+: (str_descr="Weekly")
+[BillPlan]Code:=<>sFacility+"WK"/// 
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+[BillPlan]PlanPeriod:="Week"
+: (str_descr="Monthly")
+[BillPlan]Code:=<>sFacility+"MO"/// 
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=1
+[BillPlan]PlanPeriod:="Month"
+
+: (str_descr="Quarterly")
+[BillPlan]Code:=<>sFacility+"3M"/// 
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=3
+[BillPlan]PlanPeriod:="Month"
+
+: (str_descr="Semi-Annually")
+[BillPlan]Code:=<>sFacility+"6M"///
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=6
+[BillPlan]PlanPeriod:="Month"
+: (str_descr="Annually")
+[BillPlan]Code:=<>sFacility+"12M"/// 
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=12
+[BillPlan]PlanPeriod:="Month"
+
+: (str_descr="28 Days")
+[BillPlan]Code:=<>sFacility+"28D"/// 
+[BillPlan]SortOrder:=1
+[BillPlan]PeriodstoPay:=28
+[BillPlan]PlanPeriod:="Day"
+
+Else 
+//do nothing
+End case 
+
+[BillPlan]Description:=$BillingFreq_sBillingFreqDesc{$vlElem}
+SAVE RECORD([BillPlan])
+NEXT RECORD([BillPlan])
+End for 
+
+
+//``` =================================build Customer table==================================
+
+DEFAULT TABLE([Customer])
+READ WRITE([Customer])
+C_TEXT($Name13)
+
+//If ($show_progress=True)
+//<>ProgressInd:=0
+//Progress ("Build Customer table...")
+//End if 
+
+For ($vlElem;1;Size of array($Tenant_TenantID))
+
+GOTO XY(2;2)
+MESSAGE("Moving in Customers "+String($vlElem)+" of "+String(Size of array($Tenant_TenantID)))
+
+//If ($show_progress=True)
+//<>ProgressInd:=Trunc(($vlElem/Size of array($Tenant_TenantID))*100;0)
+//End if 
+
+If ($Tenant_sFName{$vlElem}#"") | ($Tenant_sLName{$vlElem}#"")
+
+CREATE RECORD([Customer])
+$Name13:=$Tenant_sLName{$vlElem}+$Tenant_sFName{$vlElem}
+$Name13:=RemoveSpecial ($Name13)
+vName:=$Name13
+CreateCustCode (True;True)
+[Customer]Title:=$Tenant_sMrMrs{$vlElem}
+[Customer]CustomerName:=$Tenant_sFName{$vlElem}+" "+$Tenant_sLName{$vlElem}
+[Customer]FirstName:=$Tenant_sFName{$vlElem}
+[Customer]MailAddress:=$Tenant_sAddr1{$vlElem}//+" "+$Tenant_sAddr2{$vlElem}
+[Customer]MailSuburb:=$Tenant_sAddr2{$vlElem}
+[Customer]MailState:=$Tenant_sRegion{$vlElem}
+[Customer]MailCity:=$Tenant_sCity{$vlElem}
+[Customer]MailPostZIPCode:=$Tenant_sPostalCode{$vlElem}
+[Customer]MobilePhone:=$Tenant_sMobile{$vlElem}
+[Customer]EmailAddress:=$Tenant_sEmail{$vlElem}
+[Customer]MailCountry:=$Tenant_sCountry{$vlElem}
+[Customer]PhoneBus:=$Tenant_sPhone{$vlElem}
+[Customer]Notes:=$Tenant_sTenNote{$vlElem}
+
+//DAM Added Tenant ID to custom field
+[Customer]Custom1:=String($Tenant_TenantID{$vlElem})
+
+APPEND TO ARRAY($tblMatchingTenantID;$Tenant_TenantID{$vlElem})
+APPEND TO ARRAY($tblMatchingCustomerCode;[Customer]CustomerCode)
+
+SAVE RECORD([Customer])
+NEXT RECORD([Customer])
+End if 
+
+End for 
+
+//If ($show_progress=True)
+//<>ProgressInd:=100
+//End if 
+///////////////////////////////////////////////////////////
+
+
+
+///////////////////////////////////////////////////////////////
+
+//``` =================================build Agreement table==================================
+DEFAULT TABLE([Agreement])
+READ WRITE([Agreement])
+READ WRITE([Unit])
+READ WRITE([UnitHistory])
+READ WRITE([UnitType])
+READ WRITE([Trxs])
+
+ARRAY LONGINT($AgreementMatchSiteID;0)// needs for trx
+ARRAY TEXT($AgreementMatchSM;0)
+
+//If ($show_progress=True)
+//<>ProgressInd:=0
+//Progress ("Build Agreement table...")
+//End if 
+
+For ($vlElem;1;Size of array($Ledgers_LedgerID))
+
+GOTO XY(2;2)
+MESSAGE("Assigning Agreements "+String($vlElem)+" of "+String(Size of array($Ledgers_LedgerID)))
+
+//If ($show_progress=True)
+//<>ProgressInd:=Trunc(($vlElem/Size of array($Ledgers_LedgerID))*100;0)
+//End if 
+
+$AdvMnth:=0
+
+$tmpr_str:=String($Ledgers_LedgerID{$vlElem})
+$lng_str:=Length($tmpr_str)
+If ($lng_str<10)
+While ($lng_str<9)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+
+If ($Ledgers_LedgerID{$vlElem}=65792)
+$err:="????????"
+End if 
+
+$vlfind:=Find in array($Access_LedgerID;$Ledgers_LedgerID{$vlElem})//find tenant in access
+If ($vlfind>0)
+$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})//find match code
+
+If ($vlfind2>0)//cust code found
+CREATE RECORD([Agreement])
+[Agreement]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+[Agreement]AgreeNo:=$tmpr_str
+[Agreement]RAgreeNo:=<>sFacility+$tmpr_str
+[Agreement]MoveIn:=$Ledgers_dMovedIn{$vlElem}
+[Agreement]MoveOut:=$Ledgers_dMovedOut{$vlElem}
+[Agreement]OutNoticeDate:=[Agreement]MoveOut
+[Agreement]NoticePlanNo:=0
+[Agreement]NoticeAmtToBill:=0
+[Agreement]LastPmtDate:=$Ledgers_dPmtLast{$vlElem}
+
+APPEND TO ARRAY($AgreementMatchSiteID;$Ledgers_LedgerID{$vlElem})//for trxs matching
+APPEND TO ARRAY($AgreementMatchSM;[Agreement]RAgreeNo)
+
+
+//If (($Ledgers_dPaidThru{$vlElem}>!2015-01-01!))  //&([Agreement]MoveOut)#"")
+If ([Agreement]MoveOut=!00-00-00!)
+[Agreement]ActiveAgreemt:=True
+End if 
+//End if 
+
+If ([Agreement]ActiveAgreemt=True)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+SAVE RECORD([Customer])
+$curr_date:=Current date
+Else 
+//$curr_date:=[Agreement]MoveOut
+If ([Agreement]MoveOut#!00-00-00!)
+$curr_date:=[Agreement]MoveOut
+Else 
+$curr_date:=Add to date([Agreement]MoveIn;0;0;1)
+End if 
+End if 
+
+
+$tmp_date:=[Agreement]MoveIn
+$nextbd:=[Agreement]MoveIn//` starting point
+// put it to one month plan as it is currently
+
+If ($curr_date>=$nextbd)
+$vlfind3:=Find in array($BillingFreq_BillingFreqID;$Ledgers_BillingFreqID{$vlElem})
+If ($vlfind3>0)
+str_descr:=$BillingFreq_sBillingFreqDesc{$vlfind3}
+
+////str_descr:="Monthly"//historical exception
+///[Customer]Balance
+
+Case of 
+: (str_descr="Daily")
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;0;0;1)
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"Day"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;0;-1)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-2)
+[Agreement]MthsAdv:=0//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+: (str_descr="Weekly")
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;0;0;7)
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"WK"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;0;-7)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-14)
+[Agreement]MthsAdv:=1//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+: (str_descr="Monthly")
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;0;1;0)//month
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;-1;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;-2;0)
+[Agreement]MthsAdv:=1//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+: (str_descr="Quarterly")
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;0;3;0)
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"3M"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;-3;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;-6;0)
+[Agreement]MthsAdv:=3//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+: (str_descr="Semi-Annually")
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;0;6;0)
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"6M"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;-6;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;-12;0)
+[Agreement]MthsAdv:=6//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+: (str_descr="Annually")
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;1;0;0)
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"12M"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;-1;0;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;-2;0;0)
+[Agreement]MthsAdv:=12//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+: (str_descr="28 Days")
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;0;0;28)
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"28DM"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;0;-28)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-56)
+[Agreement]MthsAdv:=1//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+Else 
+//do nothing
+End case 
+Else //monthly
+While ($curr_date>$nextbd)
+$nextbd:=Add to date($nextbd;0;1;0)
+End while 
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+[Agreement]NextBillDate:=$nextbd
+[Agreement]LastBillDate:=Add to date($nextbd;0;-1;0)
+[Agreement]PriorLastBill:=Add to date($nextbd;0;-2;0)
+[Agreement]MthsAdv:=1//[BillPlan]PeriodstoPay
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+End if //($vlfind3>0)
+End if 
+
+
+$vlfind3:=Find in array($Units_UnitID;$Ledgers_unitID{$vlElem})//find tenant in access
+If ($vlfind3>0)
+///[UnitType]RUnitType
+
+QUERY([Unit];[Unit]UnitNo=String($Units_sUnitName{$vlfind3}))
+If ([Agreement]ActiveAgreemt=True)
+[Unit]MoveIn:=[Agreement]MoveIn
+[Unit]MoveOut:=!00-00-00!
+[Unit]AgreeNo:=<>sFacility+[Agreement]AgreeNo
+[Unit]Vacant:=False
+[Unit]Status:="Rented"
+[Unit]RentedValue:=Round(Tax_percents*$Ledgers_dcRent{$vlElem};2)
+[Unit]NewRentAmt:=Round(Tax_percents*$Ledgers_dcRent{$vlElem};2)
+SAVE RECORD([Unit])
+End if 
+End if 
+If ([Agreement]ActiveAgreemt=True)
+[Agreement]UnitsOccup:=[Unit]UnitNo
+Else 
+[Agreement]UnitsOccup:=""
+End if 
+
+[Agreement]LastBillPlan:=[Agreement]BillingPlanCode
+[Agreement]LastMthsAdv:=1
+[Agreement]RentAmt:=Round(Tax_percents*$Ledgers_dcRent{$vlElem};2)
+[Agreement]RegularRent:=([Unit]RentedValue)///66666
+[Agreement]NewRentAmt:=[Agreement]RentAmt
+[Agreement]LateCycleStDate:=[Agreement]LastBillDate
+[Agreement]AuthCCSigned:=Current date
+
+If ($Ledgers_dAutoBillEnabled{$vlElem}#!00-00-00!)
+[Agreement]AutoPay:=True
+[Agreement]AutoPayType:=2
+[Agreement]AutoPayAmt:=[Agreement]RentAmt
+End if 
+
+$SQLStm:="SELECT top 1 dcAmt, dcTax1, dcreated FROM   [sldbclnt].[dbo].[Charges] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" order by dcreated desc"
+SQL EXECUTE($SQLStm;$lb_amount;$lb_tax;$lb_date)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+[Agreement]LastBillAmt:=Round(($lb_amount{1}+$lb_tax{1});2)
+
+If ($Ledgers_dPaidThru{$vlElem}>Current date)//[Agreement]NextBillDate)
+$tmp_date:=Current date//[Agreement]NextBillDate
+While ($tmp_date<$Ledgers_dPaidThru{$vlElem})
+$tmp_date:=Add to date($tmp_date;0;1;0)
+$AdvMnth:=$AdvMnth+1
+End while 
+$AdvMnth:=$AdvMnth-1
+End if 
+[Agreement]PaidToDate:=$Ledgers_dPaidThru{$vlElem}
+[Agreement]DaysOverdue:=Current date-[Agreement]PaidToDate
+
+//11/10/16
+//DAM Added ORC Insurance
+If ($dcInsurPremium{$vlElem}#0)
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=<>sFacility+"IN"
+[OtherChgs]Amount:=Round($dcInsurPremium{$vlElem}*Tax_percents;2)
+[OtherChgs]NewAmount:=[OtherChgs]Amount
+[OtherChgs]MonthAmt:=Round([OtherChgs]Amount;2)
+[OtherChgs]Description:="Insurance "+[Unit]UnitNo
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+
+If ($SetInsuCoverage)
+[Unit]InsureValue:=([OtherChgs]Amount/1.5)*1000
+SAVE RECORD([Unit])
+End if 
+End if 
+
+//////////////balances////////////////////
+$SQLStm:="SELECT SUM(dcPmtAmt)FROM   [sldbclnt].[dbo].[Payments] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" and dDeleted is NULL"
+SQL EXECUTE($SQLStm;$paid_bal)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+$SQLStm:="SELECT SUM(dcAmt+dcTax1)  FROM   [sldbclnt].[dbo].[Charges] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" and dChgStrt <= '"+String(Year of(Current date))+"-"+String(Month of(Current date))+"-"+String(Day of(Current date))+"' and dDeleted is NULL"
+SQL EXECUTE($SQLStm;$charged_bal1)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+
+$SQLStm:="SELECT SUM(dcAmt+dcTax1)  FROM   [sldbclnt].[dbo].[Refunds] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" and dDeleted is NULL"
+SQL EXECUTE($SQLStm;$Refund)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+//25/10/16
+$Refund:=0
+
+$balance:=$charged_bal1+$Refund-$paid_bal
+
+
+/////////////////////////////////////
+[Agreement]BalanceOwing:=$balance
+[Agreement]TotRentUnpaid:=$balance
+
+
+
+/////////////////////trxs///////////////////[Agreement]LastBillDate
+
+///for advanced payments
+If (($AdvMnth>0) & ([Agreement]ActiveAgreemt=True))
+
+[Agreement]LastBillAmt:=[Unit]RentedValue
+
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]AnalysisCode:=<>sFacility+"ADV"
+[Trxs]Description:="Adv. payment "+String([Unit]UnitNo)
+[Trxs]TotAmt:=Round((-1)*($AdvMnth*[Unit]RentedValue);2)
+
+/////////////////77777///////
+$Dayscalc:=Add to date([Agreement]NextBillDate;0;$AdvMnth;0)-$Ledgers_dPaidThru{$vlElem}
+$Add:=Round(($Dayscalc*[Unit]RentedValue)/([Agreement]NextBillDate-[Agreement]LastBillDate);2)
+[Trxs]TotAmt:=[Trxs]TotAmt+$Add
+////////////////////
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]PaidToDate
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+
+////////[Agreement]NextBillDate:=Add to date([Agreement]PaidToDate;0;0;1)  //!!!!
+
+
+////////////////////////
+$advced_pmt:=False
+$MnthToPay:=0
+$tmpr_str3:=Substring([Agreement]BillingPlanCode;6;3)
+If ($tmpr_str3="3M")
+$bperiod:=3
+$advced_pmt:=True
+Else 
+If ($tmpr_str3="6M")
+$bperiod:=6
+$advced_pmt:=True
+Else 
+If ($tmpr_str3="12M")
+$bperiod:=12
+$advced_pmt:=True
+End if 
+End if 
+End if 
+
+$lstbld:=[Agreement]LastBillDate
+$pdthrough:=[Agreement]PaidToDate
+If (($pdthrough>$lstbld) & ($advced_pmt=True))
+While ($lstbld<$pdthrough)
+$lstbld:=Add to date($lstbld;0;$bperiod;0)
+End while 
+
+If ($lstbld>$pdthrough)
+[Agreement]BalFwdDate:=$lstbld
+While ($lstbld>$pdthrough)
+$lstbld:=Add to date($lstbld;0;-1;0)
+$MnthToPay:=$MnthToPay+1
+End while 
+[Agreement]BalFwd:=$MnthToPay*[Unit]RentedValue
+End if 
+
+
+End if 
+
+
+//////////////////////////
+End if 
+
+If ($balance#0)////(($balance#0)|($balance=0))
+$LateFee:=0
+$RentalFee:=0
+$OtherFee:=0
+$SQLStm:="SELECT  chargeid,chargedescid,dcamt,dctax1 FROM [sldbclnt].[dbo].[Charges] where SiteId="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})
+SQL EXECUTE($SQLStm;$latefee_chargeid;$latefee_chargedescid;$latefee_dcamt;$latefee_dctax1)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+If ($Ledgers_dcRentBal{$vlElem}>0)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]Description:="Rental fee unit "+String([Unit]UnitNo)
+[Trxs]TotAmt:=Round($Ledgers_dcRentBal{$vlElem}*Tax_percents;2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End if 
+
+If ($balance-($Ledgers_dcRentBal{$vlElem}*Tax_percents)>0)//($charged_bal1-$RentalFee-$LateFee>0)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]AnalysisCode:=<>sFacility+"OTH"
+[Trxs]Description:="Other for unit "+String([Unit]UnitNo)
+[Trxs]TotAmt:=Round($balance-($Ledgers_dcRentBal{$vlElem}*Tax_percents);2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End if 
+
+///////////refund//////
+
+//SELECT SUM(dcAmt+dcTax1)  FROM [sldbclnt].[dbo].[Refunds]
+//$SQLStm:="SELECT SUM(dcAmt+dcTax1)  FROM   [sldbclnt].[dbo].[Refunds] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})
+//SQL EXECUTE($SQLStm;$Refund)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//If ($Refund#0)
+
+//CREATE RECORD([Trxs])
+//[Trxs]AgreeNo:=[Agreement]RAgreeNo
+//[Trxs]CustomerCode:=[Agreement]CustomerCode
+//[Trxs]Charge:=False
+//[Trxs]Confirmed:=True
+//[Trxs]AnalysisCode:=<>sFacility+"RC"
+//[Trxs]Description:="Refund for unit "+String([Unit]UnitNo)
+//[Trxs]TotAmt:=Round((-1)*$Refund;2)
+
+//[Trxs]TrxDate:=Current date
+//[Trxs]DateFrom:=[Agreement]LastBillDate
+//[Trxs]DateTo:=[Agreement]NextBillDate
+//SAVE RECORD([Trxs])
+//NEXT RECORD([Trxs])
+
+//End if 
+
+End if ///$balance#0
+
+
+////notes////////////
+
+$SQLStm:="SELECT CallsAndLettersID,SiteID,LedgerID,dOccurred,sDesc  FROM [sldbclnt].[dbo].[CallsAndLetters] where siteid="+String(site_id)+" and LedgerID="+String($Ledgers_LedgerID{$vlElem})
+SQL EXECUTE($SQLStm;$CallsAndLetters_CallsAndLetters;$CallsAndLetters_SiteID;$CallsAndLetters_LedgerID;$CallsAndLetters_dOccurred;$CallsAndLetters_sDesc)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+If (Size of array($CallsAndLetters_CallsAndLetters)>0)
+For ($vlElem5;1;Size of array($CallsAndLetters_CallsAndLetters))
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]NoteDate:=$CallsAndLetters_dOccurred{$vlElem5}
+[NotesHistory]Note:=$CallsAndLetters_sDesc{$vlElem5}
+SAVE RECORD([NotesHistory])
+NEXT RECORD([NotesHistory])
+End for 
+End if 
+
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+
+End if //cust code found
+
+End if 
+End for 
+
+ReCalcUnits 
+
+//////////////////////TRXS maintanance//03/11
+ALL RECORDS([Trxs])
+FIRST RECORD([Trxs])
+For ($vlElem;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE("Calculating Tax Amount "+String($vlElem)+" of "+String(Records in selection([Trxs])))
+[Trxs]TotAmt:=Round([Trxs]TotAmt;2)
+If ([Trxs]Charge=True)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+
+
+
+
+//``` =================================build Reservation table==================================
+
+DEFAULT TABLE([Reservation])
+READ WRITE([Reservation])
+For ($vlElem;1;Size of array($Waitings_WaitingID))
+/////////////
+GOTO XY(2;2)
+MESSAGE("Creating reservations "+String($vlElem)+" of "+String(Size of array($Waitings_WaitingID)))
+
+$vlfind:=Find in array($tblMatchingTenantID;$Waitings_TenantID{$vlElem})//find tenant in access
+If ($vlfind>0)
+CREATE RECORD([Reservation])
+
+$tmpr_str:=String($Waitings_WaitingID{$vlElem})
+$lng_str:=Length($tmpr_str)
+If ($lng_str<10)
+While ($lng_str<8)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+[Reservation]ReserveNo:=$tmpr_str
+[Reservation]RReserveNo:=<>sFacility+$tmpr_str
+[Reservation]ActiveReserve:=True
+[Reservation]CustomerCode:=$tblMatchingCustomerCode{$vlfind}
+[Reservation]ReservedDate:=$Waitings_dPlaced{$vlElem}
+[Reservation]ExpMoveIn:=$Waitings_dNeeded{$vlElem}
+[Reservation]DepositAmt:=$Waitings_dcPaidReserveFee{$vlElem}
+$vlfind3:=Find in array($Units_UnitID;$Waitings_UnitID1{$vlElem})
+If ($vlfind3>0)
+[Reservation]UnitsReserved:=$Units_sUnitName{$vlfind3}
+Else 
+[Reservation]UnitsReserved:="UND"
+End if 
+[Reservation]DateDepPaid:=$Waitings_dPlaced{$vlElem}
+[Reservation]Balance:=$Waitings_dcPaidReserveFee{$vlElem}
+
+//QUERY([Unit];[Unit]UnitNo=String($Units_sUnitName{$vlfind3}))
+
+If ([Reservation]UnitsReserved#"UND")
+QUERY([Unit];[Unit]UnitNo=[Reservation]UnitsReserved)
+If ([Unit]Vacant=True)
+[Unit]Status:="Reserved"
+[Unit]ReservedTo:=[Reservation]RReserveNo////[Reservation]CustomerCode
+[Unit]ReservedDate:=[Reservation]ReservedDate
+SAVE RECORD([Unit])
+End if 
+Else 
+$mss:="Und"
+End if 
+
+SAVE RECORD([Reservation])
+NEXT RECORD([Reservation])
+
+End if 
+
+//////////////
+
+End for 
+
+//ReCalcUnits 
+
+
+//  //` =================================Unit-History==================================
+DEFAULT TABLE([Unit])
+READ WRITE([Agreement])
+READ WRITE([UnitHistory])
+READ WRITE([UnitType])
+
+//ALL RECORDS([Unit])
+
+QUERY([Agreement];[Agreement]UnitsOccup#"")
+If (Records in selection([Agreement])>0)
+FIRST RECORD([Agreement])// Start at first record in the selection 
+For ($vlElem;1;Records in selection([Agreement]))
+
+GOTO XY(2;2)
+MESSAGE("Recording Unit History "+String($vlElem)+" of "+String(Records in selection([Agreement])))
+
+CREATE RECORD([UnitHistory])
+
+[UnitHistory]AgreeNo:=<>sFacility+[Agreement]AgreeNo
+[UnitHistory]UnitNo:=<>sFacility+[Agreement]UnitsOccup
+[UnitHistory]MoveIn:=[Agreement]MoveIn
+[UnitHistory]RentedValue:=[Agreement]RentAmt
+[UnitHistory]MoveOut:=[Agreement]MoveOut
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+
+SAVE RECORD([UnitHistory])
+NEXT RECORD([Agreement])
+End for 
+End if 
+
+
+//``` =================================build TRXS table, hystorical==================================
+
+//If ($show_progress=True)
+//<>ProgressInd:=0
+//Progress ("Add payments to hystorical table...")
+//End if 
+
+DEFAULT TABLE([TrxsHistorical])
+//payments
+For ($vlElem;1;Size of array($Payments_PaymentID))
+
+GOTO XY(2;2)
+MESSAGE("Creating Receipt Transactions "+String($vlElem)+" of "+String(Size of array($Payments_PaymentID)))
+
+
+
+$tmpr_str:=String($Payments_LedgerID{$vlElem})
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+////////////////////////////////////
+
+// Histrical Trxs
+
+
+$vlfind:=Find in array($Access_LedgerID;$Payments_LedgerID{$vlElem})//find tenant in access
+If ($vlfind>0)
+$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})//find match code
+If ($vlfind2>0)//cust code found
+CREATE RECORD([TrxsHistorical])
+[TrxsHistorical]AgreeNo:=<>sFacility+$tmpr_str
+[TrxsHistorical]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+$vlfind3:=Find in array($Tenant_TenantID;$Access_TenantID{$vlfind})
+If ($vlfind3>0)
+[TrxsHistorical]CustomerName:=$Tenant_sFName{$vlfind3}+", "+$Tenant_sLName{$vlfind3}
+End if 
+[TrxsHistorical]Charge:=False
+[TrxsHistorical]Confirmed:=True
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"Rcp"
+
+$vlfind4:=Find in array($PaymentTypes_PmtTypeID;$Payments_PmtTypeID{$vlElem})
+If ($vlfind4>0)
+[TrxsHistorical]Description:=$PaymentTypes_sDefPmtTypeDesc{$vlfind4}
+
+End if 
+
+If (Position([TrxsHistorical]Description;"Check")>=1)
+[TrxsHistorical]AnalysisCode:=<>sFacility+"CH"
+Else 
+If (Position([TrxsHistorical]Description;"Cash")>=1)
+[TrxsHistorical]AnalysisCode:=<>sFacility+"CA"
+Else 
+[TrxsHistorical]AnalysisCode:=<>sFacility+"CC"
+End if 
+End if 
+
+
+
+[TrxsHistorical]TotAmt:=$Payments_dcPmtAmt{$vlElem}
+[TrxsHistorical]TrxDate:=$Payments_dPmt{$vlElem}
+
+SAVE RECORD([TrxsHistorical])
+NEXT RECORD([TrxsHistorical])
+End if 
+End if 
+End for 
+
+DEFAULT TABLE([TrxsHistorical])
+READ WRITE([TrxsHistorical])
+
+///charges
+For ($vlElem;1;Size of array($Charges_ChargeID))
+
+GOTO XY(2;2)
+MESSAGE("Creating Charge Transactions "+String($vlElem)+" of "+String(Size of array($Charges_ChargeID)))
+
+
+$tmpr_str:=String($Charges_LedgerID{$vlElem})
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+$vlfind:=Find in array($Access_LedgerID;$Charges_LedgerID{$vlElem})//find tenant in access
+If ($vlfind>0)
+$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})//find match code
+If ($vlfind2>0)
+CREATE RECORD([TrxsHistorical])
+[TrxsHistorical]AgreeNo:=<>sFacility+$tmpr_str
+[TrxsHistorical]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+
+$vlfind3:=Find in array($Tenant_TenantID;$Access_TenantID{$vlfind})
+If ($vlfind3>0)
+[TrxsHistorical]CustomerName:=$Tenant_sFName{$vlfind3}+", "+$Tenant_sLName{$vlfind3}
+End if 
+
+[TrxsHistorical]Charge:=True
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"Chrg"
+$vlfind4:=Find in array($ChargeDesc_ChargeDescID;$Charges_ChargeDescID{$vlElem})
+If ($vlfind4>0)
+[TrxsHistorical]Description:=$ChargeDesc_sDefChgDesc{$vlfind4}
+End if 
+
+If (Position([TrxsHistorical]Description;"Rent")>=1)
+[TrxsHistorical]AnalysisCode:=<>sFacility+"RF"
+Else 
+[TrxsHistorical]AnalysisCode:=<>sFacility+"OTH"
+End if 
+
+
+[TrxsHistorical]TotAmt:=$Charges_dcAmt{$vlElem}+$Charges_dctax1{$vlElem}
+[TrxsHistorical]TrxDate:=$Charges_dCreated{$vlElem}
+SAVE RECORD([TrxsHistorical])
+NEXT RECORD([TrxsHistorical])
+End if 
+End if 
+
+End for 
+
+ARRAY LONGINT($Refund_LedgerID;0)
+ARRAY DATE($Refund_dRefund;0)
+ARRAY REAL($Refund_dcAmt;0)
+ARRAY REAL($Refund_dcTax1;0)
+ARRAY LONGINT($Refund_RefundCatID;0)
+
+$SQLStm:="SELECT LedgerID, dRefund,dcAmt,dcTax1, RefundCatID FROM [sldbclnt].[dbo].[Refunds] where siteid="+String(site_id)
+SQL EXECUTE($SQLStm;$Refund_LedgerID;$Refund_dRefund;$Refund_dcAmt;$Refund_dcTax1;$Refund_RefundCatID)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+ARRAY LONGINT(RefundCat_RefundCatID;0)
+ARRAY TEXT(RefundCat_sDefCategoryName;0)
+$SQLStm:="SELECT RefundCatID, sDefCategoryName from [sldbclnt].[dbo].[RefundCat]"
+SQL EXECUTE($SQLStm;RefundCat_RefundCatID;RefundCat_sDefCategoryName)
+SQL LOAD RECORD(SQL all records)
+SQL CANCEL LOAD
+
+
+DEFAULT TABLE([TrxsHistorical])
+READ WRITE([TrxsHistorical])
+
+///Refunds
+For ($vlElem;1;Size of array($Refund_LedgerID))
+
+GOTO XY(2;2)
+MESSAGE("Refunding refunds "+String($vlElem)+" of "+String(Size of array($Refund_LedgerID)))
+
+$tmpr_str:=String($Refund_LedgerID{$vlElem})
+$lng_str:=Length($tmpr_str)
+If $lng_str<10
+While ($lng_str<9)
+$tmpr_str:="0"+$tmpr_str
+$lng_str:=Length($tmpr_str)
+End while 
+End if 
+$vlfind:=Find in array($Access_LedgerID;$Refund_LedgerID{$vlElem})//find tenant in access
+If ($vlfind>0)
+$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})//find match code
+If ($vlfind2>0)
+CREATE RECORD([TrxsHistorical])
+[TrxsHistorical]AgreeNo:=<>sFacility+$tmpr_str
+[TrxsHistorical]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+
+$vlfind3:=Find in array($Tenant_TenantID;$Access_TenantID{$vlfind})
+If ($vlfind3>0)
+[TrxsHistorical]CustomerName:=$Tenant_sFName{$vlfind3}+", "+$Tenant_sLName{$vlfind3}
+End if 
+
+[TrxsHistorical]Charge:=False
+[TrxsHistorical]AnalysisCode:=<>sFacility+"RC"
+$vlfind4:=Find in array(RefundCat_RefundCatID;$Refund_RefundCatID{$vlElem})
+If ($vlfind4>0)
+[TrxsHistorical]Description:=RefundCat_sDefCategoryName{$vlfind4}
+End if 
+
+
+
+[TrxsHistorical]TotAmt:=$Refund_dcAmt{$vlElem}+$Refund_dcTax1{$vlElem}
+[TrxsHistorical]TrxDate:=$Refund_dRefund{$vlElem}
+
+
+SAVE RECORD([TrxsHistorical])
+NEXT RECORD([TrxsHistorical])
+End if 
+End if 
+
+End for 
+
+READ ONLY([NotesHistory])
+READ ONLY([Customer])
+READ ONLY([Unit])
+READ ONLY([Quote])
+READ ONLY([Contacts])
+READ ONLY([Agreement])
+READ ONLY([UnitHistory])
+READ ONLY([UnitType])
+READ ONLY([TrxsHistorical])
+READ ONLY([OtherChgs])
+
+CLOSE WINDOW($WinRef)
+
+///////CalcBalance (True;False;False;True)
+
+AlertMessage ("Data conversion complete!")
+Else 
+AlertMessage ("Data conversion failed! Storman was unable to connect to the SQL Server. Please check the ODBC connection and/or ODBC drivers.")
+ABORT
+End if 
+
+
+
+//  //30/10
+
+//  // Site Link data file converter
+//  //  Get 4D folder
+//  //C:\Users\eugene.dorokhov\AppData\Roaming\4D\C
+//C_TEXT($SQLStm;$tmpr_str;$Name13;$tmpr_str1;$tmpr_str3)
+//C_LONGINT($vlElem;$vlElem2;$vlElem3;$vlElem4;$vlElem5;$vlfind;$vlfind2;$vlfind3;$vlfind4;$vlfind5;$vlfind6;$vlfind7;$lng_str;site_id;$counter;$bperiod)
+//C_TEXT(str_descr;site_code)
+//C_REAL($charged_bal1;$charged_bal2;$paid_bal;$balance;Tax_percents;$LateFee;$RentalFee;$OtherFee;$Credits;$Refund;$Insurance)
+//C_DATE($curr_date;$tmp_date)
+//C_BOOLEAN($show_progress;$SetInsuCoverage)
+//C_TIME($time_start)
+//C_LONGINT($AdvMnth;$und)
+//C_REAL($wwdth)
+
+//AlertMessage ("Storman will now connect to the SQL Server, and retrieve information from any Sitelink datafiles.")
+
+//$show_progress:=True  //true or false
+//vtFormula:=""
+//  //SyncRecordLog ("Start before ODBC")
+//SQL LOGIN("ODBC:sl";"";"")
+//  //SyncRecordLog ("Start after odbc")
+
+//If (OK=1)
+
+//SetFacility 
+
+//$WinRef:=Open window(20;50;450;150;0)
+
+//READ WRITE([Unit])
+//READ WRITE([UnitType])
+//READ WRITE([BillPlan])
+//READ WRITE([Agreement])
+//READ WRITE([Customer])
+//READ WRITE([UnitHistory])
+//READ WRITE([TrxsHistorical])
+//READ WRITE([Notices])
+//READ WRITE([OtherChgs])
+//READ WRITE([Reservation])
+
+//TRUNCATE TABLE([Reservation])
+//TRUNCATE TABLE([Unit])
+//TRUNCATE TABLE([UnitType])
+//TRUNCATE TABLE([BillPlan])
+//TRUNCATE TABLE([Agreement])
+//TRUNCATE TABLE([Customer])
+//TRUNCATE TABLE([UnitHistory])
+//TRUNCATE TABLE([Trxs])
+//TRUNCATE TABLE([TrxsHistorical])
+//TRUNCATE TABLE([Notices])
+//TRUNCATE TABLE([NotesHistory])
+//TRUNCATE TABLE([OtherChgs])
+
+//ARRAY REAL($lb_amount;0)
+//ARRAY REAL($lb_tax;0)
+//ARRAY DATE($lb_date;0)
+
+
+//ARRAY LONGINT($latefee_chargeid;0)
+//ARRAY LONGINT($latefee_chargedescid;0)
+//ARRAY REAL($latefee_dcamt;0)
+//ARRAY REAL($latefee_dctax1;0)
+
+//  //SyncRecordLog ("Start after truncate")
+//  /////------------Sites table------------------------
+//ARRAY LONGINT($Sites_SiteID;0)
+//ARRAY TEXT($Sites_sLocationCode;0)
+//$SQLStm:="SELECT SiteID, sLocationCode FROM [sldbclnt].[dbo].[Sites]"
+//SQL EXECUTE($SQLStm;$Sites_SiteID;$Sites_sLocationCode)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //SyncRecordLog ("Start after site ID")
+//For ($vlElem;1;Size of array($Sites_SiteID))
+//$tmpr_str:=$tmpr_str+$Sites_sLocationCode{$vlElem}+" "
+//End for 
+//  //site_code:=RequestMessage ("Next SL Site Codes found: "+$tmpr_str+" Please type a code you need and press Ok ";"";"Run";"Cancel")
+//site_code:=RequestMessage ("The following Sitelink Facility Codes have been found: "+$tmpr_str+"."+Char(13)+" Please enter the Facility Code you would like to convert into Storman and click Run.";"";"Run";"Cancel")
+
+//If (OK=1)
+//Else 
+//ABORT
+//End if 
+
+//$vlfind3:=Find in array($Sites_sLocationCode;site_code)
+
+//If ($vlfind3>0)
+//site_id:=$Sites_SiteID{$vlfind3}
+//Else 
+//AlertMessage ("Facility Code not found! Conversion cancelled.")
+//ABORT
+//End if 
+
+//$tmpr_str1:=RequestMessage ("Please enter the tax percentage amount for this Facility:")
+//Tax_percents:=Num($tmpr_str1)
+//Tax_percents:=1+(Tax_percents/100)
+
+//If (OK#1)
+//ABORT
+//End if 
+
+//$SetInsuCoverage:=False
+//ConfirmTwo ("Do you wish to set the Insurance coverage amount for units with ratio $1.5 per $1000";"Yes";"No")
+//If (OK=1)
+//$SetInsuCoverage:=True
+//Else 
+//$SetInsuCoverage:=False
+//End if 
+
+//  ////////////------combi types ------------
+
+//ARRAY REAL($combi_dcWidth;0)
+//ARRAY REAL($combi_dcLength;0)
+//ARRAY TEXT($combi_sUnitName;0)
+//ARRAY REAL($combi_Rate;0)
+//C_REAL($tmp_rate)
+
+//$SQLStm:="SELECT distinct dcWidth,dcLength from [sldbclnt].[dbo].[Units] where siteid="+String(site_id)+" and dcWidth!=0"
+//SQL EXECUTE($SQLStm;$combi_dcWidth;$combi_dcLength)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//For ($vlElem;1;Size of array($combi_dcWidth))
+//APPEND TO ARRAY($combi_sUnitName;"")
+//$combi_sUnitName{$vlElem}:=String($combi_dcWidth{$vlElem})+"x"+String($combi_dcLength{$vlElem})
+//$SQLStm:="SELECT max([dcStdRate]) FROM [sldbclnt].[dbo].[Units] where siteid="+String(site_id)+" and dcWidth="+String($combi_dcWidth{$vlElem})+" and dcLength="+String($combi_dcLength{$vlElem})
+//SQL EXECUTE($SQLStm;$tmp_rate)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+//APPEND TO ARRAY($combi_Rate;0)
+//$combi_Rate{$vlElem}:=Round(Tax_percents*$tmp_rate;2)
+//End for 
+//  /////////////
+//$SQLStm:="SELECT dcWidth, count([dcWidth]) from [sldbclnt].[dbo].[Units] where (siteid="+String(site_id)+" and dcWidth=0) GROUP BY dcWidth"
+//SQL EXECUTE($SQLStm;$wwdth;$und)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//If ($und>0)
+//APPEND TO ARRAY($combi_dcWidth;0.1)
+//APPEND TO ARRAY($combi_dcLength;0.1)
+//APPEND TO ARRAY($combi_sUnitName;"UND")
+//APPEND TO ARRAY($combi_Rate;0)
+
+//End if 
+//  /////////////////
+
+//  //--------------tenants table-------------------------
+
+//ARRAY LONGINT($Tenant_TenantID;0)
+//ARRAY LONGINT($Tenant_SiteID;0)
+//ARRAY LONGINT($Tenant_EmployeeID;0)
+//ARRAY TEXT($Tenant_sMrMrs;0)
+//ARRAY TEXT($Tenant_sFName;0)
+//ARRAY TEXT($Tenant_sLName;0)
+//ARRAY TEXT($Tenant_sCompany;0)
+//ARRAY TEXT($Tenant_sAddr1;0)
+//ARRAY TEXT($Tenant_sAddr2;0)
+//ARRAY TEXT($Tenant_sCity;0)
+//ARRAY TEXT($Tenant_sRegion;0)
+//ARRAY TEXT($Tenant_sPostalCode;0)
+//ARRAY TEXT($Tenant_sCountry;0)
+//ARRAY TEXT($Tenant_sPhone;0)
+//ARRAY TEXT($Tenant_sEmail;0)
+//ARRAY TEXT($Tenant_sMobile;0)
+//ARRAY TEXT($Tenant_sTenNote;0)
+//ARRAY LONGINT($tblMatchingTenantID;0)
+//ARRAY TEXT($tblMatchingCustomerCode;0)
+
+//$SQLStm:="SELECT TenantID, SiteID, EmployeeID, sMrMrs,sFName,sLName,sCompany,sAddr1,sAddr2,sCity,sRegion,sPostalCode,sCountry,sPhone,sEmail,sMobile,sTenNote FROM [sldbclnt].[dbo].[Tenants] where SiteId="+String(site_id)
+//SQL EXECUTE($SQLStm;$Tenant_TenantID;$Tenant_SiteID;$Tenant_EmployeeID;$Tenant_sMrMrs;$Tenant_sFName;$Tenant_sLName;$Tenant_sCompany;$Tenant_sAddr1;$Tenant_sAddr2;$Tenant_sCity;$Tenant_sRegion;$Tenant_sPostalCode;$Tenant_sCountry;$Tenant_sPhone;$Tenant_sEmail;$Tenant_sMobile;$Tenant_sTenNote)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //---------------reservation table-----------
+
+//ARRAY LONGINT($Waitings_WaitingID;0)
+//ARRAY LONGINT($Waitings_SiteID;0)
+//ARRAY LONGINT($Waitings_LedgerID;0)
+//ARRAY LONGINT($Waitings_TenantID;0)
+//ARRAY LONGINT($Waitings_UnitID1;0)
+//ARRAY DATE($Waitings_dPlaced;0)
+//ARRAY DATE($Waitings_dNeeded;0)
+//ARRAY REAL($Waitings_dcPaidReserveFee;0)
+
+//  ///$SQLStm:="SELECT SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL and dneeded>=GETDATE())"
+//  ////$SQLStm:="SELECT WaitingID,SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL )"  //for test 26/10
+//  //$SQLStm:="SELECT WaitingID,SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL and dneeded>=GETDATE() )"  //for test 26/10
+
+//$SQLStm:="SELECT WaitingID,SiteID, LedgerID, TenantID, UnitID1, dPlaced, dNeeded, dcPaidReserveFee FROM [sldbclnt].[dbo].[Waitings] where ( SiteId="+String(site_id)+" AND dCancelled IS NULL AND dConverted_ToMoveIn IS NULL and dcPaidReserveFee>0 )"  //for test 26/10
+//SQL EXECUTE($SQLStm;$Waitings_WaitingID;$Waitings_SiteID;$Waitings_LedgerID;$Waitings_TenantID;$Waitings_UnitID1;$Waitings_dPlaced;$Waitings_dNeeded;$Waitings_dcPaidReserveFee)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+//  //[Reservation]CustomerCode
+
+//  //--------------ledgers table-------------------------
+
+//ARRAY LONGINT($Ledgers_LedgerID;0)
+//ARRAY LONGINT($Ledgers_SiteID;0)
+//ARRAY LONGINT($Ledgers_unitID;0)
+//ARRAY LONGINT($Ledgers_BillingFreqID;0)
+//ARRAY LONGINT($Ledgers_iLeaseNum;0)
+//ARRAY DATE($Ledgers_dMovedIn;0)
+//ARRAY DATE($Ledgers_dMovedOut;0)
+//ARRAY LONGINT($Ledgers_iInvoiceDeliveryType;0)
+//ARRAY LONGINT($Ledgers_iInvoiceDaysBefore;0)
+//ARRAY REAL($Ledgers_dcRent;0)
+//ARRAY DATE($Ledgers_dPaidThru;0)
+//ARRAY REAL($Ledgers_dcRentBal;0)
+//ARRAY DATE($Ledgers_dPmtLast;0)  //dPmtLast
+//ARRAY REAL($dcInsurPremium;0)  // Insurance Premium
+//ARRAY DATE($Ledgers_dAutoBillEnabled;0)
+
+//  //Balance field arrays
+
+
+
+
+//  //$SQLStm:="SELECT LedgerID,SiteID,unitID,BillingFreqID,iLeaseNum,dMovedIn,dMovedOut,iInvoiceDeliveryType,iInvoiceDaysBefore,dcRent,dPaidThru,gBal,dPmtLast FROM [sldbclnt].[dbo].[Ledgers] where siteid="+String(site_id)
+//  //SQL EXECUTE($SQLStm;$Ledgers_LedgerID;$Ledgers_SiteID;$Ledgers_unitID;$Ledgers_BillingFreqID;$Ledgers_iLeaseNum;$Ledgers_dMovedIn;$Ledgers_dMovedOut;$Ledgers_iInvoiceDeliveryType;$Ledgers_iInvoiceDaysBefore;$Ledgers_dcRent;$Ledgers_dPaidThru;$Ledgers_dcRentBal;$Ledgers_dPmtLast)
+
+//  //11/10/16 DAM Added new field - Insurance
+//$SQLStm:="SELECT LedgerID,SiteID,unitID,BillingFreqID,iLeaseNum,dMovedIn,dMovedOut,iInvoiceDeliveryType,iInvoiceDaysBefore,dcRent,dPaidThru,dcRentBal,dPmtLast,dcInsurPremium,dAutoBillEnabled FROM [sldbclnt].[dbo].[Ledgers] where siteid="+String(site_id)+" and dDeleted is  null"  //25/10
+//SQL EXECUTE($SQLStm;$Ledgers_LedgerID;$Ledgers_SiteID;$Ledgers_unitID;$Ledgers_BillingFreqID;$Ledgers_iLeaseNum;$Ledgers_dMovedIn;$Ledgers_dMovedOut;$Ledgers_iInvoiceDeliveryType;$Ledgers_iInvoiceDaysBefore;$Ledgers_dcRent;$Ledgers_dPaidThru;$Ledgers_dcRentBal;$Ledgers_dPmtLast;$dcInsurPremium;$Ledgers_dAutoBillEnabled)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------Access table-------------------------
+//ARRAY LONGINT($Access_AccessID;0)
+//ARRAY LONGINT($Access_SiteID;0)
+//ARRAY LONGINT($Access_LedgerID;0)
+//ARRAY LONGINT($Access_TenantID;0)
+
+//$SQLStm:="SELECT AccessID,SiteID,LedgerID,TenantID FROM [sldbclnt].[dbo].[Access] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$Access_AccessID;$Access_SiteID;$Access_LedgerID;$Access_TenantID)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------Units table-------------------------
+//ARRAY LONGINT($Units_UnitID;0)
+//ARRAY LONGINT($Units_SiteID;0)
+//ARRAY LONGINT($Units_UnitTypeID;0)
+//ARRAY REAL($Units_dcWidth;0)
+//ARRAY REAL($Units_dcLength;0)
+//ARRAY REAL($Units_dcPushRate;0)
+//ARRAY REAL($Units_dcStdRate;0)
+//ARRAY REAL($Units_dcStdWeeklyRate;0)
+//ARRAY REAL($Units_dcStdSecDep;0)
+//ARRAY REAL($Units_dcStdLateFee;0)
+//ARRAY TEXT($Units_sUnitName;0)
+//  ////ARRAY LONGINT($Units_UnitID;0)
+
+
+//$SQLStm:="SELECT UnitID,SiteID,UnitTypeID,dcWidth,dcLength,dcPushRate,dcStdRate,dcStdWeeklyRate,dcStdSecDep,dcStdLateFee,sUnitName FROM [sldbclnt].[dbo].[Units] where siteid="+String(site_id)+" and dDeleted is  null"
+//SQL EXECUTE($SQLStm;$Units_UnitID;$Units_SiteID;$Units_UnitTypeID;$Units_dcWidth;$Units_dcLength;$Units_dcPushRate;$Units_dcStdRate;$Units_dcStdWeeklyRate;$Units_dcStdSecDep;$Units_dcStdLateFee;$Units_sUnitName)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------Units types-------------------------
+
+//ARRAY LONGINT($UnitTypes_UnitTypeID;0)
+//ARRAY LONGINT($UnitTypes_SiteID;0)
+//ARRAY LONGINT($UnitTypes_UnitType_TermID;0)
+//ARRAY TEXT($UnitTypes_sDefTypeName;0)
+//ARRAY TEXT($UnitTypes_sTypeName;0)
+//ARRAY TEXT($UnitTypes_sCategory;0)
+//ARRAY LONGINT($UnitTypes_iDefLeaseNum;0)
+
+//$SQLStm:="SELECT UnitTypeID,SiteID,UnitType_TermID,sDefTypeName,sTypeName,sCategory,iDefLeaseNum FROM [sldbclnt].[dbo].[UnitTypes] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$UnitTypes_UnitTypeID;$UnitTypes_SiteID;$UnitTypes_UnitType_TermID;$UnitTypes_sDefTypeName;$UnitTypes_sTypeName;$UnitTypes_sCategory;$UnitTypes_iDefLeaseNum)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------Charges-------------------------
+//ARRAY LONGINT($Charges_ChargeID;0)
+//ARRAY LONGINT($Charges_ChargeDescID;0)
+//ARRAY LONGINT($Charges_SiteID;0)
+//ARRAY LONGINT($Charges_LedgerID;0)
+//ARRAY LONGINT($Charges_ACHID;0)
+//ARRAY REAL($Charges_dcAmt;0)
+//ARRAY REAL($Charges_dcTax1;0)
+//ARRAY REAL($Charges_dcQty;0)
+//ARRAY DATE($Charges_dCreated;0)
+//ARRAY BOOLEAN($Charges_bMoveIn;0)
+//ARRAY BOOLEAN($Charges_bMoveOut;0)
+
+//$SQLStm:="SELECT ChargeID,ChargeDescID,SiteID,LedgerID,ACHID,dcAmt,dcTax1,dcQty,dCreated,bMoveIn,bMoveOut FROM [sldbclnt].[dbo].[Charges] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$Charges_ChargeID;$Charges_ChargeDescID;$Charges_SiteID;$Charges_LedgerID;$Charges_ACHID;$Charges_dcAmt;$Charges_dcTax1;$Charges_dcQty;$Charges_dCreated;$Charges_bMoveIn;$Charges_bMoveOut)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------ChargeDesc-------------------------
+//ARRAY LONGINT($ChargeDesc_ChargeDescID;0)
+//ARRAY LONGINT($ChargeDesc_SiteID;0)
+//ARRAY LONGINT($ChargeDesc_ChartOfAcctID;0)
+//ARRAY TEXT($ChargeDesc_sDefChgDesc;0)
+//ARRAY TEXT($ChargeDesc_sChgDesc;0)
+//ARRAY TEXT($ChargeDesc_sChgCategory;0)
+//ARRAY BOOLEAN($ChargeDesc_bApplyAtMoveIn;0)
+//ARRAY REAL($ChargeDesc_dcPrice;0)
+
+//$SQLStm:="SELECT ChargeDescID,SiteID,ChartOfAcctID,sDefChgDesc,sChgDesc,sChgCategory,bApplyAtMoveIn,dcPrice FROM [sldbclnt].[dbo].[ChargeDesc] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$ChargeDesc_ChargeDescID;$ChargeDesc_SiteID;$ChargeDesc_ChartOfAcctID;$ChargeDesc_sDefChgDesc;$ChargeDesc_sChgDesc;$ChargeDesc_sChgCategory;$ChargeDesc_bApplyAtMoveIn;$ChargeDesc_dcPrice)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------Payments-------------------------
+//ARRAY LONGINT($Payments_PaymentID;0)
+//ARRAY LONGINT($Payments_SiteID;0)
+//ARRAY LONGINT($Payments_LedgerID;0)
+//ARRAY LONGINT($Payments_ChargeID;0)
+//ARRAY LONGINT($Payments_PmtTypeID;0)
+//ARRAY LONGINT($Payments_FiscalID;0)
+//ARRAY LONGINT($Payments_ReceiptID;0)
+//ARRAY LONGINT($Payments_CreditTagID;0)
+//ARRAY LONGINT($Payments_ChartOfAcctID;0)
+//ARRAY LONGINT($Payments_MemoID;0)
+//ARRAY DATE($Payments_dPmt;0)
+//ARRAY REAL($Payments_dcPmtAmt;0)
+
+//$SQLStm:="SELECT PaymentID,SiteID,LedgerID,ChargeID,PmtTypeID,FiscalID,ReceiptID,CreditTagID,ChartOfAcctID,MemoID,dPmt,dcPmtAmt FROM [sldbclnt].[dbo].[Payments] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$Payments_PaymentID;$Payments_SiteID;$Payments_LedgerID;$Payments_ChargeID;$Payments_PmtTypeID;$Payments_FiscalID;$Payments_ReceiptID;$Payments_CreditTagID;$Payments_ChartOfAcctID;$Payments_MemoID;$Payments_dPmt;$Payments_dcPmtAmt)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------PaymentTypes-------------------------
+//ARRAY LONGINT($PaymentTypes_PmtTypeID;0)
+//ARRAY LONGINT($PaymentTypes_SiteID;0)
+//ARRAY LONGINT($PaymentTypes_sDefAcctCode;0)
+//ARRAY LONGINT($PaymentTypes_iPmtGroup;0)
+//ARRAY LONGINT($PaymentTypes_PmtType_TermID;0)
+//ARRAY TEXT($PaymentTypes_sDefPmtTypeDesc;0)
+//ARRAY TEXT($PaymentTypes_sPmtTypeDesc;0)
+//ARRAY TEXT($PaymentTypes_sCategory;0)
+
+//$SQLStm:="SELECT PmtTypeID,SiteID,sDefAcctCode,iPmtGroup,PmtType_TermID,sDefPmtTypeDesc,sPmtTypeDesc,sCategory  FROM [sldbclnt].[dbo].[PaymentTypes] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$PaymentTypes_PmtTypeID;$PaymentTypes_SiteID;$PaymentTypes_sDefAcctCode;$PaymentTypes_iPmtGroup;$PaymentTypes_PmtType_TermID;$PaymentTypes_sDefPmtTypeDesc;$PaymentTypes_sPmtTypeDesc;$PaymentTypes_sCategory)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //--------------Memos-------------------------
+
+//  //ARRAY LONGINT($Memos_MemoID;0)
+//  //ARRAY LONGINT($Memos_SiteID;0)
+//  //ARRAY TEXT($Memos_sMemo;0)
+
+//  //$SQLStm:="SELECT MemoID,SiteID,sMemo  FROM [sldbclnt].[dbo].[Memos] where siteid="+String(site_id)
+//  //SQL EXECUTE($SQLStm;$Memos_MemoID;$Memos_SiteID;$Memos_sMemo)
+//  //SQL LOAD RECORD(SQL all records)
+//  //SQL CANCEL LOAD
+
+//  //--------------BillingFreq-------------------------
+//ARRAY LONGINT($BillingFreq_BillingFreqID;0)
+//ARRAY LONGINT($BillingFreq_BillingFreq_TermID;0)
+//ARRAY TEXT($BillingFreq_sBillingFreqDesc;0)
+
+//$SQLStm:="SELECT  BillingFreqID,BillingFreq_TermID,sBillingFreqDesc FROM [sldbclnt].[dbo].[BillingFreq]"
+//SQL EXECUTE($SQLStm;$BillingFreq_BillingFreqID;$BillingFreq_BillingFreq_TermID;$BillingFreq_sBillingFreqDesc)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+
+//  //Eugene to complete for Noteshistory
+
+//  //--------------CallsAndLetters-------------------------
+//ARRAY LONGINT($CallsAndLetters_CallsAndLetters;0)
+//ARRAY LONGINT($CallsAndLetters_SiteID;0)
+//ARRAY LONGINT($CallsAndLetters_LedgerID;0)
+//ARRAY DATE($CallsAndLetters_dOccurred;0)
+//ARRAY TEXT($CallsAndLetters_sDesc;0)
+
+
+//  //$SQLStm:="SELECT CallsAndLettersID,SiteID,LedgerID,dOccurred,sDesc  FROM [sldbclnt].[dbo].[CallsAndLetters] where siteid="+String(site_id)
+//  //SQL EXECUTE($SQLStm;$CallsAndLetters_CallsAndLetters;$CallsAndLetters_SiteID;$CallsAndLetters_LedgerID;$CallsAndLetters_dOccurred;$CallsAndLetters_sDesc)
+//  //SQL LOAD RECORD(SQL all records)
+//  //SQL CANCEL LOAD
+
+
+//  //`` =================================build UnitType table==================================
+
+//READ WRITE([UnitType])
+//DEFAULT TABLE([UnitType])
+
+//For ($vlElem;1;Size of array($combi_dcWidth))
+
+//GOTO XY(2;2)
+//MESSAGE("Creating Unit Types "+String($vlElem)+" of "+String(Size of array($combi_dcWidth)))
+
+//CREATE RECORD([UnitType])
+//  ///////////////
+//If ($combi_sUnitName{$vlElem}="UND")
+//[UnitType]Description:="Undefined"
+//Else 
+//[UnitType]Description:=[UnitType]UnitTypeCode
+//End if 
+//  //////////////
+
+//[UnitType]UnitTypeCode:=$combi_sUnitName{$vlElem}
+//[UnitType]RUnitType:=<>sFacility+[UnitType]UnitTypeCode
+//  //[UnitType]Description:=[UnitType]UnitTypeCode
+//[UnitType]MonthlyRate:=$combi_Rate{$vlElem}
+//[UnitType]UnitTypeLength:=$combi_dcLength{$vlElem}
+//[UnitType]UnitTypeWidth:=$combi_dcWidth{$vlElem}
+//[UnitType]NoTotal:=1
+//[UnitType]NoVacant:=1
+//[UnitType]RentAnalysis:="RF"
+//[UnitType]OrgAnalysis:="RF"
+
+//SAVE RECORD([UnitType])
+//NEXT RECORD([UnitType])
+//End for 
+
+//  //` =================================build Unit table==================================
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=0
+//  //Progress ("Build Unit table...")
+//  //End if 
+
+//ARRAY LONGINT($AgrRentableUnitID;0)
+//ARRAY TEXT($SMUnitNo;0)
+
+//DEFAULT TABLE([Unit])
+//READ WRITE([Unit])
+//READ WRITE([UnitType])
+//C_TEXT($un_type)  // the same as in the beginning
+
+//For ($vlElem;1;Size of array($Units_UnitID))
+
+//GOTO XY(2;2)
+//MESSAGE("Building Units "+String($vlElem)+" of "+String(Size of array($Units_UnitID)))
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=Trunc(($vlElem/Size of array($Units_UnitID))*100;0)
+//  //End if 
+
+//CREATE RECORD([Unit])
+
+//If ($Units_dcWidth{$vlElem}=0)
+//$un_type:="UND"
+//[Unit]UnitTypeCode:=<>sFacility+"UND"
+//Else 
+//$un_type:=String($Units_dcWidth{$vlElem})+"x"+String($Units_dcLength{$vlElem})
+//[Unit]UnitTypeCode:=<>sFacility+$un_type  //String($Units_sUnitName{$vlElem})  ///String($Units_UnitTypeID{$vlElem})
+//End if 
+//  //$un_type:=String($Units_dcWidth{$vlElem})+"x"+String($Units_dcLength{$vlElem})
+//  //[Unit]UnitTypeCode:=<>sFacility+$un_type  //String($Units_sUnitName{$vlElem})  ///String($Units_UnitTypeID{$vlElem})
+//[Unit]UnitNo:=String($Units_sUnitName{$vlElem})
+//[Unit]RUnitNo:=<>sFacility+[Unit]UnitNo
+//[Unit]UnitWidth:=$Units_dcWidth{$vlElem}
+//[Unit]UnitLength:=$Units_dcLength{$vlElem}
+//[Unit]UnitSize:=$un_type
+//[Unit]WeeklyRentedValue:=Round($Units_dcStdWeeklyRate{$vlElem};2)
+//[Unit]RentedValue:=Round(Tax_percents*$Units_dcStdRate{$vlElem};2)
+//[Unit]Vacant:=True
+//[Unit]Status:="Vacant"
+
+//SAVE RECORD([Unit])
+//NEXT RECORD([Unit])
+//End for 
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=100
+//  //End if 
+
+
+//  //  //` =================================build Billing plans table==================================
+//READ WRITE([BillPlan])
+//DEFAULT TABLE([BillPlan])
+//  //C_TEXT(str_descr)
+
+//For ($vlElem;1;Size of array($BillingFreq_BillingFreqID))
+
+//GOTO XY(2;2)
+//MESSAGE("Creating Billing Plans "+String($vlElem)+" of "+String(Size of array($BillingFreq_BillingFreqID)))
+
+//CREATE RECORD([BillPlan])
+//str_descr:=$BillingFreq_sBillingFreqDesc{$vlElem}
+//  /////str_descr:="Monthly"
+
+//Case of 
+//: (str_descr="Daily")
+//[BillPlan]Code:=<>sFacility+"Day"  /// 
+//[BillPlan]SortOrder:=1
+//[BillPlan]PeriodstoPay:=1
+//[BillPlan]PlanPeriod:="Day"
+//: (str_descr="Weekly")
+//[BillPlan]Code:=<>sFacility+"WK"  /// 
+//[BillPlan]SortOrder:=1
+//[BillPlan]PeriodstoPay:=1
+//[BillPlan]PlanPeriod:="Week"
+//: (str_descr="Monthly")
+//[BillPlan]Code:=<>sFacility+"MO"  /// 
+//[BillPlan]SortOrder:=1
+//[BillPlan]PeriodstoPay:=1
+//[BillPlan]PlanPeriod:="Month"
+
+//: (str_descr="Quarterly")
+//[BillPlan]Code:=<>sFacility+"3M"  /// 
+//[BillPlan]SortOrder:=1
+//[BillPlan]PeriodstoPay:=3
+//[BillPlan]PlanPeriod:="Month"
+
+//: (str_descr="Semi-Annually")
+//[BillPlan]Code:=<>sFacility+"6M"  ///
+//[BillPlan]SortOrder:=1
+//[BillPlan]PeriodstoPay:=6
+//[BillPlan]PlanPeriod:="Month"
+//: (str_descr="Annually")
+//[BillPlan]Code:=<>sFacility+"12M"  /// 
+//[BillPlan]SortOrder:=1
+//[BillPlan]PeriodstoPay:=12
+//[BillPlan]PlanPeriod:="Month"
+
+//: (str_descr="28 Days")
+//[BillPlan]Code:=<>sFacility+"28D"  /// 
+//[BillPlan]SortOrder:=1
+//[BillPlan]PeriodstoPay:=28
+//[BillPlan]PlanPeriod:="Day"
+
+//Else 
+//  //do nothing
+//End case 
+
+//[BillPlan]Description:=$BillingFreq_sBillingFreqDesc{$vlElem}
+//SAVE RECORD([BillPlan])
+//NEXT RECORD([BillPlan])
+//End for 
+
+
+//  //``` =================================build Customer table==================================
+
+//DEFAULT TABLE([Customer])
+//READ WRITE([Customer])
+//C_TEXT($Name13)
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=0
+//  //Progress ("Build Customer table...")
+//  //End if 
+
+//For ($vlElem;1;Size of array($Tenant_TenantID))
+
+//GOTO XY(2;2)
+//MESSAGE("Moving in Customers "+String($vlElem)+" of "+String(Size of array($Tenant_TenantID)))
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=Trunc(($vlElem/Size of array($Tenant_TenantID))*100;0)
+//  //End if 
+
+//If ($Tenant_sFName{$vlElem}#"") | ($Tenant_sLName{$vlElem}#"")
+
+//CREATE RECORD([Customer])
+//$Name13:=$Tenant_sLName{$vlElem}+$Tenant_sFName{$vlElem}
+//$Name13:=RemoveSpecial ($Name13)
+//vName:=$Name13
+//CreateCustCode (True;True)
+//[Customer]Title:=$Tenant_sMrMrs{$vlElem}
+//[Customer]CustomerName:=$Tenant_sFName{$vlElem}+" "+$Tenant_sLName{$vlElem}
+//[Customer]FirstName:=$Tenant_sFName{$vlElem}
+//[Customer]MailAddress:=$Tenant_sAddr1{$vlElem}  //+" "+$Tenant_sAddr2{$vlElem}
+//[Customer]MailSuburb:=$Tenant_sAddr2{$vlElem}
+//[Customer]MailState:=$Tenant_sRegion{$vlElem}
+//[Customer]MailCity:=$Tenant_sCity{$vlElem}
+//[Customer]MailPostZIPCode:=$Tenant_sPostalCode{$vlElem}
+//[Customer]MobilePhone:=$Tenant_sMobile{$vlElem}
+//[Customer]EmailAddress:=$Tenant_sEmail{$vlElem}
+//[Customer]MailCountry:=$Tenant_sCountry{$vlElem}
+//[Customer]PhoneBus:=$Tenant_sPhone{$vlElem}
+//[Customer]Notes:=$Tenant_sTenNote{$vlElem}
+
+//  //DAM Added Tenant ID to custom field
+//[Customer]Custom1:=String($Tenant_TenantID{$vlElem})
+
+//APPEND TO ARRAY($tblMatchingTenantID;$Tenant_TenantID{$vlElem})
+//APPEND TO ARRAY($tblMatchingCustomerCode;[Customer]CustomerCode)
+
+//SAVE RECORD([Customer])
+//NEXT RECORD([Customer])
+//End if 
+
+//End for 
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=100
+//  //End if 
+//  ///////////////////////////////////////////////////////////
+
+
+
+//  ///////////////////////////////////////////////////////////////
+
+//  //``` =================================build Agreement table==================================
+//DEFAULT TABLE([Agreement])
+//READ WRITE([Agreement])
+//READ WRITE([Unit])
+//READ WRITE([UnitHistory])
+//READ WRITE([UnitType])
+//READ WRITE([Trxs])
+
+//ARRAY LONGINT($AgreementMatchSiteID;0)  // needs for trx
+//ARRAY TEXT($AgreementMatchSM;0)
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=0
+//  //Progress ("Build Agreement table...")
+//  //End if 
+
+//For ($vlElem;1;Size of array($Ledgers_LedgerID))
+
+//GOTO XY(2;2)
+//MESSAGE("Assigning Agreements "+String($vlElem)+" of "+String(Size of array($Ledgers_LedgerID)))
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=Trunc(($vlElem/Size of array($Ledgers_LedgerID))*100;0)
+//  //End if 
+
+//$AdvMnth:=0
+
+//$tmpr_str:=String($Ledgers_LedgerID{$vlElem})
+//$lng_str:=Length($tmpr_str)
+//If ($lng_str<10)
+//While ($lng_str<9)
+//$tmpr_str:="0"+$tmpr_str
+//$lng_str:=Length($tmpr_str)
+//End while 
+//End if 
+
+//If ($Ledgers_LedgerID{$vlElem}=65792)
+//$err:="????????"
+//End if 
+
+//$vlfind:=Find in array($Access_LedgerID;$Ledgers_LedgerID{$vlElem})  //find tenant in access
+//If ($vlfind>0)
+//$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})  //find match code
+
+//If ($vlfind2>0)  //cust code found
+//CREATE RECORD([Agreement])
+//[Agreement]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+//[Agreement]AgreeNo:=$tmpr_str
+//[Agreement]RAgreeNo:=<>sFacility+$tmpr_str
+//[Agreement]MoveIn:=$Ledgers_dMovedIn{$vlElem}
+//[Agreement]MoveOut:=$Ledgers_dMovedOut{$vlElem}
+//[Agreement]OutNoticeDate:=[Agreement]MoveOut
+//[Agreement]NoticePlanNo:=0
+//[Agreement]NoticeAmtToBill:=0
+//[Agreement]LastPmtDate:=$Ledgers_dPmtLast{$vlElem}
+
+//APPEND TO ARRAY($AgreementMatchSiteID;$Ledgers_LedgerID{$vlElem})  //for trxs matching
+//APPEND TO ARRAY($AgreementMatchSM;[Agreement]RAgreeNo)
+
+
+//  //If (($Ledgers_dPaidThru{$vlElem}>!2015-01-01!))  //&([Agreement]MoveOut)#"")
+//If ([Agreement]MoveOut=!00-00-00!)
+//[Agreement]ActiveAgreemt:=True
+//End if 
+//  //End if 
+
+//If ([Agreement]ActiveAgreemt=True)
+//QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+//[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+//SAVE RECORD([Customer])
+//$curr_date:=Current date
+//Else 
+//  //$curr_date:=[Agreement]MoveOut
+//If ([Agreement]MoveOut#!00-00-00!)
+//$curr_date:=[Agreement]MoveOut
+//Else 
+//$curr_date:=Add to date([Agreement]MoveIn;0;0;1)
+//End if 
+//End if 
+
+
+//$tmp_date:=[Agreement]MoveIn
+//$nextbd:=[Agreement]MoveIn  //` starting point
+//  // put it to one month plan as it is currently
+
+//If ($curr_date>=$nextbd)
+//$vlfind3:=Find in array($BillingFreq_BillingFreqID;$Ledgers_BillingFreqID{$vlElem})
+//If ($vlfind3>0)
+//str_descr:=$BillingFreq_sBillingFreqDesc{$vlfind3}
+
+//  ////str_descr:="Monthly"//historical exception
+//  ///[Customer]Balance
+
+//Case of 
+//: (str_descr="Daily")
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;0;0;1)
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"Day"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;0;0;-1)
+//[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-2)
+//[Agreement]MthsAdv:=0  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+//: (str_descr="Weekly")
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;0;0;7)
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"WK"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;0;0;-7)
+//[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-14)
+//[Agreement]MthsAdv:=1  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+//: (str_descr="Monthly")
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;0;1;0)  //month
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"MO"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;0;-1;0)
+//[Agreement]PriorLastBill:=Add to date($nextbd;0;-2;0)
+//[Agreement]MthsAdv:=1  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+//: (str_descr="Quarterly")
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;0;3;0)
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"3M"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;0;-3;0)
+//[Agreement]PriorLastBill:=Add to date($nextbd;0;-6;0)
+//[Agreement]MthsAdv:=3  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+//: (str_descr="Semi-Annually")
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;0;6;0)
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"6M"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;0;-6;0)
+//[Agreement]PriorLastBill:=Add to date($nextbd;0;-12;0)
+//[Agreement]MthsAdv:=6  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+//: (str_descr="Annually")
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;1;0;0)
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"12M"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;-1;0;0)
+//[Agreement]PriorLastBill:=Add to date($nextbd;-2;0;0)
+//[Agreement]MthsAdv:=12  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+
+//: (str_descr="28 Days")
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;0;0;28)
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"28DM"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;0;0;-28)
+//[Agreement]PriorLastBill:=Add to date($nextbd;0;0;-56)
+//[Agreement]MthsAdv:=1  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+//Else 
+//  //do nothing
+//End case 
+//Else   //monthly
+//While ($curr_date>$nextbd)
+//$nextbd:=Add to date($nextbd;0;1;0)
+//End while 
+//[Agreement]BillingPlanCode:=<>sFacility+"MO"
+//[Agreement]NextBillDate:=$nextbd
+//[Agreement]LastBillDate:=Add to date($nextbd;0;-1;0)
+//[Agreement]PriorLastBill:=Add to date($nextbd;0;-2;0)
+//[Agreement]MthsAdv:=1  //[BillPlan]PeriodstoPay
+//[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+//End if   //($vlfind3>0)
+//End if 
+
+
+//$vlfind3:=Find in array($Units_UnitID;$Ledgers_unitID{$vlElem})  //find tenant in access
+//If ($vlfind3>0)
+//  ///[UnitType]RUnitType
+
+//QUERY([Unit];[Unit]UnitNo=String($Units_sUnitName{$vlfind3}))
+//If ([Agreement]ActiveAgreemt=True)
+//[Unit]MoveIn:=[Agreement]MoveIn
+//[Unit]MoveOut:=!00-00-00!
+//[Unit]AgreeNo:=<>sFacility+[Agreement]AgreeNo
+//[Unit]Vacant:=False
+//[Unit]Status:="Rented"
+//[Unit]RentedValue:=Round(Tax_percents*$Ledgers_dcRent{$vlElem};2)
+//[Unit]NewRentAmt:=Round(Tax_percents*$Ledgers_dcRent{$vlElem};2)
+//SAVE RECORD([Unit])
+//End if 
+//End if 
+//If ([Agreement]ActiveAgreemt=True)
+//[Agreement]UnitsOccup:=[Unit]UnitNo
+//Else 
+//[Agreement]UnitsOccup:=""
+//End if 
+
+//[Agreement]LastBillPlan:=[Agreement]BillingPlanCode
+//[Agreement]LastMthsAdv:=1
+//[Agreement]RentAmt:=Round(Tax_percents*$Ledgers_dcRent{$vlElem};2)
+//[Agreement]RegularRent:=([Unit]RentedValue)  ///66666
+//[Agreement]NewRentAmt:=[Agreement]RentAmt
+//[Agreement]LateCycleStDate:=[Agreement]LastBillDate
+//[Agreement]AuthCCSigned:=Current date
+
+//If ($Ledgers_dAutoBillEnabled{$vlElem}#!00-00-00!)
+//[Agreement]AutoPay:=True
+//[Agreement]AutoPayType:=2
+//[Agreement]AutoPayAmt:=[Agreement]RentAmt
+//End if 
+
+//$SQLStm:="SELECT top 1 dcAmt, dcTax1, dcreated FROM   [sldbclnt].[dbo].[Charges] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" order by dcreated desc"
+//SQL EXECUTE($SQLStm;$lb_amount;$lb_tax;$lb_date)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//[Agreement]LastBillAmt:=Round(($lb_amount{1}+$lb_tax{1});2)
+
+//If ($Ledgers_dPaidThru{$vlElem}>Current date)  //[Agreement]NextBillDate)
+//$tmp_date:=Current date  //[Agreement]NextBillDate
+//While ($tmp_date<$Ledgers_dPaidThru{$vlElem})
+//$tmp_date:=Add to date($tmp_date;0;1;0)
+//$AdvMnth:=$AdvMnth+1
+//End while 
+//$AdvMnth:=$AdvMnth-1
+//End if 
+//[Agreement]PaidToDate:=$Ledgers_dPaidThru{$vlElem}
+//[Agreement]DaysOverdue:=Current date-[Agreement]PaidToDate
+
+//  //11/10/16
+//  //DAM Added ORC Insurance
+//If ($dcInsurPremium{$vlElem}#0)
+//CREATE RECORD([OtherChgs])
+//[OtherChgs]AnalysisCode:=<>sFacility+"IN"
+//[OtherChgs]Amount:=Round($dcInsurPremium{$vlElem}*Tax_percents;2)
+//[OtherChgs]NewAmount:=[OtherChgs]Amount
+//[OtherChgs]MonthAmt:=Round([OtherChgs]Amount;2)
+//[OtherChgs]Description:="Insurance "+[Unit]UnitNo
+//[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+//SAVE RECORD([OtherChgs])
+
+//If ($SetInsuCoverage)
+//[Unit]InsureValue:=([OtherChgs]Amount/1.5)*1000
+//SAVE RECORD([Unit])
+//End if 
+//End if 
+
+//  //////////////balances////////////////////
+//$SQLStm:="SELECT SUM(dcPmtAmt)FROM   [sldbclnt].[dbo].[Payments] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" and dDeleted is NULL"
+//SQL EXECUTE($SQLStm;$paid_bal)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//$SQLStm:="SELECT SUM(dcAmt+dcTax1)  FROM   [sldbclnt].[dbo].[Charges] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" and dChgStrt <= '"+String(Year of(Current date))+"-"+String(Month of(Current date))+"-"+String(Day of(Current date))+"' and dDeleted is NULL"
+//SQL EXECUTE($SQLStm;$charged_bal1)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+
+
+//$SQLStm:="SELECT SUM(dcAmt+dcTax1)  FROM   [sldbclnt].[dbo].[Refunds] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})+" and dDeleted is NULL"
+//SQL EXECUTE($SQLStm;$Refund)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//  //25/10/16
+//$Refund:=0
+
+//$balance:=$charged_bal1+$Refund-$paid_bal
+
+
+//  /////////////////////////////////////
+//[Agreement]BalanceOwing:=$balance
+//[Agreement]TotRentUnpaid:=$balance
+
+
+
+//  /////////////////////trxs///////////////////[Agreement]LastBillDate
+
+//  ///for advanced payments
+//If (($AdvMnth>0) & ([Agreement]ActiveAgreemt=True))
+
+//[Agreement]LastBillAmt:=[Unit]RentedValue
+
+//CREATE RECORD([Trxs])
+//[Trxs]AgreeNo:=[Agreement]RAgreeNo
+//[Trxs]CustomerCode:=[Agreement]CustomerCode
+//[Trxs]Charge:=True
+//[Trxs]Confirmed:=True
+//[Trxs]AnalysisCode:=<>sFacility+"ADV"
+//[Trxs]Description:="Adv. payment "+String([Unit]UnitNo)
+//[Trxs]TotAmt:=Round((-1)*($AdvMnth*[Unit]RentedValue);2)
+
+//  /////////////////77777///////
+//$Dayscalc:=Add to date([Agreement]NextBillDate;0;$AdvMnth;0)-$Ledgers_dPaidThru{$vlElem}
+//$Add:=Round(($Dayscalc*[Unit]RentedValue)/([Agreement]NextBillDate-[Agreement]LastBillDate);2)
+//[Trxs]TotAmt:=[Trxs]TotAmt+$Add
+//  ////////////////////
+//[Trxs]TrxDate:=Current date
+//[Trxs]DateFrom:=[Agreement]LastBillDate
+//[Trxs]DateTo:=[Agreement]PaidToDate
+//SAVE RECORD([Trxs])
+//NEXT RECORD([Trxs])
+
+//  ////////[Agreement]NextBillDate:=Add to date([Agreement]PaidToDate;0;0;1)  //!!!!
+
+
+//  ////////////////////////
+//$advced_pmt:=False
+//$MnthToPay:=0
+//$tmpr_str3:=Substring([Agreement]BillingPlanCode;6;3)
+//If ($tmpr_str3="3M")
+//$bperiod:=3
+//$advced_pmt:=True
+//Else 
+//If ($tmpr_str3="6M")
+//$bperiod:=6
+//$advced_pmt:=True
+//Else 
+//If ($tmpr_str3="12M")
+//$bperiod:=12
+//$advced_pmt:=True
+//End if 
+//End if 
+//End if 
+
+//$lstbld:=[Agreement]LastBillDate
+//$pdthrough:=[Agreement]PaidToDate
+//If (($pdthrough>$lstbld) & ($advced_pmt=True))
+//While ($lstbld<$pdthrough)
+//$lstbld:=Add to date($lstbld;0;$bperiod;0)
+//End while 
+
+//If ($lstbld>$pdthrough)
+//[Agreement]BalFwdDate:=$lstbld
+//While ($lstbld>$pdthrough)
+//$lstbld:=Add to date($lstbld;0;-1;0)
+//$MnthToPay:=$MnthToPay+1
+//End while 
+//[Agreement]BalFwd:=$MnthToPay*[Unit]RentedValue
+//End if 
+
+
+//End if 
+
+
+//  //////////////////////////
+//End if 
+
+//If ($balance#0)  ////(($balance#0)|($balance=0))
+//$LateFee:=0
+//$RentalFee:=0
+//$OtherFee:=0
+//$SQLStm:="SELECT  chargeid,chargedescid,dcamt,dctax1 FROM [sldbclnt].[dbo].[Charges] where SiteId="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})
+//SQL EXECUTE($SQLStm;$latefee_chargeid;$latefee_chargedescid;$latefee_dcamt;$latefee_dctax1)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+
+//If ($Ledgers_dcRentBal{$vlElem}>0)
+//CREATE RECORD([Trxs])
+//[Trxs]AgreeNo:=[Agreement]RAgreeNo
+//[Trxs]CustomerCode:=[Agreement]CustomerCode
+//[Trxs]Charge:=True
+//[Trxs]Confirmed:=True
+//[Trxs]AnalysisCode:=<>sFacility+"RF"
+//[Trxs]Description:="Rental fee unit "+String([Unit]UnitNo)
+//[Trxs]TotAmt:=Round($Ledgers_dcRentBal{$vlElem}*Tax_percents;2)
+//[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+//[Trxs]TrxDate:=Current date
+//[Trxs]DateFrom:=[Agreement]LastBillDate
+//[Trxs]DateTo:=[Agreement]NextBillDate
+//SAVE RECORD([Trxs])
+//NEXT RECORD([Trxs])
+//End if 
+
+//If ($balance-($Ledgers_dcRentBal{$vlElem}*Tax_percents)>0)  //($charged_bal1-$RentalFee-$LateFee>0)
+//CREATE RECORD([Trxs])
+//[Trxs]AgreeNo:=[Agreement]RAgreeNo
+//[Trxs]CustomerCode:=[Agreement]CustomerCode
+//[Trxs]Charge:=True
+//[Trxs]Confirmed:=True
+//[Trxs]AnalysisCode:=<>sFacility+"OTH"
+//[Trxs]Description:="Other for unit "+String([Unit]UnitNo)
+//[Trxs]TotAmt:=Round($balance-($Ledgers_dcRentBal{$vlElem}*Tax_percents);2)
+//[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+//[Trxs]TrxDate:=Current date
+//[Trxs]DateFrom:=[Agreement]LastBillDate
+//[Trxs]DateTo:=[Agreement]NextBillDate
+//SAVE RECORD([Trxs])
+//NEXT RECORD([Trxs])
+//End if 
+
+//  ///////////refund//////
+
+//  //SELECT SUM(dcAmt+dcTax1)  FROM [sldbclnt].[dbo].[Refunds]
+//  //$SQLStm:="SELECT SUM(dcAmt+dcTax1)  FROM   [sldbclnt].[dbo].[Refunds] where siteid="+String(site_id)+" and ledgerid="+String($Ledgers_LedgerID{$vlElem})
+//  //SQL EXECUTE($SQLStm;$Refund)
+//  //SQL LOAD RECORD(SQL all records)
+//  //SQL CANCEL LOAD
+
+//  //If ($Refund#0)
+
+//  //CREATE RECORD([Trxs])
+//  //[Trxs]AgreeNo:=[Agreement]RAgreeNo
+//  //[Trxs]CustomerCode:=[Agreement]CustomerCode
+//  //[Trxs]Charge:=False
+//  //[Trxs]Confirmed:=True
+//  //[Trxs]AnalysisCode:=<>sFacility+"RC"
+//  //[Trxs]Description:="Refund for unit "+String([Unit]UnitNo)
+//  //[Trxs]TotAmt:=Round((-1)*$Refund;2)
+
+//  //[Trxs]TrxDate:=Current date
+//  //[Trxs]DateFrom:=[Agreement]LastBillDate
+//  //[Trxs]DateTo:=[Agreement]NextBillDate
+//  //SAVE RECORD([Trxs])
+//  //NEXT RECORD([Trxs])
+
+//  //End if 
+
+//End if   ///$balance#0
+
+
+//  ////notes////////////
+
+//$SQLStm:="SELECT CallsAndLettersID,SiteID,LedgerID,dOccurred,sDesc  FROM [sldbclnt].[dbo].[CallsAndLetters] where siteid="+String(site_id)+" and LedgerID="+String($Ledgers_LedgerID{$vlElem})
+//SQL EXECUTE($SQLStm;$CallsAndLetters_CallsAndLetters;$CallsAndLetters_SiteID;$CallsAndLetters_LedgerID;$CallsAndLetters_dOccurred;$CallsAndLetters_sDesc)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//If (Size of array($CallsAndLetters_CallsAndLetters)>0)
+//For ($vlElem5;1;Size of array($CallsAndLetters_CallsAndLetters))
+//CREATE RECORD([NotesHistory])
+//[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+//[NotesHistory]NoteDate:=$CallsAndLetters_dOccurred{$vlElem5}
+//[NotesHistory]Note:=$CallsAndLetters_sDesc{$vlElem5}
+//SAVE RECORD([NotesHistory])
+//NEXT RECORD([NotesHistory])
+//End for 
+//End if 
+
+//SAVE RECORD([Agreement])
+//NEXT RECORD([Agreement])
+
+//End if   //cust code found
+
+//End if 
+//End for 
+
+//ReCalcUnits 
+
+
+//  //``` =================================build Reservation table==================================
+
+//DEFAULT TABLE([Reservation])
+//READ WRITE([Reservation])
+//For ($vlElem;1;Size of array($Waitings_WaitingID))
+//  /////////////
+//GOTO XY(2;2)
+//MESSAGE("Creating reservations "+String($vlElem)+" of "+String(Size of array($Waitings_WaitingID)))
+
+//$vlfind:=Find in array($tblMatchingTenantID;$Waitings_TenantID{$vlElem})  //find tenant in access
+//If ($vlfind>0)
+//CREATE RECORD([Reservation])
+
+//$tmpr_str:=String($Waitings_WaitingID{$vlElem})
+//$lng_str:=Length($tmpr_str)
+//If ($lng_str<10)
+//While ($lng_str<8)
+//$tmpr_str:="0"+$tmpr_str
+//$lng_str:=Length($tmpr_str)
+//End while 
+//End if 
+//[Reservation]ReserveNo:=$tmpr_str
+//[Reservation]RReserveNo:=<>sFacility+$tmpr_str
+//[Reservation]ActiveReserve:=True
+//[Reservation]CustomerCode:=$tblMatchingCustomerCode{$vlfind}
+//[Reservation]ReservedDate:=$Waitings_dPlaced{$vlElem}
+//[Reservation]ExpMoveIn:=$Waitings_dNeeded{$vlElem}
+//[Reservation]DepositAmt:=$Waitings_dcPaidReserveFee{$vlElem}
+//$vlfind3:=Find in array($Units_UnitID;$Waitings_UnitID1{$vlElem})
+//If ($vlfind3>0)
+//[Reservation]UnitsReserved:=$Units_sUnitName{$vlfind3}
+//Else 
+//[Reservation]UnitsReserved:="UND"
+//End if 
+//[Reservation]DateDepPaid:=$Waitings_dPlaced{$vlElem}
+//[Reservation]Balance:=$Waitings_dcPaidReserveFee{$vlElem}
+
+//  //QUERY([Unit];[Unit]UnitNo=String($Units_sUnitName{$vlfind3}))
+//  //If ([Unit]Vacant=True)
+//  //[Unit]Status:="Reserved"
+//  //[Unit]ReservedTo:=[Reservation]RReserveNo  ////[Reservation]CustomerCode
+//  //[Unit]ReservedDate:=[Reservation]ReservedDate
+//  //SAVE RECORD([Unit])
+//  //End if 
+//If ([Reservation]UnitsReserved#"UND")
+//QUERY([Unit];[Unit]UnitNo=[Reservation]UnitsReserved)
+//If ([Unit]Vacant=True)
+//[Unit]Status:="Reserved"
+//[Unit]ReservedTo:=[Reservation]RReserveNo  ////[Reservation]CustomerCode
+//[Unit]ReservedDate:=[Reservation]ReservedDate
+//SAVE RECORD([Unit])
+//End if 
+//Else 
+//$mss:="Und"
+//End if 
+
+//SAVE RECORD([Reservation])
+//NEXT RECORD([Reservation])
+
+//End if 
+
+//  //////////////
+
+//End for 
+
+//  //ReCalcUnits 
+
+
+//  //  //` =================================Unit-History==================================
+//DEFAULT TABLE([Unit])
+//READ WRITE([Agreement])
+//READ WRITE([UnitHistory])
+//READ WRITE([UnitType])
+
+//  //ALL RECORDS([Unit])
+
+//QUERY([Agreement];[Agreement]UnitsOccup#"")
+//If (Records in selection([Agreement])>0)
+//FIRST RECORD([Agreement])  // Start at first record in the selection 
+//For ($vlElem;1;Records in selection([Agreement]))
+
+//GOTO XY(2;2)
+//MESSAGE("Recording Unit History "+String($vlElem)+" of "+String(Records in selection([Agreement])))
+
+//CREATE RECORD([UnitHistory])
+
+//[UnitHistory]AgreeNo:=<>sFacility+[Agreement]AgreeNo
+//[UnitHistory]UnitNo:=<>sFacility+[Agreement]UnitsOccup
+//[UnitHistory]MoveIn:=[Agreement]MoveIn
+//[UnitHistory]RentedValue:=[Agreement]RentAmt
+//[UnitHistory]MoveOut:=[Agreement]MoveOut
+//[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+
+//SAVE RECORD([UnitHistory])
+//NEXT RECORD([Agreement])
+//End for 
+//End if 
+
+
+//  //``` =================================build TRXS table, hystorical==================================
+
+//  //If ($show_progress=True)
+//  //<>ProgressInd:=0
+//  //Progress ("Add payments to hystorical table...")
+//  //End if 
+
+//DEFAULT TABLE([TrxsHistorical])
+//  //payments
+//For ($vlElem;1;Size of array($Payments_PaymentID))
+
+//GOTO XY(2;2)
+//MESSAGE("Creating Receipt Transactions "+String($vlElem)+" of "+String(Size of array($Payments_PaymentID)))
+
+
+
+//$tmpr_str:=String($Payments_LedgerID{$vlElem})
+//$lng_str:=Length($tmpr_str)
+//If $lng_str<10
+//While ($lng_str<9)
+//$tmpr_str:="0"+$tmpr_str
+//$lng_str:=Length($tmpr_str)
+//End while 
+//End if 
+//  ////////////////////////////////////
+
+//  // Histrical Trxs
+
+
+//$vlfind:=Find in array($Access_LedgerID;$Payments_LedgerID{$vlElem})  //find tenant in access
+//If ($vlfind>0)
+//$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})  //find match code
+//If ($vlfind2>0)  //cust code found
+//CREATE RECORD([TrxsHistorical])
+//[TrxsHistorical]AgreeNo:=<>sFacility+$tmpr_str
+//[TrxsHistorical]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+//$vlfind3:=Find in array($Tenant_TenantID;$Access_TenantID{$vlfind})
+//If ($vlfind3>0)
+//[TrxsHistorical]CustomerName:=$Tenant_sFName{$vlfind3}+", "+$Tenant_sLName{$vlfind3}
+//End if 
+//[TrxsHistorical]Charge:=False
+//[TrxsHistorical]Confirmed:=True
+//  //[TrxsHistorical]AnalysisCode:=<>sFacility+"Rcp"
+
+//$vlfind4:=Find in array($PaymentTypes_PmtTypeID;$Payments_PmtTypeID{$vlElem})
+//If ($vlfind4>0)
+//[TrxsHistorical]Description:=$PaymentTypes_sDefPmtTypeDesc{$vlfind4}
+
+//End if 
+
+//If (Position([TrxsHistorical]Description;"Check")>=1)
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"CH"
+//Else 
+//If (Position([TrxsHistorical]Description;"Cash")>=1)
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"CA"
+//Else 
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"CC"
+//End if 
+//End if 
+
+
+
+//[TrxsHistorical]TotAmt:=$Payments_dcPmtAmt{$vlElem}
+//[TrxsHistorical]TrxDate:=$Payments_dPmt{$vlElem}
+
+//SAVE RECORD([TrxsHistorical])
+//NEXT RECORD([TrxsHistorical])
+//End if 
+//End if 
+//End for 
+
+//DEFAULT TABLE([TrxsHistorical])
+//READ WRITE([TrxsHistorical])
+
+//  ///charges
+//For ($vlElem;1;Size of array($Charges_ChargeID))
+
+//GOTO XY(2;2)
+//MESSAGE("Creating Charge Transactions "+String($vlElem)+" of "+String(Size of array($Charges_ChargeID)))
+
+
+//$tmpr_str:=String($Charges_LedgerID{$vlElem})
+//$lng_str:=Length($tmpr_str)
+//If $lng_str<10
+//While ($lng_str<9)
+//$tmpr_str:="0"+$tmpr_str
+//$lng_str:=Length($tmpr_str)
+//End while 
+//End if 
+//$vlfind:=Find in array($Access_LedgerID;$Charges_LedgerID{$vlElem})  //find tenant in access
+//If ($vlfind>0)
+//$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})  //find match code
+//If ($vlfind2>0)
+//CREATE RECORD([TrxsHistorical])
+//[TrxsHistorical]AgreeNo:=<>sFacility+$tmpr_str
+//[TrxsHistorical]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+
+//$vlfind3:=Find in array($Tenant_TenantID;$Access_TenantID{$vlfind})
+//If ($vlfind3>0)
+//[TrxsHistorical]CustomerName:=$Tenant_sFName{$vlfind3}+", "+$Tenant_sLName{$vlfind3}
+//End if 
+
+//[TrxsHistorical]Charge:=True
+//  //[TrxsHistorical]AnalysisCode:=<>sFacility+"Chrg"
+//$vlfind4:=Find in array($ChargeDesc_ChargeDescID;$Charges_ChargeDescID{$vlElem})
+//If ($vlfind4>0)
+//[TrxsHistorical]Description:=$ChargeDesc_sDefChgDesc{$vlfind4}
+//End if 
+
+//If (Position([TrxsHistorical]Description;"Rent")>=1)
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"RF"
+//Else 
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"OTH"
+//End if 
+
+
+//[TrxsHistorical]TotAmt:=$Charges_dcAmt{$vlElem}+$Charges_dctax1{$vlElem}
+//[TrxsHistorical]TrxDate:=$Charges_dCreated{$vlElem}
+//SAVE RECORD([TrxsHistorical])
+//NEXT RECORD([TrxsHistorical])
+//End if 
+//End if 
+
+//End for 
+
+//ARRAY LONGINT($Refund_LedgerID;0)
+//ARRAY DATE($Refund_dRefund;0)
+//ARRAY REAL($Refund_dcAmt;0)
+//ARRAY REAL($Refund_dcTax1;0)
+//ARRAY LONGINT($Refund_RefundCatID;0)
+
+//$SQLStm:="SELECT LedgerID, dRefund,dcAmt,dcTax1, RefundCatID FROM [sldbclnt].[dbo].[Refunds] where siteid="+String(site_id)
+//SQL EXECUTE($SQLStm;$Refund_LedgerID;$Refund_dRefund;$Refund_dcAmt;$Refund_dcTax1;$Refund_RefundCatID)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+//ARRAY LONGINT(RefundCat_RefundCatID;0)
+//ARRAY TEXT(RefundCat_sDefCategoryName;0)
+//$SQLStm:="SELECT RefundCatID, sDefCategoryName from [sldbclnt].[dbo].[RefundCat]"
+//SQL EXECUTE($SQLStm;RefundCat_RefundCatID;RefundCat_sDefCategoryName)
+//SQL LOAD RECORD(SQL all records)
+//SQL CANCEL LOAD
+
+
+//DEFAULT TABLE([TrxsHistorical])
+//READ WRITE([TrxsHistorical])
+
+//  ///Refunds
+//For ($vlElem;1;Size of array($Refund_LedgerID))
+
+//GOTO XY(2;2)
+//MESSAGE("Refunding refunds "+String($vlElem)+" of "+String(Size of array($Refund_LedgerID)))
+
+//$tmpr_str:=String($Refund_LedgerID{$vlElem})
+//$lng_str:=Length($tmpr_str)
+//If $lng_str<10
+//While ($lng_str<9)
+//$tmpr_str:="0"+$tmpr_str
+//$lng_str:=Length($tmpr_str)
+//End while 
+//End if 
+//$vlfind:=Find in array($Access_LedgerID;$Refund_LedgerID{$vlElem})  //find tenant in access
+//If ($vlfind>0)
+//$vlfind2:=Find in array($tblMatchingTenantID;$Access_TenantID{$vlfind})  //find match code
+//If ($vlfind2>0)
+//CREATE RECORD([TrxsHistorical])
+//[TrxsHistorical]AgreeNo:=<>sFacility+$tmpr_str
+//[TrxsHistorical]CustomerCode:=$tblMatchingCustomerCode{$vlfind2}
+
+//$vlfind3:=Find in array($Tenant_TenantID;$Access_TenantID{$vlfind})
+//If ($vlfind3>0)
+//[TrxsHistorical]CustomerName:=$Tenant_sFName{$vlfind3}+", "+$Tenant_sLName{$vlfind3}
+//End if 
+
+//[TrxsHistorical]Charge:=False
+//[TrxsHistorical]AnalysisCode:=<>sFacility+"RC"
+//$vlfind4:=Find in array(RefundCat_RefundCatID;$Refund_RefundCatID{$vlElem})
+//If ($vlfind4>0)
+//[TrxsHistorical]Description:=RefundCat_sDefCategoryName{$vlfind4}
+//End if 
+
+
+
+//[TrxsHistorical]TotAmt:=$Refund_dcAmt{$vlElem}+$Refund_dcTax1{$vlElem}
+//[TrxsHistorical]TrxDate:=$Refund_dRefund{$vlElem}
+
+
+//SAVE RECORD([TrxsHistorical])
+//NEXT RECORD([TrxsHistorical])
+//End if 
+//End if 
+
+//End for 
+
+//READ ONLY([NotesHistory])
+//READ ONLY([Customer])
+//READ ONLY([Unit])
+//READ ONLY([Quote])
+//READ ONLY([Contacts])
+//READ ONLY([Agreement])
+//READ ONLY([UnitHistory])
+//READ ONLY([UnitType])
+//READ ONLY([TrxsHistorical])
+//READ ONLY([OtherChgs])
+
+//CLOSE WINDOW($WinRef)
+
+//AlertMessage ("Data conversion complete!")
+//Else 
+//AlertMessage ("Data conversion failed! Storman was unable to connect to the SQL Server. Please check the ODBC connection and/or ODBC drivers.")
+//ABORT
+//End if 

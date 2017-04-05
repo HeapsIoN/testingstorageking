@@ -1,0 +1,328 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 09/06/10, 16:25:02
+// ----------------------------------------------------
+// Method: WS_AddVoucher
+// Description
+// Adds vouchers either from website or sites
+//
+// Parameters
+// ----------------------------------------------------
+
+//VoucherError
+//0 = No Error
+//1 = Promotion Not Found
+//2 = Agreement Not Found
+//3 = Referral Agreement Not Found
+//4 = Voucher Not Valid Yet
+//5 = Voucher No Longer Valid
+//6 = Voucher Not Valid By Movein Date
+//7 = Voucher only valid on Move In
+//8 = Bill Plan Not Found
+//9 = Analysis Code Not Found
+//10 = Promotion has already been redeemed by this agreement
+
+SOAP DECLARATION(WS_Voucher;Is string var;SOAP input;"WS_Voucher")
+SOAP DECLARATION(WS_VoucherAgreeNo;Is string var;SOAP input;"WS_AgreeNo")
+SOAP DECLARATION(WS_VoucherRefAgreeNo;Is string var;SOAP input;"WS_RefAgreeNo")
+SOAP DECLARATION(WS_VoucherWebsite;Is Boolean;SOAP input;"WS_Website")
+
+//WS_OLD=SOAP DECLARATION(WS_VoucherError;Is Integer;SOAP Output;"WS_VoucherError")
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_AddVoucher"+Char(13)
+$String:=$String+"WS_Voucher: "+WS_Voucher+Char(13)
+$String:=$String+"WS_VoucherAgreeNo: "+WS_VoucherAgreeNo+Char(13)
+$String:=$String+"WS_VoucherRefAgreeNo: "+WS_VoucherRefAgreeNo+Char(13)
+$String:=$String+"WS_VoucherWebsite: "+String(WS_VoucherWebsite)+Char(13)
+WSRecordLog ($String)
+
+
+WS_CustomerID:="Invalid"
+$Facilitycode:=Substring(WS_VoucherAgreeNo;1;5)
+If (WS_VoucherWebsite=True)
+QUERY([Promotions];[Promotions]VoucherCode=WS_Voucher;*)
+QUERY([Promotions]; & ;[Promotions]PromoCode=$Facilitycode+"@";*)
+QUERY([Promotions]; & ;[Promotions]Active=True)
+
+If (Records in selection([Promotions])=1)
+QUERY([PromotionHistory];[PromotionHistory]AgreeNo=WS_VoucherAgreeNo;*)
+QUERY([PromotionHistory]; & ;[PromotionHistory]VoucherNo=WS_Voucher)
+
+If (Records in selection([PromotionHistory])=0)
+$ReceiptVoucher:=True
+
+If ([Promotions]ValidFrom>Current date)
+//WS_OLD=WS_VoucherError:=4
+$ReceiptVoucher:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1035
+WS_ORErrorDescription:="Voucher not yet valid."
+End if 
+
+If ([Promotions]ValidTo#!00-00-00!) & ([Promotions]ValidTo<Current date) & ($ReceiptVoucher=True)
+//WS_OLD=WS_VoucherError:=5
+$ReceiptVoucher:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1036
+WS_ORErrorDescription:="Voucher no longer valid."
+End if 
+
+If ([Promotions]ValidTo#!00-00-00!) & ([Promotions]ValidTo<[Agreement]MoveIn) & ($ReceiptVoucher=True)
+//WS_OLD=WS_VoucherError:=6
+$ReceiptVoucher:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1037
+WS_ORErrorDescription:="Voucher not valid by move in date."
+End if 
+
+If ($ReceiptVoucher=True)
+If ([Promotions]PromoType=True)
+//Billing Plan
+QUERY([BillPlan];[BillPlan]Code=[Promotions]BillingPlanCode)
+If (Records in selection([BillPlan])=1)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_VoucherAgreeNo)
+If (Records in selection([Agreement])=1)
+If ([Promotions]NewMoveIn=True)
+If ((([Agreement]MoveIn#[Agreement]NextBillDate) | (([Facility]BillonFirst=True) & (GetDate (1;Month of([Agreement]MoveIn)+1;Year of([Agreement]MoveIn))#[Agreement]NextBillDate))))
+//WS_OLD=WS_VoucherError:=7
+WS_ORSuccess:=False
+WS_ORErrorCode:=1038
+WS_ORErrorDescription:="Voucher only valid on move in."
+Else 
+WebServiceChangeBillPlan ([Promotions]BillingPlanCode)
+//WS_OLD=WS_VoucherError:=0
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Voucher successfully redeemed to Agreement in database Storman."
+CREATE RECORD([PromotionHistory])
+[PromotionHistory]AgreeNo:=[Agreement]RAgreeNo
+[PromotionHistory]VoucherNo:=[Promotions]VoucherCode
+[PromotionHistory]RedeemedDate:=Current date
+SAVE RECORD([PromotionHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]Category:="Promo"
+[NotesHistory]Note:="A "+[Promotions]Description+" voucher was redeemed"
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+End if 
+Else 
+WebServiceChangeBillPlan ([Promotions]BillingPlanCode)
+WS_CustomerID:=[Agreement]CustomerCode
+//WS_OLD=WS_VoucherError:=0
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Voucher successfully redeemed to Agreement in database Storman."
+CREATE RECORD([PromotionHistory])
+[PromotionHistory]AgreeNo:=[Agreement]RAgreeNo
+[PromotionHistory]VoucherNo:=[Promotions]VoucherCode
+[PromotionHistory]RedeemedDate:=Current date
+SAVE RECORD([PromotionHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]Category:="Promo"
+[NotesHistory]Note:="A "+[Promotions]Description+" voucher was redeemed"
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+End if 
+Else 
+//WS_OLD=WS_VoucherError:=2
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_VoucherError:=8
+WS_ORSuccess:=False
+WS_ORErrorCode:=1039
+WS_ORErrorDescription:="Billing Plan record not found in database Storman."
+End if 
+Else 
+OK:=1
+$AgreementNumber:=""
+If ([Promotions]AgreementSpecific=True)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_VoucherRefAgreeNo)
+If (Records in selection([Agreement])#1)
+//WS_OLD=WS_VoucherError:=3
+WS_ORSuccess:=False
+WS_ORErrorCode:=1040
+WS_ORErrorDescription:="Referral Agreement record not found in database Storman."
+OK:=0
+End if 
+
+End if 
+//Analysis Code
+If (OK=1)
+QUERY([Analysis];[Analysis]Code=[Promotions]AnalysisCode)
+If (Records in selection([Analysis])=1)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_VoucherAgreeNo)
+If (Records in selection([Agreement])=1)
+WS_CustomerID:=[Agreement]CustomerCode
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Promotions]ShowDiscount=True)
+[Trxs]Description:=[Analysis]Description
+Else 
+[Trxs]Description:=[Promotions]Description
+End if 
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+[Trxs]TotAmt:=[Promotions]DiscountAmount*-1
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:="A "+[Promotions]Description+" voucher was redeemed to create this transaction."
+SAVE RECORD([Trxs])
+CREATE RECORD([PromotionHistory])
+[PromotionHistory]AgreeNo:=[Agreement]RAgreeNo
+[PromotionHistory]VoucherNo:=[Promotions]VoucherCode
+[PromotionHistory]RedeemedDate:=Current date
+[PromotionHistory]RefAgreeNo:=WS_VoucherRefAgreeNo
+SAVE RECORD([PromotionHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]Category:="Promo"
+[NotesHistory]Note:="A "+[Promotions]Description+" voucher was redeemed"
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+If ([Promotions]AgreementSpecific=True)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_VoucherRefAgreeNo)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=WS_VoucherRefAgreeNo
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Promotions]ShowDiscount=True)
+[Trxs]Description:=[Analysis]Description
+Else 
+[Trxs]Description:=[Promotions]Description
+End if 
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+[Trxs]TotAmt:=[Promotions]DiscountAmount*-1
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:="A "+[Promotions]Description+" referral voucher was redeemed to create this transaction."
+SAVE RECORD([Trxs])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]Category:="Promo"
+[NotesHistory]Note:="A "+[Promotions]Description+" referral voucher was redeemed"
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Web"
+SAVE RECORD([NotesHistory])
+End if 
+//WS_OLD=WS_VoucherError:=0
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Voucher successfully redeemed to Agreement in database Storman."
+Else 
+//WS_OLD=WS_VoucherError:=2
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_VoucherError:=9
+WS_ORSuccess:=False
+WS_ORErrorCode:=1013
+WS_ORErrorDescription:="Analysis Code record not found in database Storman."
+End if 
+End if 
+End if 
+End if 
+Else 
+//WS_OLD=WS_VoucherError:=10
+WS_ORSuccess:=False
+WS_ORErrorCode:=1041
+WS_ORErrorDescription:="This Promotion/Voucher has already been redeemed by this Agreement."
+End if 
+Else 
+//WS_OLD=WS_VoucherError:=1
+WS_ORSuccess:=False
+WS_ORErrorCode:=1042
+WS_ORErrorDescription:="Promotion/Voucher record not found in database Storman."
+End if 
+Else 
+//From a site
+QUERY([Promotions];[Promotions]VoucherCode=WS_Voucher;*)
+QUERY([Promotions]; & ;[Promotions]PromoCode=$Facilitycode+"@";*)
+QUERY([Promotions]; & ;[Promotions]Active=True)
+If (Records in selection([Promotions])=1)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_VoucherRefAgreeNo)
+If (Records in selection([Agreement])=1)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=WS_VoucherRefAgreeNo
+[Trxs]Charge:=True
+QUERY([Analysis];[Analysis]Code=[Promotions]AnalysisCode)//Added by Hamid - 29/01/2016 - 10242
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Promotions]ShowDiscount=True)
+[Trxs]Description:=[Analysis]Description
+Else 
+[Trxs]Description:=[Promotions]Description
+End if 
+[Trxs]TrxDate:=Current date
+[Trxs]DateFrom:=Current date
+[Trxs]DateTo:=Current date
+[Trxs]TotAmt:=[Promotions]DiscountAmount*-1
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:="A "+[Promotions]Description+" referral voucher was redeemed to create this transaction."
+SAVE RECORD([Trxs])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]Category:="Promo"
+[NotesHistory]Note:="A "+[Promotions]Description+" referral voucher was redeemed"
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="Site"
+SAVE RECORD([NotesHistory])
+WS_CustomerID:=[Agreement]CustomerCode
+//WS_OLD=WS_VoucherError:=0
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Voucher successfully redeemed to Agreement in database Storman."
+Else 
+//WS_OLD=WS_VoucherError:=3
+WS_ORSuccess:=False
+WS_ORErrorCode:=1040
+WS_ORErrorDescription:="Referral Agreement not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_VoucherError:=1  
+WS_ORSuccess:=False
+WS_ORErrorCode:=1042
+WS_ORErrorDescription:="Promotion/Voucher record not found in database Storman."
+End if 
+End if 
+
+$String:="End WS_AddVoucher"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

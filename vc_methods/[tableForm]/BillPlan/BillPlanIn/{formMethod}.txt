@@ -1,0 +1,96 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+If (Form event=On Load)
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Field12";Get localized string("Bill rent for each <vtUnits> separatelyB"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Field12";Get localized string("Bill rent for each <vtUnits> separatelyC"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Field12";Get localized string("Bill rent for each space separately"))
+Else 
+OBJECT SET TITLE(*;"Field12";Get localized string("Bill rent for each <vtUnits> separatelyA"))
+End case 
+OBJECT SET TITLE(*;"Text19";Get localized string("Description")+":")
+OBJECT SET TITLE(*;"Text18";Get localized string("Sort Order")+":")
+C_LONGINT(viFreePos)
+$i:=0
+viFreePos:=[BillPlan]PeriodstoPay+[BillPlan]FreePeriods
+SetFormats 
+
+If ([BillPlan]PlanPeriod="")
+[BillPlan]PlanPeriod:="Month"
+End if 
+
+OBJECT SET VISIBLE(vbCTPrices;[Facility]CTPrices)
+OBJECT SET VISIBLE(asDailyBillingPlanRevert;[BillPlan]CasualBilling)
+OBJECT SET VISIBLE(asBillingPlanRevert;Not([BillPlan]CasualBilling))
+
+If ([BillPlan]CasualBilling)
+asDailyRevertCode:=Find in array(asDailyRevertCode;<>sFacility+[BillPlan]SwaptoCode)
+asDailyBillingPlanRevert:=asDailyRevertCode
+Else 
+asRevertCode:=Find in array(asRevertCode;<>sFacility+[BillPlan]SwaptoCode)
+asBillingPlanRevert:=asRevertCode
+End if 
+
+If ([BillPlan]SwaptoCode="")
+asDailyRevertCode:=1
+asRevertCode:=1
+asDailyBillingPlanRevert:=1
+asBillingPlanRevert:=1
+End if 
+
+RELATE MANY([BillPlan]Code)
+
+SET QUERY DESTINATION(3;$i)
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]SwaptoCode=Substring([BillPlan]Code;6))
+If ($i>0)
+OBJECT SET VISIBLE(bDelete;False)
+Else 
+OBJECT SET VISIBLE(bDelete;True)
+End if 
+SET QUERY DESTINATION(0)
+If (Records in selection([Agreement])>0) & ([BillPlan]Code>"")
+OBJECT SET VISIBLE(bDelete;False)
+OBJECT SET ENTERABLE(asPlanPeriod;False)
+OBJECT SET ENTERABLE([BillPlan]CasualBilling;False)
+//vLeg7:=Get localized string("This Billing Plan is in use by")+" "+String(Records in selection([Agreement]))+" "+Get localized string("agreements")+"."
+vLeg7:=Get localized string("This Billing Plan is in use by")+" "+String(Records in selection([Agreement]))+" "+Get localized string("agreements.")+"."
+Else 
+vLeg7:=Get localized string("This Billing Plan is currently not used!")
+End if 
+If ([BillPlan]PeriodicBilling=True)
+OBJECT SET VISIBLE(*;"PB@";True)
+Else 
+OBJECT SET VISIBLE(*;"PB@";False)
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asBillingPlanInit;0)
+ARRAY TEXT(asBillingPlanDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asBillingPlanInit;[Analysis]Description;asBillingPlanDesc)
+INSERT IN ARRAY(asBillingPlanDesc;1)
+asBillingPlanDesc{1}:="<None>"
+INSERT IN ARRAY(asBillingPlanInit;1)
+asBillingPlanInit{1}:="<None>"
+asBillingPlanInit:=Find in array(asBillingPlanInit;<>sFacility+[BillPlan]AnalysisCode)
+If (asBillingPlanInit>0)
+asBillingPlanDesc:=asBillingPlanInit
+End if 
+End if 
+If (Form event=On Validate)
+If ([BillPlan]Code#Old([BillPlan]Code)) & (Old([BillPlan]Code)#"")
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+QUERY([Agreement];[Agreement]BillingPlanCode=Old([BillPlan]Code))
+APPLY TO SELECTION([Agreement];[Agreement]BillingPlanCode:=[BillPlan]Code)
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Agreement])
+End if 
+End if 

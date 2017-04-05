@@ -1,0 +1,130 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(recQuote;finalRecords;count;records)
+ARRAY DATE(aDateReq;0)
+ARRAY TEXT(aSalesInqNo;0)
+ARRAY TEXT(aName;0)
+ARRAY TEXT(aPhone;0)
+ARRAY TEXT(aNotes;0)
+ARRAY TEXT(aUnitSize;0)
+C_BOOLEAN(siteTypes)
+
+
+
+recQuote:=0
+count:=1
+OK:=ConfirmThree (Get localized string("Print all quotes or print quotes for a specific Unit Type?");Get localized string("Print All");Get localized string("Select Unit Type");Get localized string("Cancel"))
+
+Case of 
+: (OK=1)
+QUERY([Contacts];[Contacts]OnWaitingList=True;*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=<>sFacility+"@")
+ORDER BY([Contacts];[Contacts]WhenRequired;>)
+
+CREATE SET([Contacts];"ContactSet")
+
+For ($i;1;Records in selection([Contacts]))
+RELATE MANY([Contacts]ContactNo)
+recQuote:=recQuote+Records in selection([Quote])
+For ($j;1;Records in selection([Quote]))
+//QUERY([Contacts];[Contacts]ContactNo=[Quote]ContactNo)
+If (Records in selection([Contacts])>0)
+REMOVE FROM SET([Contacts];"ContactSet")
+INSERT IN ARRAY(aSalesInqNo;Size of array(aSalesInqNo)+1)
+INSERT IN ARRAY(aName;Size of array(aName)+1)
+INSERT IN ARRAY(aDateReq;Size of array(aDateReq)+1)
+INSERT IN ARRAY(aPhone;Size of array(aPhone)+1)
+INSERT IN ARRAY(aNotes;Size of array(aNotes)+1)
+INSERT IN ARRAY(aUnitSize;Size of array(aUnitSize)+1)
+
+aSalesInqNo{Size of array(aSalesInqNo)}:=Substring([Contacts]ContactNo;6)
+aDateReq{Size of array(aDateReq)}:=[Contacts]WhenRequired
+aName{Size of array(aName)}:=[Contacts]ContactName
+aPhone{Size of array(aPhone)}:=[Contacts]ContactPhone
+aNotes{Size of array(aNotes)}:=[Contacts]WLNotes
+aUnitSize{Size of array(aUnitSize)}:=Substring([Quote]Size;12)
+End if 
+NEXT RECORD([Quote])
+End for 
+NEXT RECORD([Contacts])
+End for 
+USE SET("ContactSet")
+
+For ($i;1;Records in selection([Contacts]))
+INSERT IN ARRAY(aSalesInqNo;Size of array(aSalesInqNo)+1)
+INSERT IN ARRAY(aName;Size of array(aName)+1)
+INSERT IN ARRAY(aDateReq;Size of array(aDateReq)+1)
+INSERT IN ARRAY(aPhone;Size of array(aPhone)+1)
+INSERT IN ARRAY(aNotes;Size of array(aNotes)+1)
+INSERT IN ARRAY(aUnitSize;Size of array(aUnitSize)+1)
+
+aSalesInqNo{Size of array(aSalesInqNo)}:=Substring([Contacts]ContactNo;6)
+aDateReq{Size of array(aDateReq)}:=[Contacts]WhenRequired
+aName{Size of array(aName)}:=[Contacts]ContactName
+aPhone{Size of array(aPhone)}:=[Contacts]ContactPhone
+aNotes{Size of array(aNotes)}:=[Contacts]WLNotes
+aUnitSize{Size of array(aUnitSize)}:=[Quote]Size
+NEXT RECORD([Contacts])
+End for 
+
+records:=Records in set("ContactSet")
+
+CLEAR SET("ContactSet")
+
+: (OK=2)
+siteTypes:=True
+Open window(Screen width/2-200;Screen height/2-133;Screen width/2+200;Screen height/2+133;5;Get localized string("Unit Type"))
+DIALOG([UnitType];"UnitTypeSelection")
+CLOSE WINDOW
+
+QUERY([Contacts];[Contacts]OnWaitingList=True;*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=<>sFacility+"@")
+ORDER BY([Contacts];[Contacts]WhenRequired;>)
+
+For ($i;1;Records in selection([Contacts]))
+RELATE MANY([Contacts]ContactNo)
+QUERY SELECTION([Quote];[Quote]UnitTypeCode=<>sFacility+vUnitTypeSelected)
+recQuote:=recQuote+Records in selection([Quote])
+
+
+If (Records in selection([Quote])>0)
+
+INSERT IN ARRAY(aSalesInqNo;Size of array(aSalesInqNo)+1)
+INSERT IN ARRAY(aName;Size of array(aName)+1)
+INSERT IN ARRAY(aDateReq;Size of array(aDateReq)+1)
+INSERT IN ARRAY(aPhone;Size of array(aPhone)+1)
+INSERT IN ARRAY(aNotes;Size of array(aNotes)+1)
+INSERT IN ARRAY(aUnitSize;Size of array(aUnitSize)+1)
+
+aSalesInqNo{Size of array(aSalesInqNo)}:=Substring([Contacts]ContactNo;6)
+aDateReq{Size of array(aDateReq)}:=[Contacts]WhenRequired
+aName{Size of array(aName)}:=[Contacts]ContactName
+aPhone{Size of array(aPhone)}:=[Contacts]ContactPhone
+aNotes{Size of array(aNotes)}:=[Contacts]WLNotes
+aUnitSize{Size of array(aUnitSize)}:=Substring([Quote]Size;12)
+
+End if 
+
+
+NEXT RECORD([Contacts])
+End for 
+
+records:=0
+End case 
+
+If (OK#3)
+FORM SET OUTPUT([Contacts];"PrintWaitingList")
+BREAK LEVEL(0)
+
+
+finalRecords:=records+recQuote
+ALL RECORDS([Contacts])
+REDUCE SELECTION([Contacts];finalRecords)
+
+PrintSelection ("L";->[Contacts])
+FORM SET OUTPUT([Contacts];"Output")
+
+QUERY([Contacts];[Contacts]OnWaitingList=True;*)
+QUERY([Contacts]; & ;[Contacts]ContactNo=<>sFacility+"@")
+ORDER BY([Contacts];[Contacts]WhenRequired;>)
+End if 
+

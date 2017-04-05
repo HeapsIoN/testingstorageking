@@ -1,0 +1,1253 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//24/10/13 DAM Added method for converting data from SiteLink to Storman
+SET AUTOMATIC RELATIONS(False;False)
+READ WRITE([Facility])
+READ WRITE([Unit])
+READ WRITE([Agreement])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+READ WRITE([UnitType])
+READ WRITE([OtherChgs])
+READ WRITE([NotesHistory])
+ConfirmTwo ("Do you wish to delete data from Agree/Cust/Trx/Othchgs/Unit/Noteshistory/UnitType tables?";"Yes";"No")
+
+If (OK=1)
+ALL RECORDS([Unit])
+DELETE SELECTION([Unit])
+ALL RECORDS([Agreement])
+DELETE SELECTION([Agreement])
+ALL RECORDS([Customer])
+DELETE SELECTION([Customer])
+ALL RECORDS([OtherChgs])
+DELETE SELECTION([OtherChgs])
+ALL RECORDS([Trxs])
+DELETE SELECTION([Trxs])
+ALL RECORDS([NotesHistory])
+DELETE SELECTION([NotesHistory])
+ALL RECORDS([UnitType])
+DELETE SELECTION([UnitType])
+ALL RECORDS([UnitHistory])
+DELETE SELECTION([UnitHistory])
+End if 
+
+$NewUnitType:=False
+$NewCustomer:=False
+$NewAgreement:=False
+$sTimeDescription:=""
+$sReasonComplimentary:=""
+$AltFirstName:="'"
+$sPicFileN1:=""
+$sPicFileN2:=""
+$sPicFileN3:=""
+$sPicFileN4:=""
+$sPicFileN5:=""
+$sPicFileN6:=""
+$dcStdRate:=""
+$dcPmtLastAmt:=""
+$Desc:=""
+$sBillingFreqDesc:=""
+$InsValue:=0
+$RentedAmt:=0
+ARRAY TEXT($UnitType;0)
+
+$Doc:=Open document("")
+
+If (OK=1)
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+RECEIVE PACKET($Doc;$Buffer;Char(13))//Done twice to ignore headers
+While (Length($Buffer)>0)
+$NewUnitType:=False
+$NewCustomer:=False
+$NewAgreement:=False
+
+// Select All records and check the code
+QUERY([UnitType];[UnitType]RUnitType="@")
+SELECTION TO ARRAY([UnitType]RUnitType;$UnitType)
+CREATE RECORD([UnitType])
+[UnitType]DepositAmt:=0
+[UnitType]RentAnalysis:="RF"
+[UnitType]DispOnlineReserve:=False
+[UnitType]OrgAnalysis:="RF"
+$NewUnitType:=True
+
+For ($i;1;167)//Number of fields
+$j:=Position(",";$Buffer)
+
+If ($j>0)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=6)// UnitNo  
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+CREATE RECORD([Unit])
+[Unit]UnitNo:=$Field
+[Unit]RUnitNo:=<>sFacility+[Unit]UnitNo
+
+: ($i=9)// Damaged or not  
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="1")
+$Damaged:=True
+Else 
+$Damaged:=False
+End if 
+
+: ($i=10)// Unit vacant
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="1")
+[Unit]Vacant:=True
+Else 
+[Unit]Vacant:=False
+End if 
+
+: ($i=11)//Unit Status
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]Status:=$Field
+If ([Unit]Status="Unavailable") & ($Damaged)
+[Unit]Status:="Repair"
+End if 
+
+: ($i=13)//Monthly Rate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewUnitType=True)
+[UnitType]MonthlyRate:=Num($Field)
+End if 
+
+: ($i=14)//$dcStdRate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$dcStdRate:=$Field
+
+: ($i=15)//[Unit]UnitSize
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]UnitSize:=$Field
+If ($NewUnitType)
+[UnitType]Description:=$Field
+End if 
+
+: ($i=16)//[Unit]UnitLength & [UnitType]UnitTypeLength
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]UnitLength:=Num($Field)
+If ($NewUnitType=True)
+[UnitType]UnitTypeLength:=Num($Field)
+End if 
+
+: ($i=17)//[Unit]UnitWidth & [UnitType]UnitTypeWidth
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]UnitWidth:=Num($Field)
+If ($NewUnitType=True)
+[UnitType]UnitTypeWidth:=Num($Field)
+End if 
+
+: ($i=18)//[Unit]UnitAreaSize & [UnitType]Area
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]UnitAreaSize:=Num($Field)
+If ($NewUnitType=True)
+[UnitType]Area:=Num($Field)
+End if 
+
+: ($i=20)//[Unit]WalkOrder
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]WalkOrder:=Num($Field)
+
+: ($i=21)//[Unit]UnitSection
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]UnitSection:=Num($Field)
+
+: ($i=22)//[Unit]Comments
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"NULL")
+[Unit]Comments:=$Field
+End if 
+
+: ($i=23)//[Unit]StartDate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]StartDate:=Date($Field)
+
+: ($i=26)//[Customer]CustomerCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+$Field)
+If (Records in selection([Customer])=0)
+CREATE RECORD([Customer])
+[Customer]CustomerCode:=<>sFacility+$Field
+$NewCustomer:=True
+End if 
+End if 
+
+: ($i=28)//[Agreement]AgreeNo
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+QUERY([Agreement];[Agreement]AgreeNo=String($Field;"000000000"))
+If (Records in selection([Agreement])=0)
+CREATE RECORD([Agreement])
+
+While (Length($Field)<9)
+$Field:="0"+$Field
+End while 
+[Agreement]AgreeNo:=$Field
+[Agreement]RAgreeNo:=<>sFacility+[Agreement]AgreeNo
+[Agreement]CustomerCode:=[Customer]CustomerCode
+$NewAgreement:=True
+End if 
+
+If ([Agreement]UnitsOccup#"")
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+","+[Unit]AgreeNo
+Else 
+[Agreement]UnitsOccup:=[Unit]AgreeNo
+End if 
+[Unit]AgreeNo:=[Agreement]RAgreeNo
+End if 
+
+: ($i=30)//[Customer]CustomerCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field="1")
+[Agreement]ActiveAgreemt:=True
+End if 
+
+: ($i=32)//[Customer]CustomerName
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer)
+[Customer]CustomerName:=$Field
+End if 
+
+: ($i=33)//[Customer][Customer]Title
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]Title:=$Field
+End if 
+
+: ($i=34)//[Customer]FirstName
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]FirstName:=$Field
+End if 
+
+: ($i=35)//[Customer]MailAddress, StreetAddress
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]StreetAddress:=$Field
+[Customer]MailAddress:=$Field
+End if 
+
+: ($i=36)//[Customer]MailCity, StreetCity, MailSuburb, StreetSuburb
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]MailCity:=$Field
+[Customer]StreetCity:=$Field
+[Customer]MailSuburb:=$Field
+[Customer]StreetSuburb:=$Field
+End if 
+
+: ($i=37)//[Customer]MailState
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]MailState:=$Field
+End if 
+
+: ($i=38)//[Customer]StreetZIPCode, MailPostZIPCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]StreetZIPCode:=$Field
+[Customer]MailPostZIPCode:=$Field
+End if 
+
+: ($i=39)//[Customer]Country
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer)
+If ($Field="AUSTRALIA")
+[Customer]Country:="AUSTRALIA"
+[Customer]CountryCode:="AU"
+[Customer]MailCountryCode:="AU"
+End if 
+
+If ($Field="NULL")
+[Customer]Country:="AUSTRALIA"
+[Customer]CountryCode:="AU"
+[Customer]MailCountryCode:="AU"
+End if 
+End if 
+
+: ($i=40)//[Customer]CustomerCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]PhonePrivate:=$Field
+End if 
+
+: ($i=41)//[Customer]PhoneBus
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]PhoneBus:=$Field
+End if 
+
+: ($i=42)//[Customer]CustomerCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]FaxNo:=$Field
+End if 
+
+: ($i=43)//[Customer]EmailAddress
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]EmailAddress:=$Field
+End if 
+
+: ($i=44)//[Customer]MobilePhone
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]MobilePhone:=$Field
+End if 
+
+: ($i=45)//[Customer]LicenceNo
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]LicenceNo:=$Field
+End if 
+
+: ($i=46)//[Customer]LicenseState
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]LicenseState:=$Field
+End if 
+
+: ($i=47)//[Customer]CustomerCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]Employer:=$Field
+End if 
+
+: ($i=48)//[Customer]AlternateName
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+$SpacePos:=Position(" ";$Field)
+
+If ($SpacePos>0)
+[Customer]AlternateName:=Substring($Field;1;$SpacePos-1)+","+Substring($Field;$SpacePos+1)
+Else 
+[Customer]AlternateName:=$Field
+End if 
+End if 
+
+: ($i=49)//[Customer]AlternateAddress
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]AlternateAddress:=$Field
+End if 
+
+: ($i=50)//[Customer]AltSuburb, AlternateCity
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]AlternateCity:=$Field
+[Customer]AltSuburb:=$Field
+End if 
+
+: ($i=51)//[Customer]AlternateZIPCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]AlternateZIPCode:=$Field
+End if 
+
+: ($i=52)//[Customer]AlternateState
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]AlternateState:=$Field
+End if 
+
+: ($i=53)//[Customer]AltCountry
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+If ($Field="AUSTRALIA")
+[Customer]AltCountry:="AUSTRALIA"
+[Customer]AltCountryCode:="AU"
+End if 
+
+If ($Field="NULL")
+[Customer]AltCountry:="AUSTRALIA"
+[Customer]AltCountryCode:="AU"
+End if 
+End if 
+
+: ($i=54)//[Customer]AlternatePhone
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]AlternatePhone:=$Field
+End if 
+
+: ($i=55)//[Customer]AltEmail
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]AltEmail:=$Field
+End if 
+
+: ($i=56)//[Customer]DateofBirth
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]DateofBirth:=Date($Field)
+End if 
+
+: ($i=57)//[Customer]CarRego
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]CarRego:=$Field
+End if 
+
+: ($i=58)//[Customer]Vehicle
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]Vehicle:=$Field
+End if 
+
+: ($i=59)//[Customer]Notes
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]Notes:=$Field
+End if 
+
+: ($i=60)//[Customer]Organization
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"")
+If ($Field="1")
+[Customer]Organization:=True
+Else 
+[Customer]Organization:=False
+End if 
+End if 
+
+: ($i=61)//[Customer]CustType
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]CustType:=$Field
+End if 
+
+: ($i=62)//[Customer]CustomerCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]MarketSrce:=$Field
+End if 
+
+: ($i=63)//$sPicFileN1
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+$sPicFileN1:=$Field
+End if 
+
+: ($i=64)//$sPicFileN2
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+$sPicFileN2:=$Field
+End if 
+
+: ($i=65)//$sPicFileN3
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+$sPicFileN3:=$Field
+End if 
+
+: ($i=66)//$sPicFileN4
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+$sPicFileN4:=$Field
+End if 
+
+: ($i=67)//$sPicFileN5
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+$sPicFileN5:=$Field
+End if 
+
+: ($i=68)//$sPicFileN6
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($Field#"NULL")
+$sPicFileN6:=$Field
+End if 
+
+
+: ($i=72)//[Customer]GatePIN
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]GatePIN:=$Field
+End if 
+
+: ($i=73)//[Customer]Overdue/[Unit]LockStatus
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+
+Case of 
+: ($Field="Access Allowed")
+[Customer]Overdue:=0
+[Unit]LockStatus:=[Customer]Overdue
+: ($Field="Suspended at Gate")
+[Customer]Overdue:=1
+[Unit]LockStatus:=[Customer]Overdue
+: ($Field="Over-Locked")
+[Customer]Overdue:=2
+[Unit]LockStatus:=[Customer]Overdue
+: ($Field="Over-Locked & Suspended at Gate")
+[Customer]Overdue:=3
+[Unit]LockStatus:=[Customer]Overdue
+: ($Field="Customer lock replaced & Suspended at Gate")
+[Customer]Overdue:=4
+[Unit]LockStatus:=[Customer]Overdue
+: ($Field="Remove non-Customer Lock")
+[Customer]Overdue:=5
+[Unit]LockStatus:=[Customer]Overdue
+End case 
+End if 
+
+: ($i=76)//[Customer]AllowAccessArrs
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer)
+If ($Field="1")
+[Customer]AllowAccessArrs:=True
+End if 
+End if 
+
+: ($i=78)//[Customer]GateTimeZone
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer)
+[Customer]GateTimeZone:=Num($Field)
+End if 
+
+: ($i=80)//sTimeDescription
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"NULL")
+$sTimeDescription:=$Field
+End if 
+
+: ($i=83)//[Agreement]DaytoBill
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]DaytoBill:=Num($Field)
+End if 
+
+: ($i=84)//[Agreement]PaidTodate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]PaidToDate:=Date($Field)
+[Agreement]DaysOverdue:=Current date-[Agreement]PaidToDate
+End if 
+
+: ($i=85)//[Agreement]MoveIn, [Unit]MoveIn
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]MoveIn:=Date($Field)
+End if 
+[Unit]MoveIn:=Date($Field)
+
+
+: ($i=89)//[Agreement]RegularRent + [Unit]RentedValue
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+
+If ($NewAgreement)
+[Agreement]RegularRent:=Round(Num($Field);1)
+[Agreement]RentAmt:=Round(Num($Field);1)
+[Agreement]NewRegularRent:=Round(Num($Field);1)
+End if 
+[Unit]RentedValue:=Num($Field)
+[Unit]RentedValue:=Round([Unit]RentedValue;1)
+$RentedAmt:=[Unit]RentedValue
+
+: ($i=90)//[Customer]CustomerCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]LastRentIncrDate:=Date($Field)
+End if 
+[Unit]LastInc:=Date($Field)
+
+: ($i=91)//[Unit]NewRentAmt
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]NewRentAmt:=Num($Field)
+
+: ($i=92)//[Unit]IncreaseFrom
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]IncreaseFrom:=Date($Field)
+
+: ($i=93)//[Agreement]LastBillDate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]LastBillDate:=Date($Field)
+End if 
+
+: ($i=94)//[Agreement]LastBillAmt
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]LastBillAmt:=Num($Field)
+End if 
+
+: ($i=95)//[Agreement]LastPmtDate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+
+If ([Agreement]AgreeNo="@0382@")
+[Agreement]LastPmtDate:=Date($Field)
+End if 
+[Agreement]LastPmtDate:=Date($Field)
+End if 
+
+: ($i=96)//[Agreement]PriorBillAmt
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]PriorBillAmt:=Num($Field)
+End if 
+
+: ($i=97)//[Agreement]NextBillDate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]NextBillDate:=Date($Field)
+End if 
+
+: ($i=98)//[Agreement]DaysOverdue
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]DaysOverdue:=Num($Field)
+End if 
+
+: ($i=99)//[Agreement]LateCycleStDate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]LateCycleStDate:=Date($Field)
+End if 
+
+: ($i=100)//sReasonComplimentary
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$sReasonComplimentary:=$Field
+
+: ($i=101)//[Agreement]LastNotice
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]LastNotice:=Num($Field)
+End if 
+
+: ($i=102)//[Customer]Password
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]Password:=$Field
+End if 
+
+: ($i=104)//[Agreement]SendNoticeSMS
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+If ($Field="1")
+[Agreement]SendNoticeSMS:=True
+End if 
+End if 
+
+: ($i=105)//[Customer]MarketingOptOut
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer)
+If ($Field="1")
+[Customer]MarketingOptOut:=True
+End if 
+End if 
+
+: ($i=106)//[Agreement]SendNotices
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+If ($Field="1")
+[Agreement]SendNotices:=True
+End if 
+End if 
+
+: ($i=107)//[Agreement]SendNoticesEmail
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+If ($Field="1")
+[Agreement]SendNoticesEmail:=True
+End if 
+End if 
+
+: ($i=109)//[Agreement]NoticeDaysPrior
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]NoticeDaysPrior:=Num($Field)
+End if 
+
+: ($i=114)//[Agreement]NoticeDaysPrior
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+$sBillingFreqDesc:=$Field
+End if 
+
+: ($i=115)//[Agreement]BillingPlanCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement) & ($Field#"NULL")
+[Agreement]BillingPlanCode:=<>sFacility+$Field
+Else 
+[Agreement]BillingPlanCode:=<>sFacility+"MO"
+End if 
+
+: ($i=116)//[Agreement]MthsAdv
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]MthsAdv:=Num($Field)
+End if 
+
+: ($i=118)//[Agreement]OutNoticeDate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]OutNoticeDate:=Date($Field)
+End if 
+
+: ($i=120)//$dcPmtLastAmt
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$dcPmtLastAmt:=$Field
+
+: ($i=121)//[Agreement]AutoPay
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+If ($Field="1")
+[Agreement]AutoPay:=True
+End if 
+End if 
+
+: ($i=122)//[Agreement]AutoPayType
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]AutoPayType:=Num($Field)
+End if 
+
+: ($i=123)//[Agreement]AutoPayAmt
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+If ([Agreement]AutoPay)
+[Agreement]AutoPayAmt:=Num($Field)
+End if 
+End if 
+
+: ($i=125)//[Customer]AutoEmailCC
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer)
+If ($Field="1")
+[Customer]AutoEmailCC:=True
+End if 
+End if 
+
+: ($i=126)//[Agreement]CCExpiry
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]CCExpiry:=Date($Field)
+End if 
+
+: ($i=127)//[Customer]CCName
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]CCName:=$Field
+End if 
+
+: ($i=128)//[Agreement]AuthCCSigned
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]AuthCCSigned:=Date($Field)
+End if 
+
+: ($i=129)//[Agreement]AuthCCExpiry
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]AuthCCExpiry:=Date($Field)
+End if 
+
+: ($i=130)//[Customer]CCValidFrom
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+$posFirst:=Position("/";$Field)
+$posSecond:=Position("/";$Field;$posFirst+1)
+[Customer]CCValidFrom:=Substring($Field;$posSecond-2;2)+Substring($Field;$posSecond+3;2)
+End if 
+
+: ($i=131)//[Customer]CCExpiryDate
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]CCExpiryDate:=Date($Field)
+$posFirst:=Position("/";$Field)
+$posSecond:=Position("/";$Field;$posFirst+1)
+[Customer]CCExpiry:=Substring($Field;$posSecond-2;2)+Substring($Field;$posSecond+3;2)
+[Agreement]CCExpiry:=Date($Field)
+End if 
+
+: ($i=132)//[Unit]Insurevalue
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]InsureValue:=Num($Field)
+If ($NewAgreement)
+[Agreement]InsureValue:=Num($Field)
+End if 
+
+: ($i=133)//$coverage amount
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Desc:=$Field
+If ($Desc="NULL")
+$Desc:="$0.00"
+End if 
+
+
+: ($i=134)//[Unit]InsureCertNo
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"NULL")
+[Unit]InsureCertNo:=$Field
+End if 
+
+: ($i=135)//ORC for Insurance
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$InsValue:=0
+If ($Field#"") & ($Field#"NULL")
+CREATE RECORD([OtherChgs])
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+[OtherChgs]Amount:=Num($Field)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"IN")
+[OtherChgs]AnalysisCode:=[Analysis]Code
+[OtherChgs]Description:=[Analysis]Description
+SAVE RECORD([OtherChgs])
+$InsValue:=Num($Field)
+End if 
+
+: ($i=136)//[Agreement]InsureCommence
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]InsureCommence:=Date($Field)
+End if 
+
+: ($i=140)//[Agreement]InsureExpire
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]InsureExpire:=Date($Field)
+End if 
+
+: ($i=142)//[Agreement]TotRentUnpaid
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]TotRentUnpaid:=Num($Field)
+[Agreement]TotRentUnpaid:=Round([Agreement]TotRentUnpaid;1)
+If ([Agreement]TotRentUnpaid>0)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=[Agreement]LastBillDate
+[Trxs]TrxTime:=Current time
+[Trxs]AnalysisCode:=<>sFacility+"RF"
+[Trxs]Description:="Rent Balance imported (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]TotRentUnpaid
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+SAVE RECORD([Trxs])
+End if 
+End if 
+
+: ($i=143)//[Agreement]TotInsUnpaid
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]TotInsUnpaid:=Num($Field)
+[Agreement]TotInsUnpaid:=Round([Agreement]TotInsUnpaid;1)
+If ([Agreement]TotInsUnpaid>0)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=[Agreement]LastBillDate
+[Trxs]TrxTime:=Current time
+[Trxs]AnalysisCode:=<>sFacility+"IN"
+[Trxs]Description:="Insurance Balance imported (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]TotInsUnpaid
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+SAVE RECORD([Trxs])
+End if 
+End if 
+
+: ($i=144)//[Agreement]TotLateUnpaid
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]TotLateUnpaid:=Num($Field)
+[Agreement]TotLateUnpaid:=Round([Agreement]TotLateUnpaid;1)
+If ([Agreement]TotLateUnpaid>0)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=[Agreement]LastBillDate
+[Trxs]TrxTime:=Current time
+[Trxs]AnalysisCode:=<>sFacility+"LF"
+[Trxs]Description:="Late Fee Balance imported (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]TotLateUnpaid
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+SAVE RECORD([Trxs])
+End if 
+End if 
+
+: ($i=145)//[Agreement]TotOthrUnpaid
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]TotOthrUnpaid:=Num($Field)
+[Agreement]TotOthrUnpaid:=Round([Agreement]TotOthrUnpaid;1)
+If ([Agreement]TotOthrUnpaid>0)
+CREATE RECORD([Trxs])
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]TrxDate:=[Agreement]LastBillDate
+[Trxs]TrxTime:=Current time
+[Trxs]AnalysisCode:=<>sFacility+"MIS"
+[Trxs]Description:="Other Balance imported (Prior System)"
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Agreement]TotOthrUnpaid
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Qty:=1
+[Trxs]Confirmed:=False
+[Trxs]UserLogin:="adminsupport"
+[Trxs]DateFrom:=[Agreement]LastBillDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+SAVE RECORD([Trxs])
+End if 
+End if 
+
+: ($i=146)//[Agreement]BalanceOwing
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]BalanceOwing:=Num($Field)
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing;1)
+[Customer]Balance:=[Agreement]BalanceOwing
+End if 
+
+: ($i=161)// Customer last name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+[Customer]CustomerName:=$Field+", "+[Customer]FirstName
+End if 
+
+: ($i=162)//Customer Alt First name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"NULL")
+$AltFirstName:=$Field
+End if 
+
+: ($i=163)//Customer Alt Last name
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewCustomer) & ($Field#"") & ($AltFirstName#"")
+[Customer]AlternateName:=$Field+", "+$AltFirstName
+End if 
+: ($i=164)//[Agreement]PriorLastBill
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($NewAgreement)
+[Agreement]PriorLastBill:=Date($Field)
+End if 
+: ($i=165)//[Unit]Status
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+[Unit]Status:=$Field
+
+If ($Field="Rented")
+[Unit]LastStatusDate:=[Agreement]MoveIn
+Else 
+[Unit]LastStatusDate:=Current date
+End if 
+
+: ($i=166)//[UnitType]UnitTypeCode
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$DotPos:=Position(".";$Field)
+If ($DotPos>0)
+[Unit]UnitTypeCode:=<>sFacility+$Field
+Else 
+[Unit]UnitTypeCode:=<>sFacility+$Field+".0"
+End if 
+$exist:=Find in array($UnitType;[Unit]UnitTypeCode)
+
+If ($exist>0)
+$NewUnitType:=False
+Else 
+[UnitType]UnitTypeCode:=Substring([Unit]UnitTypeCode;6)
+[UnitType]RUnitType:=[Unit]UnitTypeCode
+$NewUnitType:=True
+End if 
+
+: ($i=167)//[UnitType]UnitCategory
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($Field#"") & ($NewUnitType)
+$Field:=Replace string($Field;"-";",")
+[UnitType]UnitCategory:=$Field
+End if 
+
+End case 
+End if 
+End for 
+SAVE RECORD([Unit])
+
+If ([Unit]MoveIn#!00-00-00!)
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]RentedValue:=$RentedAmt
+SAVE RECORD([UnitHistory])
+End if 
+
+If ($NewUnitType) & ([UnitType]RUnitType#"")
+SAVE RECORD([UnitType])
+End if 
+If ($NewAgreement)
+[Agreement]LastMthsAdv:=1
+[Agreement]LastBillPlan:=[Agreement]BillingPlanCode
+[Agreement]PriorBillAmt:=[Agreement]LastBillAmt
+[Agreement]PriorBillPlan:=[Agreement]LastBillPlan
+
+
+If ([Agreement]BillingPlanCode#(<>sFacility+"MO"))
+ARRAY TEXT(asBillingPlan;0)
+ARRAY TEXT(asBillingDesc;0)
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+SELECTION TO ARRAY([BillPlan]Code;asBillingPlan)
+SELECTION TO ARRAY([BillPlan]Description;asBillingDesc)
+asBillingDesc:=1
+viMthsAdv:=1
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+RELATE ONE([Agreement]BillingPlanCode)
+MoveInChangeBillPlan (True)
+SAVE RECORD([Agreement])
+End if 
+
+SAVE RECORD([Agreement])
+End if 
+If ($NewCustomer)
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=1
+SAVE RECORD([Customer])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]Category:="SiteLink Import"
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Note:="This customer and its information was converted from SiteLink on "+String(Current date)+Char(13)+Char(10)
+[NotesHistory]Note:=[NotesHistory]Note+"TenantID  was "+Substring([Customer]CustomerCode;6)+", LeaseNumber was "+Replace string([Agreement]AgreeNo;"0";"")+" and Unit(s) Occupied were "+[Agreement]UnitsOccup+Char(13)+Char(10)
+[NotesHistory]Note:=[NotesHistory]Note+"Monthly Asking Rate was $"+$dcStdRate+", Regular Rent was $"+String($RentedAmt)+"  and Billing Frequency was "+$sBillingFreqDesc+Char(13)+Char(10)
+[NotesHistory]Note:=[NotesHistory]Note+"Customer Name was "+[Customer]CustomerName+" with a move in date of "+String([Agreement]MoveIn)+Char(13)+Char(10)
+[NotesHistory]Note:=[NotesHistory]Note+"Insurance Coverage was "+$Desc+" with a premium of $"+String($InsValue)+Char(13)+Char(10)
+[NotesHistory]Note:=[NotesHistory]Note+"Access Type was "+$sTimeDescription+" with Zone "+String([Customer]GateTimeZone)+" and Pin Code "+[Customer]GatePIN+Char(13)+Char(10)
+[NotesHistory]Note:=[NotesHistory]Note+"Last Payment date was "+String([Agreement]LastPmtDate)+"($"+$dcPmtLastAmt+")  and the Agreement balance was $"+String([Agreement]BalanceOwing)+Char(13)+Char(10)
+If ([Agreement]AutoPay=True)
+[NotesHistory]Note:=[NotesHistory]Note+"This Customer was on AutoPay (Credit Card) with recurring amount $"+String([Agreement]AutoPayAmt)+Char(13)+Char(10)
+End if 
+If ($sReasonComplimentary#"NULL")
+[NotesHistory]Note:=[NotesHistory]Note+"This Customer had the following reason listed for complimentary storage "+$sReasonComplimentary+Char(13)+Char(10)
+End if 
+
+If ([Customer]Notes#"")
+[NotesHistory]Note:=[NotesHistory]Note+"Last customer note added was "+[Customer]Notes+Char(13)+Char(10)
+End if 
+
+If ($sPicFileN1#"") | ($sPicFileN2#"") | ($sPicFileN3#"") | ($sPicFileN4#"") | ($sPicFileN5#"") | ($sPicFileN6#"")
+[NotesHistory]Note:=[NotesHistory]Note+"The following picture files belong to TenantID "+Substring([Customer]CustomerCode;6)+" : "
+If ($sPicFileN1#"")
+[NotesHistory]Note:=[NotesHistory]Note+$sPicFileN1
+End if 
+If ($sPicFileN2#"")
+[NotesHistory]Note:=[NotesHistory]Note+", "+$sPicFileN2
+End if 
+If ($sPicFileN3#"")
+[NotesHistory]Note:=[NotesHistory]Note+", "+$sPicFileN3
+End if 
+If ($sPicFileN4#"")
+[NotesHistory]Note:=[NotesHistory]Note+", "+$sPicFileN4
+End if 
+If ($sPicFileN5#"")
+[NotesHistory]Note:=[NotesHistory]Note+", "+$sPicFileN5
+End if 
+If ($sPicFileN6#"")
+[NotesHistory]Note:=[NotesHistory]Note+", "+$sPicFileN6
+End if 
+[NotesHistory]Note:=[NotesHistory]Note+Char(13)+Char(10)
+End if 
+
+[NotesHistory]Note:=[NotesHistory]Note+"All transactional and customer history for TenantID "+Substring([Customer]CustomerCode;6)+" is located at C\\MyDocuments\\SiteLink History using excel."+Char(13)+Char(10)
+
+SAVE RECORD([NotesHistory])
+End if 
+
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+
+CLOSE DOCUMENT($Doc)
+
+//Set Sort Order
+QUERY([UnitType];[UnitType]UnitTypeCode="@")
+ORDER BY([UnitType];[UnitType]Area;>)
+FIRST RECORD([UnitType])
+For ($z;1;Records in selection([UnitType]))
+[UnitType]SortOrder:=$z
+[UnitType]DispOnlineReserve:=True
+QUERY([MarketingTypes];[MarketingTypes]ListCode="SC";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([UnitType]RUnitType;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]LowerArea<[UnitType]Area;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]UpperArea>=[UnitType]Area)
+If (Records in selection([MarketingTypes])=1)
+[UnitType]SizeCategory:=[MarketingTypes]Description
+Else 
+[UnitType]SizeCategory:="Not Found"
+End if 
+SAVE RECORD([UnitType])
+NEXT RECORD([UnitType])
+End for 
+
+QUERY([Agreement];[Agreement]AgreeNo="@")
+ORDER BY([Agreement];[Agreement]AgreeNo;<)
+FIRST RECORD([Agreement])
+If ([Agreement]AgreeNo="@MISCL@")
+NEXT RECORD([Agreement])
+End if 
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+[Facility]NextAgreeNo:=Num([Agreement]AgreeNo)+1
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+[Facility]LastDaily:=Add to date(Current date;0;0;-1)
+[Facility]LastBanking:=Add to date(Current date;0;0;-1)
+[Facility]CantModPrior:=!2013-11-01!
+[Facility]Version:=9107
+SAVE RECORD([Facility])
+ReCalcUnits 
+AlertMessage ("Import is done")
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([Unit])
+READ ONLY([Customer])
+READ ONLY([Trxs])
+READ ONLY([Facility])
+READ ONLY([OtherChgs])
+READ ONLY([UnitHistory])
+
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Facility])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([UnitHistory])

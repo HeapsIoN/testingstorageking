@@ -1,0 +1,128 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 18/11/10, 13:44:33
+// ----------------------------------------------------
+// Method: BalanceDateCalc
+// Description
+// Calculates a balance of an agreement, reservation or customer at a given date
+//
+// Parameters
+//$1 = 0: Agreement or Reservation, 1:Customer
+//$2 = Date to calculate balance, if blank date then it calculates based on all transactions
+//$3 = True excludes transactions dated $2
+//$4 = RAgreeNo, RReserveNo, CustomerCode to calculate on
+//$5 = True includes non-invoiced charges
+//$0 = Balance
+// ----------------------------------------------------
+
+C_LONGINT($1)
+C_DATE($2)
+C_BOOLEAN($3;$5;$AddNonInv)
+C_TEXT($4)
+C_REAL($0)
+
+$AddNonInv:=False
+If (Count parameters>4)
+$AddNonInv:=$5
+End if 
+
+
+CREATE SET([Trxs];"CurrentTrx")
+
+Case of 
+: ($1=0)
+If ($2=!00-00-00!)
+QUERY([Trxs];[Trxs]AgreeNo=$4;*)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=$4;*)
+End if 
+: ($1=1)
+If ($2=!00-00-00!)
+QUERY([Trxs];[Trxs]CustomerCode=$4;*)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=$4;*)
+End if 
+Else 
+//Do Nothing
+End case 
+
+If ($2#!00-00-00!)
+If ($3=True)
+QUERY([Trxs]; & ;[Trxs]InvDate<$2;*)
+Else 
+QUERY([Trxs]; & ;[Trxs]InvDate<=$2;*)
+End if 
+End if 
+
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]InvNo#0)
+
+$ChargeAmount:=Sum([Trxs]TotAmt)
+
+If ($AddNonInv)
+
+Case of 
+: ($1=0)
+If ($2=!00-00-00!)
+QUERY([Trxs];[Trxs]AgreeNo=$4;*)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=$4;*)
+End if 
+: ($1=1)
+If ($2=!00-00-00!)
+QUERY([Trxs];[Trxs]CustomerCode=$4;*)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=$4;*)
+End if 
+Else 
+//Do Nothing
+End case 
+
+If ($2#!00-00-00!)
+If ($3=True)
+QUERY([Trxs]; & ;[Trxs]TrxDate<$2;*)
+Else 
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$2;*)
+End if 
+End if 
+
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]InvNo=0)
+
+$ChargeAmount:=$ChargeAmount+Sum([Trxs]TotAmt)
+End if 
+
+Case of 
+: ($1=0)
+If ($2=!00-00-00!)
+QUERY([Trxs];[Trxs]AgreeNo=$4;*)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=$4;*)
+End if 
+: ($1=1)
+If ($2=!00-00-00!)
+QUERY([Trxs];[Trxs]CustomerCode=$4;*)
+Else 
+QUERY([Trxs];[Trxs]CustomerCode=$4;*)
+End if 
+Else 
+//Do Nothing
+End case 
+
+If ($2#!00-00-00!)
+If ($3=True)
+QUERY([Trxs]; & ;[Trxs]TrxDate<$2;*)
+Else 
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$2;*)
+End if 
+End if 
+
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+$ReceiptAmount:=Sum([Trxs]TotAmt)
+
+$0:=$ChargeAmount-$ReceiptAmount
+
+USE SET("CurrentTrx")
+CLEAR SET("CurrentTrx")

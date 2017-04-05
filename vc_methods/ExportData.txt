@@ -1,0 +1,152 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Path;$Doc)//C
+C_LONGINT($Area)
+If (PermissionsControl (116))
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("This will create textfiles from this datafile using the first 40 Berths and their related data. Continue?");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("This will create textfiles from this datafile using the first 40 Appliances and their related data. Continue?");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("This will create textfiles from this datafile using the first 40 Spaces and their related data. Continue?");Get localized string("Yes");Get localized string("No"))
+Else 
+ConfirmTwo (Get localized string("This will create textfiles from this datafile using the first 40 Units and their related data. Continue?");Get localized string("Yes");Get localized string("No"))
+End case 
+If (OK=1)
+$Path:=Select folder(Get localized string("Where would you like to save the export?"))
+If (ok=1)
+
+$Path:=$Path+"DataExport"+<>sSeparator
+If (Test path name($Path)#Is a folder)
+CREATE FOLDER($Path)
+End if 
+//if(select folder
+//If (Test path name(<>sTutPath)#0)
+//AlertMessage ("Tutorial folder not found - Demonstration files cannot be created!")
+//ABORT
+//End if 
+//$Path:=<>sTutPath+"Facility"+<>sSeparator
+//If (Test path name($Path)#Is a directory )
+//CREATE FOLDER($Path)
+//AlertMessage ("Files will be created in a new folder called 'Facility' inside the 'Tutorial' "+"folder.")
+//End if 
+bImport:=0//!01/01/1999!-Current date
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]Vacant=False)
+If (Records in selection([Unit])>30)
+ORDER BY([Unit];[Unit]UnitNo;>)
+REDUCE SELECTION([Unit];30)
+End if 
+CREATE SET([Unit];"Occupied")
+QUERY([Unit];[Unit]Vacant=True)
+ORDER BY([Unit];[Unit]UnitNo;>)
+REDUCE SELECTION([Unit];40-Records in set("Occupied"))
+CREATE SET([Unit];"Vacant")
+UNION("Occupied";"Vacant";"Occupied")
+USE SET("Occupied")
+CLEAR SET("Occupied")
+CLEAR SET("Vacant")
+ORDER BY([Unit];[Unit]UnitNo;>)
+FORM SET OUTPUT([Unit];"Output")
+EXPORT SYLK([Unit];$Path+"Unit.slk")
+RELATE ONE SELECTION([Unit];[UnitType])
+ORDER BY([UnitType];[UnitType]RentedValue;>)
+FORM SET OUTPUT([UnitType];"Output")
+EXPORT SYLK([UnitType];$Path+"UnitType.slk")
+RELATE ONE SELECTION([Unit];[Agreement])
+If (Records in selection([Agreement])>25)
+REDUCE SELECTION([Agreement];25)
+End if 
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+FORM SET OUTPUT([Agreement];"Output")
+EXPORT SYLK([Agreement];$Path+"Agreemt.slk")
+RELATE ONE SELECTION([Agreement];[Customer])
+CREATE SET([Customer];"Temp")
+RELATE MANY SELECTION([Trxs]AgreeNo)
+FORM SET OUTPUT([Trxs];"Output")
+EXPORT SYLK([Trxs];$Path+"Transact.slk")
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+FORM SET OUTPUT([Analysis];"Output")
+EXPORT SYLK([Analysis];$Path+"Analysis.slk")
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+FORM SET OUTPUT([BillPlan];"Output")
+EXPORT SYLK([BillPlan];$Path+"BillPlan.slk")
+QUERY([Notices];[Notices]FacilityCode=<>sFacility)
+FORM SET OUTPUT([Notices];"Output")
+EXPORT SYLK([Notices];$Path+"Notices.slk")
+ALL RECORDS([Contacts])
+ORDER BY([Contacts];[Contacts]CallDate;<)
+REDUCE SELECTION([Contacts];15)
+FORM SET OUTPUT([Contacts];"Output")
+EXPORT SYLK([Contacts];$Path+"Contacts.slk")
+ALL RECORDS([MarketingTypes])
+FORM SET OUTPUT([MarketingTypes];"Output")
+EXPORT SYLK([MarketingTypes];$Path+"Marketin.slk")
+ALL RECORDS([Unit])
+RELATE ONE SELECTION([Unit];[Reservation])
+FORM SET OUTPUT([Reservation];"Output")
+EXPORT SYLK([Reservation];$Path+"Reservat.slk")
+RELATE ONE SELECTION([Reservation];[Customer])
+CREATE SET([Customer];"Export")
+UNION("Export";"Temp";"Export")
+USE SET("Export")
+CLEAR SET("Export")
+CLEAR SET("Temp")
+FORM SET OUTPUT([Customer];"Output")
+EXPORT SYLK([Customer];$Path+"Customer.slk")
+SET CHANNEL(10;$Path+"System.txt")
+SetFacility 
+SCAN INDEX([Agreement]AgreeNo;1;<)
+[Facility]NextAgreeNo:=Num([Agreement]AgreeNo)+1
+[Facility]TutorialData:=True
+[Facility]UseGateSys:=False
+[Facility]MaxUnits:=50
+SEND RECORD([Facility])
+SET CHANNEL(11)
+bImport:=0
+ConfirmTwo (Get localized string("Export letters files?");"Yes";"No")
+If (<>t4DWrite) & (OK=1)
+DEFAULT TABLE([Notices])
+ALL RECORDS
+$Area:=WR New offscreen area 
+For ($i;1;Records in selection)
+EXPAND BLOB([Notices]Letter)
+WR BLOB TO AREA ($Area;[Notices]Letter)
+$Doc:=$Path+Substring(Replace string([Notices]Description;" ";"");1;8)+".4w7"
+//If (Length($Doc)<218)
+WR SAVE DOCUMENT ($Area;$Doc;"4WR7")
+//Else 
+//AlertMessage ("The file "+$Doc+" could not be imported as the pathname is too long!")
+//End if 
+NEXT RECORD
+End for 
+WR DELETE OFFSCREEN AREA ($Area)
+End if 
+ConfirmTwo (Get localized string("Export email files?");"Yes";"No")
+If (OK=1)
+DEFAULT TABLE([Notices])
+ALL RECORDS([Notices])
+For ($i;1;Records in selection)
+BLOB PROPERTIES([Notices]Email;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+$Doc:=$Path+[Notices]Description+".4e7"// This line changed by Hamid, the original code is below
+//Original Code, commented by Hamid 20 Oct 2014
+//$Doc:=$Path+Substring(Replace string([Notices]Description;" ";"");1;8)+".4e7"
+BLOB TO DOCUMENT($Doc;[Notices]Email)
+NEXT RECORD([Notices])
+End for 
+WR DELETE OFFSCREEN AREA ($Area)
+End if 
+AlertMessage (Get localized string("Export Complete!"))
+Else 
+AlertMessage (Get localized string("Export Cancelled!"))
+End if 
+Else 
+AlertMessage (Get localized string("Export Cancelled!"))
+End if 
+Else 
+AlertMessage (Get localized string("You must login as Admin to be able to Export Data."))
+End if 
+

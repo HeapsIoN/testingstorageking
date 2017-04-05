@@ -1,0 +1,105 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$k;$TotToMatch;$TotMatch1;$TotMatch2)
+C_DATE($Date)
+$Date:=$1
+$TotToMatch:=0
+$TotMatch1:=0
+$TotMatch2:=0
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@";*)
+QUERY([Customer]; & ;[Customer]NoTrxs=False)
+RELATE MANY SELECTION([Agreement]CustomerCode)
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+FIRST RECORD([Agreement])
+$StartTime:=Current time
+Open window(20;50;300;150;0)
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;3)
+MESSAGE("                                ")
+GOTO XY(2;2)
+MESSAGE(Get localized string("Matching for agreement")+" :"+[Agreement]AgreeNo+" - "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"    ")
+For ($k;1;2)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0)
+CREATE SET([Trxs];"ToMatch")
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+CREATE SET("Debits")
+USE SET("ToMatch")
+QUERY SELECTION([Trxs];[Trxs]Charge=False;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Confirmed=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$Date)
+CREATE SET([Trxs];"Credits")
+If ($k=1)
+$TotToMatch:=$TotToMatch+Records in selection([Trxs])
+End if 
+For ($j;1;Records in selection([Trxs]))
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+FIRST RECORD([Trxs])
+ONE RECORD SELECT([Trxs])
+CREATE SET([Trxs];"Single")
+$Amt:=Round([Trxs]TotAmt;2)
+USE SET("Debits")
+If ($k=1)
+QUERY SELECTION([Trxs];[Trxs]TotAmt=$Amt)
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+FIRST RECORD([Trxs])
+ONE RECORD SELECT([Trxs])
+CREATE SET([Trxs];"ToMatch")
+Else 
+ORDER BY([Trxs];[Trxs]TrxDate;>)
+FIRST RECORD([Trxs])
+$Amount:=0
+CREATE EMPTY SET([Trxs];"ToMatch")
+While ($Amount#$Amt) & (End selection([Trxs])=False)
+$Amount:=Round($Amount+[Trxs]TotAmt;2)
+ADD TO SET([Trxs];"ToMatch")
+NEXT RECORD([Trxs])
+End while 
+If ($Amount#$Amt)
+CREATE EMPTY SET([Trxs];"ToMatch")
+End if 
+USE SET("ToMatch")
+End if 
+If (Records in selection([Trxs])>0)
+//Do match here
+RELATE ONE([Trxs]CustomerCode)
+If (Records in selection([Customer])=1)
+GOTO XY(2;3)
+MESSAGE(Get localized string("Matching Transaction")+"..."+"    ")
+[Customer]NextMatch:=[Customer]NextMatch+1
+SAVE RECORD([Customer])
+APPLY TO SELECTION([Trxs];[Trxs]Match:=[Customer]NextMatch)
+DIFFERENCE("Debits";"ToMatch";"Debits")
+USE SET("Single")
+[Trxs]Match:=[Customer]NextMatch
+SAVE RECORD([Trxs])
+If ($k=1)
+$TotMatch1:=$TotMatch1+1
+Else 
+$TotMatch2:=$TotMatch2+1
+End if 
+End if 
+End if 
+DIFFERENCE("Credits";"Single";"Credits")
+USE SET("Credits")
+End for 
+End for 
+NEXT RECORD([Agreement])
+End for 
+CLEAR SET("ToMatch")
+CLEAR SET("Single")
+CLEAR SET("Credits")
+CLEAR SET("Debits")
+CLOSE WINDOW
+vError:=False
+ON ERR CALL("CreateLogFile")
+vDoc:=Append document("Match Log File")
+If (vError=True)
+vDoc:=Create document("Match Log File")
+End if 
+ON ERR CALL("ErrorLog")
+SEND PACKET(vDoc;"Matching procedure commenced at "+String($StartTime)+" on "+String(Current date)+Char(13))
+SEND PACKET(vDoc;"NewMatch procedure completed at "+String(Current time)+Char(13))
+SEND PACKET(vDoc;"Total Credit transactions able to be matched = "+String($TotToMatch)+Char(13))
+SEND PACKET(vDoc;"Total credit transactions matched when k=1 was "+String($TotMatch1)+Char(13))
+SEND PACKET(vDoc;"Total credit transactions matched when k=2 was "+String($TotMatch2)+Char(13))
+CLOSE DOCUMENT(vDoc)

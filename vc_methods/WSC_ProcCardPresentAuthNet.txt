@@ -1,0 +1,189 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0)//Authorization Code
+C_BOOLEAN($1)//$1 = Display Decline / Error Alerts
+C_TEXT($2)//$2 P=Process, C=Credit, V=Void
+C_REAL($3)//$1 = Transaction Amount
+C_TEXT($4;$5)//$2 = Card Number & Expiry Date
+C_TEXT($6;$AuthCode)//TransID
+C_TEXT($7;$8;$9;$10;$11;$12;$13;$Desc)//Invoice,Description,CustomerCode,CustName,Address,City,ZIP
+C_TEXT($14;$15;$16)//Blank,Login,Password
+C_LONGINT($17)//Logging,Country
+C_TEXT($19)
+C_TEXT($18;$20;$Message;$Header;$Response;$HTTPResponseCode)//`$18=CCV, $20 = Original receipt ID
+C_LONGINT($TCPID;$Error)
+C_TIME($WaitTime1)
+$Status:=0
+$Buffer:=""
+$TCPID:=0
+$cr:=Char(13)+Char(10)
+If ([Facility]TestAccount)//-10221
+$ServerAddress:="test.authorize.net"
+Else 
+$ServerAddress:="cardpresent.authorize.net"
+End if 
+
+//$Folder:="/gateway/transact.dll"
+
+
+$Folder:="/gateway/transact.dll"
+
+$ServerPort:="443"
+//$Error:=IT_MyTCPAddr ($ClientAddress;$ClientSubnet)
+
+
+//Build the transaction message
+$Message:="SubmitPayment="//The Name of the HTML form
+$Message:=$Message+"&x_cpversion="+"1.0"
+$Message:=$Message+"&x_login="+$15//2zcB3vK2Ka"  //+$15
+$Message:=$Message+"&x_market_type="+"2"//2=retail - this won't work until we have a Card Present test account
+$Message:=$Message+"&x_device_type="+"1"//personal computer based terminal (or could use 1 which means unknown)
+$Message:=$Message+"&x_amount="+String(Round($3;2))//+"1.50"  //
+$Message:=$Message+"&x_split_tender_id="//?????
+$Message:=$Message+"&x_tran_key="+$16//"2yqKcVm3292F5269"  //+$16
+$Message:=$Message+"&x_track1="//????
+$Message:=$Message+"&x_track2="//?????
+Case of 
+: ($2="C")
+$Message:=$Message+"&x_type="+"CREDIT"
+$Message:=$Message+"&x_ref_trans_id="+$20
+: ($2="V")
+$Message:=$Message+"&x_type="+"VOID"
+$Message:=$Message+"&x_ref_trans_id="+$20
+Else 
+$Message:=$Message+"&x_type="+"AUTH_CAPTURE"
+End case 
+$Message:=$Message+"&x_card_num="+$4
+$Message:=$Message+"&x_exp_date="+Substring($5;1;2)+"/"+Substring($5;3;2)
+$Message:=$Message+"&x_card_code="+$18
+//$Message:=$Message+"&x_test_request="+"TRUE"
+$Message:=$Message+"&x_response_format="+"0"//0=XML, 1 = delimited
+$Message:=$Message+"&x_ADC_Delimited_Data=TRUE"
+$Message:=$Message+"&x_ADC_URL=FALSE"
+
+$Header:=""
+$Header:=$Header+"POST "+$Folder+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+":"+$ServerPort+$cr
+$Header:=$Header+"Accept: "+"*/*"+$cr
+$Header:=$Header+"Pragma: no-cache"+$cr
+$Header:=$Header+"Connection: Keep-Alive"+$cr
+$Header:=$Header+"Extension: Security/Remote-Passphrase"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr
+
+$Error:=TCP_Open ($ServerAddress;Num($ServerPort);$TCPID;3)
+
+If ($Error=0)
+MaskCCLog ($Message;"PresentAuthNet")
+$Error:=TCP_Send ($TCPID;$Header+$cr+$Message+$cr+$cr)
+If (False)
+$Doc:=Create document("AuthNet.txt")
+SEND PACKET($Doc;$Header+$cr+$Message+$cr+$cr)
+CLOSE DOCUMENT($Doc)
+End if 
+$Message:=""
+$WaitTime:=Current time+?00:00:10?//Timeout after 10 seconds 
+$WaitTime1:=Current time+?00:00:02?//10577
+Repeat //While a single HTTP response is being received
+Repeat //10577
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$Error:=TCP_State ($TCPID;$Status)
+$Message:=$Message+$Buffer
+Until (Current time>$WaitTime1)
+Until ($Status=0) | ($Error>0) | (Current time>$WaitTime) | ($Status=8)//by Hamid - 10577
+$Error:=TCP_Close ($TCPID)
+
+$Response:=""
+Case of 
+: ($Error#0)
+$Message:="4DIC TCP Error # "+String($Error)
+: (Current time>$WaitTime)
+$Message:="Timeout error"
+Else 
+
+If ($Message#"")
+Repeat //While a complete transaction request and response is being received
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else 
+//If not an HTTPResponse Header then must be the Authorize Net 
+//Payment Response message content
+If (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+//$Message:=Substring($Message;Position("CDATA[";$Message)+Length("CDATA["))
+//$Message:=substring($Message;1;position("]";$Message)-1)
+$Response:=$Message
+End if 
+End if 
+Until ($Response#"")
+End if 
+
+
+End case 
+
+If ($Message#"Timeout error") & ($Message#"")//10577
+$CurrentFolder:=Get 4D folder
+$doc:=Create document($CurrentFolder+"output.xml")
+SEND PACKET($doc;$Response)
+CLOSE DOCUMENT($doc)
+$Reply:=DOM Parse XML variable($Response;False)
+$resultRef:=DOM Find XML element($Reply;"response/ResponseCode")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+
+//{1}Response Code=1Accepted,2Declined,3Error
+
+$0:=""
+Case of 
+: ($value="1")
+$resultRef:=DOM Find XML element($Reply;"response/AuthCode")//Return the authorization number
+DOM GET XML ELEMENT VALUE($resultRef;$AuthCode;$0)//$0= cDATA
+$resultRef:=DOM Find XML element($Reply;"response/TransID")//Return the TransID
+DOM GET XML ELEMENT VALUE($resultRef;[Trxs]CCTransID)
+$resultRef:=DOM Find XML element($Reply;"response/RefTransID")//Return the RefTransID
+DOM GET XML ELEMENT VALUE($resultRef;[Trxs]OriginalReceipt)
+If ($2="C")
+$0:="Refund"
+End if 
+: ($value="2")
+$resultRef:=DOM Find XML element($Reply;"response/Errors/Error/ErrorCode")
+DOM GET XML ELEMENT VALUE($resultRef;$Code)
+$resultRef:=DOM Find XML element($Reply;"response/Errors/Error/ErrorText")
+DOM GET XML ELEMENT VALUE($resultRef;$Desc;vCCText)
+If ($1)
+AlertMessage (Get localized string("Card Declined")+" - "+$Code+":"+vCCText)
+End if 
+$0:="DEC"+$Code//Declined return reason
+: ($value="3")
+$resultRef:=DOM Find XML element($Reply;"response/Errors/Error/ErrorCode")
+DOM GET XML ELEMENT VALUE($resultRef;$Code)
+$resultRef:=DOM Find XML element($Reply;"response/Errors/Error/ErrorText")
+DOM GET XML ELEMENT VALUE($resultRef;$Desc;vCCText)
+If ($1)
+AlertMessage (Get localized string("Card Processing Error")+" - "+$Code+":"+vCCText)
+End if 
+$0:="ERR"+$Code//Error return reason
+Else 
+$resultRef:=DOM Find XML element($Reply;"response/Errors/Error/ErrorText")
+DOM GET XML ELEMENT VALUE($resultRef;$Desc;vCCText)
+
+If ($1)
+AlertMessage (vCCText)
+End if 
+$0:="ERROR"
+
+End case 
+DOM CLOSE XML($Reply)
+Else 
+
+If ($Message="")//10577
+AlertMessage (Get localized string("The TCP connection could not be opened. Error")+" not able to receive response from AuthorizeNet")
+Else 
+AlertMessage (Get localized string("The TCP connection could not be opened. Error")+" timeout error")
+End if 
+$0:="ERROR"
+End if 
+
+
+Else 
+AlertMessage (Get localized string("The TCP connection could not be opened. Error")+" #"+String($Error))
+$0:="ERR4IC"
+End if 

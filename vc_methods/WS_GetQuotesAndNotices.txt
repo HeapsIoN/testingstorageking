@@ -1,0 +1,129 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_SalesEnquiryNumber;Is text;SOAP input;"WS_SalesEnquiryNumber")
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input;"WS_WebServicePassword")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+
+SOAP DECLARATION(WS_adLetterDateSent;Date array;SOAP output;"WS_adLetterDateSent")
+SOAP DECLARATION(WS_abSentViaEmail;Boolean array;SOAP output;"WS_abSentViaEmail")
+SOAP DECLARATION(WS_asLetterDesc;Text array;SOAP output;"WS_asLetterDesc")
+
+SOAP DECLARATION(WS_asQuoteDescription;Text array;SOAP output;"WS_asQuoteDescription")
+SOAP DECLARATION(WS_arQuotePrice;Real array;SOAP output;"WS_arQuotePrice")
+SOAP DECLARATION(WS_asQuoteSize;Text array;SOAP output;"WS_asQuoteSize")
+SOAP DECLARATION(WS_asQuoteNote;Text array;SOAP output;"WS_asQuoteNote")
+
+SOAP DECLARATION(WS_StoredGoods;Is text;SOAP output;"WS_StoredGoods")
+SOAP DECLARATION(WS_WhenRequired;Is date;SOAP output;"WS_WhenRequired")
+SOAP DECLARATION(WS_SizeQuoted;Is text;SOAP output;"WS_SizeQuoted")
+SOAP DECLARATION(WS_PriceQuoted;Is real;SOAP output;"WS_PriceQuoted")
+
+$String:="Start WS_GetQuotesAndNotices"+Char(13)
+$String:=$String+"WS_SalesEnquiryNumber: "+WS_SalesEnquiryNumber+Char(13)
+
+
+WSRECORDLOG ($String)
+
+QUERY([Contacts];[Contacts]ContactNo=WS_SalesEnquiryNumber)
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+Case of 
+: (Records in selection([Contacts])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Contact doesn't exist.
+WS_ORErrorDescription:="No contact found"
+: (Records in selection([Contacts])=1)
+
+WS_StoredGoods:=[Contacts]StoredGoods
+WS_WhenRequired:=[Contacts]WhenRequired
+WS_SizeQuoted:=[Contacts]SizeQuoted
+WS_PriceQuoted:=[Contacts]PriceQuoted
+
+QUERY([Letters];[Letters]AgreeNo=WS_SalesEnquiryNumber)
+For ($j;1;Records in selection([Letters]))
+APPEND TO ARRAY(WS_adLetterDateSent;[Letters]DateSent)
+APPEND TO ARRAY(WS_abSentViaEmail;[Letters]SentViaEmail)
+APPEND TO ARRAY(WS_asLetterDesc;[Letters]LetterDesc)
+
+NEXT RECORD([Letters])
+End for 
+
+QUERY([Quote];[Quote]ContactNo=WS_SalesEnquiryNumber)
+For ($j;1;Records in selection([Quote]))
+QUERY([Analysis];[Analysis]Code=[Quote]AnalysisCode)
+vAnalysisD:=[Analysis]Description
+vlResult:=[Quote]Note
+If (Length([Quote]Note)>22)
+vlResult:=Substring([Quote]Note;1;20)+"..."
+End if 
+APPEND TO ARRAY(WS_asQuoteDescription;vAnalysisD)
+APPEND TO ARRAY(WS_arQuotePrice;WS_arQuotePrice)
+APPEND TO ARRAY(WS_asQuoteSize;[Quote]Size)
+APPEND TO ARRAY(WS_asQuoteNote;[Quote]Note)
+NEXT RECORD([Quote])
+End for 
+
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=4//There is a duplicate of contact. 
+WS_ORErrorDescription:="There are duplicate contacts."
+
+End case 
+
+
+
+$String:="End WS_GetQuotesAndNotices"+Char(13)
+
+$sizeofarray:=Size of array(WS_adLetterDateSent)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adLetterDateSent("+String($vlElem)+"):"+String(WS_adLetterDateSent{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_abSentViaEmail)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_abSentViaEmail("+String($vlElem)+"):"+String(WS_abSentViaEmail{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asLetterDesc)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asLetterDesc("+String($vlElem)+"):"+WS_asLetterDesc{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asQuoteDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asQuoteDescription("+String($vlElem)+"):"+WS_asQuoteDescription{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arQuotePrice)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asQuotePrice("+String($vlElem)+"):"+String(WS_arQuotePrice{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asQuoteSize)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asQuoteSize("+String($vlElem)+"):"+WS_asQuoteSize{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asQuoteNote)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asQuoteNote("+String($vlElem)+"):"+WS_asQuoteNote{$vlElem}+Char(13)
+End for 
+
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_StoredGoods: "+WS_StoredGoods+Char(13)
+$String:=$String+"WS_WhenRequired: "+String(WS_WhenRequired)+Char(13)
+$String:=$String+"WS_SizeQuoted: "+WS_SizeQuoted+Char(13)
+$String:=$String+"WS_PriceQuoted: "+String(WS_PriceQuoted)+Char(13)
+
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

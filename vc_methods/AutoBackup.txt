@@ -1,0 +1,153 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1;$Force)//;$Zip)
+//C_LONGINT($i;$x;$y;$z;$Tickcount;$OldSize;$Size)
+//C_TIME($Time)
+//C_TEXT($Data)
+//C_TEXT($Zipfile;$Command)
+//$Size:=0
+//$Force:=False
+//$Zip:=True
+If (Count parameters>0)
+$Force:=$1
+End if 
+ALL RECORDS([Facility])
+If ([Facility]ForceDailyBackup=True) | ($Force=True)
+If (Current date>[Facility]LastDailyBackupDate) | ($Force=True)
+BACKUP
+If (ok=1)
+$Q:=Execute on server("DeleteLogFiles";400000;"DeleteLogFiles")//10776
+If ($Force=False)
+[Facility]LastDailyBackupDate:=Current date
+SAVE RECORD([Facility])
+End if 
+Else 
+AlertMessage (Get localized string("Backup Failed, please check Backup tab in System Setup for error message"))
+End if 
+End if 
+End if 
+
+
+//C_BOOLEAN($1;$Force;$Zip)
+//C_LONGINT($i;$x;$y;$z;$Tickcount;$OldSize;$Size)
+//C_TIME($Time)
+//C_TEXT($Data)
+//C_TEXT($Zipfile;$Command)
+//$Size:=0
+//$Force:=False
+//$Zip:=True
+//If (Count parameters>0)
+//$Force:=$1
+//End if 
+//ALL RECORDS([Facility])
+//If (Test path name(<>sBackupPath)=Is a directory )
+//ON ERR CALL("ErrorNone")
+//DOCUMENT LIST(<>sBackupPath;$aText)
+//ON ERR CALL("")
+//If (<>iPlatform=3) & (Substring([Facility]BackupInfo;2;1)="1")
+//If (Test path name(<>sBackupPath+"\\zip.exe")#Is a document )
+//$Zip:=False
+//AlertServer (get localized string("The zip.exe file could not be found so the backup will not be compressed!"))
+//End if 
+//End if 
+//$Zipfile:="BK"+String(Year of(Current date)-2000;"00")+String(Month of(Current date);"00")+String(Day of(Current date);"00")
+//$i:=Find in array($aText;$Zipfile+"@")
+//$Zipfile:=<>sBackupPath+<>sSeparator+$Zipfile
+//If ($Force) & ($i>0)
+//If (Test path name($Zipfile)=Is a document )
+//DELETE DOCUMENT($Zipfile)
+//End if 
+//$i:=0
+//End if 
+//If ($i<1)  `Don't do another backup for the same day
+//LogAction (False;"Backup commenced")
+//If (<>tLogging=False)  `Should shut down FrontDesk  
+//FLUSH BUFFERS
+//$TotSize:=Get document size(Data file)
+//If (<>iPlatform<3)  `Macintosh
+//COPY DOCUMENT(Data file;$ZipFile+".data";*)  `Always copy as Stuff doesn't work
+//Else   `Windows
+//PLATFORM PROPERTIES($x;$y;$z)
+//  `If ($y<0)  `Windows 95 / 98
+//  `$Command:="command.com /C "
+//  `Else   `Windows NT / 2000 / XP
+//  `$Command:="cmd.exe /C "
+//  `End if 
+//$Data:=Char(Double quote )+Data file+Char(Double quote )
+//If (Substring([Facility]BackupInfo;2;1)="1") & ($Zip)
+//$Zipfile:=$Zipfile+".zip"
+//$Command:=$Command+Char(Double quote )+<>sBackupPath+"\\zip"+Char(Double quote )+" "+Char(Double quote )+$Zipfile+Char(Double quote )+" "+$Data
+//Else 
+//$Zipfile:=$Zipfile+".4dd"
+//$Command:=$Command+"COPY "+$Data+" "+Char(Double quote )+$Zipfile+Char(Double quote )+" /Y"
+//End if 
+//If (Test path name(<>sBackupPath+"\\Zipit.bat")=Is a document )
+//DELETE DOCUMENT(<>sBackupPath+"\\Zipit.bat")
+//End if 
+//C_TIME($vhDocRef)
+//$vhDocRef:=Create document(<>sBackupPath+"\\Zipit.bat")
+//SEND PACKET($vhDocRef;$Command)
+//CLOSE DOCUMENT($vhDocRef)
+//
+//$j:=Position(" ";$Command)
+//SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";<>sBackupPath)
+//SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+//LAUNCH EXTERNAL PROCESS(<>sBackupPath+"\\Zipit.bat")
+//End if 
+//  `Wait for completion
+//If (<>iPlatform=3)
+//$Time:=Current time+?00:03:00?  `Do not wait longer than 3 minutes
+//Open window(20;50;300;150;5;"Progress")
+//GOTO XY(2;2)
+//MESSAGE(get localized string("Waiting for backup to complete...")+"    ")
+//$Locked:=True
+//Repeat 
+//$Tickcount:=Tickcount
+//Repeat 
+//DELAY PROCESS(Current process;600)
+//IDLE
+//Until (Tickcount>($Tickcount+600))  `5 secs
+//If (Test path name($Zipfile)=Is a document )
+//ON ERR CALL("ErrorNone")  `4D gives an error on the Get Doc Props because the file is in use
+//Repeat 
+//$Tickcount:=Tickcount
+//Repeat 
+//DELAY PROCESS(Current process;60)
+//IDLE
+//Until (Tickcount>($Tickcount+60))  `1 sec
+//viError:=0
+//GET DOCUMENT PROPERTIES($Zipfile;$Locked;$Invis;$CreateDate;$CreateTime;$ModDate;$ModTime)
+//$OldSize:=$Size
+//$Size:=Get document size($Zipfile)
+//Until (viError=0)
+//ON ERR CALL("")
+//End if 
+//Until (Current time>$Time) | (($Size=$OldSize) & ($Size#0))  `($Locked=False)
+//If (Test path name(<>sBackupPath+"\\Zipit.bat")=Is a document )
+//DELETE DOCUMENT(<>sBackupPath+"\\Zipit.bat")
+//End if 
+//CLOSE WINDOW
+//End if 
+//LogAction (True;"Backup completed")
+//End if 
+//ON ERR CALL("ErrorNone")
+//DOCUMENT LIST(<>sBackupPath;$aText)
+//ON ERR CALL("")
+//For ($i;Size of array($aText);1;-1)
+//If ($aText{$i}#"BK@")
+//DELETE FROM ARRAY($aText;$i;1)
+//End if 
+//End for 
+//$j:=Num(Substring([Facility]BackupInfo;1;1))
+//If (Size of array($aText)>$j)
+//SORT ARRAY($aText;>)
+//For ($i;1;Size of array($aText)-$j)
+//If ($aText{$i}="BK@") & ($i<Size of array($aText))
+//DELETE DOCUMENT(<>sBackupPath+<>sSeparator+$aText{$i})
+//End if 
+//End for 
+//End if 
+//Else 
+//AlertMessage (get localized string("No system backup was made just now, as one appears to have already been done today..."))
+//End if 
+//End if 
+//SetFacility 

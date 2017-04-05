@@ -1,0 +1,55 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Copy codes to other sites
+C_LONGINT($i;$j)
+C_TEXT($FromSite)
+CREATE SET([Promotions];"ToDo")
+USE SET("UserSet")
+If (Records in selection([Promotions])=0)
+USE SET("ToDo")
+End if 
+FIRST RECORD([Promotions])
+If (Records in selection([Promotions])>0)
+$FromSite:=Substring([Promotions]PromoCode;1;5)
+ARRAY TEXT(asPromotions;0)
+SELECTION TO ARRAY([Promotions]PromoCode;asPromotions)
+OK:=ConfirmThree (Get localized string("Duplicate")+" "+String(Records in selection([Promotions]))+" "+Get localized string("Promotions")+" "+Get localized string("to1")+" "+String(Size of array(<>asSiteCodes))+" "+Get localized string("other facilities?");Get localized string("Yes");Get localized string("Select Sites");Get localized string("No"))
+If (OK=1) | (OK=2)
+ARRAY TEXT(asFields;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSiteCodes;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSigns;Size of array(<>asSiteCodes))
+For ($i;1;Size of array(<>asSiteCodes))
+asFields{$i}:=<>asFacilities{$i}
+asSiteCodes{$i}:=<>asSiteCodes{$i}
+asSigns{$i}:=""
+End for 
+End if 
+If (OK=2)
+vTitle:=Get localized string("Select Sites")+"..."
+Open window((Screen width/2)-146;(Screen height/2)-150;(Screen width/2)+146;(Screen height/2)+150;5;Get localized string("Select Sites"))
+DIALOG([Facility];"SelectSites")
+CLOSE WINDOW
+For ($i;Size of array(asSiteCodes);1;-1)
+If (asSigns{$i}#"•")
+DELETE FROM ARRAY(asSiteCodes;$i;1)
+End if 
+End for 
+End if 
+If (OK=1)
+//Duplicate new codes to selection
+For ($i;1;Size of array(asSiteCodes))
+If (asSiteCodes{$i}#$FromSite)
+For ($j;1;Size of array(asPromotions))
+QUERY([Promotions];[Promotions]PromoCode=asPromotions{$j})
+DUPLICATE RECORD([Promotions])
+[Promotions]PrimaryKey:=0
+[Promotions]PromoCode:=asSiteCodes{$i}+Substring([Promotions]PromoCode;6)
+[Promotions]BillingPlanCode:=asSiteCodes{$i}+Substring([Promotions]BillingPlanCode;6)
+[Promotions]AnalysisCode:=asSiteCodes{$i}+Substring([Promotions]AnalysisCode;6)
+SAVE RECORD([Promotions])
+End for 
+End if 
+End for 
+End if 
+Else 
+AlertMessage (Get localized string("There are no records to copy!"))
+End if 

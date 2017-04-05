@@ -1,0 +1,64 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($Letter)
+SetFacility 
+vDontSave:=False
+If (<>t4DWrite)
+QUERY([Pictures];[Pictures]Facility=<>sFacility)
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=9)
+If (Records in selection([Notices])=0)
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description=[Facility]DefaultForm)
+If (Records in selection([Notices])=0)
+QUERY([Notices];[Notices]Description="Envelope";*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+If (Records in selection([Notices])=0)
+AlertMessage (Get localized string("There is no default form or letter called Envelope in the notice plans setup section, accessible via the Maintenance menu."))
+vDontSave:=True
+End if 
+End if 
+End if 
+$Print:=True
+If (Records in selection([Notices])>1)
+$Print:=False
+ORDER BY([Notices];[Notices]Description;>)
+ARRAY TEXT(asNoticeDesc;0)
+SELECTION TO ARRAY([Notices]Description;asNoticeDesc)
+vTitle:=Get localized string("Print Form")
+Open window((Screen width/2)-199;(Screen height/2)-180;(Screen width/2)+199;(Screen height/2)+180;5;Get localized string("Print Form"))
+DIALOG([Notices];"SelectNotice")
+CLOSE WINDOW
+If (OK=1)
+If (asNoticeDesc>=1)
+QUERY SELECTION([Notices];[Notices]Description=asNoticeDesc{asNoticeDesc})
+$Print:=True
+Else 
+vDontSave:=True
+End if 
+Else 
+vDontSave:=True
+End if 
+End if 
+If (Records in selection([Notices])>=1) & ($Print)
+$Letter:=WR New offscreen area 
+EXPAND BLOB([Notices]Letter)
+WR BLOB TO AREA ($Letter;[Notices]Letter)
+//WR EXECUTE COMMAND ($Letter;wr cmd compute references )
+If ([Facility]PrtDialogInv=True)
+ConfirmTwo (Get localized string("Do you want to preview the document?");Get localized string("Yes");Get localized string("No"))
+WR SET PRINT OPTION ($Letter;wr number of copies option;1)
+If (OK=1)
+WR EXECUTE COMMAND ($Letter;wr cmd print preview)
+Else 
+WR EXECUTE COMMAND ($Letter;wr cmd print)
+End if 
+Else 
+WR PRINT ($Letter;0;1)
+End if 
+WR DELETE OFFSCREEN AREA ($Letter)
+End if 
+Else 
+AlertMessage (Get localized string("The 4D Write word processing module is not installed. Please contact Technical Support for further information."))
+End if 

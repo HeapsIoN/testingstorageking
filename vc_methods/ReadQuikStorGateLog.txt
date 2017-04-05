@@ -1,0 +1,277 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Buffer;$Field)
+C_LONGINT($i;$j)
+ARRAY TEXT(asEmails;0)
+$Beep:=False
+If (Test path name(<>sTutPath+"QSGATE.FIL")=Is a document)
+$Doc:=Open document(<>sTutPath+"QSGATE.FIL")
+SET AUTOMATIC RELATIONS(True;False)
+READ WRITE([GateLog])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+While (Length($Buffer)>=10)//Otherwise EOF
+CREATE RECORD([GateLog])
+[GateLog]CustCode:=<>sFacility
+For ($i;1;14)//Fourteen fields
+$j:=Position(",";$Buffer)
+If ($j>1)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=2)
+Case of 
+: ($Field="A")
+[GateLog]GateActionText:="Access Granted"
+: ($Field="B")
+[GateLog]GateActionText:="Exit Access Granted"
+: ($Field="C")
+[GateLog]GateActionText:="Normal Unit door just closed - tenant onsite"
+: ($Field="D")
+[GateLog]GateActionText:="Access denied - delinquent"
+: ($Field="E")
+[GateLog]GateActionText:="Non-tenant code locked out due to expiration date"
+: ($Field="F")
+[GateLog]GateActionText:="Exit access granted, but tenant never keyed at entrance"
+: ($Field="H")
+[GateLog]GateActionText:="Exit Access Denied - tenant never keyed in at entrance"
+: ($Field="J")
+[GateLog]GateActionText:="Access granted but paid to date is in the past"
+: ($Field="K")
+[GateLog]GateActionText:="Access Denied - facility is cosed today"
+: ($Field="L")
+[GateLog]GateActionText:="Access Denied - tenant not allowed access on this day of the week"
+: ($Field="M")
+[GateLog]GateActionText:="Pay at the gate event"
+: ($Field="N")
+[GateLog]GateActionText:="Access denied, tenant not allowed to use this keypad"
+: ($Field="O")
+[GateLog]GateActionText:="Normal unit door just opened - tenant onsite"
+: ($Field="P")
+[GateLog]GateActionText:="Tenant onsite, unit door has been open for a long time"
+: ($Field="Q")
+[GateLog]GateActionText:="ALARM - wireless device has been tampered with"
+: ($Field="S")
+[GateLog]GateActionText:="Wireless device has not checked in for an unacceptably long time - supervisory"
+: ($Field="T")
+[GateLog]GateActionText:="Access denied - tenant does not have access at this specific time"
+: ($Field="U")
+[GateLog]GateActionText:="Access denied - invalid code"
+: ($Field="V")
+[GateLog]GateActionText:="An alarm event has already occurred, now it's a long time later and the door is still open - tenant not on site"
+: ($Field="W")
+[GateLog]GateActionText:="ALARM - the door opened, but was bouncy - tenant not onsite"
+: ($Field="X")
+[GateLog]GateActionText:="The door wiggled open/close and tenant not onsite.  Implies bad installation"
+: ($Field="Y")
+[GateLog]GateActionText:="ALARM - the door opened - tenant not onsite"
+: ($Field="Z")
+[GateLog]GateActionText:="The door closed - tenant not onsite"
+: ($Field="1")
+[GateLog]GateActionText:="Someone pushed the panic pendant button"
+: ($Field="2")
+[GateLog]GateActionText:="A wireless sensor is reporting low battery"
+: ($Field="3")
+[GateLog]GateActionText:="The door wiggled open/close, tenant is onsite.  Implies bad installation"
+: ($Field="4")
+[GateLog]GateActionText:="Access granted at a hallway keypad"
+: ($Field="5")
+[GateLog]GateActionText:="Door is closed but reports a fast close and tenant is onsite.  Implies bad installation"
+: ($Field="7")
+[GateLog]GateActionText:="Exit access granted but unit door is still open"
+: ($Field="8")
+[GateLog]GateActionText:="Access granted at an elevator keypad"
+: ($Field="9")
+[GateLog]GateActionText:="ALARM - a wireless sensor protecting something other than a space was open for a long time"
+: ($Field="0")
+[GateLog]GateActionText:="Access denied - correct code, but the code was on special lockout"
+: ($Field="!")
+[GateLog]GateActionText:="Someone is calling from the intercom at keypad"
+: ($Field="@")
+[GateLog]GateActionText:="Requesting Mgmt software to do PATG"
+: ($Field="#")
+[GateLog]GateActionText:="A unit's status just changed"
+Else 
+[GateLog]GateActionText:="Code "+$Field
+End case 
+: ($i=3)
+[GateLog]GateDate:=Date($Field)
+: ($i=4)
+[GateLog]GateTime:=Time($Field)
+: ($i=5)
+[GateLog]UnitNo:=$Field
+: ($i=6)
+[GateLog]GateNo:=Num($Field)
+: ($i=8)
+[GateLog]GateKeyed:=$Field
+Else 
+//do nothing
+End case 
+End if 
+End for 
+If ([GateLog]GateNo=0) | ([GateLog]GateKeyed="")
+//Ignore trx as it relates to arming / disarming unit
+If ([GateLog]GateActionText="Alarm@")
+ReadGateLogAlarmAction 
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+""
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+SAVE RECORD([GateLog])
+$Beep:=True
+End if 
+Else 
+$Continue:=True
+QUERY([Customer];[Customer]GatePIN=[GateLog]GateKeyed)
+If (Records in selection([Customer])>0) & ([GateLog]GateActionText#"Access denied - invalid code")//denied, invalid code
+ORDER BY([Customer];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[Customer]CustomerCode
+$Length:=Length([GateLog]GateActionText)
+Case of 
+: (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False)
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+":"+Substring([Customer]CustomerName;1;31-$Length)
+Else 
+[GateLog]GateActionText:=[GateLog]GateActionText+":"+Substring([Customer]CustomerName;1;38-$Length)
+If ([Facility]AccessFee=True) & ([GateLog]GateActionText="Access granted@")//Access granted or access granted but in grace period
+If ([Customer]CustomAccessFee#[Facility]AccessFeeCost)
+If ([Customer]CustomAccessFee>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Customer]CustomAccessFee
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Facility]AccessFeeCost
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+If ($Continue)
+QUERY([PhotosCards];[PhotosCards]PINCardNo=[GateLog]GateKeyed)
+If (Records in selection([PhotosCards])>0)
+ORDER BY([PhotosCards];[Customer]NoActiveAgreemts;<)
+[GateLog]CustCode:=[PhotosCards]Code
+RELATE ONE([PhotosCards]Code)
+$Length:=Length([GateLog]GateActionText)
+Case of 
+: (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)) & ([Customer]AllowAccessArrs=False)
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateActionText+":"+Substring([PhotosCards]Name;1;31-$Length)
+Else 
+[GateLog]GateActionText:=[GateLog]GateActionText+":"+Substring([PhotosCards]Name;1;38-$Length)
+If ([Facility]AccessFee=True) & ([GateLog]GateActionText="Access granted@")//Access granted or access granted but in grace period
+If ([Customer]CustomAccessFee#[Facility]AccessFeeCost)
+If ([Customer]CustomAccessFee>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Customer]CustomAccessFee
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+Else 
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"GF"
+[Trxs]TrxDate:=GetValidDate ([GateLog]GateDate)
+[Trxs]DateTo:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]Charge:=True
+[Trxs]TotAmt:=[Facility]AccessFeeCost
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End case 
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode=[Customer]CustomerCode)
+If (Records in selection([Agreement])>0)//Current agreement so accept it
+$Continue:=False
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+[GateLog]UnitNo:=Substring([Agreement]UnitsOccup;1;9)
+End if 
+End if 
+End if 
+If ($Continue)
+QUERY([StaffPINS];[StaffPINS]PINNumber=[GateLog]GateKeyed)
+If (Records in selection([StaffPINS])>0)
+[GateLog]GateActionText:="STAFF:"+Substring([StaffPINS]Name;1;20)
+Else 
+If ([GateLog]GateActionText="Access granted@")
+[GateLog]GateActionText:="ALERT:"+[GateLog]GateKeyed+" "+[GateLog]UnitNo+" should be denied"
+Else 
+[GateLog]GateActionText:="INVALID:"+[GateLog]GateKeyed
+End if 
+End if 
+End if 
+If (Length([GateLog]CustCode)<5)
+[GateLog]CustCode:=[Facility]FacilityCode
+End if 
+If ([GateLog]GateActionText="@access granted@") & ([Facility]OnSiteDisable=False)//either entry or exit access granted
+READ WRITE([Unit])
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+RELATE MANY SELECTION([Unit]AgreeNo)
+If ([GateLog]GateActionText="Access granted@")
+APPLY TO SELECTION([Unit];[Unit]Status:="OnSite")
+Else 
+APPLY TO SELECTION([Unit];[Unit]Status:="Rented")
+End if 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+End if 
+SAVE RECORD([GateLog])
+$Beep:=True
+End if 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+DELETE DOCUMENT(<>sTutPath+"QSGATE.FIL")
+If ([GateLog]GateDate>=vdLastGateDate) & ([GateLog]GateDate<=Current date)
+vdLastGateDate:=[GateLog]GateDate
+vtLastGateTime:=[GateLog]GateTime
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+READ ONLY([GateLog])
+UNLOAD RECORD([GateLog])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+End if 
+If ($Beep)//Trx Received
+BEEP
+End if 

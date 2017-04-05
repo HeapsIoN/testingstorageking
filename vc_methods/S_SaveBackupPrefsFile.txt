@@ -1,0 +1,55 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+$ErrorMethod:=Method called on error
+ON ERR CALL("ErrorNone")
+
+C_TEXT($vElemRef)
+C_TEXT($Error;$1)
+C_BOOLEAN(vbPerformBackup)
+C_LONGINT($Offset)
+
+$Error:="No Error"
+OK:=1
+$Offset:=0
+If (Application type=4D Volume desktop)
+If (<>iPlatform=3)
+$BackupXMLPathname:=GetPath (Application file)+"Database"+GetFolderDelimiter +"Preferences"+GetFolderDelimiter +"Backup"+GetFolderDelimiter +"Backup.xml"
+Else 
+$BackupXMLPathname:=GetPath (Structure file)+"Database"+GetFolderDelimiter +"Preferences"+GetFolderDelimiter +"Backup"+GetFolderDelimiter +"Backup.xml"
+$BackupXMLPathname:=Replace string($BackupXMLPathname;"MacOS:";"")
+End if 
+Else 
+$BackupXMLPathname:=GetPath (Structure file)+"Preferences"+GetFolderDelimiter +"Backup"+GetFolderDelimiter +"Backup.xml"
+End if 
+
+//Retrieve the Arrays containing the Preferences
+READ WRITE([Authenticate])
+QUERY([Authenticate];[Authenticate]RAgreeNo="Backup")
+
+Case of 
+: (Records in selection([Authenticate])#1)
+$Error:="Error: [Authenticate] record for 'Backup' not found!"
+: (Records in selection([Authenticate])=1)
+$vElemRef:=DOM Parse XML variable([Authenticate]Prefs)
+If (OK=1)
+DOM EXPORT TO FILE($vElemRef;$BackupXMLPathname)
+If (OK=1)
+DOM CLOSE XML($vElemRef)
+If (OK=0)
+$Error:="Error: Error Closing XML File"
+End if 
+Else 
+$Error:="Error: Error exporting Backup Preferences to file!"
+End if 
+Else 
+$Error:="Error: Unable to parse Backup Preferences file!"
+End if 
+Else 
+$Error:="Error: Unknown error!"
+End case 
+SET BLOB SIZE([Authenticate]Prefs;0)
+SAVE RECORD([Authenticate])
+CONVERT FROM TEXT($Error;"UTF-8";[Authenticate]Prefs)
+SAVE RECORD([Authenticate])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+ON ERR CALL($ErrorMethod)

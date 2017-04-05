@@ -1,0 +1,38 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE(vRDate;vSDate;vFDate;vDepDate)
+If (PermissionsControl (66))
+If (<>sProduct="@R")
+QUERY([Facility];[Facility]FacilityCode=<>sFacility)
+
+$DefaultDate:=<>dYearStart
+
+While ($DefaultDate<Current date)
+$DefaultDate:=Add to date($DefaultDate;1;0;0)
+End while 
+
+$DefaultDate:=Add to date($DefaultDate;-1;0;-1)
+
+vRDate:=RequestDate (Get localized string("Enter Date for Report");$DefaultDate)
+vSDate:=RequestDate (Get localized string("Enter Start Purchase Date");!2000-01-01!)
+vFDate:=RequestDate (Get localized string("Enter End Purchase Date");vRDate)
+If (vRDate<(Date("1/4/"+String(Year of(vRDate)))))
+vDepDate:=Date("1/4/"+String(Year of(Add to date(vRDate;-1;0;0))))
+Else 
+vDepDate:=Date("1/4/"+String(Year of(vRDate)))
+End if 
+If (OK=1)
+DEFAULT TABLE([Unit])
+QUERY([Unit];[Unit]StartDate<=vFDate;*)
+QUERY([Unit]; & ;[Unit]StartDate>=vSDate;*)
+QUERY([Unit]; & ;[Unit]RUnitNo=<>sFacility+"@")
+ORDER BY([Unit];[Unit]UnitTypeCode;>)
+BREAK LEVEL(1)
+ACCUMULATE([Unit]UnitAreaSize;vGSTCost;vNetCost;[Unit]RentedValue;vDepYear;vDepCost;vBookValue;vSalePrice)
+FORM SET OUTPUT([Unit];"DepSchedule")
+PrintSelection ("L")
+FORM SET OUTPUT([Unit];"Output")
+End if 
+Else 
+AlertMessage (Get localized string("This report is not available for your facility."))
+End if 
+End if 

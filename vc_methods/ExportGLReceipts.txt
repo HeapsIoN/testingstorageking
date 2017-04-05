@@ -1,0 +1,72 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$Period;$Year)
+C_DATE($LastBanked)
+SetFacility 
+//Obtain Date Range - Must be in the same month - CostCon Manux Solutions
+$DateFrom:=RequestDate (Get localized string("Export GL Receipts from :");Current date-7)
+$DateTo:=RequestDate (Get localized string("Export GL Receipts up to :");[Facility]LastBanking)
+If (OK=1)
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked>=$DateFrom;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked<=$DateTo)
+If (Records in selection([Trxs])>0)
+QUERY([ChartAccts];[ChartAccts]AcctType="B@")
+ORDER BY([ChartAccts];[ChartAccts]AcctType;>)
+$BankAc:=[ChartAccts]AcctNo
+QUERY([ChartAccts];[ChartAccts]AcctType="D")
+$ARAc:=[ChartAccts]AcctNo
+$SubAc:=Substring([Facility]FacilityCode;3)
+$SubAc:=""//CostCon now don't want this
+$Period:=Month of($DateFrom)-Month of([Facility]YearStartDate)+1
+$Year:=Year of($DateFrom)+1
+If ($Period<1)
+$Period:=$Period+12
+$Year:=$Year-1
+End if 
+$t:=Char(9)
+$Filename:="CostConReceipts.txt"
+$Doc:=Create document(<>sExportPath+$Filename;"TEXT")
+SEND PACKET($Doc;"Type"+$t+"Date"+$t+"Bank GL Acct"+$t+"Period"+$t+"Fin Year"+$t)
+SEND PACKET($Doc;"Desc"+$t+"Memo"+$t+"AR GL Acct"+$t+"Sub Acct"+$t+"Net Amt"+$t)
+SEND PACKET($Doc;"GST Tax"+$t+"Gross Amt"+$t+"Line Memo"+Char(13))
+ORDER BY([Trxs];[Trxs]DateBanked;>;[Analysis]GLCode;>)
+$LastBanked:=[Trxs]DateBanked
+RELATE ONE([Trxs]AnalysisCode)
+$LastAnalysis:=[Analysis]GLCode
+$LastDescription:=Substring([Analysis]Description;1;20)
+$Total:=0
+For ($i;1;Records in selection([Trxs]))
+If ([Analysis]InvItem=True)//Sum GL Amounts
+$Total:=$Total+[Trxs]TotAmt
+Else 
+SEND PACKET($Doc;"MRH"+$t+String([Trxs]DateBanked)+$t+$BankAc+$t+String($Period)+$t+String($Year)+$t)
+SEND PACKET($Doc;Substring([Trxs]Description;1;20)+$t+$t+$ARAc+$t+$SubAc+$t+String([Trxs]TotAmt;"###,###.00")+$t)
+SEND PACKET($Doc;"0"+$t+String([Trxs]TotAmt;"###,###.00")+$t+""+Char(13))
+End if 
+NEXT RECORD([Trxs])
+RELATE ONE([Trxs]AnalysisCode)
+If ([Analysis]GLCode#$LastAnalysis) | ([Trxs]DateBanked#$LastBanked)
+If ([Analysis]InvItem=True)
+SEND PACKET($Doc;"MRH"+$t+String($LastBanked)+$t+$BankAc+$t+String($Period)+$t+String($Year)+$t)
+SEND PACKET($Doc;$LastDescription+$t+$t+$ARAc+$t+$SubAc+$t+String(Round($Total;2);"###,###.00")+$t)
+SEND PACKET($Doc;"0"+$t+String(Round($Total;2);"###,###.00")+$t+""+Char(13))
+$Total:=0
+End if 
+$LastAnalysis:=[Analysis]GLCode
+$LastBanked:=[Trxs]DateBanked
+QUERY([Supplier];[Supplier]SupplierCode=$LastAnalysis)
+If (Records in selection([Supplier])>0) & ([Supplier]SupplierName>"")
+$LastDescription:=Substring([Supplier]SupplierName;1;20)
+Else 
+$LastDescription:=Substring([Analysis]Description;1;20)
+End if 
+End if 
+End for 
+SEND PACKET($Doc;"%END"+Char(13))
+CLOSE DOCUMENT($Doc)
+AlertMessage (Get localized string("The export document '")+<>sExportPath+$Filename+Get localized string("' has been successfully created."))
+Else 
+AlertMessage (Get localized string("There are no Receipts to be exported for that date range."))
+End if 
+End if 

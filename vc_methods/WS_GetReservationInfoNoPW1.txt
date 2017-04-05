@@ -1,0 +1,137 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): 
+// Date and time: 00/00/00, 00:00:00 (old)
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_GetReservationInfoNoPW
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_vtReservationNumber;Is text;SOAP input;"WS_vtReservationNumber")
+//SOAP DECLARATION(WS_vtPassword;Is Text;SOAP Input;"WS_vtPassword")
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+SOAP DECLARATION(WS_vtStorerName;Is text;SOAP output)
+SOAP DECLARATION(WS_vdLastBillDate;Is date;SOAP output)
+SOAP DECLARATION(WS_vdNextDueDate;Is date;SOAP output)
+SOAP DECLARATION(WS_vrDueNowAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrNextDueAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrTotalDueAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vrLastBillAmt;Is real;SOAP output)
+SOAP DECLARATION(WS_vtEmailAddress;Is text;SOAP output)
+SOAP DECLARATION(WS_vtError;Is text;SOAP output)//Only used for Storpay
+SOAP DECLARATION(WS_viRestrictions;Is integer;SOAP output)//Only used for Storpay
+SOAP DECLARATION(WS_vtAllowPartPayment;Is text;SOAP output)//Only used for Storpay
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+C_TEXT(WS_vtStorerName;WS_vtEmailAddress;WS_vtError)
+C_DATE(WS_vdLastBillDate;WS_vdNextDueDate)
+C_REAL(WS_vrDueNowAmt;WS_vrNextDueAmt;WS_vrTotalDueAmt;WS_vrLastBillAmt)
+C_LONGINT(WS_viRestrictions)//1=Accept any partial payment, 2=Accept only DueNowAmt, 3=No payment allowed - call at office
+C_TEXT(WS_vtAllowPartPayment)//"1"=Allow, "0"=Block
+
+$String:="Start WS_GetReservationInfoNoPW"+Char(13)
+$String:=$String+"WS_vtReservationNumber: "+WS_vtReservationNumber+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_vtReservationNumber;1;5))
+
+If (Records in selection([Facility])=1)
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_vtReservationNumber)
+WS_viRestrictions:=1
+WS_vtAllowPartPayment:="0"
+
+Case of 
+: (Records in selection([Reservation])=0)
+WS_vtError:="4"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1014
+WS_ORErrorDescription:="Reservation record not found in database Storman."
+
+: (Records in selection([Reservation])=1)
+
+RELATE ONE([Reservation]CustomerCode)
+//Case of 
+//: ([Customer]Password<"  ")
+//WS_vtError:="1"  //1 - No password available at site
+//: (WS_vtPassword<"  ")
+//WS_vtError:="2"  //2 - No password entered by customer
+//: ([Customer]Password=WS_vtPassword)
+
+WS_vtError:="0"
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Reservation details successfully retrieved from database Storman."
+
+WS_vtStorerName:=[Customer]CustomerName
+WS_vdNextDueDate:=Add to date([Reservation]ReservedDate;0;0;5)
+WS_vdLastBillDate:=[Reservation]ReservedDate
+//WS_vrLastBillAmt:=[Agreement]LastBillAmt  
+WS_vrDueNowAmt:=Round([Reservation]Balance;2)
+WS_vrTotalDueAmt:=Round([Reservation]Balance;2)
+WS_vtEmailAddress:=[Customer]EmailAddress
+
+: (Records in selection([Reservation])>1)
+WS_vtError:="5"
+WS_ORSuccess:=False
+WS_ORErrorCode:=9998
+WS_ORErrorDescription:="Duplicate record for Reservation in database Storman."
+Else 
+//Do nothing
+End case 
+
+//Check whether this Facility permits Part Payment = 1=Allow, 0=Block, -1=Error (Block)
+WS_viAllowPartPayment:=-1
+WS_vtAllowPartPayment:=BooleanToString (Not([Facility]BlockStorpayPartPay);"1";"0")
+
+Else 
+WS_vtError:="99"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_vtError:="6"
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+$String:="End WS_GetReservationInfoNoPW"+Char(13)
+$String:=$String+"WS_vtStorerName: "+WS_vtStorerName+Char(13)
+$String:=$String+"WS_vdLastBillDate: "+String(WS_vdLastBillDate)+Char(13)
+$String:=$String+"WS_vdNextDueDate: "+String(WS_vdNextDueDate)+Char(13)
+$String:=$String+"WS_vrDueNowAmt: "+String(WS_vrDueNowAmt)+Char(13)
+$String:=$String+"WS_vrNextDueAmt: "+String(WS_vrNextDueAmt)+Char(13)
+$String:=$String+"WS_vrTotalDueAmt: "+String(WS_vrTotalDueAmt)+Char(13)
+$String:=$String+"WS_vrLastBillAmt: "+String(WS_vrLastBillAmt)+Char(13)
+$String:=$String+"WS_vtEmailAddress: "+WS_vtEmailAddress+Char(13)
+$String:=$String+"WS_vtError: "+String(WS_vtError)+Char(13)
+$String:=$String+"WS_viRestrictions: "+String(WS_viRestrictions)+Char(13)
+$String:=$String+"WS_vtAllowPartPayment: "+WS_vtAllowPartPayment+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

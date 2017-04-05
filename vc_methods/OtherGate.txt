@@ -1,0 +1,458 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Send)
+C_TEXT($Data)
+C_TEXT($Char;$Char2)
+C_LONGINT($i;$x)
+
+If (PermissionsControl (20))
+SetFacility 
+If (<>tGateSys) | ([Facility]TutorialData)
+If (PermissionsControl (22;False)=False)
+$i:=1
+Else 
+Case of 
+: ([Facility]GateSysType=2)
+$i:=ConfirmFour (Get localized string("Select Access Control Function:");Get localized string("Download PINs");Get localized string("Staff PINs");Get localized string("Load Alarm.Dat");Get localized string("Reset OnSite");Get localized string("Cancel"))
+: ([Facility]GateSysType=3)
+$i:=ConfirmFour (Get localized string("Select Access Control Function:");Get localized string("Download PINs");Get localized string("Staff PINs");Get localized string("PTI Specific");Get localized string("Reset OnSite");Get localized string("Cancel"))
+: ([Facility]GateSysType=4)
+$i:=ConfirmFour (Get localized string("Select Access Control Function:");Get localized string("Download PINs");Get localized string("Staff PINs");Get localized string("Load Alarm.Dat");Get localized string("Reset OnSite");Get localized string("Cancel"))
+: ([Facility]GateSysType=5)
+$i:=ConfirmFour (Get localized string("Select Access Control Function:");Get localized string("Download PINs");Get localized string("Staff PINs");Get localized string("Load Lock.dat");Get localized string("Reset OnSite");Get localized string("Cancel"))
+: ([Facility]GateSysType=7)//digigate
+$i:=ConfirmFour (Get localized string("Select Access Control Function:");Get localized string("Download PINs");Get localized string("Staff PINs");Get localized string("Reset OnSite");Get localized string("Cancel"))
+If ($i=4)
+$i:=5
+End if 
+: ([Facility]GateSysType=12)
+//$i:=ConfirmTwo (Get localized string("Select Access Control Function:");Get localized string("Download PINs");Get localized string("Cancel"))
+//If ($i=2)
+//$i:=5
+//End if 
+Else 
+$i:=ConfirmFour (Get localized string("Select Access Control Function:");Get localized string("Download PINs");Get localized string("Staff PINs");Get localized string("TimeZones");Get localized string("Reset OnSite");Get localized string("Cancel"))
+End case 
+End if 
+Case of 
+: ($i=1)
+If (<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+For ($q;1;Records in selection([Facility]))
+If ([Facility]SortOrder#-1) & ([Facility]CentralGate)
+
+CallDownload 
+
+End if 
+NEXT RECORD([Facility])
+End for 
+
+
+Else 
+CallDownload 
+End if 
+
+: ($i=2)
+
+If (<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+For ($q;1;Records in selection([Facility]))
+If ([Facility]SortOrder#-1) & ([Facility]CentralGate)
+
+TimeZonesStaffPINs (False)
+
+End if 
+NEXT RECORD([Facility])
+End for 
+
+
+Else 
+TimeZonesStaffPINs (False)
+End if 
+
+//: (($i=5) & ([Facility]GateSysType=3)) | (([Facility]GateSysType>7) & ($i=4))  Timezones functionality not now available
+//TimeZonesStaffPINs (True)
+: ($i=3)
+
+If (<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+For ($q;1;Records in selection([Facility]))
+If ([Facility]SortOrder#-1) & ([Facility]CentralGate)
+
+Case of 
+
+: ([Facility]GateSysType=3)
+$ii:=ConfirmThree (Get localized string("PTI Direct Connect Specific Options:");Get localized string("Control Access");Get localized string("Set Date Time");Get localized string("Load Alarm.Dat");Get localized string("Cancel"))
+Case of 
+: ($ii=1)
+$x:=(Screen width/2)-195
+Open window($x;60;$x+390;320;0;Get localized string("Gate Action"))
+ARRAY TEXT(asFiles;16)
+For ($i;1;16)
+asFiles{$i}:=Get localized string("Not Used")
+End for 
+asFiles{1}:=Get localized string("Create User")
+asFiles{2}:=Get localized string("Deny Access")
+asFiles{3}:=Get localized string("Allow Access")
+asFiles{4}:=Get localized string("Delete User")
+asFiles{5}:=Get localized string("Read User")
+asFiles{6}:=Get localized string("Direct Send")
+asFiles{7}:=Get localized string("Clear All Unit Data")
+asFiles:=1
+vActive:=""
+bUnit:=0
+bLast:=0
+vOldUser:=0
+vOldPIN:=""
+vLeg8:=""
+bCode:=0
+DIALOG([Facility];"OtherGate")
+CLOSE WINDOW
+If (OK=1)
+If (bDelete=1)
+asFiles:=5
+End if 
+Case of //All this is PTI Falcon regular so doesn't need parameter 12
+: (asFiles=1)
+GateQueue ("CreateUser";vOldUser;vOldPIN;0;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=2)
+GateQueue ("DenyAccess";vOldUser;vOldPIN;1;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=3)
+GateQueue ("DenyAccess";vOldUser;vOldPIN;0;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=4)
+GateQueue ("DeleteUser";vOldUser;"";1;"";Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=5)
+GateQueue ("Read1";vOldUser;"";bUnit;"";Current date;0;0;0;bUnit;bLast)//Was $Send:=GateAction
+If (1=2)
+$Data:=CalcBinHex (1;CalcBinHex (4;Substring($Send;4;6));24)
+//CalcBinHex (4;CalcBinHex (3;Substring($Data;1;Length($Data)-5)))
+vOldUser:=Num(CalcBinHex (7;Substring($Data;6;14)))
+bUnit:=Num(CalcBinHex (7;Substring($Data;1;5)))
+bLast:=Num(CalcBinHex (7;Substring($Data;20;5)))
+If (bUnit=0)
+$Char:=""
+Else 
+$Char:=Char(bUnit+64)
+End if 
+If (bLast=0)
+$Char2:=""
+Else 
+$Char2:=Char(bLast+64)
+End if 
+vLeg8:=CalcBinHex (6;Substring($Send;24;2);8)
+bCode:=Num(CalcBinHex (7;Substring(vLeg8;1;3)))+1//Zone
+bUnit:=Num(CalcBinHex (7;Substring(vLeg8;4)))//Mux
+AlertMessage ($Send+$Char+String(vOldUser)+$Char2+":"+CalcBinHex (4;Substring($Send;12;8))+":"+Substring($Send;11;1)+":"+String(bCode)+":"+String(bUnit))
+End if 
+: (asFiles=6)
+GateQueue ("DirectSend";vOldUser;"";bUnit;vLeg8;Current date;0;0;0;bUnit;bLast)
+: (asFiles=7)
+GateQueue ("ClearData";vOldUser;"";bUnit;vLeg8;Current date;0;0;0;bUnit;bLast)
+Else 
+AlertMessage (Get localized string("This is not a valid gate option."))
+End case 
+End if 
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+: ($ii=2)
+SetDateTime 
+: ($ii=3)
+ReadPTIUnitInfo 
+Else 
+//Do Nothing
+End case 
+: ([Facility]GateSysType=2)
+ReadPTIUnitInfo 
+: ([Facility]GateSysType=4)
+ReadPTIUnitInfo 
+: ([Facility]GateSysType=5)
+ReadAEUnitInfo 
+Else 
+AlertMessage (Get localized string("There are no other gate functions for your type of access control system."))
+End case 
+
+End if 
+NEXT RECORD([Facility])
+End for 
+
+
+Else 
+Case of 
+
+: ([Facility]GateSysType=3)
+$ii:=ConfirmThree (Get localized string("PTI Direct Connect Specific Options:");Get localized string("Control Access");Get localized string("Set Date Time");Get localized string("Load Alarm.Dat");Get localized string("Cancel"))
+Case of 
+: ($ii=1)
+$x:=(Screen width/2)-195
+Open window($x;60;$x+390;320;0;Get localized string("Gate Action"))
+ARRAY TEXT(asFiles;16)
+For ($i;1;16)
+asFiles{$i}:=Get localized string("Not Used")
+End for 
+asFiles{1}:=Get localized string("Create User")
+asFiles{2}:=Get localized string("Deny Access")
+asFiles{3}:=Get localized string("Allow Access")
+asFiles{4}:=Get localized string("Delete User")
+asFiles{5}:=Get localized string("Read User")
+asFiles{6}:=Get localized string("Direct Send")
+asFiles{7}:=Get localized string("Clear All Unit Data")
+asFiles:=1
+vActive:=""
+bUnit:=0
+bLast:=0
+vOldUser:=0
+vOldPIN:=""
+vLeg8:=""
+bCode:=0
+DIALOG([Facility];"OtherGate")
+CLOSE WINDOW
+If (OK=1)
+If (bDelete=1)
+asFiles:=5
+End if 
+Case of //All this is PTI Falcon regular so doesn't need parameter 12
+: (asFiles=1)
+GateQueue ("CreateUser";vOldUser;vOldPIN;0;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=2)
+GateQueue ("DenyAccess";vOldUser;vOldPIN;1;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=3)
+GateQueue ("DenyAccess";vOldUser;vOldPIN;0;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=4)
+GateQueue ("DeleteUser";vOldUser;"";1;"";Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+: (asFiles=5)
+GateQueue ("Read1";vOldUser;"";bUnit;"";Current date;0;0;0;bUnit;bLast)//Was $Send:=GateAction
+If (1=2)
+$Data:=CalcBinHex (1;CalcBinHex (4;Substring($Send;4;6));24)
+//CalcBinHex (4;CalcBinHex (3;Substring($Data;1;Length($Data)-5)))
+vOldUser:=Num(CalcBinHex (7;Substring($Data;6;14)))
+bUnit:=Num(CalcBinHex (7;Substring($Data;1;5)))
+bLast:=Num(CalcBinHex (7;Substring($Data;20;5)))
+If (bUnit=0)
+$Char:=""
+Else 
+$Char:=Char(bUnit+64)
+End if 
+If (bLast=0)
+$Char2:=""
+Else 
+$Char2:=Char(bLast+64)
+End if 
+vLeg8:=CalcBinHex (6;Substring($Send;24;2);8)
+bCode:=Num(CalcBinHex (7;Substring(vLeg8;1;3)))+1//Zone
+bUnit:=Num(CalcBinHex (7;Substring(vLeg8;4)))//Mux
+AlertMessage ($Send+$Char+String(vOldUser)+$Char2+":"+CalcBinHex (4;Substring($Send;12;8))+":"+Substring($Send;11;1)+":"+String(bCode)+":"+String(bUnit))
+End if 
+: (asFiles=6)
+GateQueue ("DirectSend";vOldUser;"";bUnit;vLeg8;Current date;0;0;0;bUnit;bLast)
+: (asFiles=7)
+GateQueue ("ClearData";vOldUser;"";bUnit;vLeg8;Current date;0;0;0;bUnit;bLast)
+Else 
+AlertMessage (Get localized string("This is not a valid gate option."))
+End case 
+End if 
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+: ($ii=2)
+SetDateTime 
+: ($ii=3)
+ReadPTIUnitInfo 
+Else 
+//Do Nothing
+End case 
+: ([Facility]GateSysType=2)
+ReadPTIUnitInfo 
+: ([Facility]GateSysType=4)
+ReadPTIUnitInfo 
+: ([Facility]GateSysType=5)
+ReadAEUnitInfo 
+Else 
+AlertMessage (Get localized string("There are no other gate functions for your type of access control system."))
+End case 
+End if 
+
+
+: ($i=4)
+
+If (<>sProduct="MV") & (<>SFACILITY=<>SHOFACILITY)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+
+For ($q;1;Records in selection([Facility]))
+If ([Facility]SortOrder#-1) & ([Facility]CentralGate)
+
+GateResetOnsite 
+
+End if 
+NEXT RECORD([Facility])
+End for 
+
+Else 
+GateResetOnsite 
+End if 
+
+
+Else 
+//Do Nothing
+End case 
+Else 
+//Commented by Hamid 20 Oct. 2014
+//If (<>sProduct="MV")
+//AlertMessage (Get localized string("These functions can only be performed from the facility, and not from head office."))
+//Else 
+AlertMessage (Get localized string("You must purchase the Access Control module to use this option. Please contact your nearest Sales office for more information."))
+//End if 
+End if 
+End if 
+
+
+
+
+
+
+
+
+
+
+
+//C_TEXT($Send)
+//C_TEXT($Data)
+//C_TEXT($Char;$Char2)
+//C_LONGINT($UserNo;$i;$j;$x)
+//If (PermissionsControl (20))
+//SetFacility 
+//If (◊tGateSys) | ([Facility]TutorialData)
+//If (PermissionsControl (22;False)=False)
+//$i:=1
+//Else 
+//Case of 
+//: ([Facility]GateSysType=2)
+//$i:=ConfirmThree ("Select Access Control Function:";"Download PINs";"Staff PINs";"Load Alarm.Dat";"Cancel")
+//: ([Facility]GateSysType=3)
+//$i:=ConfirmThree ("Select Access Control Function:";"Download PINs";"Staff PINs";"PTI Specific";"TimeZones")
+//: ([Facility]GateSysType=4)
+//$i:=ConfirmThree ("Select Access Control Function:";"Download PINs";"Staff PINs";"Load Alarm.Dat";"Cancel")
+//: ([Facility]GateSysType=5)
+//$i:=ConfirmThree ("Select Access Control Function:";"Download PINs";"Staff PINs";"Load Lock.dat";"Cancel")
+//: ([Facility]GateSysType=7)
+//$i:=ConfirmThree ("Select Access Control Function:";"Download PINs";"Staff PINs";"Cancel")
+//If ($i=3)
+//$i:=4
+//End if 
+//Else 
+//$i:=ConfirmThree ("Select Access Control Function:";"Download PINs";"Staff PINs";"TimeZones";"Cancel")
+//End case 
+//End if 
+//Case of 
+//: ($i=1)
+//CallDownload 
+//: ($i=2)
+//TimeZonesStaffPINs (False)
+//: (($i=4) & ([Facility]GateSysType=3)) | (([Facility]GateSysType>7) & ($i=3))
+//TimeZonesStaffPINs (True)
+//: ($i=3)
+//Case of 
+//: ([Facility]GateSysType=3)
+//$i:=ConfirmThree ("PTI Direct Connect Specific Options:";"Control Access";"Set Date Time";"Load Alarm.Dat";"Cancel")
+//Case of 
+//: ($i=1)
+//$x:=(Screen width/2)-195
+//Open window($x;60;$x+390;320;0;"Gate Action")
+//ARRAY TEXT(asFiles;16)
+//For ($i;1;16)
+//asFiles{$i}:="Not Used"
+//End for 
+//asFiles{1}:="Create User"
+//asFiles{2}:="Deny Access"
+//asFiles{3}:="Allow Access"
+//asFiles{4}:="Delete User"
+//asFiles{5}:="Read User"
+//asFiles{6}:="Direct Send"
+//asFiles{7}:="Clear All Unit Data"
+//asFiles:=1
+//vActive:=""
+//bUnit:=0
+//bLast:=0
+//vOldUser:=0
+//vOldPIN:=""
+//vLeg8:=""
+//bCode:=0
+//DIALOG([Facility];"OtherGate")
+//CLOSE WINDOW
+//If (OK=1)
+//If (bDelete=1)
+//asFiles:=5
+//End if 
+//Case of   `All this is PTI Falcon regular so doesn't need parameter 12
+//: (asFiles=1)
+//GateQueue ("CreateUser";vOldUser;vOldPIN;0;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+//: (asFiles=2)
+//GateQueue ("DenyAccess";vOldUser;vOldPIN;1;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+//: (asFiles=3)
+//GateQueue ("DenyAccess";vOldUser;vOldPIN;0;Substring(vLeg8;1;16);Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+//: (asFiles=4)
+//GateQueue ("DeleteUser";vOldUser;"";1;"";Current date;bCode;[Unit]MuxController;[Unit]ChannelInput;bUnit;bLast)
+//: (asFiles=5)
+//GateQueue ("Read1";vOldUser;"";bUnit;"";Current date;0;0;0;bUnit;bLast)  `Was $Send:=GateAction
+//If (1=2)
+//$Data:=CalcBinHex (1;CalcBinHex (4;Substring($Send;4;6));24)
+//  `CalcBinHex (4;CalcBinHex (3;Substring($Data;1;Length($Data)-5)))
+//vOldUser:=Num(CalcBinHex (7;Substring($Data;6;14)))
+//bUnit:=Num(CalcBinHex (7;Substring($Data;1;5)))
+//bLast:=Num(CalcBinHex (7;Substring($Data;20;5)))
+//If (bUnit=0)
+//$Char:=""
+//Else 
+//$Char:=Char(bUnit+64)
+//End if 
+//If (bLast=0)
+//$Char2:=""
+//Else 
+//$Char2:=Char(bLast+64)
+//End if 
+//vLeg8:=CalcBinHex (6;Substring($Send;24;2);8)
+//bCode:=Num(CalcBinHex (7;Substring(vLeg8;1;3)))+1  `Zone
+//bUnit:=Num(CalcBinHex (7;Substring(vLeg8;4)))  `Mux
+//AlertMessage ($Send+$Char+String(vOldUser)+$Char2+":"+CalcBinHex (4;Substring($Send;12;8))+":"+Substring($Send;11;1)+":"+String(bCode)+":"+String(bUnit))
+//End if 
+//: (asFiles=6)
+//GateQueue ("DirectSend";vOldUser;"";bUnit;vLeg8;Current date;0;0;0;bUnit;bLast)
+//: (asFiles=7)
+//GateQueue ("ClearData";vOldUser;"";bUnit;vLeg8;Current date;0;0;0;bUnit;bLast)
+//Else 
+//AlertMessage ("This is not a valid gate option.")
+//End case 
+//End if 
+//UNLOAD RECORD([Customer])
+//UNLOAD RECORD([Agreement])
+//: ($i=2)
+//SetDateTime 
+//: ($i=3)
+//ReadPTIUnitInfo 
+//Else 
+//  `Do Nothing
+//End case 
+//: ([Facility]GateSysType=2)
+//ReadPTIUnitInfo 
+//: ([Facility]GateSysType=4)
+//ReadPTIUnitInfo 
+//: ([Facility]GateSysType=5)
+//ReadAEUnitInfo 
+//Else 
+//AlertMessage ("There are no other gate functions for your type of access control system.")
+//End case 
+//Else 
+//  `Do Nothing
+//End case 
+//Else 
+//If (◊sProduct="MV")
+//AlertMessage ("These functions can only be performed from the facility, and not from head office"+".")
+//Else 
+//AlertMessage ("You must purchase the Access Control to use this option. Please contact your near"+"est Sales office for further information.")
+//End if 
+//End if 
+//End if 

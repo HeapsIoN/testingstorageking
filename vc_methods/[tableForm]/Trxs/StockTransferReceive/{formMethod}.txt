@@ -1,0 +1,155 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_REAL(vQtyMinus)
+vQtyMinus:=0
+OBJECT SET TITLE(*;"Text2";Get localized string("Date")+":")
+OBJECT SET TITLE(*;"Text10";Get localized string("Quantity")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Details")+":")
+OBJECT SET TITLE(*;"Text5";Get localized string("Cost Price")+":")
+OBJECT SET TITLE(*;"Text4";Get localized string("Tax Amount")+":")
+OBJECT SET TITLE(*;"Text1";Get localized string("Unit Price")+":")
+//SetColours 
+If (PermissionsControl (101;False)=False)
+OBJECT SET VISIBLE(bDelete;False)
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=vLastDate
+Else 
+OBJECT SET VISIBLE(bAccept;False)
+OBJECT MOVE(bCancel;80;0)
+End if 
+If ([Trxs]TrxDate=!00-00-00!)
+[Trxs]TrxDate:=Current date
+End if 
+vDatePick:=[Trxs]TrxDate
+If ([Trxs]TrxDate<[Facility]CantModPrior)
+AlertMessage (Get localized string("This transaction cannot be modified as the date is prior to last accounting reports."))
+OBJECT SET VISIBLE(bAccept;False)
+OBJECT SET VISIBLE(bAcceptNew;False)
+OBJECT SET VISIBLE(bDelete;False)
+End if 
+If ([Trxs]AnalysisCode="")
+[Trxs]AnalysisCode:=vCol1
+RELATE ONE([Trxs]AnalysisCode)
+If (Records in selection([Analysis])=0)
+QUERY([Analysis];[Analysis]InvItem=True;*)
+QUERY([Analysis];[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+If (Records in selection([Analysis])>0)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+[Trxs]AnalysisCode:=[Analysis]Code
+End if 
+End if 
+[Trxs]Balance:=0
+If ([Trxs]Qty#0)
+If ([Analysis]CostPrice#0)
+[Trxs]TotAmt:=Round([Trxs]Qty*[Analysis]CostPrice;2)
+If (<>bStockTax=True)//No tax in the United States
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+End if 
+End if 
+[Trxs]Balance:=Round([Trxs]TotAmt/[Trxs]Qty;2)
+End if 
+End if 
+asCharges:=Find in array(asCharges;[Trxs]AnalysisCode)
+asChargeDesc:=asCharges
+vtReverse:=False
+LoadAnlsArrays (True;True;True)
+vQtyMinus:=[Trxs]Qty
+//QUERY([MarketingTypes];[MarketingTypes]ListCode="AC";*)
+//QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility)
+//If (Records in selection([MarketingTypes])>0)
+//hlList:=New list
+//ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+//For ($i;1;Records in selection([MarketingTypes]))
+//QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+//QUERY([Analysis]; & ;[Analysis]AnalysisCategory=[MarketingTypes]Description;*)
+//QUERY([Analysis]; & ;[Analysis]InvItem=True)
+//If (Records in selection([Analysis])>0)
+//ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+//$hSubList:=New list
+//For ($j;1;Records in selection([Analysis]))
+//$k:=Record number([Analysis])
+//If ($k=0)
+//$k:=32000
+//End if 
+//APPEND TO LIST($hSubList;[Analysis]Description;$k)
+//NEXT RECORD([Analysis])
+//End for 
+//APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+//End if 
+//NEXT RECORD([MarketingTypes])
+//End for 
+//QUERY([Analysis];[Analysis]Code=[Transaction]AnalysisCode)
+//SELECT LIST ITEMS BY REFERENCE(hlList;Record number([Analysis]))
+//End if 
+End if 
+If (Form event=On Clicked) | (Form event=On Data Change)
+If (Modified([Trxs]TotAmt)) | (Modified([Trxs]Qty)) | (Modified([Trxs]AnalysisCode))
+If ((Modified([Trxs]Qty)) | (Modified([Trxs]AnalysisCode))) & ([Analysis]CostPrice#0)
+[Trxs]TotAmt:=Round([Trxs]Qty*[Analysis]CostPrice;2)
+End if 
+If (<>bStockTax=True)//No tax in the United States
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+End if 
+[Trxs]Balance:=0
+If ([Trxs]Qty#0)//Was >
+[Trxs]Balance:=Round([Trxs]TotAmt/[Trxs]Qty;2)
+End if 
+End if 
+If ([Analysis]WholeNumbers=True)
+[Trxs]Qty:=Round([Trxs]Qty;0)
+Else 
+[Trxs]Qty:=Round([Trxs]Qty;2)
+End if 
+
+If (Modified([Trxs]TrxDate))
+If ([Trxs]TrxDate>Current date)
+AlertMessage (Get localized string("Warning - The transaction date is past today."))
+End if 
+If (([Trxs]TrxDate<[Facility]CantModPrior) & ([Trxs]TrxDate#Old([Trxs]TrxDate))) | ([Trxs]TrxDate=!00-00-00!)
+AlertMessage (Get localized string("You cannot enter a transaction date prior to last accounting reports! Date has been reset to today."))
+[Trxs]TrxDate:=Current date
+End if 
+vDatePick:=[Trxs]TrxDate
+End if 
+
+End if 
+If (Form event=On Validate)
+[Trxs]CustomerCode:=<>sFacility
+[Trxs]AgreeNo:=<>sFacility
+[Trxs]TotAmt:=Round([Trxs]TotAmt;2)
+[Trxs]TaxAmt:=Round([Trxs]TaxAmt;2)
+vLastDate:=[Trxs]TrxDate
+vLastDesc:=[Trxs]Description
+vCol1:=[Trxs]AnalysisCode
+[Trxs]Charge:=True
+[Trxs]Confirmed:=True
+[Trxs]Match:=-999
+[Trxs]OriginalReceipt:="TRANSFER"
+
+If (Old([Trxs]AnalysisCode)#"") & (Old([Trxs]AnalysisCode)#[Trxs]AnalysisCode)
+QUERY([Analysis];[Analysis]Code=Old([Trxs]AnalysisCode))
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-Old([Trxs]Qty);0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand-Old([Trxs]Qty);2)
+End if 
+SAVE RECORD([Analysis])
+RELATE ONE([Trxs]AnalysisCode)
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty;0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty;2)
+End if 
+Else 
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty-Old([Trxs]Qty);0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+[Trxs]Qty-Old([Trxs]Qty);2)
+End if 
+End if 
+
+SAVE RECORD([Analysis])
+End if 

@@ -1,0 +1,35 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Trigger to update the ChartTotals table
+C_LONGINT($0)//Used to be -16010 = ChartAcct record not exist but now automatically creates
+$0:=0
+If (<>tCashBook)//Otherwise generating errors for people who don't have
+If ([CashBookTrxs]Amount#0) | (Old([CashBookTrxs]Amount)#0)
+RELATE ONE([CashBookTrxs]AcctNo)
+If (Records in selection([ChartAccts])=0)
+READ WRITE([ChartAccts])
+CREATE RECORD([ChartAccts])
+[ChartAccts]AcctNo:=[CashBookTrxs]AcctNo
+[ChartAccts]Description:="Not Known"
+[ChartAccts]AcctType:="P"
+SAVE RECORD([ChartAccts])
+READ ONLY([ChartAccts])
+RELATE ONE([CashBookTrxs]AcctNo)
+End if 
+READ WRITE([ChartTotals])
+QUERY([ChartTotals];[ChartTotals]AcctNo=[CashBookTrxs]AcctNo;*)
+QUERY([ChartTotals]; & ;[ChartTotals]PeriodNo=GetPeriod ([CashBookTrxs]TrxDate))
+If (Records in selection([ChartTotals])=0)
+CREATE RECORD([ChartTotals])
+[ChartTotals]AcctNo:=[CashBookTrxs]AcctNo
+[ChartTotals]PeriodNo:=GetPeriod ([CashBookTrxs]TrxDate)
+End if 
+If (Trigger event=On Deleting Record Event)
+[ChartTotals]Actual:=[ChartTotals]Actual-Old([CashBookTrxs]Amount)
+Else 
+[ChartTotals]Actual:=[ChartTotals]Actual+[CashBookTrxs]Amount-Old([CashBookTrxs]Amount)
+End if 
+SAVE RECORD([ChartTotals])
+READ ONLY([ChartTotals])
+UNLOAD RECORD([ChartTotals])
+End if 
+End if 

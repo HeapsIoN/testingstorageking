@@ -1,0 +1,98 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_TEXT($q;$r)
+C_BOOLEAN(SecureCC)
+SecureCC:=False
+
+C_REAL($Sum1;$Sum2)
+ARRAY REAL($charges;0)
+ARRAY REAL($payments;0)
+
+
+If (GetTextNo ([Facility]MerchantDetails;1;",")="AuthorizeNet CIM") | (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit") | (GetTextNo ([Facility]MerchantDetails;1;",")="Advam StoredPAN") | (GetTextNo ([Facility]MerchantDetails;1;",")="BPOINT")
+SecureCC:=True
+End if 
+SetFormats 
+OBJECT SET TITLE(*;"vExpiryText";Get localized string("Expiry")+":")
+RELATE ONE([Agreement]CustomerCode)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([OtherChgs];[OtherChgs]AnalysisCode;>)
+
+End if 
+If (Form event=On Header)
+vCCDDHdr:=Get localized string("Card Name, Number")
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+If ([Customer]CCName="Direct@")
+OBJECT SET FORMAT([Customer]CCNo;"##-####-#######-###")
+Else 
+OBJECT SET FORMAT([Customer]CCNo;"####-####-####-####")
+End if 
+If ([Facility]AutoPayShow=True) | ([Agreement]AutoPayType>2)
+OBJECT SET VISIBLE([Customer]CCName;False)
+OBJECT SET VISIBLE([Customer]CCExpiry;False)
+OBJECT SET VISIBLE([Customer]CCNo;False)
+OBJECT SET VISIBLE([Customer]CCValidFrom;False)
+OBJECT SET VISIBLE(*;"vFromText";False)
+OBJECT SET VISIBLE(*;"vExpiryText";False)
+Else 
+OBJECT SET VISIBLE([Customer]CCName;True)
+OBJECT SET VISIBLE([Customer]CCExpiry;True)
+//[Customer]CCNo:=Tokenizer ([Customer]CCNo;False)
+[Customer]CCNo:=Decode256 
+OBJECT SET VISIBLE([Customer]CCNo;True)
+OBJECT SET VISIBLE([Customer]CCValidFrom;True)
+OBJECT SET VISIBLE(*;"vFromText";True)
+OBJECT SET VISIBLE(*;"vExpiryText";True)
+End if 
+If ([Customer]CCValidFrom="")
+OBJECT SET VISIBLE(*;"vFromText";False)
+End if 
+If ([Customer]CCExpiry="")
+OBJECT SET VISIBLE(*;"vExpireText";False)
+End if 
+If (SecureCC) | (<>sFacility="KE@")
+[Customer]CCNo:="xxxxxxxxxxxx"+Substring([Customer]CCNo;Length([Customer]CCNo)-3;4)
+End if 
+
+
+//fb10617, 10648
+If (Ins_rpt=True)
+
+If ([Agreement]NoticeBilled=Get localized string("Recurring Rent"))
+//[Agreement]NoticeBilled:=Get localized string("Previously processed")
+//End if 
+If ([Agreement]BalanceOwing=0)
+[Agreement]NoticeBilled:=Get localized string("Previously processed")
+End if 
+
+End if 
+
+End if 
+
+End if 
+If (Form event=On Printing Break)
+
+Case of 
+: ([Agreement]AutoPayType=2)
+OBJECT SET TITLE(*;"Text7";Get localized string("Total Amount")+" for "+Get localized string("Auto Credit Card")+": ")
+: ([Agreement]AutoPayType=3)
+OBJECT SET TITLE(*;"Text7";Get localized string("Total Amount")+" for "+Get localized string("Auto Direct Debit")+": ")
+: ([Agreement]AutoPayType=4)
+OBJECT SET TITLE(*;"Text7";Get localized string("Total Amount")+" for "+Get localized string("Direct Debit")+": ")
+Else 
+OBJECT SET TITLE(*;"Text7";Get localized string("Total Amount")+" for "+Get localized string("Bank Authority")+": ")
+End case 
+
+If (Level=0)
+OBJECT SET TITLE(*;"Text7";Get localized string("Total Amount")+": ")
+End if 
+
+vCost:=Subtotal([Agreement]NoticeAmtToBill)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

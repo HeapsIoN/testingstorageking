@@ -1,0 +1,90 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($Count)
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Text10";Get localized string("Berth"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Text10";Get localized string("Appliance"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Text10";Get localized string("Space"))
+Else 
+OBJECT SET TITLE(*;"Text10";Get localized string("Unit"))
+End case 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+OBJECT SET FORMAT([Facility]TaxNumber;<>tTaxFormat)
+End if 
+If (Form event=On Printing Detail)
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+
+Case of 
+: (Length([Agreement]InsureCertNo)>11)
+OBJECT SET FONT SIZE([Agreement]InsureCertNo;6)
+: (Length([Agreement]InsureCertNo)>8)
+OBJECT SET FONT SIZE([Agreement]InsureCertNo;8)
+Else 
+OBJECT SET FONT SIZE([Agreement]InsureCertNo;10)
+End case 
+
+$Count:=1
+If (Is in set("ToPrint"))
+[Agreement]InsureValue:=0
+//[Trxs]Balance:=0  //Only 1 amount of payment per agreement, this doesn't work correctly a customer might have multiple paid transactions
+$Count:=0
+Else 
+ADD TO SET([Agreement];"ToPrint")
+End if 
+Case of //If ([Agreement]InsureNewP) Prior 3.2.2
+: ([Agreement]InsureCommence>=vStDate) & ([Agreement]InsureCommence<=vMthDate)
+vLastNo:=Get localized string("Yes")
+: ([Agreement]InsureCommence=!00-00-00!) & ([Agreement]MoveIn>=vStDate) & ([Agreement]MoveIn<=vMthDate)
+vLastNo:=Get localized string("Yes")
+Else 
+vLastNo:=Get localized string("No")
+End case 
+If ([Trxs]TrxDate<vStDate)
+[Trxs]TotAmt:=0
+OBJECT SET VISIBLE([Trxs]TotAmt;False)
+OBJECT SET VISIBLE(*;"Text7";True)
+Else 
+OBJECT SET VISIBLE([Trxs]TotAmt;True)
+OBJECT SET VISIBLE(*;"Text7";False)
+End if 
+If (vLastNo=Get localized string("Yes"))
+vAmt1:=vAmt1+$Count
+vAmt2:=vAmt2+[Agreement]InsureValue
+vAmt5:=vAmt5+[Trxs]TotAmt
+vAmt6:=vAmt6+[Trxs]Balance
+End if 
+vAmt3:=vAmt3+$Count
+End if 
+If (Form event=On Printing Break)
+vAmt4:=Subtotal([Agreement]InsureValue)
+vTotal:=Subtotal([Trxs]TotAmt)
+vTotBal:=Subtotal([Trxs]Balance)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+SetFormats 

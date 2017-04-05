@@ -1,0 +1,31 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($Date)//Called by LogMonitor or LogMonServer when ◊tGateOn
+C_LONGINT($i)
+
+If ([Facility]GateSysType=3) & ([Facility]LockbefMovein=True)
+If ([Facility]LastGateLoad=!00-00-00!)//This for first time through
+[Facility]LastGateLoad:=Current date
+End if 
+If (Day number(Current date)>=6)
+$Date:=Current date+3//Allow extra for weekends
+Else 
+$Date:=Current date+1//Allow for early gate users
+End if 
+QUERY([Agreement];[Agreement]MoveIn>[Facility]LastGateLoad;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn<=$Date)
+If (Records in selection([Agreement])>0)
+For ($i;1;Records in selection([Agreement]))
+RELATE ONE([Agreement]CustomerCode)
+If ([Customer]Balance<=[Facility]MinBalArrears)
+UpdateGateUnits 
+End if 
+NEXT RECORD([Agreement])
+End for 
+End if 
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+[Facility]LastGateLoad:=Current date
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+End if 

@@ -1,0 +1,65 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+DEFAULT TABLE([Customer])//FixCustCodeInvalidChar
+ALL RECORDS
+ORDER BY([Customer];[Customer]CustomerCode;>)
+$WinRef:=Open window(20;50;500;150;0;"Progress")
+$Abort:=False
+Repeat 
+$CustCode:=[Customer]CustomerCode
+$CustName:=[Customer]CustomerName
+NEXT RECORD([Customer])
+$Display:=(Selected record number=(Round(Selected record number/100;0)*100))//show every 10th record otherwise 2 slow
+If ($Display)
+GOTO XY(2;2)
+MESSAGE("Checking "+[Customer]CustomerCode+"...     ")
+End if 
+$Advance:=False
+If ($CustCode=[Customer]CustomerCode)//We have a duplicate
+ALERT($CustCode+"-"+$CustName+Char(13)+[Customer]CustomerCode+"-"+[Customer]CustomerName)
+CONFIRM("Change?";"1";"2")
+If (OK=1)
+PREVIOUS RECORD([Customer])
+$Advance:=True
+End if 
+Repeat 
+$NewCode:=Request("NewCustCode for "+[Customer]CustomerName;$CustCode)
+Until (Find in field([Customer]CustomerCode;$NewCode)<0) | (OK#1)
+If (OK=1)
+QUERY([Agreement];[Agreement]CustomerCode=$CustCode)
+$AgreeNo:=""
+If (Records in selection([Agreement])>0)
+SELECTION TO ARRAY([Agreement]AgreeNo;$aAgreeNo)
+For ($i;1;Size of array($aAgreeNo))
+$AgreeNo:=$AgreeNo+$aAgreeNo{$i}+" "
+End for 
+$AgreeNo:=Replace string(Request("Sel AgreeNo for "+[Customer]CustomerCode+":"+[Customer]CustomerName+":";$AgreeNo);" ";"")
+If (OK=1)
+QUERY SELECTION([Agreement];[Agreement]AgreeNo=$AgreeNo)
+End if 
+End if 
+QUERY([Reservation];[Reservation]CustomerCode=$CustCode)
+$ResNo:=""
+If (Records in selection([Reservation])>0)
+SELECTION TO ARRAY([Reservation]ReserveNo;$aAgreeNo)
+For ($i;1;Size of array($aAgreeNo))
+$ResNo:=$ResNo+$aAgreeNo{$i}+" "
+End for 
+$ResNo:=Replace string(Request("Sel ResNo for "+[Customer]CustomerCode+":"+[Customer]CustomerName+":";$ResNo);" ";"")
+If (OK=1)
+QUERY SELECTION([Reservation];[Reservation]ReserveNo=$ResNo)
+End if 
+End if 
+CONFIRM("Change CustCode "+[Customer]CustomerCode+" to "+$NewCode+" for Agree:"+[Agreement]RAgreeNo+" & Res:"+[Reservation]RReserveNo+"?";"Yes";"No")
+If (OK=1)
+$Proc:=New process("ChangeAgreeCustCode";128000;"ChangeAgreeCustCode";[Customer]PrimaryKey;$NewCode;[Agreement]RAgreeNo;[Reservation]RReserveNo)
+End if 
+If ($Advance)
+NEXT RECORD([Customer])
+End if 
+Else 
+CONFIRM("Abort this method?";"Continue";"Abort")
+$Abort:=(OK=0)
+End if 
+End if 
+Until (End selection([Customer])) | ($Abort)
+CLOSE WINDOW($WinRef)

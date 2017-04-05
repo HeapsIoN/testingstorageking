@@ -1,0 +1,109 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$FacilityCode)
+C_BOOLEAN($2;$Delete)
+ARRAY TEXT($asFacilityCode;0)
+
+ARRAY TEXT(<>asCharges;0)
+ARRAY TEXT(<>asChargeDesc;0)
+ARRAY TEXT(<>asChargeCat;0)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=45;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+ORDER BY([Analysis]SortOrder;>;[Analysis]AnalysisCategory;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Code;<>asCharges;[Analysis]Description;<>asChargeDesc;[Analysis]KeyStatsCategory;<>asChargeCat)
+
+CREATE EMPTY SET([Trxs];"TakePaymentTrxs")
+CREATE EMPTY SET([Trxs];"Selected")
+
+$Delete:=False
+$CurrentUser:=SetSyncUser ("Sync";3)//Disable Syncing
+
+//Select the Facilities to export for
+If (Count parameters>0)
+INSERT IN ARRAY($asFacilityCode;1;1)
+$asFacilityCode{1}:=$1
+$DocumentName:=<>sBackupPath+"TakePayTrx"+$1+Replace string(String(Current date);"/";"")+"_"+String(Tickcount)+".txt"
+Else 
+ALL RECORDS([Facility])
+SELECTION TO ARRAY([Facility]FacilityCode;$asFacilityCode)
+$DocumentName:=<>sBackupPath+"TakePayTrx"+Replace string(String(Current date);"/";"")+"_"+String(Tickcount)+".txt"
+End if 
+
+If (Count parameters=2)
+$Delete:=$2
+End if 
+
+
+If (<>sProduct="M@")
+//Find the Transaction Records to export
+For ($FacilityCounter;1;Size of array($asFacilityCode))
+$FacilityCode:=$asFacilityCode{$FacilityCounter}
+QUERY([Trxs];[Trxs]CustomerCode=($FacilityCode+"@");*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#($FacilityCode+"@");*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#"";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+CREATE SET([Trxs];"Selected")
+UNION("Selected";"TakePaymentTrxs";"TakePaymentTrxs")
+End for 
+Else //If site
+//Find the Transaction Records to export
+For ($FacilityCounter;1;Size of array($asFacilityCode))
+$FacilityCode:=$asFacilityCode{$FacilityCounter}
+QUERY([Trxs];[Trxs]CustomerCode#($FacilityCode+"@");*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=($FacilityCode+"@");*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#"";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+CREATE SET([Trxs];"Selected")
+UNION("Selected";"TakePaymentTrxs";"TakePaymentTrxs")
+End for 
+For ($FacilityCounter;1;Size of array($asFacilityCode))
+$FacilityCode:=$asFacilityCode{$FacilityCounter}
+QUERY([Trxs];[Trxs]CustomerCode=($FacilityCode+"@");*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#($FacilityCode+"@");*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode#"";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+CREATE SET([Trxs];"Selected")
+UNION("Selected";"TakePaymentTrxs";"TakePaymentTrxs")
+End for 
+End if 
+
+USE SET("TakePaymentTrxs")
+
+
+//Export the records to the text file
+If (Records in selection([Trxs])>0)
+SET CHANNEL(10;$DocumentName)
+FIRST RECORD([Trxs])
+For ($Counter;1;Records in selection([Trxs]))
+SEND RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+SET CHANNEL(11)
+
+
+If ($Delete=False)
+ConfirmTwo (Get localized string("Take Payment Records have been exported into file")+" "+$DocumentName+".   "+Get localized string("The Transactions are ready to be deleted, please confirm this is what you want to do.");Get localized string("Delete");Get localized string("Cancel"))
+If (OK=1)
+$Delete:=True
+End if 
+End if 
+
+If ($Delete=True)
+//Delete the Take Payment Transactions just exported 
+READ WRITE([Trxs])
+USE SET("TakePaymentTrxs")
+DELETE SELECTION([Trxs])
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+
+If (Records in set("Lockedset")>0)
+AlertMessage (Get localized string("There were")+" "+String(Records in set("lockedset"))+" "+Get localized string("Take Payment Transaction records that were locked and could not be deleted!"))
+End if 
+End if 
+End if 
+
+//Cleanup
+CLEAR SET("TakePaymentTrxs")
+CLEAR SET("Selected")
+
+$CurrentUser:=SetSyncUser ("Sync";0)//Enable Syncing

@@ -1,0 +1,57 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Reads from Alarm.dat and updates unit mux and channel numbers
+//1=Unit number
+//2=Mux Number      [Unit]MuxController
+//3=Channel No         [Unit]ChannelInput
+//4=Turn Alarm On          Not used
+
+AlertMessage (Get localized string("This reads from Alarm.dat and needs to be in the following format: Unit Number,Mux Number,Channel No,Turn Alarm On"))
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]MuxController>0;*)
+QUERY([Unit]; & ;[Unit]ChannelInput>0)
+OK:=1
+If (Records in selection([Unit])>0)
+ConfirmTwo (Get localized string("There are")+" "+String(Records in selection([Unit]))+" "+Get localized string("units with Controller & Input numbers. Continue?");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+ConfirmTwo (Get localized string("Please open the Alarm.dat file containing the mux & channel numbers at the following Open dialog.");Get localized string("Continue");Get localized string("Cancel"))
+If (OK=1)
+$Doc:=Open document("")
+If (OK=1)
+READ WRITE([Unit])
+vtFormula:=""
+Open window(20;50;400;150;0;Get localized string("Progress"))
+RECEIVE PACKET($Doc;$Data;Char(13))
+While (Length($Data)>5)
+If ($Data[[1]]=Char(10))
+$Data:=Substring($Data;2)
+End if 
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+GetTextNo ($Data;1;","))//May have problem with formatting of unit numbers
+If (Records in selection([Unit])=1)
+GOTO XY(2;2)
+MESSAGE("Processing Unit : "+[Unit]RUnitNo+"    ")
+[Unit]MuxController:=GetPrefNo ($Data;2)
+[Unit]ChannelInput:=GetPrefNo ($Data;3)
+SAVE RECORD([Unit])
+Else 
+vtFormula:=vtFormula+"Unit not found:"+GetTextNo ($Data;1;",")+Char(13)
+End if 
+RECEIVE PACKET($Doc;$Data;Char(13))
+End while 
+CLOSE DOCUMENT($Doc)
+CLOSE WINDOW
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+If (vtFormula>"")
+vTitle:=Get localized string("Import Errors...")
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;"Import Errors")
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+Else 
+AlertMessage (Get localized string("All units updated sucessfully!"))
+End if 
+End if 
+End if 
+End if 

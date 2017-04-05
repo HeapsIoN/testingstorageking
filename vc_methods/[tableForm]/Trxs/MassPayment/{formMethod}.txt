@@ -1,0 +1,119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+C_DATE(vmpDateBanked;vmpTrxDate)
+C_TEXT(vmpAnalysisCode)
+C_TEXT(vmpBankBranch)
+C_TEXT(vmpDescription;vmpDrawer)
+C_REAL(vPlus;vTotal)
+C_TEXT(vmpUserLogin)
+RELATE MANY([Customer]CustomerCode)
+If (vmpActive=True)
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=True)
+End if 
+SELECTION TO ARRAY([Agreement]AgreeNo;vmpAgreeNo;[Agreement]BalanceOwing;vmpBalance)
+ARRAY REAL(vmpPayment;Size of array(vmpAgreeNo))
+For ($i;1;Size of array(vmpPayment))
+vmpPayment{$i}:=0
+End for 
+vmpCalc:=False
+vTotal:=0
+vmpUserLogin:=<>sCurrentUser
+OBJECT SET FORMAT(vmpBankBranch;<>tBankBranch)
+Case of 
+: ([Facility]Country="NZ")
+OBJECT SET FILTER(vmpBankBranch;"!0&9##-####")
+: ([Facility]Country="AU")
+OBJECT SET FILTER(vmpBankBranch;"!0&9###-###")
+Else 
+//do nothing
+End case 
+vmpTrxDate:=Current date
+vDatePick:=vmpTrxDate
+vmpDateBanked:=!00-00-00!
+vDatePick1:=vmpDateBanked
+
+If (BPAYINTEX#0)//10781
+QUERY([Analysis];[Analysis]Code=BPAYAnalysisCode;*)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Trxs]AgreeNo;1;5)+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+If (Records in selection([Analysis])>0)
+vmpAnalysisCode:=[Analysis]Code
+vmpDescription:=[Analysis]Description
+End if 
+vmpDrawer:=[Customer]LastDrawer
+vmpBankBranch:=[Customer]LastBankBranch
+
+If (BPAYINTEX#0)//10781
+QUERY([Analysis];[Analysis]Code=BPAYAnalysisCode;*)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+"@";*)
+End if 
+
+
+QUERY([Analysis]; & ;[Analysis]SortOrder>50;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=95;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+ARRAY TEXT(asReceipts;0)
+ARRAY TEXT(asReceiptDesc;0)
+SELECTION TO ARRAY([Analysis]Code;asReceipts;[Analysis]Description;asReceiptDesc)
+asReceipts:=Find in array(asReceipts;vmpAnalysisCode)
+QUERY([Analysis];[Analysis]Code=vmpAnalysisCode)
+
+If (PermissionsControl (44;False)=False)
+OBJECT SET ENTERABLE(vmpDateBanked;False)
+OBJECT SET VISIBLE(vDatePick1;False)
+End if 
+vTitle:=Get localized string("Receipts")+"..."
+vPlus:=0
+
+If (BPAYINTEX#0)//10781
+OBJECT SET VISIBLE(*;"Field8";False)
+OBJECT SET VISIBLE(*;"Field82";True)
+OBJECT SET VISIBLE(*;"Text4";False)
+OBJECT SET VISIBLE(*;"Text9";False)
+OBJECT SET VISIBLE(*;"Field11";False)
+OBJECT SET VISIBLE(*;"Text13";False)
+OBJECT SET VISIBLE(*;"Field12";False)
+OBJECT SET VISIBLE(*;"PopupDate";False)
+OBJECT SET VISIBLE(*;"PopupDate1";False)
+OBJECT SET VISIBLE(*;"Field9";False)
+vmpTrxDate:=Date(BPAYDateofTransaction)
+vPlus:=BPAYReceiptAmount
+vmpDateBanked:=Date(BPAYDateBank)
+vDatePick:=Date(BPAYDateofTransaction)
+vDatePick1:=Date(BPAYDateBank)
+OBJECT SET ENABLED(*;"NumberNeg2Pos";False)
+OBJECT SET ENABLED(*;"vDate1";False)
+OBJECT SET ENABLED(*;"PopupDate1";False)
+OBJECT SET ENABLED(*;"vDate";False)
+OBJECT SET ENABLED(*;"PopupDate";False)
+End if 
+
+End if 
+If (Form event=On Clicked) | (Form event=On Data Change)
+If (vmpCalc=True)
+vmpCalc:=False
+vTotal:=0
+
+For ($i;1;Size of array(vmpPayment))
+vTotal:=vTotal+vmpPayment{$i}
+End for 
+
+End if 
+End if 

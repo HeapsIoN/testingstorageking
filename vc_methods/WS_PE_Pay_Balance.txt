@@ -1,0 +1,314 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 30/11/10, 09:15:32
+// ----------------------------------------------------
+// Method: WS_Pay_Balance
+// Description
+// Allows Pay Express to add a receipt for a customer
+//
+// Parameters
+// ----------------------------------------------------
+SOAP DECLARATION(WS_PE_Unit_Number_In;Is string var;SOAP input;"WS_PE_Unit_Number_In")
+SOAP DECLARATION(WS_PE_Need_Unit_Number;Is Boolean;SOAP input;"WS_PE_Need_Unit_Number")
+SOAP DECLARATION(WS_PE_Access_Code_In;Is longint;SOAP input;"WS_PE_Access_Code_In")
+SOAP DECLARATION(WS_PE_Amount_Paying;Is longint;SOAP input;"WS_PE_Amount_Paying")
+SOAP DECLARATION(WS_PE_Track_2_Data;Is string var;SOAP input;"WS_PE_Track_2_Data")
+SOAP DECLARATION(WS_PE_Postal_Code;Is string var;SOAP input;"WS_PE_Postal_Code")
+
+$String:="Start WS_PE_Pay_Balance"+Char(13)
+$String:=$String+"WS_PE_Unit_Number_In: "+WS_PE_Unit_Number_In+Char(13)
+$String:=$String+"WS_PE_Need_Unit_Number: "+String(WS_PE_Need_Unit_Number)+Char(13)
+$String:=$String+"WS_PE_Access_Code_In: "+String(WS_PE_Access_Code_In)+Char(13)
+$String:=$String+"WS_PE_Amount_Paying: "+String(WS_PE_Amount_Paying)+Char(13)
+$String:=$String+"WS_PE_Track_2_Data: "+WS_PE_Track_2_Data+Char(13)
+$String:=$String+"WS_PE_Postal_Code: "+WS_PE_Postal_Code+Char(13)
+
+WSRecordLog ($String)
+C_REAL($Payment)
+C_TEXT($UnitNo)
+
+
+WS_PE_Result_Code:=100001
+WS_PE_Who_Am_I:="Storman "+String(<>iVersion)
+
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+WS_PE_Unit_Number_In)
+If (Records in selection([Unit])=1)
+$UnitNo:=[Unit]UnitNo
+If ([Unit]Vacant=True)
+WS_PE_Result_Code:=200003
+Else 
+QUERY([Customer];[Customer]GatePIN=String(WS_PE_Access_Code_In);*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+If (Records in selection([Customer])=1)
+RELATE MANY([Customer]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+QUERY SELECTION([Unit];[Unit]UnitNo=$UnitNo)
+If (Records in selection([Unit])=1)
+If (Locked([Customer])=False)
+
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & [Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+
+$BalanceDue:=([Customer]Balance-Sum([Trxs]TotAmt))
+
+If (WS_PE_Amount_Paying#0)
+$Payment:=WS_PE_Amount_Paying/100
+If ($Payment=$BalanceDue)
+If (WS_PE_Need_Unit_Number=True)
+WS_PE_Unit_Number:=[Unit]UnitNo
+Else 
+WS_PE_Unit_Number:=""
+End if 
+
+WS_PE_Access_Code:=WS_PE_Access_Code_In
+
+WS_PE_Remove_PayXpress_Eligible:=False
+
+WS_PE_Unlock_On_Payment_Success:=False
+
+QUERY([Facility];[Facility]FacilityCode=Substring([Customer]CustomerCode;1;5))
+
+$SpecOptions:=54
+If (WS_CCNo="37@") | (WS_CCNo="34@")//It is an Amex card
+$SpecOptions:=55
+End if 
+If ((WS_CCNo="300@") | (WS_CCNo="301@") | (WS_CCNo="38@") | (WS_CCNo="39@") | (WS_CCNo="309@") | (WS_CCNo="302@") | (WS_CCNo="303@") | (WS_CCNo="304@") | (WS_CCNo="305@") | (WS_CCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$SpecOptions:=56
+End if 
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+$SpecOptions:=54
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+End if 
+
+CREATE RECORD([Trxs])
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=$Payment
+[Trxs]Confirmed:=True
+[Trxs]TrxTime:=Current time
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+If ([Analysis]SetBankedDate=True) & (Records in selection([Analysis])=1)
+[Trxs]DateBanked:=Current date
+End if 
+[Trxs]UserLogin:="PTI"
+//If (WS_PaymMethod="CC")
+
+$Words:=WS_PE_Track_2_Data
+
+If ($Words>"")
+If ($Words[[1]]=";")
+$Pos:=Position("=";$Words)
+If ($Pos>2)
+$CCNo:=Substring($Words;2;$Pos-2)
+$Words:=Substring($Words;$Pos+1)
+$Pos:=Position("?";$Words)
+If ($Pos>1)
+$CCName:=""
+$CCExpiry:=Substring($Words;3;2)+Substring($Words;1;2)
+End if 
+End if 
+End if 
+If (Length($CCExpiry)=4)
+$Words:=""
+$CCNo:=Replace string($CCNo;" ";"")
+//If (CheckCCExpiry ($CCExpiry)) & (CheckCCValid ($CCNo))
+//ACCEPT
+//End if 
+Else 
+//BEEP
+$CCNo:=""
+$CCName:=""
+$CCExpiry:=""
+$Words:=""
+End if 
+//POST KEY(9;Shift key mask)
+End if 
+
+[Trxs]CCAuthNo:=ProcCreditCard (False;"P";$Payment;$CCNo;$CCExpiry;"";[Agreement]RAgreeNo;[Analysis]Description;[Agreement]CustomerCode;$CCName;[Customer]MailAddress;[Customer]MailPostZIPCode;"";"";"";[Agreement]TaxExempt;True;"";False)
+//End if 
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+WS_PE_Unlock_On_Payment_Success:=True
+WS_PE_Result_Code:=0
+SAVE RECORD([Trxs])
+End if 
+
+Else 
+WS_PE_Result_Code:=200601
+End if 
+Else 
+WS_PE_Result_Code:=200603
+End if 
+
+Else 
+WS_PE_Result_Code:=200101
+End if 
+Else 
+WS_PE_Result_Code:=200113
+End if 
+Else 
+QUERY([PhotosCards];[PhotosCards]PINCardNo=String(WS_PE_Access_Code_In);*)
+QUERY([PhotosCards]; & ;[PhotosCards]Code=<>sFacility+"@")
+If (Records in selection([PhotosCards])=1)
+QUERY([Customer];[Customer]CustomerCode=[PhotosCards]Code)
+If (Records in selection([Customer])=1)
+RELATE MANY([Customer]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+QUERY SELECTION([Unit];[Unit]UnitNo=$UnitNo)
+If (Records in selection([Unit])=1)
+If (Locked([Customer])=False)
+
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & [Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+
+$BalanceDue:=([Customer]Balance-Sum([Trxs]TotAmt))
+
+If (WS_PE_Amount_Paying#0)
+
+$Payment:=WS_PE_Amount_Paying/100
+If ($Payment=$BalanceDue)
+If (WS_PE_Need_Unit_Number=True)
+WS_PE_Unit_Number:=[Unit]UnitNo
+Else 
+WS_PE_Unit_Number:=""
+End if 
+
+WS_PE_Access_Code:=WS_PE_Access_Code_In
+
+WS_PE_Remove_PayXpress_Eligible:=False
+
+WS_PE_Unlock_On_Payment_Success:=False
+
+QUERY([Facility];[Facility]FacilityCode=Substring([Customer]CustomerCode;1;5))
+
+$SpecOptions:=54
+If (WS_CCNo="37@") | (WS_CCNo="34@")//It is an Amex card
+$SpecOptions:=55
+End if 
+If ((WS_CCNo="300@") | (WS_CCNo="301@") | (WS_CCNo="38@") | (WS_CCNo="39@") | (WS_CCNo="309@") | (WS_CCNo="302@") | (WS_CCNo="303@") | (WS_CCNo="304@") | (WS_CCNo="305@") | (WS_CCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$SpecOptions:=56
+End if 
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+If (Records in selection([Analysis])#0)
+$Create:=True
+Else 
+$SpecOptions:=54
+QUERY([Analysis];[Analysis]Code=Substring([Customer]CustomerCode;1;5)+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=$SpecOptions)
+End if 
+
+CREATE RECORD([Trxs])
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=$Payment
+[Trxs]Confirmed:=True
+[Trxs]TrxTime:=Current time
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+If ([Analysis]SetBankedDate=True) & (Records in selection([Analysis])=1)
+[Trxs]DateBanked:=Current date
+End if 
+[Trxs]UserLogin:="PTI"
+//If (WS_PaymMethod="CC")
+
+$Words:=WS_PE_Track_2_Data
+
+If ($Words>"")
+If ($Words[[1]]=";")
+$Pos:=Position("=";$Words)
+If ($Pos>2)
+$CCNo:=Substring($Words;2;$Pos-2)
+$Words:=Substring($Words;$Pos+1)
+$Pos:=Position("?";$Words)
+If ($Pos>1)
+$CCName:=""
+$CCExpiry:=Substring($Words;3;2)+Substring($Words;1;2)
+End if 
+End if 
+End if 
+If (Length($CCExpiry)=4)
+$Words:=""
+$CCNo:=Replace string($CCNo;" ";"")
+//If (CheckCCExpiry ($CCExpiry)) & (CheckCCValid ($CCNo))
+//ACCEPT
+//End if 
+Else 
+//BEEP
+$CCNo:=""
+$CCName:=""
+$CCExpiry:=""
+$Words:=""
+End if 
+//POST KEY(9;Shift key mask)
+End if 
+
+[Trxs]CCAuthNo:=ProcCreditCard (False;"P";$Payment;$CCNo;$CCExpiry;"";[Agreement]RAgreeNo;[Analysis]Description;[Agreement]CustomerCode;$CCName;[Customer]MailAddress;[Customer]MailPostZIPCode;"";"";"";[Agreement]TaxExempt;True;"";False)
+//End if 
+If ([Trxs]CCAuthNo#"ERR@") & ([Trxs]CCAuthNo#"DEC@")
+WS_PE_Unlock_On_Payment_Success:=True
+WS_PE_Result_Code:=0
+SAVE RECORD([Trxs])
+End if 
+
+
+
+Else 
+WS_PE_Result_Code:=200601
+End if 
+Else 
+WS_PE_Result_Code:=200603
+End if 
+
+Else 
+WS_PE_Result_Code:=200101
+End if 
+Else 
+WS_PE_Result_Code:=200113
+End if 
+Else 
+WS_PE_Result_Code:=200111
+End if 
+Else 
+WS_PE_Result_Code:=200111
+End if 
+End if 
+End if 
+Else 
+WS_PE_Result_Code:=220000
+End if 
+
+SOAP DECLARATION(WS_PE_Unit_Number;Is string var;SOAP output;"WS_PE_Unit_Number")
+SOAP DECLARATION(WS_PE_Access_Code;Is longint;SOAP output;"WS_PE_Access_Code")
+SOAP DECLARATION(WS_PE_Result_Code;Is integer;SOAP output;"WS_PE_Result_Code")
+SOAP DECLARATION(WS_PE_Who_Am_I;Is string var;SOAP output;"WS_PE_Who_Am_I")
+SOAP DECLARATION(WS_PE_Unlock_On_Payment_Success;Is Boolean;SOAP output;"WS_PE_Unlock_On_Payment_Success")
+SOAP DECLARATION(WS_PE_Remove_PayXpress_Eligible;Is Boolean;SOAP output;"WS_PE_Remove_PayXpress_Eligible")
+
+
+$String:="End WS_PE_Pay_Balance"+Char(13)
+$String:=$String+"WS_PE_Unit_Number: "+WS_PE_Unit_Number+Char(13)
+$String:=$String+"WS_PE_Access_Code: "+String(WS_PE_Access_Code)+Char(13)
+$String:=$String+"WS_PE_Result_Code: "+String(WS_PE_Result_Code)+Char(13)
+$String:=$String+"WS_PE_Who_Am_I: "+WS_PE_Who_Am_I+Char(13)
+$String:=$String+"WS_PE_Unlock_On_Payment_Success: "+String(WS_PE_Unlock_On_Payment_Success)+Char(13)
+$String:=$String+"WS_PE_Remove_PayXpress_Eligible: "+String(WS_PE_Remove_PayXpress_Eligible)+Char(13)
+
+WSRecordLog ($String)
+ReadOnlyAll 
+UnloadAll 

@@ -1,0 +1,288 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//--------------------------------------
+//eMatters' Process a Add , Edit, Delete BillSmart
+//--------------------------------------
+C_TEXT($valRootRef;$valElemRef;$response;$Content;$valueElmRes;$URLHost;$strResult;$PROCESS_VAR_UID;$PROCESS_VAR_Amount;$PROCESS_VAR_AuthCode;$PROCESS_VAR_CardType;$PROCESS_VAR_TrxnReference;$PROCESS_VAR_emattersMainID)
+C_TEXT($0)
+C_TEXT($1)//readers -mandatory
+C_TEXT($2)//Name -mandatory  *** In change mode, this is CreditCardExpiryMonth field name
+C_TEXT($3)//Email  *** In change mode, this is CreditCardExpiryYear field name
+C_TEXT($4)//CreditCardHolderName -mandatory    *** In change mode, this is StopFlag field name
+C_TEXT($5)//CreditCardNumber -mandatory    *** In change and Delete modes, this is PIN value
+C_TEXT($6)//CreditCardExpiryMonth -mandatory
+C_TEXT($7)//CreditCardExpiryYear -mandatory
+C_TEXT($8)//CVV    *** In change mode, this is StopFlag value - Yes/No
+C_TEXT($9)//UID -mandatory
+C_TEXT($10)//Action - mandatory
+C_BOOLEAN($11)// Call from CC upload
+C_TEXT($VAR_AuthCode;$VAR_emattersMainID)
+C_LONGINT($Counteri)
+
+$Counteri:=0
+Case of 
+: ($10="Add")
+$URLHost:="https://merchant.eMatters.com.au/billsmart.nsf/Add?OpenAgent"
+$valRootRef:=DOM Create XML Ref("ematters")
+: ($10="Change")
+$URLHost:="https://merchant.ematters.com.au/billsmart.nsf/Change?OpenAgent"
+$valRootRef:=DOM Create XML Ref("eMatters")
+Else 
+$URLHost:="https://merchant.eMatters.com.au/billsmart.nsf/Delete?OpenAgent"
+$valRootRef:=DOM Create XML Ref("ematters")
+End case 
+
+DOM SET XML DECLARATION($valRootRef;"ISO-8859-1")
+Case of 
+: ($10="Add")
+$valxmlPath:="/ematters/Action"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;"Add")
+
+$valxmlPath:="/ematters/UID"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$9)
+
+$valxmlPath:="/ematters/Readers"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+$valxmlPath:="/ematters/CustomerName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;Replace string($2;"&";"and"))
+If ($3#"")
+$valxmlPath:="/ematters/CustomerEmail"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$3)
+End if 
+
+$valxmlPath:="/ematters/CreditCardNumber"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$5)
+
+
+$valxmlPath:="/ematters/CreditCardExpiryMonth"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+If (Length($6)<2)
+// add 0 befor 1~9
+DOM SET XML ELEMENT VALUE($valElemRef;"0"+$6)
+Else 
+DOM SET XML ELEMENT VALUE($valElemRef;$6)
+End if 
+
+$valxmlPath:="/ematters/CreditCardExpiryYear"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$7)
+
+$valxmlPath:="/ematters/CreditCardHolderName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;Replace string($4;"&";"and"))
+
+If ($8#"")
+$valxmlPath:="/ematters/CVV"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$8)
+End if 
+
+: ($10="Change")
+
+$valxmlPath:="/eMatters/Action"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;"Change")
+
+$valxmlPath:="/eMatters/UID"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$9)
+
+$valxmlPath:="/eMatters/Readers"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+$valxmlPath:="/eMatters/PIN"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$5)
+
+If ($2#"")
+$Counteri:=$Counteri+1
+$valxmlPath:="/eMatters/"+"Item"+String($Counteri)+"/FieldName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$2)
+
+$valxmlPath:="/eMatters/"+"Item"+String($Counteri)+"/FieldValue"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+If (Length($6)<2)
+// add 0 befor 1~9
+DOM SET XML ELEMENT VALUE($valElemRef;"0"+$6)
+Else 
+DOM SET XML ELEMENT VALUE($valElemRef;$6)
+End if 
+End if 
+
+If ($3#"")
+$Counteri:=$Counteri+1
+$valxmlPath:="/eMatters/"+"Item"+String($Counteri)+"/FieldName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$3)
+
+$valxmlPath:="/eMatters/"+"Item"+String($Counteri)+"/FieldValue"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$7)
+End if 
+
+If ($4#"")
+$Counteri:=$Counteri+1
+$valxmlPath:="/eMatters/"+"Item"+String($Counteri)+"/FieldName"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$4)
+
+$valxmlPath:="/eMatters/"+"Item"+String($Counteri)+"/FieldValue"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$8)
+End if 
+Else 
+$valxmlPath:="/ematters/Action"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;"Delete")
+
+$valxmlPath:="/ematters/UID"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$9)
+
+$valxmlPath:="/ematters/Readers"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+$valxmlPath:="/ematters/PIN"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$5)
+End case 
+
+//***********************
+
+DOM EXPORT TO VAR($valRootRef;$Content)
+//ALERT($Content)  // check point , delete this code at the end
+MaskCCLog ($Content;"eMatters")
+//SyncRecordLog ($Content)
+// HTTP Request , send request xml to eMatters' server
+
+$httpStatus_l:=HTTP Request(HTTP POST method;$URLHost;$Content;$response)
+
+//ALERT($response)  // check point , delete this code at the end
+
+
+If ($httpStatus_l=200)
+$xml_Struct_Ref:=DOM Parse XML variable($response)
+SyncRecordLog ($response)
+//DOM EXPORT TO FILE($xml_Struct_Ref;"H:\\eMatters_Response.xml")
+$documentRef:=DOM Get XML document ref($xml_Struct_Ref)
+
+If ($10="Add")
+$valFound:=DOM Find XML element($documentRef;"ematters/response")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+$strResult:=$valueElmRes
+$0:="Ok"
+
+If ($11=False)
+Case of // Checking ematters response
+: ($strResult="01")
+AlertMessage ("Customer details uploaded successfully!")//xliffme
+SyncRecordLog ("eMattersBillSmartAddEditDel Method (Add condition), code: 01 > Ok")
+: ($strResult="07")
+//AlertMessage ("Transaction failed, Non Unique UID")
+AlertMessage ("Customer upload failed, non unique identifier. Please contact Storman Support.")
+SyncRecordLog ("eMattersBillSmartAddEditDel Method (Add condition), error code: 07 > Non Unique UID")
+: ($strResult="04")
+//AlertMessage ("Transaction failed, Expired Card")
+AlertMessage ("Customer upload failed, this Credit Card has expired.")
+SyncRecordLog ("eMattersBillSmartAddEditDel Method (Add condition), error code: 04 > Expired Card")
+: ($strResult="05")
+//AlertMessage ("Transaction failed, No CC Details")
+AlertMessage ("Customer upload failed, no Credit Card details were entered.")
+SyncRecordLog ("eMattersBillSmartAddEditDel Method (Add condition), error code: 05 > No CC Details")
+: ($strResult="06")
+//AlertMessage ("Transaction failed, Wrong CC Details")
+AlertMessage ("Customer upload failed, invalid Credit Card details.")
+SyncRecordLog ("eMattersBillSmartAddEditDel Method (Add condition), error code: 06 > Wrong CC Details")
+: ($strResult="09")
+//AlertMessage ("Transaction failed, No Reader Tag")
+AlertMessage ("Customer upload failed, no reader tag. Please contact Storman Support.")
+SyncRecordLog ("eMattersBillSmartAddEditDel Method (Add condition), error code: 09 > No Reader Tag")
+Else 
+AlertMessage ("The customer profile could not be created, an unexpected error occured! Please contact Storman Support. The error is: \""+$strResult+"\"")
+$varErrStr:=""
+$varErrStr:=$varErrStr+"eMattersBillSmartAddEditDel Method (Add condition), Unexpected erroe occure! The value of the error is:"
+$varErrStr:=$varErrStr+$strResult
+SyncRecordLog ($varErrStr)
+End case 
+End if 
+
+
+
+If ($strResult="01")
+$0:="Ok"
+//[Trxs]CCAuthNo:=
+[Customer]customerProfileID:=$9
+Else 
+$0:="ERR"+$strResult
+End if 
+
+End if 
+
+If ($10="Change")
+$valFound:=DOM Find XML element($documentRef;"eMatters/Result")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+$strResult:=$valueElmRes
+$0:="Ok"
+$varErrStr:=""
+If ($strResult#"Saved")
+AlertMessage ("The customer profile was unable to be edited, an unexpected error occured! Please contact Storman Support. The error is: \""+$strResult+"\"")
+$varErrStr:=$varErrStr+"eMattersBillSmartAddEditDel Method (Change condition), Unexpected erroe occure! The value of the error is:"
+$varErrStr:=$varErrStr+$strResult
+SyncRecordLog ($varErrStr)
+$0:="ERR"+$strResult
+Else 
+//AlertMessage ("Transaction approved")
+AlertMessage ("Customer profile edited successfully!")//xliffme
+$varErrStr:=$varErrStr+"eMattersBillSmartAddEditDel Method (Change condition), Transaction approved"//9067
+SyncRecordLog ($varErrStr)
+[Trxs]CCTransID:=$9
+End if 
+End if 
+
+If ($10="Delete")
+$valFound:=DOM Find XML element($documentRef;"ematters/Result")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+$strResult:=$valueElmRes
+$0:="Ok"
+$varErrStr:=""
+Case of 
+: ($strResult="01")
+AlertMessage ("Customer Credit Card details have been deleted.")//xliffme
+$varErrStr:=$varErrStr+"eMattersBillSmartAddEditDel Method (Delete condition), The token successfully deleted."
+SyncRecordLog ($varErrStr)
+[Trxs]CCTransID:=$9
+: ($strResult="05")
+AlertMessage ("Customer Credit Card details could not be deleted. The profile could not found.")
+$varErrStr:=$varErrStr+"eMattersBillSmartAddEditDel Method (Delete condition), Transaction Error! TOKEN NOT FOUND."
+SyncRecordLog ($varErrStr)
+Else 
+AlertMessage ("Customer Credit Card details could not be deleted, an unexpected error occured! Please contact Storman Support. The error is: \""+$strResult+"\"")
+$varErrStr:=$varErrStr+"eMattersBillSmartAddEditDel Method (Delete condition), Unexpected erroe occure! The value of the error is:"
+$varErrStr:=$varErrStr+$strResult
+SyncRecordLog ($varErrStr)
+$0:="ERR"+$strResult
+
+End case 
+End if 
+
+DOM CLOSE XML($valRootRef)//Close Request XML
+DOM CLOSE XML($xml_Struct_Ref)//Close Response XML
+
+
+
+Else 
+$0:="ERRHTTP"+String($httpStatus_l)
+$varErrStr:=""
+$varErrStr:=$varErrStr+"eMattersBillSmartAddEditDel Method, HTTP error code:"
+$varErrStr:=$varErrStr+String($httpStatus_l)
+SyncRecordLog ($varErrStr)
+End if 

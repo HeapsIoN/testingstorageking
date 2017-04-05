@@ -1,0 +1,70 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Billing Sync - SendToSURetry Start";"BillingSync")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 25/10/16, 14:12:57
+// ----------------------------------------------------
+// Method: SendToSURetry
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($Result;$Unit)
+
+SetFacility 
+
+If (<>sFacility="ST@")
+
+QUERY([Unit];[Unit]LastSUSyncTime#?00:00:00?)
+
+If (Records in selection([Unit])>0)
+
+$WinRef:=Open window(20;50;450;150;0)
+
+For ($a;1;Records in selection([Unit]))
+
+SyncRecordLog ("Billing Sync - SendToSURetry Unit: "+String([Unit]SUFacilityID);"BillingSync")
+
+QUERY([Agreement];[Agreement]RAgreeNo=[Unit]AgreeNo)
+
+If (Records in selection([Agreement])=1)
+$Date:=[Agreement]PaidToDate
+
+GOTO XY(2;2)
+MESSAGE("Updating Storman Licencing "+String($a)+" of "+String(Records in selection([Unit])))
+
+$Unit:=String([Unit]SUFacilityID)
+
+$Result:=WSC_BillingSUSync ($Unit;$Date;[Facility]ODBCPassword;True)
+
+SyncRecordLog ("Billing Sync - SendToSURetry Result: "+$Result;"BillingSync")
+
+If (Locked([Unit]))
+SyncRecordLog ("Billing Sync - SendToSURetry LOCKED";"BillingSync")
+End if 
+
+Case of 
+: ($Result="R") | ($Result="F")
+: ($Result="L")
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=Current time//+?00:20:00?
+SAVE RECORD([Unit])
+Else 
+READ WRITE([Unit])
+[Unit]LastSUSyncTime:=?00:00:00?
+SAVE RECORD([Unit])
+End case 
+End if 
+
+NEXT RECORD([Unit])
+End for 
+
+//UNLOAD RECORD([Agreement])
+CLOSE WINDOW($WinRef)
+End if 
+
+End if 
+
+SyncRecordLog ("Billing Sync - SendToSURetry End";"BillingSync")

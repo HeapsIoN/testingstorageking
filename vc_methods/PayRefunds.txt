@@ -1,0 +1,163 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT(vShortDte)
+C_DATE(vRefDate)
+C_TIME(vDoc)//don't know why but send packet only seems to work if this doc ref is declared as a time expression
+C_LONGINT($i;$Flag;$Dialog)
+C_BOOLEAN($IncludeBadAc;$Prior)
+C_TEXT($WindowTitle;$FileType;$FileDescription)
+C_TEXT($StartFolder;$FileNameShort;vFileNameFull)
+If (PassControl (2))
+SetFacility 
+vShortDte:=""
+$IncludeBadAc:=False
+ConfirmTwo (Get localized string("Create new refunds?");Get localized string("Create New");Get localized string("Redo Prior"))
+If (OK=1)
+vRefDate:=RequestDate (Get localized string("Please enter the date to process refunds to:");Current date)
+ConfirmTwo (Get localized string("Include transactions not yet refunded because previously flagged as having invalid bank account (CCAuthNo=BadAc)?");Get localized string("Include");Get localized string("Don't Include"))
+If (OK=1)
+$IncludeBadAc:=True
+End if 
+OK:=1
+$Prior:=False
+Else 
+//vRefDate:=Date(RequestMessage ("Enter date of prior refund batch:";String(Current date)))
+QUERY([Analysis];[Analysis]SpecialOptions=53)//53 denotes the code that is selected as the refund default
+If (Records in selection([Analysis])>0)
+$AnlysCde:=Substring([Analysis]Code;6)
+Else 
+AlertMessage (Get localized string("There is no refund default Analysis Code!!"))
+ABORT
+End if 
+QUERY([Trxs];[Trxs]CCAuthNo#"";*)
+QUERY([Trxs]; & ;[Trxs]TotAmt<0;*)//if trx amt is negative
+QUERY([Trxs]; & ;[Trxs]TrxDate>=(Current date-45);*)//only search dates the last 45 days
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@"+$AnlysCde)
+DISTINCT VALUES([Trxs]CCAuthNo;asCCAuthNo)
+ARRAY DATE(aDates;Size of array(asCCAuthNo))
+For ($x;1;Size of array(asCCAuthNo))
+If (Length(asCCAuthNo{$x})=6)//shouldn't need for long as have converted to using 4 digits for the year; all should soon be 8 chars long
+aDates{$x}:=Date(Substring(asCCAuthNo{$x};5;2)+"/"+Substring(asCCAuthNo{$x};3;2)+"/"+Substring(asCCAuthNo{$x};1;2))
+Else 
+aDates{$x}:=Date(Substring(asCCAuthNo{$x};7;2)+"/"+Substring(asCCAuthNo{$x};5;2)+"/"+Substring(asCCAuthNo{$x};1;4))
+End if 
+End for 
+SORT ARRAY(aDates;<)
+Open window((Screen width/2)-176;(Screen height/2)-157;(Screen width/2)+176;(Screen height/2)+157;5;Get localized string("Recreate Previous Batch Refund"))
+DIALOG([Trxs];"RedoPriorRefundBatch")
+CLOSE WINDOW
+$Prior:=True
+vShortDte:=String(Year of(vRefDate);"0000")+String(Month of(vRefDate);"00")+String(Day of(vRefDate);"00")
+End if 
+If (OK=1)
+If ($Prior=False)//don't do if prior batch, as has already been queried
+QUERY([Analysis];[Analysis]SpecialOptions=53)//53 denotes the code that is selected as the refund default
+If (Records in selection([Analysis])>0)
+$AnlysCde:=Substring([Analysis]Code;6)
+Else 
+AlertMessage (Get localized string("There is no refund default Analysis Code!!"))
+ABORT
+End if 
+End if 
+QUERY([Trxs];[Trxs]CCAuthNo=vShortDte;*)
+If ($IncludeBadAc=True)
+QUERY([Trxs]; | ;[Trxs]CCAuthNo="BadAc";*)
+End if 
+QUERY([Trxs]; & ;[Trxs]TotAmt<0;*)//if trx amt is negative
+QUERY([Trxs]; & ;[Trxs]TrxDate>=(vRefDate-45);*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vRefDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@"+$AnlysCde)
+CREATE SET([Trxs];"All")
+If (Records in selection([Trxs])>0)
+ConfirmTwo (Get localized string("Print schedule of refunds?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+FORM SET OUTPUT([Trxs];"DCSchedule")
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TotAmt;>)
+BREAK LEVEL(0)
+ACCUMULATE([Trxs]TotAmt)
+PRINT SELECTION([Trxs])
+End if 
+ConfirmTwo (Get localized string("Refund via Bank Export File?");Get localized string("Bank Export");Get localized string("Cheque"))
+If (OK=1)
+vDate:=RequestDate (Get localized string("Trx Date for Bank Export File?");Current date)
+If (OK=1)
+vShortDte:=String(Year of(vDate);"0000")+String(Month of(vDate);"00")+String(Day of(vDate);"00")
+READ WRITE([Trxs])
+PLATFORM PROPERTIES($Platform)
+ConfirmTwo (Get localized string("Create one bank file per facility or create one file for all?");Get localized string("Multiple files");Get localized string("One file"))
+If (OK=1)
+$Dialog:=0
+For ($x;1;Size of array(<>asSiteCodes))
+QUERY([Facility];[Facility]FacilityCode=<>asSiteCodes{$x})
+USE SET("All")
+QUERY SELECTION([Trxs];[Trxs]AgreeNo=<>asSiteCodes{$x}+"@")
+If (Records in selection([Trxs])>0)
+If ($Platform=3)
+If ($Dialog=0)
+$WindowTitle:=Get localized string("Save Refund Batch")
+$FileNameShort:=Get localized string("Refund")+vShortDte
+$FileType:="*.txt"
+$FileDescription:="Text Files"
+$StartFolder:="%userprofile%\\My Documents"
+$Flag:=0
+vErr:=gui_GetSaveFileName ($WindowTitle;$FileType;$FileDescription;$StartFolder;$FileNameShort;vFileNameFull;$Flag)
+$Dialog:=1
+End if 
+If (vErr>0)
+vDoc:=Create document(vFileNameFull+<>asSiteCodes{$x};"TXT")
+CreateBatchFiles ($x)
+Else 
+If ($Dialog=0)
+AlertMessage (Get localized string("Cannot select Windows Explorer...saving to default location")+"....")
+End if 
+vDoc:=Create document("Refund"+<>asSiteCodes{$x}+vShortDte+".txt";"TXT")
+CreateBatchFiles ($x)
+//ABORT
+End if 
+Else 
+vDoc:=Create document(<>sAttachPath+"Refund"+<>asSiteCodes{$x}+vShortDte+".txt";"TXT")
+CreateBatchFiles ($x)
+End if 
+End if 
+End for 
+Else 
+vDoc:=Create document("";"TXT")
+If (OK=1)
+CreateBatchFiles (1)
+End if 
+End if 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+If (vDoc>0)
+AlertMessage (Get localized string("DC text files have been generated."))
+End if 
+End if 
+Else 
+vChqDate:=RequestDate (Get localized string("Cheque date?");Current date)
+If (OK=1)
+vShortDte:=Substring(String(Year of(vChqDate);"0000");3;2)+String(Month of(vChqDate);"00")+String(Day of(vChqDate);"00")
+If (Records in selection([Trxs])>0)
+FORM SET OUTPUT([Trxs];"Cheque")
+READ WRITE([Trxs])
+FIRST RECORD([Trxs])
+For ($i;1;Records in selection([Trxs]))
+[Trxs]CCAuthNo:=vShortDte
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+FIRST RECORD([Trxs])
+PrintSelection ("P";->[Trxs])
+FORM SET OUTPUT([Trxs];"Output")
+End if 
+End if 
+AlertMessage (Get localized string("Batch refund process completed!"))
+End if 
+Else 
+AlertMessage (Get localized string("There are no selected refunds to process!"))
+End if 
+CLEAR SET("All")
+End if 
+SetFacility 
+End if 

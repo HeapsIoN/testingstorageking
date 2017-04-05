@@ -1,0 +1,204 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0;$Msg)
+C_BOOLEAN($1;$UseSelection)//If true only do records in Agreement & Reservation selection
+C_LONGINT($2;$NoErrors)//0=Normal Display All Error, 1=Display Only Errors, 2=Suppress All
+C_BOOLEAN($3;$Force)//If true force Matching for every transaction
+C_DATE($4;$CheckFrom)//Only check matching from this date
+C_TEXT($5;$Facility)
+C_BOOLEAN($6;$Suppress)
+C_LONGINT($i;$j;$k;$z)
+$Suppress:=False
+$Msg:=""
+$UseSelection:=$1
+$NoErrors:=$2
+$Force:=$3
+$CheckFrom:=$4
+$Facility:=$5
+If (Count parameters>5)
+$Suppress:=$6
+End if 
+READ WRITE([Trxs])
+vtFormula:=""
+vError:=False
+CREATE EMPTY SET([Trxs];"Active")
+Open window(20;50;400;150;0;Get localized string("Progress"))
+For ($z;1;2)
+If ($z=1)
+$p1:=Table(4)
+$p2:=Field(4;10)
+Else 
+$p1:=Table(17)
+$p2:=Field(17;11)
+End if 
+If ($UseSelection=False)
+QUERY($p1->;$p2->=$Facility+"@")
+End if 
+CREATE SET($p1->;"Selection")
+ORDER BY($p1->;$p2->;>)
+For ($i;1;Records in selection($p1->))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreement:")+" "+$p2->+" - "+String($i)+" "+Get localized string("of")+" "+String(Records in selection($p1->))+"    ")
+If ($p2->=($Facility+"MISCL"))
+CheckMatchMisc ($CheckFrom)
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=$p2->;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$CheckFrom)
+ARRAY LONGINT(aiCheck;0)
+If ($p2->#($Facility+"MISCL"))//Added in v3.1 to stop checking of MISCL
+DISTINCT VALUES([Trxs]Match;aiCheck)
+End if 
+For ($j;1;Size of array(aiCheck))
+If (aiCheck{$j}>=0)//Don't process negative ones - this could be stock problem
+QUERY([Trxs];[Trxs]AgreeNo=$p2->;*)
+QUERY([Trxs]; & ;[Trxs]Match=aiCheck{$j};*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+CREATE SET([Trxs];"ToCheck")
+If (Records in selection([Trxs])=0)//No credit to apply against
+QUERY([Trxs];[Trxs]AgreeNo=$p2->;*)
+QUERY([Trxs]; & ;[Trxs]Match=aiCheck{$j};*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+If (Sum([Trxs]TotAmt)#0)//If transactions do not agree then reset Match to 0
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+End if 
+Else 
+For ($k;1;Records in selection([Trxs]))
+USE SET("ToCheck")
+GOTO SELECTED RECORD([Trxs];$k)
+ADD TO SET([Trxs];"Active")
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//If (Round(Sum([Transaction]MiscDetls'TotAmt)-[Transaction]TotAmt;2)#0) | (($Force) & ([Transaction]CustomerCode#($Facility+"MISCL")))
+//vtFormula:=vtFormula+Get localized string("Customer")+":"+[Transaction]CustomerCode+Get localized string(", Agreement:")+[Transaction]AgreeNo+Get localized string(", Match:")+String([Transaction]Match)+", "+Get localized string("Total")+":="+String([Transaction]TotAmt;<>sFormat)+", "+Get localized string("Charges")+String(Sum([Transaction]MiscDetls'TotAmt);<>sFormat)+Char(13)
+//If ([Transaction]AgreeNo#($Facility+"MISCL")) & ([Transaction]CustomerCode#($Facility+"MISCL"))
+//$x:=MatchTrx ([Transaction]AgreeNo;[Transaction]Match)  //Don't match miscellaneous receipts because it deletes Name & Address in the subta
+//USE SET("ToCheck")
+//GOTO SELECTED RECORD([Transaction];$k)
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//If ($x=0)
+//$Sum:=Sum([Transaction]MiscDetls'TotAmt)
+//vtFormula:=vtFormula+String($Sum;<>sFormat)+" - ReMATCHED"+Char(13)
+//Else 
+//vtFormula:=vtFormula+String(Sum([Transaction]MiscDetls'TotAmt);<>sFormat)+" - Unable to Match as Transactions are Locked!!"+Char(13)
+//End if 
+//Else 
+//vtFormula:=vtFormula+Get localized string("Miscellaneous Receipt with Match:")+String([Transaction]Match)+" "+Get localized string("dated:")+String([Transaction]TrxDate)+" "+Get localized string("for amount:")+String([Transaction]TotAmt;<>sFormat)+" "+Get localized string("is out of balance.  Please correct!")+Char(13)
+//End if 
+//USE SET("Selection")
+//ORDER BY($p1->;$p2->;>)
+//GOTO SELECTED RECORD($p1->;$i)
+//USE SET("ToCheck")
+//GOTO SELECTED RECORD([Transaction];$k)
+//End if 
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//If (Round(Sum([Transaction]MiscDetls'TotAmt)-[Transaction]TotAmt;2)=0)
+//ARRAY TEXT(aAnlys;Records in subselection([Transaction]MiscDetls))
+//ARRAY LONGINT(aSeqNo;Size of array(aAnlys))
+//ARRAY LONGINT(aRecNo;Size of array(aAnlys))  //Not used but Maintained for compatibility with older versions
+//ARRAY BOOLEAN(aBoolean;Size of array(aAnlys))
+//For ($x;1;Records in subselection([Transaction]MiscDetls))
+//aAnlys{$x}:=[Transaction]MiscDetls'AnalysisCode
+//aSeqNo{$x}:=[Transaction]MiscDetls'SeqNo
+//aRecNo{$x}:=[Transaction]MiscDetls'RecNo  //Not used but Maintained for compatibility with older versions
+//aBoolean{$x}:=False
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End for 
+//$AgreeNo:=[Transaction]AgreeNo
+//$CustCode:=[Transaction]CustomerCode
+//$RecNo:=Record number([Transaction])
+//For ($x;1;Size of array(aSeqNo))
+//If (aSeqNo{$x}#-9)
+//vMax:=$x
+//QUERY([Transaction];[Transaction]AgreeNo=$AgreeNo;*)
+//QUERY([Transaction]; & ;[Transaction]SeqNo=aSeqNo{vMax})
+//If (Records in selection([Transaction])=0) & (aRecNo{$x}>0)
+//ON ERR CALL("ErrorNone")
+//GOTO RECORD([Transaction];aRecNo{$x})
+//ON ERR CALL("")
+//If ([Transaction]AgreeNo=$AgreeNo)  // & ([Transaction]Analysis=aAnlys{$x})
+//aBoolean{$x}:=True
+//aSeqNo{$x}:=[Transaction]SeqNo
+//End if 
+//End if 
+//If (Records in selection([Transaction])=1)
+//ADD TO SET([Transaction];"Active")
+//If ([Transaction]AnalysisCode#aAnlys{$x}) | ([Transaction]Charge#True)
+//aBoolean{$x}:=True
+//aAnlys{$x}:=[Transaction]AnalysisCode
+//End if 
+//Else 
+//If (Application type=4D Server) | ($Suppress=True)
+//$Msg:=$Msg+Get localized string("Customer")+":"+$CustCode+Get localized string(", Agreement:")+$AgreeNo+" "+Get localized string("Matching Trx Seq No:")+String(aSeqNo{vMax})+" - "+String(Records in selection([Transaction]))+" "+Get localized string("recs found!")
+//OK:=1
+//Else 
+//ConfirmTwo (Get localized string("Customer")+":"+$CustCode+Get localized string(", Agreement:")+$AgreeNo+" "+Get localized string("Matching Trx Seq No:")+String(aSeqNo{vMax})+" - "+String(Records in selection([Transaction]))+" "+Get localized string("recs found!   Continue?");Get localized string("Yes");Get localized string("No"))
+//End if 
+//If (OK=0)
+//$k:=Records in selection($p1->)+1  //Exit main loop
+//$x:=Size of array(aSeqNo)+1  //Exit this loop
+//End if 
+//End if 
+//End if 
+//End for 
+//GOTO RECORD([Transaction];$RecNo)
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//$Save:=False
+//For ($x;1;Size of array(aBoolean))
+//If (aBoolean{$x}=True)
+//[Transaction]MiscDetls'SeqNo:=aSeqNo{$x}
+//[Transaction]MiscDetls'AnalysisCode:=aAnlys{$x}
+//$Save:=True
+//End if 
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End for 
+//If ($Save)
+//[Transaction]TriggerUpdate:=True
+//SAVE RECORD([Transaction])
+//vtFormula:=vtFormula+Get localized string("Customer")+":"+[Transaction]CustomerCode+", "+Get localized string("Agreement")+":"+[Transaction]AgreeNo+", "+Get localized string("Match")+":"+String([Transaction]Match)+", "+Get localized string("Total")+"="+String([Transaction]TotAmt;<>sFormat)+", LINKS UPDATED"+Char(13)
+//End if 
+//Else 
+//vtFormula:=vtFormula+Get localized string("Customer")+":"+[Transaction]CustomerCode+", "+Get localized string("Agreement")+":"+[Transaction]AgreeNo+", "+Get localized string("Match")+":"+String([Transaction]Match)+", "+Get localized string("Total")+"="+String([Transaction]TotAmt;<>sFormat)+", SumChgs="+String(Sum([Transaction]MiscDetls'TotAmt);<>sFormat)+" - "+Get localized string("Please correct!")+Char(13)
+//End if 
+End for 
+End if 
+Else 
+FIRST RECORD([Trxs])
+vtFormula:=vtFormula+Get localized string("Customer")+":"+[Trxs]CustomerCode+", "+Get localized string("Agreement")+":"+[Trxs]AgreeNo+", "+Get localized string("Match")+":"+String(aiCheck{$j})+Get localized string("Income Received Report3")+Char(13)
+End if 
+End for 
+End if 
+NEXT RECORD($p1->)
+End for 
+End for 
+CLOSE WINDOW
+If (Application type#4D Server) & ($Suppress=False)
+ALL RECORDS([Trxs])
+CREATE SET([Trxs];"All")
+DIFFERENCE("All";"Active";"All")
+READ ONLY([Trxs])
+USE SET("All")
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+If (Records in selection([Trxs])>0) & ($UseSelection=False) & ($NoErrors#2)
+FORM SET OUTPUT([Trxs];"Output")
+AlertMessage (Get localized string("Income Received Report4"))
+MODIFY SELECTION([Trxs];*)
+End if 
+If ($NoErrors#2)
+If (vtFormula>"")
+vTitle:=Get localized string("ReMatch...")
+vtFormula:=Get localized string("Income Received Report5")+Char(13)+vtFormula
+$Ref:=Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;"Rematch")
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW($Ref)
+Else 
+If ($NoErrors=0)
+AlertMessage (Get localized string("All transaction matchings appear to be correct!"))
+End if 
+End if 
+End if 
+End if 
+CLEAR SET("All")
+CLEAR SET("Active")
+CLEAR SET("ToCheck")
+CLEAR SET("Selection")
+$0:=$Msg

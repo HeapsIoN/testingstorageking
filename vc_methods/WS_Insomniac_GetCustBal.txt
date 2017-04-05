@@ -1,0 +1,306 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_CustomerID;Is text;SOAP input)// It is an agreement No. Customer might have more than one agreement
+SOAP DECLARATION(WS_Month_prep;Is text;SOAP input)
+
+$String:="Start WS_Insomniac_GetCustBal"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_Month_prep: "+WS_Month_prep+Char(13)
+
+WSRECORDLOG ($String)
+
+SOAP DECLARATION(WS_RET_CODE;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_InternalUnitID;Text array;SOAP output)
+SOAP DECLARATION(WS_ExternalUnitID;Text array;SOAP output)
+SOAP DECLARATION(WS_ChargeDescr;Text array;SOAP output)
+SOAP DECLARATION(WS_ChargeAmount;Text array;SOAP output)
+SOAP DECLARATION(WS_StringTax;Text array;SOAP output)
+SOAP DECLARATION(WS_StartDateStr;Text array;SOAP output)
+SOAP DECLARATION(WS_EndDateStr;Text array;SOAP output)
+SOAP DECLARATION(WS_ERROR;Is text;SOAP output)
+
+ARRAY TEXT(WS_InternalUnitID;0)
+ARRAY TEXT(WS_ExternalUnitID;0)
+ARRAY TEXT(WS_ChargeDescr;0)
+ARRAY TEXT(WS_ChargeAmount;0)
+ARRAY TEXT(WS_StringTax;0)
+ARRAY TEXT(WS_StartDateStr;0)
+ARRAY TEXT(WS_EndDateStr;0)
+C_REAL($AddedBalance;$Tax)
+C_DATE($Date;$NBD)
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_CustomerID)
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_CustomerID;1;5))
+If (Records in selection([Agreement])=0)
+WS_RET_CODE:=False
+WS_ERROR:="Customer Not Found"
+Else 
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+
+$Date:=Add to date(Current date;0;Num(WS_Month_prep);0)
+WS_RET_CODE:=True
+
+If (Records in selection([Agreement])>0)
+FIRST RECORD([Agreement])
+For ($z;1;Records in selection([Agreement]))
+If ([Agreement]ActiveAgreemt=False) & ([Agreement]BalanceOwing=0)
+
+Else 
+RELATE MANY([Agreement]RAgreeNo)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0;*)//This line added to only calc on remaining transactions
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ORDER BY([Trxs];[Trxs]TrxDate;<;[Trxs]TotAmt;>)
+FIRST RECORD([Trxs])
+$Total:=[Agreement]BalanceOwing
+While ($Total>0) & (Not(End selection([Trxs])))
+RELATE ONE([Trxs]AnalysisCode)
+If ($Total<[Trxs]TotAmt)
+[Trxs]TotAmt:=$Total
+End if 
+$Total:=Round($Total-[Trxs]TotAmt;2)
+APPEND TO ARRAY(WS_InternalUnitID;[Agreement]UnitsOccup)
+APPEND TO ARRAY(WS_ExternalUnitID;[Agreement]UnitsOccup)
+APPEND TO ARRAY(WS_ChargeDescr;[Trxs]Description)
+APPEND TO ARRAY(WS_ChargeAmount;String([Trxs]TotAmt-[Trxs]TaxAmt))
+APPEND TO ARRAY(WS_StringTax;String([Trxs]TaxAmt))
+APPEND TO ARRAY(WS_StartDateStr;String([Trxs]TrxDate;ISO date))
+APPEND TO ARRAY(WS_EndDateStr;String([Trxs]TrxDate;ISO date))
+NEXT RECORD([Trxs])
+End while 
+
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+
+If (WS_Month_prep#"0") & ([BillPlan]CasualBilling=False)
+
+// Rental Fee
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+Case of 
+: ([UnitType]OrgAnalysis#"") & ([Customer]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring(WS_CustomerID;1;5)+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis#"")
+QUERY([Analysis];[Analysis]Code=Substring(WS_CustomerID;1;5)+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring(WS_CustomerID;1;5)+"RF")
+End case 
+$AnalysisCode:=[Analysis]Code
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode;*)
+QUERY([BillPlan]; & ;[BillPlan]KioskInactive=False)
+//Take into account Rent Increase
+If ([Agreement]NextBillDate>=[Unit]IncreaseFrom) & ([Unit]IncreaseFrom#!00-00-00!)
+If (Records in selection([BillPlan])#0)
+If ([BillPlan]PlanPeriod="Week")
+If ([BillPlan]DiscPercentage#0)
+$AddedBalance:=(([Unit]WeeklyNewRentAmt*(100-[BillPlan]DiscPercentage)/100)*[Agreement]MthsAdv)*0.2308
+Else 
+$AddedBalance:=(([Unit]WeeklyNewRentAmt-[BillPlan]DiscFixedAmt)*[Agreement]MthsAdv)*0.2308
+End if 
+Else 
+If ([BillPlan]DiscPercentage#0)
+$AddedBalance:=([Unit]NewRentAmt*(100-[BillPlan]DiscPercentage)/100)*[Agreement]MthsAdv
+Else 
+$AddedBalance:=([Unit]NewRentAmt-[BillPlan]DiscFixedAmt)*[Agreement]MthsAdv
+End if 
+End if 
+Else 
+$AddedBalance:=[Unit]NewRentAmt*[Agreement]MthsAdv
+End if 
+Else 
+If (Records in selection([BillPlan])#0)
+If ([BillPlan]PlanPeriod="Week")
+If ([BillPlan]DiscPercentage#0)
+$AddedBalance:=(([Unit]WeeklyRentedValue*(100-[BillPlan]DiscPercentage)/100)*[Agreement]MthsAdv)*0.2308
+Else 
+$AddedBalance:=(([Unit]WeeklyRentedValue-[BillPlan]DiscFixedAmt)*[Agreement]MthsAdv)*0.2308
+End if 
+Else 
+If ([BillPlan]DiscPercentage#0)
+$AddedBalance:=([Unit]RentedValue*(100-[BillPlan]DiscPercentage)/100)*[Agreement]MthsAdv
+Else 
+$AddedBalance:=([Unit]RentedValue-[BillPlan]DiscFixedAmt)*[Agreement]MthsAdv
+End if 
+End if 
+Else 
+$AddedBalance:=[Unit]RentedValue*[Agreement]MthsAdv
+End if 
+End if 
+If ([Analysis]Taxable)
+$Tax:=CalcTaxAmt ($AddedBalance)
+Else 
+$Tax:=0
+End if 
+
+//Periodic Billing
+If ([BillPlan]PeriodicBilling=True)
+$AddedBalance:=RoundAmt ($AddedBalance/([Agreement]MthsAdv+[BillPlan]FreePeriods))
+End if 
+//DAM Added as after CalcTaxAmt Analysis Record is lost
+QUERY([Analysis];[Analysis]Code=$AnalysisCode)
+If ([Facility]TaxAddtoAmt=False)
+$AddedBalance:=$AddedBalance-$Tax
+End if 
+
+$LastBillDate:=[Agreement]LastBillDate
+$NextBillDate:=[Agreement]NextBillDate
+For ($p;1;Num(WS_Month_prep))
+APPEND TO ARRAY(WS_InternalUnitID;[Agreement]UnitsOccup)
+APPEND TO ARRAY(WS_ExternalUnitID;[Agreement]UnitsOccup)
+APPEND TO ARRAY(WS_ChargeDescr;[Analysis]Description)
+APPEND TO ARRAY(WS_ChargeAmount;String($AddedBalance))
+APPEND TO ARRAY(WS_StringTax;String($Tax))
+APPEND TO ARRAY(WS_StartDateStr;String($NextBillDate;ISO date))
+
+If ([BillPlan]PeriodicBilling=True)
+$NextBillDateEnd:=CalcNxtBillDate ($NextBillDate;1;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+$NextBillDateEnd:=CalcNxtBillDate ($NextBillDate;([Agreement]MthsAdv+[BillPlan]FreePeriods);[Agreement]MthsAdv;[BillPlan]PlanPeriod)
+End if 
+APPEND TO ARRAY(WS_EndDateStr;String($NextBillDateEnd;ISO date))
+$LastBillDate:=$NextBillDate
+If ([BillPlan]PeriodicBilling=True)
+$NextBillDate:=CalcNxtBillDate ($LastBillDate;1;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+$NextBillDate:=CalcNxtBillDate ($LastBillDate;([BillPlan]PeriodstoPay+[BillPlan]FreePeriods);[Agreement]MthsAdv;[BillPlan]PlanPeriod)
+End if 
+
+//Take into account Rent Increase 
+If ($NextBillDate>=[Unit]IncreaseFrom) & ([Unit]IncreaseFrom#!00-00-00!)
+If (Records in selection([BillPlan])#0)
+If ([BillPlan]PlanPeriod="Week")
+If ([BillPlan]DiscPercentage#0)
+$AddedBalance:=(([Unit]WeeklyNewRentAmt*(100-[BillPlan]DiscPercentage)/100)*[Agreement]MthsAdv)*0.2308
+Else 
+$AddedBalance:=(([Unit]WeeklyNewRentAmt-[BillPlan]DiscFixedAmt)*[Agreement]MthsAdv)*0.2308
+End if 
+Else 
+If ([BillPlan]DiscPercentage#0)
+$AddedBalance:=([Unit]NewRentAmt*(100-[BillPlan]DiscPercentage)/100)*[Agreement]MthsAdv
+Else 
+$AddedBalance:=([Unit]NewRentAmt-[BillPlan]DiscFixedAmt)*[Agreement]MthsAdv
+End if 
+End if 
+Else 
+$AddedBalance:=[Unit]NewRentAmt*[Agreement]MthsAdv
+End if 
+//Periodic Billing
+If (([Agreement]PeriodicBillingPosition+1)>=[BillPlan]FreePeriodStart) & (([Agreement]PeriodicBillingPosition+1)<([BillPlan]FreePeriodStart+[BillPlan]FreePeriods)) & ([BillPlan]FreePeriods>0)
+$AddedBalance:=0
+End if 
+If ([Analysis]Taxable)
+$Tax:=CalcTaxAmt ($AddedBalance)
+Else 
+$Tax:=0
+End if 
+
+//After CalcTaxAmt the Analysis record is lost 
+QUERY([Analysis];[Analysis]Code=$AnalysisCode)
+If ([Facility]TaxAddtoAmt=False)
+$AddedBalance:=$AddedBalance-$Tax
+End if 
+End if 
+End for 
+
+//Other Regular Charges
+$LastBillDate:=[Agreement]LastBillDate
+$NextBillDate:=[Agreement]NextBillDate
+For ($p;1;Num(WS_Month_prep))
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([OtherChgs])#0)
+For ($i;1;Records in selection([OtherChgs]))
+QUERY([Analysis];[Analysis]Code=[OtherChgs]AnalysisCode)
+APPEND TO ARRAY(WS_InternalUnitID;[Agreement]UnitsOccup)
+APPEND TO ARRAY(WS_ExternalUnitID;[Agreement]UnitsOccup)
+APPEND TO ARRAY(WS_ChargeDescr;[OtherChgs]Description)
+//Take into account the Rent increase
+If ($NextBillDate>=[OtherChgs]IncreaseFrom) & ([OtherChgs]IncreaseFrom#!00-00-00!)
+$Balance:=[OtherChgs]NewAmount
+Else 
+$Balance:=[OtherChgs]Amount
+End if 
+//Periodic Billing for ORC
+If ([BillPlan]PeriodicBilling=True)
+$Balance:=RoundAmt ($Balance/([Agreement]MthsAdv+[BillPlan]FreePeriods))
+End if 
+If ([Analysis]Taxable)
+$Tax:=CalcTaxAmt ($Balance)
+Else 
+$Tax:=0
+End if 
+If ([Facility]TaxAddtoAmt=False)
+$Balance:=$Balance-$Tax
+End if 
+
+APPEND TO ARRAY(WS_ChargeAmount;String($Balance))
+APPEND TO ARRAY(WS_StringTax;String($Tax))
+APPEND TO ARRAY(WS_StartDateStr;String($NextBillDate;ISO date))
+If ([BillPlan]PeriodicBilling=True)
+$NextBillDateEnd:=CalcNxtBillDate ($NextBillDate;1;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+$NextBillDateEnd:=CalcNxtBillDate ($NextBillDate;([BillPlan]PeriodstoPay+[BillPlan]FreePeriods);[BillPlan]PeriodstoPay;[BillPlan]PlanPeriod)
+End if 
+APPEND TO ARRAY(WS_EndDateStr;String($NextBillDateEnd;ISO date))
+$LastBillDate:=$NextBillDate
+If ([BillPlan]PeriodicBilling=True)
+$NextBillDate:=CalcNxtBillDate ($LastBillDate;1;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+$NextBillDate:=CalcNxtBillDate ($LastBillDate;([BillPlan]PeriodstoPay+[BillPlan]FreePeriods);[BillPlan]PeriodstoPay;[BillPlan]PlanPeriod)
+End if 
+End for 
+End if 
+End for 
+End if 
+End if 
+NEXT RECORD([Agreement])
+End for 
+Else 
+WS_RET_CODE:=False
+WS_ERROR:="There are no agreements for this customer"
+End if 
+
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Unit])
+
+End if 
+
+$String:="End WS_Insomniac_GetCustBal"+Char(13)
+$String:=$String+"WS_RET_CODE: "+String(WS_RET_CODE)+Char(13)
+$sizeofarray:=Size of array(WS_InternalUnitID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_InternalUnitID("+String($vlElem)+"):"+WS_InternalUnitID{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ExternalUnitID)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ExternalUnitID("+String($vlElem)+"):"+WS_ExternalUnitID{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ChargeDescr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ChargeDescr("+String($vlElem)+"):"+WS_ChargeDescr{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_ChargeAmount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_ChargeAmount("+String($vlElem)+"):"+WS_ChargeAmount{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_StringTax)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_StringTax("+String($vlElem)+"):"+WS_StringTax{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_StartDateStr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_StartDateStr("+String($vlElem)+"):"+WS_StartDateStr{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_EndDateStr)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_EndDateStr("+String($vlElem)+"):"+WS_EndDateStr{$vlElem}+Char(13)
+End for 
+$String:=$String+"WS_ERROR: "+WS_ERROR+Char(13)
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

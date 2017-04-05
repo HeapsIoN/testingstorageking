@@ -1,0 +1,107 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($x;$y)
+C_TIME(vtEventTime)
+C_DATE(vdEventDate)
+If (Form event=On Header)
+vTitle:=Get localized string("MenuMoreReportseventlogExceptionsReport")+" "+String(vRptDate)
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Header) & (Level=1)
+Case of 
+: ([EventLog]Code="F")
+$y:=2
+: ([EventLog]Code="P")
+$y:=3
+: ([EventLog]Code="H")
+$y:=4
+: ([EventLog]Code="B")
+$y:=5
+: ([EventLog]Code="S")
+$y:=6
+: ([EventLog]Code="M")
+$y:=7
+: ([EventLog]Code="U")
+$y:=8
+: ([EventLog]Code="A")
+$y:=9
+: ([EventLog]Code="D")
+$y:=10
+: ([EventLog]Code="+")
+$y:=11
+: ([EventLog]Code="I")
+$y:=12
+: ([EventLog]Code="N")
+$y:=13
+: ([EventLog]Code="C")
+$y:=14
+: ([EventLog]Code="T")
+$y:=15//deletion of a trx
+: ([EventLog]Code="-")
+$y:=16// trx negative amount
+: ([EventLog]Code="!")
+$y:=17//mod of TrxDate
+: ([EventLog]Code="M")
+$y:=18//mod of Amount
+: ([EventLog]Code="%")
+$y:=19//DiscAmt > 0
+: ([EventLog]Code="*")
+$y:=20//mod of datebanked
+: ([EventLog]Code="~")
+$y:=21// mod of DateFrom / To
+: ([EventLog]Code="L")
+$y:=22//add a new letter
+: ([EventLog]Code="R")
+$y:=23//mod [Reservation]ExpMoveIn
+: ([EventLog]Code="E")
+$y:=24//e-mails sent / received: not currently logged
+: ([EventLog]Code="Q")
+$y:=25// Mod of NotesHistory
+Else 
+$y:=1
+End case 
+If ($y>0) & ($y<=Size of array(<>asPrintSettingsDesc))
+vName:=<>asPrintSettingsDesc{$y}
+Else 
+vName:=Get localized string("Description Missing for Code")+[EventLog]Code
+End if 
+End if 
+
+If (Form event=On Printing Detail)//(Level=1)  
+vtEventTime:=UTCTime ([EventLog]EventTime;False)
+vdEventDate:=UTCDate ([EventLog]EventTime;False;[EventLog]EventDate)
+$Detail:=""
+Repeat 
+$Boolean:=False
+$Field:=Num(Substring([EventLog]LogDetail;1;3))
+If ($Field>0)
+If ([EventLog]EventTable#0)//Added by Hamid 03/08/2015 - 9591
+$vpField:=Field([EventLog]EventTable;$Field)
+If (Type($vpField->)=Is text) | (Type($vpField->)=Is subtable) | (Type($vpField->)=Is picture) | (Type($vpField->)=Is BLOB)
+$x:=Position(Char(20);[EventLog]LogDetail;0;*)
+[EventLog]LogDetail:=Delete string([EventLog]LogDetail;1;$x)
+$Boolean:=True
+Else 
+$x:=Position(Char(20);[EventLog]LogDetail;0;*)
+$Detail:=$Detail+Substring([EventLog]LogDetail;1;$x)
+[EventLog]LogDetail:=Substring([EventLog]LogDetail;$x+1)
+$Boolean:=False
+End if 
+Else 
+$Field:=0
+End if 
+
+End if 
+Until ($Field=0)
+[EventLog]LogDetail:=FormatLog ($Detail;[EventLog]EventType)
+$eLogOut:=Replace string([EventLog]LogDetail;Char(Carriage return);"";*)
+$eLogOut:=Replace string($eLogOut;Char(Line feed);"";*)
+//vELogDetail1:=Substring($eLogOut;1;45)
+//vELogDetail:=Substring($eLogOut;46)  //Replace string([EventLog]LogDetail;Char(Carriage return);"";*)
+vELogDetail:=$eLogOut
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

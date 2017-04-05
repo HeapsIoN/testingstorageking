@@ -1,0 +1,49 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+C_LONGINT($Tickcount)
+
+If (<>sGatePIN>"")
+//QUERY([PhotosCards];[PhotosCards]PINCardNo=?sGatePIN)
+//If (Records in selection([PhotosCards])>0)
+//  RELATE ONE([PhotosCards]Code)
+//Else 
+//End if 
+QUERY([Customer];[Customer]CustomerCode=<>sGatePIN)
+RELATE MANY SELECTION([Agreement]CustomerCode)
+RELATE MANY SELECTION([Unit]AgreeNo)
+If (Records in selection([Unit])=0)
+QUERY([Unit];[Unit]RUnitNo=<>sGatePIN)
+End if 
+READ WRITE([Unit])
+FIRST RECORD([Unit])
+For ($i;1;Records in selection([Unit]))
+$Tickcount:=Tickcount+120//Wait max 2 seconds
+While (Locked([Unit])) & (Tickcount<$Tickcount)
+DELAY PROCESS(Current process;15)
+LOAD RECORD([Unit])
+End while 
+If (Locked([Unit]))
+AlertMessage (Get localized string("The background process LogMonitor is trying to update gate access for unit")+" "+[Unit]UnitNo+" "+Get localized string("but the record is locked. You will need to manually adjust this unit."))
+LOAD RECORD([Unit])
+End if 
+If ([Unit]AgreeNo>"")
+If (([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5))
+[Unit]Status:=<>asUnitStatus{7}//Locked
+Else 
+[Unit]Status:=<>asUnitStatus{1}//Rented
+End if 
+End if 
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]UpdatePULS:=<>tUtilities
+If ([Unit]RUnitNo=([Facility]FacilityCode+"@")) | ([Facility]CentralGate=True)//[Facility]FacilityCode should always be first record in table only
+[Unit]UpdateGate:=True//Only download for first facility in system or if Access Ezy & ticked
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+READ ONLY([Unit])
+UNLOAD RECORD([Unit])
+<>sGatePIN:=""
+End if 

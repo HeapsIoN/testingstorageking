@@ -1,0 +1,161 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): N/A
+// Date and time: 25/01/16, 10:56:26
+// ----------------------------------------------------
+// Method: [Facility].Login.Variable10
+// Description
+// 
+// Login form, login button
+//
+// Parameters
+// ----------------------------------------------------
+C_LONGINT($Ref)
+C_BOOLEAN($Daily_running)
+
+If ((CheckDailyRuns =True) & (<>sCurrentUser#"Adminsupport"))//fb10926
+
+AlertMessage (Get localized string("Please wait. Daily Processing is running on another Client computer."))
+C_LONGINT($Ref)
+
+$Ref:=Open window(100;100;500;200;-(Palette window+Has window title);"Please wait...")
+While (CheckDailyRuns =True)
+ERASE WINDOW($Ref)
+GOTO XY(2;2)
+//MESSAGE(Get localized string("Please wait. Daily Processing is running on another Client computer.")+Char(Carriage return))
+MESSAGE("Daily Processing is running on another computer.")
+DELAY PROCESS(Current process;120)
+End while 
+CLOSE WINDOW($Ref)
+Else 
+
+////end if
+
+If (<>sCurrentUser#"") & (vLeg7#"")//FB10306
+
+C_TEXT($Pword)
+
+//09/03/17 DM Added login code for the HUB
+If (<>sHOFacility="@HUB") & (<>sCurrentUser#"Adminsupport")
+If (vHubFacility#"")
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser;*)
+QUERY([UserLogins]; & ;[UserLogins]Facility=vHubFacility)
+Else 
+AlertMessage ("Please enter the facility code!")
+End if 
+
+Else 
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+End if 
+
+
+If ([Facility]LicExpiryDate=!00-00-00!) & ([Facility]LicRentExpWarn) & ([Facility]UpgradesPaidTo<(Current date-20)) & ([Facility]UpgradesPaidTo#!00-00-00!) & (<>sCurrentUser#"AdminSupport")//20 days grace
+//On a rent program which has expired
+$OK:=False
+ConfirmTwo (Get localized string("This")+" "+<>sOEMName+" "+Get localized string("Licence is on a rental program which appears to have expired. Payment may have been made in the last few days. Check the")+" "+<>sOEMName+" "+Get localized string("webserver now?");Get localized string("Check Now");Get localized string("Cancel"))
+If (OK=1)
+CheckUpdate 
+Else 
+AlertMessage (Get localized string("You cannot login until the licence is updated. Contact")+" "+<>sOEMName+" Sales to update the licence.")
+End if 
+vMax:=vMax+1
+Else 
+
+
+If (Records in selection([UserLogins])=1) | (([Facility]CentralAddress>"") & ([Facility]SyncingOn=True) & (<>sProduct#"M@"))
+$OK:=False
+
+Case of 
+
+: (<>sCurrentUser="AdminSupport")//check adminsupport password from StormanUsers
+
+If (<>sLastUser="startup")//User is logging into Storman the first time since startup
+$vtUserCode:=[Facility]UserCode
+Else 
+$vtUserCode:=Substring(<>sUserCode;7)//User is logging into Storman for the second or subsequent time
+End if 
+
+If (vLeg7=WSC_CheckAdminSPassW ($vtUserCode))
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+$OK:=True
+Else 
+AlertMessage (Get localized string("The password you have entered is incorrect. Hint")+" = "+String(vDate);String(3-vMax)+" "+Get localized string("chances remaining"))
+LogAction (<>tLogging;"Login attempt for "+<>sCurrentUser+" failed: incorrect password.")
+End if 
+
+vLeg7:=""
+vPassword:=""
+
+: (<>sCurrentUser="Sync")
+: (<>sCurrentUser="Daily")
+: ([Facility]CentralAddress>"") & ([Facility]SyncingOn=True) & (<>sProduct#"M@") & ([Facility]CentralAddress#"@hub.storman.com@")
+
+//$Pword:=(GetMD5 (vleg7))
+$Pword:=(SecureEncryptHash (vleg7))//FB10247 calling SecureEncryptHash instead of GetMD5
+
+If (SecureEncryptHash (vLeg7)=WSC_CheckMVUserPassW (<>sCurrentUser;$Pword))
+$OK:=True
+$Pword:=""
+Else 
+AlertMessage (Get localized string("The entered username or password is incorrect! Please check your spelling"))
+LogAction (<>tLogging;"Login attempt for "+<>sCurrentUser+" failed: incorrect password.")
+vLeg7:=""
+End if 
+
+
+: ([UserLogins]Password=SecureEncryptHash (vLeg7)) & (Records in selection([UserLogins])=1)
+$OK:=True
+
+If (Application type=4D Remote mode) & (<>sProduct="M@") & (Current user#"Designer") & (<>sCurrentUser#"Admin@") & ([UserLogins]AccessFacility#"ALL") & (<>sCurrentUser#"None")
+$string:=[UserLogins]AccessFacility
+$i:=Position(<>sHOFacility;$string)
+If ($i<=0)
+$OK:=False
+End if 
+End if 
+
+//: ([UserLogins]Password=vLeg7) & (Records in selection([UserLogins])=1)
+//$OK:=True
+//If (Application type=4D Remote mode) & (<>sProduct="M@") & (Current user#"Designer") & (<>sCurrentUser#"Admin@") & ([UserLogins]AccessFacility#"ALL") & (<>sCurrentUser#"None")
+//$string:=[UserLogins]AccessFacility
+//$i:=Position(<>sHOFacility;$string)
+//If ($i<=0)
+//$OK:=False
+//End if 
+//End if 
+Else 
+AlertMessage (Get localized string("The entered username or password is incorrect! Please check your spelling"))
+LogAction (<>tLogging;"Login attempt for "+<>sCurrentUser+" failed: incorrect password.")
+vLeg7:=""
+End case 
+
+
+If ($OK)
+LogAction (<>tLogging;<>sCurrentUser+" has logged in.")
+ACCEPT
+Else 
+BEEP
+BEEP
+vMax:=vMax+1
+End if 
+
+
+Else 
+AlertMessage (Get localized string("The username you have entered does not exist. Please check the spelling and re-enter to try again..."))
+LogAction (<>tLogging;"Login attempt for "+<>sCurrentUser+" failed: username does not exist.")
+vMax:=vMax+1
+End if 
+
+End if 
+
+
+If (vMax>3)
+QUIT 4D
+End if 
+
+Else 
+AlertMessage ("Please enter a username or password!")
+End if 
+///////////fb10926/////////
+End if 

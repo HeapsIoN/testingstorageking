@@ -1,0 +1,182 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+//tax exclusive
+C_DATE($StartDate;$EndDate)
+C_TEXT(vLoc;$OldLoc;$Ext;$t;$Type;$TaxCode;$NominalAc;$tempor;$Tax_Code;$tmp1;$date_to;$qty;$dflamt;$str_seq_num;$currency;$type1)
+C_LONGINT($i;$j;$k;$Mult;$vlfind3)
+$Ext:="csv"
+$t:=","
+$cr:=Char(13)
+//vLoc:=<>sExportPath JCW
+vLoc:=Select folder("Please select where you would like to save this export")
+ARRAY LONGINT($arr_match_num;0)
+ARRAY LONGINT($arr_seq_num;0)
+
+SetFacility 
+$StartDate:=RequestDate ("Export invoices and receipts from:";Current date)
+//$StartDate:=RequestDate (Get localized string("Please enter date range to export invoices & receipts. Start Date:");Current date)
+If (OK=1)
+//$EndDate:=RequestDate (Get localized string("End Date")+":";Current date)
+$EndDate:=RequestDate ("Export invoices and receipts to:";Current date)
+If (OK=1)
+$DocRef:=Create document(vLoc+"XeroInvoices"+Replace string(String($EndDate);"/";"");$Ext)
+
+QUERY([Trxs];[Trxs]TrxDate>=$StartDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility+"@";*)//? 
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+SELECTION TO ARRAY([Trxs]Match;$arr_match_num;[Trxs]SeqNo;$arr_seq_num)
+
+QUERY([Trxs];[Trxs]TrxDate>=$StartDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$EndDate;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility;*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+////////////
+$tempor:="ContactName,EmailAddress,POAddressLine1,POAddressLine2,POAddressLine3,POAddressLine4,POCity,PORegion,POPostalCode,POCountry,InvoiceNumber,Reference,InvoiceDate,DueDate,PlannedDate,Total,TaxTotal,InvoiceAmountPaid,InvoiceAmountDue,InventoryItemCode,Des"+"cription,Quantity,UnitAmount,Discount,LineAmount,AccountCode,TaxType,TaxAmount,TrackingName1,TrackingOption1,TrackingName2,TrackingOption2,Currency,Type,Sent,Status"
+SEND PACKET($DocRef;$tempor+$cr)
+///SEND PACKET($DocRef;"ContactName"+$t+"POAddressLine1"+$t+"InvoiceNumber"+$t+"InvoiceDate"+$t+"DueDate"+$t+"Description"+$t+"Quantity"+$t+"UnitAmount"+$t+"AccountCode"+$t+"TaxType"+$cr)
+
+For ($i;1;Records in selection([Trxs]))
+QUERY([Customer];[Customer]CustomerCode=[Trxs]CustomerCode)
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+QUERY([ChartAccts];[ChartAccts]AcctNo=[Analysis]GLCode)
+
+//fb11256
+Case of 
+: ([Facility]Country="AU")
+If ([Analysis]Taxable)
+$Tax_Code:="GST on Income"
+Else 
+$Tax_Code:="BAS Excluded"
+End if 
+: ([Facility]Country="NZ")
+If ([Analysis]Taxable)
+$Tax_Code:="15% GST on Income"
+Else 
+$Tax_Code:="No GST"
+End if 
+: ([Facility]Country="GB")
+If ([Analysis]Taxable)
+$Tax_Code:="20% (VAT on Income)   "
+Else 
+$Tax_Code:="No VAT"
+End if 
+End case 
+
+//If ([Facility]Country="AU")
+//If ([Analysis]Taxable)
+//$Tax_Code:="GST on Income"
+//Else 
+//$Tax_Code:="BAS Excluded"
+//End if 
+//Else 
+//If ([Analysis]Taxable)
+//$Tax_Code:="15% GST on Income"
+//Else 
+//$Tax_Code:="No GST"
+//End if 
+//End if 
+
+$tempor:=Replace string([Customer]CustomerName;",";"")+$t+""+$t+""+$t+""+$t+""+$t+""+$t+""+$t+""+$t+""+$t+""+$t
+If (String([Trxs]DateTo;7)="00/00/0000")
+$date_to:=String([Trxs]TrxDate;7)
+Else 
+$date_to:=String([Trxs]DateTo;7)
+End if 
+
+If ([Analysis]InvItem=False)
+$qty:="1"
+$dflamt:=String([Trxs]TotAmt)
+Else 
+If ([Trxs]Qty>0)
+$dflamt:=String([Trxs]TotAmt/[Trxs]Qty)
+////$dflamt:=String((([Trxs]TotAmt-[Trxs]TaxAmt)/[Trxs]Qty);"#######0.00")
+Else 
+$dflamt:="0"
+End if 
+$qty:=String([Trxs]Qty)
+
+End if 
+/////////////////////////////////////////////////////////
+If ([Trxs]CustomerCode=(<>sFacility+"MISCL"))
+$tempor:="Cash Sale"+$t+""+$t+""+$t+""+$t+""+$t+""+$t
+$tempor:=$tempor+""+$t+""+$t+""+$t+""+$t
+$vlfind3:=Find in array($arr_match_num;[Trxs]Match)
+If ($vlfind3>0)
+$str_seq_num:=String($arr_seq_num{$vlfind3})
+Else 
+$str_seq_num:=String([Trxs]SeqNo)
+End if 
+$tempor:=$tempor+String([Trxs]SeqNo)+$t+$str_seq_num+$t+String([Trxs]TrxDate;7)+$t+$date_to+$t+""+$t
+Else 
+
+$tempor:=Replace string([Customer]CustomerName;",";" ")+$t+Replace string([Customer]EmailAddress;",";" ")+$t+Replace string([Customer]StreetAddress;",";"")+$t+""+$t+""+$t+""+$t
+$tempor:=$tempor+Replace string([Customer]StreetCity;",";" ")+$t+Replace string([Customer]StreetSuburb;",";" ")+$t+Replace string([Customer]StreetZIPCode;",";" ")+$t+Replace string([Customer]MailCountry;",";" ")+$t
+$tempor:=$tempor+String([Trxs]SeqNo)+$t+Replace string([Trxs]CustomerCode;",";"")+$t+String([Trxs]TrxDate;7)+$t+$date_to+$t+""+$t
+
+End if 
+
+//////////$tempor:=$tempor+String([Trxs]TotAmt)+$t+String([Trxs]TaxAmt)+$t+"0"+$t+String([Trxs]TotAmt)+$t+String([Trxs]AnalysisCode)+$t+Replace string([Trxs]Description;",";"|")+$t
+$tempor:=$tempor+String([Trxs]TotAmt)+$t+String([Trxs]TaxAmt)+$t+"0"+$t+String([Trxs]TotAmt-[Trxs]TaxAmt)+$t+String([Trxs]AnalysisCode)+$t+Replace string([Trxs]Description;",";"|")+$t
+
+$tempor:=$tempor+$qty+$t+$dflamt+$t+""+$t+String([Trxs]TotAmt-[Trxs]TaxAmt)+$t+String([ChartAccts]AcctNo)+$t
+////$tempor:=$tempor+$qty+$t+$dflamt+$t+""+$t+String(([Trxs]TotAmt-[Trxs]TaxAmt);"#######0.00")+$t+String([ChartAccts]AcctNo)+$t
+
+//$tempor:=$tempor+$Tax_Code+$t+String([Trxs]TaxAmt)+$t+""+$t+""+$t+""+$t+""+$t+""+"NZD"+$t+"Revenue"+""+$t+""
+
+//If ([Facility]CurrencyCode#"")
+//$currency:=[Facility]CurrencyCode
+//Else 
+//If ([Facility]Country="AU")
+//$currency:="AUD"
+//Else 
+//$currency:="NZD"
+//End if 
+//End if 
+
+
+//fb11256
+
+
+If ([Facility]CurrencyCode#"")
+$currency:=[Facility]CurrencyCode
+Else 
+Case of 
+: ([Facility]Country="AU")
+$currency:="AUD"
+: ([Facility]Country="NZ")
+$currency:="NZD"
+: ([Facility]Country="GB")
+$currency:="GBP"
+End case 
+End if 
+
+Case of 
+: ([ChartAccts]AcctType="C")
+$type1:="Current Liability"
+: ([ChartAccts]AcctType="P")
+$type1:="Revenue"
+: ([ChartAccts]AcctType="S")
+$type1:="Equity"
+: ([ChartAccts]AcctType="D")
+$type1:="Current Asset"
+Else 
+
+End case 
+
+$tempor:=$tempor+$Tax_Code+$t+String([Trxs]TaxAmt)+$t+""+$t+""+$t+""+$t+""+$t+""+$currency+$t+$type1+""+$t+""
+$tempor:=Replace string($tempor;$cr;" ")+$cr
+SEND PACKET($DocRef;$tempor)
+
+NEXT RECORD([Trxs])
+End for 
+
+CLOSE DOCUMENT($DocRef)
+AlertMessage (Get localized string("Export Complete!"))
+End if 
+End if 

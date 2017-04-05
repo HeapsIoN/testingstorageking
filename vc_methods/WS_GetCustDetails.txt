@@ -1,0 +1,215 @@
+//%attributes = {"publishedSoap":true,"lang":"en"} comment added and reserved by 4D.
+//SDD 3/9/10 Added additional parameter to retrieve Customer Note during the WS call in the array WS_CustNote
+
+
+//Incoming Information
+
+//These vars defined in the Compiler_Web method
+//C_TEXT(WS_SiteName;WS_FindName;WS_FindUnit)
+SOAP DECLARATION(WS_SiteName;Is text;SOAP input)
+SOAP DECLARATION(WS_FindName;Is text;SOAP input)
+SOAP DECLARATION(WS_FindUnit;Is text;SOAP input)
+
+
+$String:="Start WS_GetDetails"+Char(13)
+$String:=$String+"WS_SiteName: "+WS_SiteName+Char(13)
+$String:=$String+"WS_FindName: "+WS_FindName+Char(13)
+$String:=$String+"WS_FindUnit: "+WS_FindUnit+Char(13)
+
+WSRECORDLOG ($String)
+
+
+//Outgoing information
+ARRAY TEXT(WS_AgreeNo;0)
+ARRAY TEXT(WS_CustCode;0)
+ARRAY TEXT(WS_UnitNos;0)
+ARRAY TEXT(WS_CustName;0)
+ARRAY TEXT(WS_RentAmt;0)
+ARRAY TEXT(WS_CustBal;0)
+ARRAY TEXT(WS_AgreeBal;0)
+ARRAY TEXT(WS_NextBillDate;0)
+ARRAY TEXT(WS_PaidToDate;0)
+ARRAY TEXT(WS_CustNote;0)//SDD 3/9/10 Added new array for notes
+ARRAY LONGINT(WS_NextInvNo;0)
+
+C_LONGINT($i)
+QUERY([Facility];[Facility]ShortName=WS_SiteName)
+CREATE EMPTY SET([Agreement];"Units")
+If (Records in selection([Facility])=1)
+If (WS_FindUnit>"")
+QUERY([Unit];[Unit]RUnitNo=[Facility]FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]UnitNo="@"+WS_FindUnit+"@")
+RELATE ONE SELECTION([Unit];[Agreement])
+CREATE SET([Agreement];"Units")
+QUERY([Agreement];[Agreement]AgreeNo="@"+WS_FindUnit+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+CREATE SET([Agreement];"Found")
+UNION("Units";"Found";"Units")
+End if 
+If (WS_FindName>"")
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Agreement];[Customer]CustomerName="@"+WS_FindName+"@";*)
+QUERY([Agreement]; | ;[Customer]UserName="@"+WS_FindName+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=[Facility]FacilityCode+"@")
+SET AUTOMATIC RELATIONS(False;False)
+CREATE SET([Agreement];"Found")
+If (WS_FindUnit>"")
+INTERSECTION("Found";"Units";"Units")
+Else 
+UNION("Found";"Units";"Units")
+End if 
+End if 
+Else 
+If (WS_FindUnit>"")
+QUERY([Unit];[Unit]UnitNo="@"+WS_FindUnit+"@")
+RELATE ONE SELECTION([Unit];[Agreement])
+CREATE SET([Agreement];"Units")
+QUERY([Agreement];[Agreement]AgreeNo="@"+WS_FindUnit+"@")
+CREATE SET([Agreement];"Found")
+UNION("Units";"Found";"Units")
+End if 
+If (WS_Name>"")
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Agreement];[Customer]CustomerName="@"+WS_FindName+"@";*)
+QUERY([Agreement]; | ;[Customer]UserName="@"+WS_FindName+"@")
+SET AUTOMATIC RELATIONS(False;False)
+CREATE SET([Agreement];"Found")
+If (WS_FindUnit>"")
+INTERSECTION("Found";"Units";"Units")
+Else 
+UNION("Found";"Units";"Units")
+End if 
+End if 
+End if 
+USE SET("Units")
+CLEAR SET("Units")
+CLEAR SET("Found")
+If (Records in selection([Agreement])>20)
+ORDER BY([Agreement];[Agreement]RAgreeNo;>)
+REDUCE SELECTION([Agreement];20)
+End if 
+FIRST RECORD([Agreement])
+For ($i;1;Records in selection([Agreement]))
+INSERT IN ARRAY(WS_AgreeNo;$i+1;1)
+INSERT IN ARRAY(WS_CustCode;$i+1;1)
+INSERT IN ARRAY(WS_UnitNos;$i+1;1)
+INSERT IN ARRAY(WS_CustName;$i+1;1)
+INSERT IN ARRAY(WS_RentAmt;$i+1;1)
+INSERT IN ARRAY(WS_CustBal;$i+1;1)
+INSERT IN ARRAY(WS_AgreeBal;$i+1;1)
+INSERT IN ARRAY(WS_NextBillDate;$i+1;1)
+INSERT IN ARRAY(WS_PaidToDate;$i+1;1)
+INSERT IN ARRAY(WS_CustNote;$i+1;1)
+INSERT IN ARRAY(WS_NextInvNo;$i+1;1)
+RELATE ONE([Agreement]CustomerCode)
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Unit];[Unit]UnitNo;>)
+$Units:=[Unit]UnitNo
+NEXT RECORD([Unit])
+While (End selection([Unit])=False)
+$Units:=$Units+","+[Unit]UnitNo
+NEXT RECORD([Unit])
+End while 
+WS_AgreeNo{$i}:=[Agreement]RAgreeNo
+WS_CustCode{$i}:=[Agreement]CustomerCode
+WS_UnitNos{$i}:=Substring($Units;1;20)
+WS_CustName{$i}:=Substring([Customer]CustomerName;1;40)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+WS_RentAmt{$i}:=String([Agreement]RentAmt+Sum([OtherChgs]Amount);"###,###.00")
+
+If (WS_RentAmt{$i}=".00")// Added by Hamid - 1/5/2015 - 8499
+WS_RentAmt{$i}:="0.00"
+End if 
+
+If ([Customer]Balance=0)// Added by Hamid - 1/5/2015 - 8499
+WS_CustBal{$i}:="0.00"
+Else 
+WS_CustBal{$i}:=String([Customer]Balance;"###,###.00")
+End if 
+
+If ([Agreement]BalanceOwing=0)// Added by Hamid - 1/5/2015 - 8499
+WS_AgreeBal{$i}:="0.00"
+Else 
+WS_AgreeBal{$i}:=String([Agreement]BalanceOwing;"###,###.00")
+End if 
+WS_NextBillDate{$i}:=String([Agreement]NextBillDate)
+WS_PaidToDate{$i}:=String([Agreement]PaidToDate)
+WS_CustNote{$i}:=[Customer]Notes
+$j:=Find in array(<>asSiteCodes;Substring([Agreement]RAgreeNo;1;5))
+If ($j>0)
+WS_NextInvNo{$i}:=<>aiTrxSeqNo{$j}+1
+End if 
+NEXT RECORD([Agreement])
+End for 
+SOAP DECLARATION(WS_AgreeNo;String array;SOAP output)
+SOAP DECLARATION(WS_CustCode;String array;SOAP output)
+SOAP DECLARATION(WS_UnitNos;String array;SOAP output)
+SOAP DECLARATION(WS_CustName;String array;SOAP output)
+SOAP DECLARATION(WS_RentAmt;String array;SOAP output)
+SOAP DECLARATION(WS_CustBal;String array;SOAP output)
+SOAP DECLARATION(WS_AgreeBal;String array;SOAP output)
+SOAP DECLARATION(WS_NextBillDate;String array;SOAP output)
+SOAP DECLARATION(WS_PaidToDate;String array;SOAP output)
+SOAP DECLARATION(WS_CustNote;Text array;SOAP output)
+SOAP DECLARATION(WS_NextInvNo;LongInt array;SOAP output)
+
+$String:="End WS_GetDetails"+Char(13)
+
+$sizeofarray:=Size of array(WS_AgreeNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AgreeNo("+String($vlElem)+"):"+WS_AgreeNo{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_CustCode)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_CustCode("+String($vlElem)+"):"+WS_CustCode{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_UnitNos)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_UnitNos("+String($vlElem)+"):"+WS_UnitNos{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_CustName)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_CustName("+String($vlElem)+"):"+WS_CustName{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_RentAmt)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_RentAmt("+String($vlElem)+"):"+WS_RentAmt{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_CustBal)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_CustBal("+String($vlElem)+"):"+WS_CustBal{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_AgreeBal)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_AgreeBal("+String($vlElem)+"):"+WS_AgreeBal{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_NextBillDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_NextBillDate("+String($vlElem)+"):"+WS_NextBillDate{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_PaidToDate)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_PaidToDate("+String($vlElem)+"):"+WS_PaidToDate{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_CustNote)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_CustNote("+String($vlElem)+"):"+WS_CustNote{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_NextInvNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_NextInvNo("+String($vlElem)+"):"+String(WS_NextInvNo{$vlElem})+Char(13)
+End for 
+
+WSRECORDLOG ($String)
+ReadOnlyAll 
+UnloadAll 

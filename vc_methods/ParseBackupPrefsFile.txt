@@ -1,0 +1,237 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//ParseBackupPrefsFile 
+ARRAY TEXT(vtaBackupParameter;64)
+ARRAY TEXT(vtaBackupParameterValue;64)
+C_LONGINT($Offset)
+C_LONGINT($BackupStatusNum)
+C_DATE($NextBackupDate)
+C_TIME($NextBackupTime)
+C_LONGINT($Offset;$SavedOKValue)
+C_BOOLEAN($0)
+C_TEXT($BackupStatusText)
+
+$NextBackupDate:=!00-00-00!
+$NextBackupTime:=?00:00:00?
+$BackupStatusNum:=0
+$BackupStatusText:=""
+$Status:="0"//Defaults to No Error
+$SavedOKValue:=1//'Log File' command returns 0 if no log file active - OK used for Error detection so need temporary storage of OK value
+$0:=False//Default to error
+
+//Set the Prefs to empty so that we know when the server has parsed the details
+READ WRITE([Authenticate])
+QUERY([Authenticate];[Authenticate]RAgreeNo="Backup")
+DELETE SELECTION([Authenticate])
+CREATE RECORD([Authenticate])
+[Authenticate]RAgreeNo:="Backup"
+SET BLOB SIZE([Authenticate]Prefs;0)
+SAVE RECORD([Authenticate])
+
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+$viProcess:=Execute on server("S_GetBackupPrefsFile";128000;"S_GetBackupPrefsFile";"Backup")
+
+
+//Wait until the server process has read the XML file into the BLOB
+$Timeout:=Tickcount+(10*60)//10 Seconds 
+Repeat 
+QUERY([Authenticate];[Authenticate]RAgreeNo="Backup")
+IDLE
+Until ((Records in selection([Authenticate])>0) & (BLOB size([Authenticate]Prefs)>0)) | (Tickcount>$Timeout)
+
+
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+If (BLOB size([Authenticate]Prefs)>0)
+$BlobResponse:=Convert to text([Authenticate]Prefs;"UTF-8")
+If (Substring($BlobResponse;1;1)#"1")//Then there is no error
+$xml_Struct_Ref:=DOM Parse XML variable([Authenticate]Prefs)
+If (OK=1)
+//ARRAY TEXT(vtaBackupParameter;60)
+//ARRAY TEXT(vtaBackupParameterValue;60)
+//vtaBackupParameter{1}:="Preferences4D/Backup/DataBase/DatabaseName/ItemsCount"
+//vtaBackupParameter{2}:="Preferences4D/Backup/DataBase/DatabaseName/Item1"
+//vtaBackupParameter{3}:="Preferences4D/Backup/DataBase/LastBackupPath/ItemsCount"
+//vtaBackupParameter{4}:="Preferences4D/Backup/DataBase/LastBackupPath/Item1"
+//vtaBackupParameter{5}:="Preferences4D/Backup/DataBase/LastBackupLogPath/ItemsCount"
+//vtaBackupParameter{6}:="Preferences4D/Backup/DataBase/LastBackupLogPath/Item1"
+//vtaBackupParameter{7}:="Preferences4D/Backup/DataBase/CurrentBackupSet/ItemsCount"
+//vtaBackupParameter{8}:="Preferences4D/Backup/DataBase/CurrentBackupSet/Item1"
+//vtaBackupParameter{9}:="Preferences4D/Backup/DataBase/LastBackupDate/ItemsCount"
+//vtaBackupParameter{10}:="Preferences4D/Backup/DataBase/LastBackupDate/Item1"
+//vtaBackupParameter{11}:="Preferences4D/Backup/DataBase/LastBackupTime/ItemsCount"
+//vtaBackupParameter{12}:="Preferences4D/Backup/DataBase/LastBackupTime/Item1"
+//vtaBackupParameter{13}:="Preferences4D/Backup/Settings/Advanced/Transaction/WaitForEndOfTransaction"
+//vtaBackupParameter{14}:="Preferences4D/Backup/Settings/Advanced/Transaction/Timeout"
+//vtaBackupParameter{15}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/TryBackupAtTheNextScheduledD"+"ate"
+//vtaBackupParameter{16}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/TryToBackupAfter"
+//vtaBackupParameter{17}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/AbortIfBackupFail"
+//vtaBackupParameter{18}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/RetryCountBeforeAbort"
+//vtaBackupParameter{19}:="Preferences4D/Backup/Settings/Advanced/AutomaticRestore"
+//vtaBackupParameter{20}:="Preferences4D/Backup/Settings/Advanced/AutomaticLogIntegration"
+//vtaBackupParameter{21}:="Preferences4D/Backup/Settings/Advanced/AutomaticRestart"
+//vtaBackupParameter{22}:="Preferences4D/Backup/Settings/Advanced/BackupIfDataChange"
+//vtaBackupParameter{23}:="Preferences4D/Backup/Settings/Advanced/SetNumber/Enable"
+//vtaBackupParameter{24}:="Preferences4D/Backup/Settings/Advanced/SetNumber/Value"
+//vtaBackupParameter{25}:="Preferences4D/Backup/Settings/Advanced/CompressionRate"
+//vtaBackupParameter{26}:="Preferences4D/Backup/Settings/Advanced/Redundancy"
+//vtaBackupParameter{27}:="Preferences4D/Backup/Settings/Advanced/Interlacing"
+//vtaBackupParameter{28}:="Preferences4D/Backup/Settings/Advanced/FileSegmentation/DefaultSize"
+//vtaBackupParameter{29}:="Preferences4D/Backup/Settings/Advanced/EraseOldBackupBefore"
+//vtaBackupParameter{30}:="Preferences4D/Backup/Settings/Advanced/CheckArchiveFileDuringBackup"
+//vtaBackupParameter{31}:="Preferences4D/Backup/Settings/Advanced/BackupJournalVerboseMode"
+//vtaBackupParameter{32}:="Preferences4D/Backup/Settings/General/IncludeStructureFile"
+//vtaBackupParameter{33}:="Preferences4D/Backup/Settings/General/IncludeDataFile"
+//vtaBackupParameter{34}:="Preferences4D/Backup/Settings/General/IncludeAltStructFile"
+//vtaBackupParameter{35}:="Preferences4D/Backup/Settings/General/DestinationFolder"
+//vtaBackupParameter{36}:="Preferences4D/Backup/Settings/General/IncludesFiles/ItemsCount"
+//vtaBackupParameter{37}:="Preferences4D/Backup/Settings/General/IncludesFiles/ItemsCount"
+//vtaBackupParameter{38}:="Preferences4D/Backup/Settings/Scheduler/Frequency"
+//vtaBackupParameter{39}:="Preferences4D/Backup/Settings/Scheduler/Hourly/Every"
+//vtaBackupParameter{40}:="Preferences4D/Backup/Settings/Scheduler/Hourly/StartingAt"
+//vtaBackupParameter{41}:="Preferences4D/Backup/Settings/Scheduler/Daily/Every"
+//vtaBackupParameter{42}:="Preferences4D/Backup/Settings/Scheduler/Daily/Hour"
+//vtaBackupParameter{43}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Every"
+//vtaBackupParameter{44}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Save"
+//vtaBackupParameter{45}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Hour"
+//vtaBackupParameter{46}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Save"
+//vtaBackupParameter{47}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Hour"
+//vtaBackupParameter{48}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Save"
+//vtaBackupParameter{49}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Hour"
+//vtaBackupParameter{50}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Save"
+//vtaBackupParameter{51}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Hour"
+//vtaBackupParameter{52}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Save"
+//vtaBackupParameter{53}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Hour"
+//vtaBackupParameter{54}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Save"
+//vtaBackupParameter{55}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Hour"
+//vtaBackupParameter{56}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Save"
+//vtaBackupParameter{57}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Hour"
+//vtaBackupParameter{58}:="Preferences4D/Backup/Settings/Scheduler/Monthly/Every"
+//vtaBackupParameter{59}:="Preferences4D/Backup/Settings/Scheduler/Monthly/Hour"
+//vtaBackupParameter{60}:="Preferences4D/Backup/Settings/Scheduler/Monthly/Day"
+ARRAY TEXT(vtaBackupParameter;58)
+ARRAY TEXT(vtaBackupParameterValue;58)
+vtaBackupParameter{1}:="Preferences4D/Backup/DataBase/DatabaseName/ItemsCount"
+vtaBackupParameter{2}:="Preferences4D/Backup/DataBase/DatabaseName/Item1"
+vtaBackupParameter{3}:="Preferences4D/Backup/DataBase/LastBackupPath/ItemsCount"
+vtaBackupParameter{4}:="Preferences4D/Backup/DataBase/LastBackupPath/Item1"
+vtaBackupParameter{5}:="Preferences4D/Backup/DataBase/LastBackupLogPath/ItemsCount"
+vtaBackupParameter{6}:="Preferences4D/Backup/DataBase/LastBackupLogPath/Item1"
+vtaBackupParameter{7}:="Preferences4D/Backup/DataBase/CurrentBackupSet/ItemsCount"
+vtaBackupParameter{8}:="Preferences4D/Backup/DataBase/CurrentBackupSet/Item1"
+vtaBackupParameter{9}:="Preferences4D/Backup/DataBase/LastBackupDate/ItemsCount"
+vtaBackupParameter{10}:="Preferences4D/Backup/DataBase/LastBackupDate/Item1"
+vtaBackupParameter{11}:="Preferences4D/Backup/DataBase/LastBackupTime/ItemsCount"
+vtaBackupParameter{12}:="Preferences4D/Backup/DataBase/LastBackupTime/Item1"
+vtaBackupParameter{13}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/TryBackupAtTheNextScheduledD"+"ate"
+vtaBackupParameter{14}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/TryToBackupAfter"
+vtaBackupParameter{15}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/AbortIfBackupFail"
+vtaBackupParameter{16}:="Preferences4D/Backup/Settings/Advanced/BackupFailure/RetryCountBeforeAbort"
+vtaBackupParameter{17}:="Preferences4D/Backup/Settings/Advanced/AutomaticRestore"
+vtaBackupParameter{18}:="Preferences4D/Backup/Settings/Advanced/AutomaticLogIntegration"
+vtaBackupParameter{19}:="Preferences4D/Backup/Settings/Advanced/AutomaticRestart"
+vtaBackupParameter{20}:="Preferences4D/Backup/Settings/Advanced/BackupIfDataChange"
+vtaBackupParameter{21}:="Preferences4D/Backup/Settings/Advanced/SetNumber/Enable"
+vtaBackupParameter{22}:="Preferences4D/Backup/Settings/Advanced/SetNumber/Value"
+vtaBackupParameter{23}:="Preferences4D/Backup/Settings/Advanced/CompressionRate"
+vtaBackupParameter{24}:="Preferences4D/Backup/Settings/Advanced/Redundancy"
+vtaBackupParameter{25}:="Preferences4D/Backup/Settings/Advanced/Interlacing"
+vtaBackupParameter{26}:="Preferences4D/Backup/Settings/Advanced/FileSegmentation/DefaultSize"
+vtaBackupParameter{27}:="Preferences4D/Backup/Settings/Advanced/EraseOldBackupBefore"
+vtaBackupParameter{28}:="Preferences4D/Backup/Settings/Advanced/CheckArchiveFileDuringBackup"
+vtaBackupParameter{29}:="Preferences4D/Backup/Settings/Advanced/BackupJournalVerboseMode"
+vtaBackupParameter{30}:="Preferences4D/Backup/Settings/General/IncludeStructureFile"
+vtaBackupParameter{31}:="Preferences4D/Backup/Settings/General/IncludeDataFile"
+vtaBackupParameter{32}:="Preferences4D/Backup/Settings/General/IncludeAltStructFile"
+vtaBackupParameter{33}:="Preferences4D/Backup/Settings/General/DestinationFolder"
+vtaBackupParameter{34}:="Preferences4D/Backup/Settings/General/IncludesFiles/ItemsCount"
+vtaBackupParameter{35}:="Preferences4D/Backup/Settings/General/IncludesFiles/ItemsCount"
+vtaBackupParameter{36}:="Preferences4D/Backup/Settings/Scheduler/Frequency"
+vtaBackupParameter{37}:="Preferences4D/Backup/Settings/Scheduler/Hourly/Every"
+vtaBackupParameter{38}:="Preferences4D/Backup/Settings/Scheduler/Hourly/StartingAt"
+vtaBackupParameter{39}:="Preferences4D/Backup/Settings/Scheduler/Daily/Every"
+vtaBackupParameter{40}:="Preferences4D/Backup/Settings/Scheduler/Daily/Hour"
+vtaBackupParameter{41}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Every"
+vtaBackupParameter{42}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Save"
+vtaBackupParameter{43}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Monday/Hour"
+vtaBackupParameter{44}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Save"
+vtaBackupParameter{45}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Tuesday/Hour"
+vtaBackupParameter{46}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Save"
+vtaBackupParameter{47}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Wednesday/Hour"
+vtaBackupParameter{48}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Save"
+vtaBackupParameter{49}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Thursday/Hour"
+vtaBackupParameter{50}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Save"
+vtaBackupParameter{51}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Friday/Hour"
+vtaBackupParameter{52}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Save"
+vtaBackupParameter{53}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Saturday/Hour"
+vtaBackupParameter{54}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Save"
+vtaBackupParameter{55}:="Preferences4D/Backup/Settings/Scheduler/Weekly/Sunday/Hour"
+vtaBackupParameter{56}:="Preferences4D/Backup/Settings/Scheduler/Monthly/Every"
+vtaBackupParameter{57}:="Preferences4D/Backup/Settings/Scheduler/Monthly/Hour"
+vtaBackupParameter{58}:="Preferences4D/Backup/Settings/Scheduler/Monthly/Day"
+For ($Counter;1;Size of array(vtaBackupParameter))
+If (OK=1)
+DOM GET XML ELEMENT VALUE(DOM Find XML element($xml_Struct_Ref;vtaBackupParameter{$Counter});vtaBackupParameterValue{$Counter})
+Else 
+$Status:="203"//Error getting parameter value!
+End if 
+End for 
+ARRAY TEXT(vtaBackupParameter;64)
+ARRAY TEXT(vtaBackupParameterValue;64)
+vtaBackupParameter{61}:="LogFileName"
+$SavedOKValue:=OK
+vtaBackupParameterValue{61}:=Log file
+OK:=$SavedOKValue
+vtaBackupParameter{62}:="LastBackupStatus"
+GET BACKUP INFORMATION(Last backup status;$BackupStatusNum;$BackupStatusText)
+vtaBackupParameterValue{62}:=$BackupStatusText
+GET BACKUP INFORMATION(Next backup date;$NextBackupDate;$NextBackupTime)
+vtaBackupParameter{63}:="NextBackupDate"
+vtaBackupParameterValue{63}:=String($NextBackupDate)
+vtaBackupParameter{64}:="PerformBackup"
+vtaBackupParameterValue{64}:="False"
+If (OK=1)
+DOM CLOSE XML($xml_Struct_Ref)
+Else 
+$Status:="204"//Couldn't close DOM XML reference
+End if 
+Else 
+$Status:="202"//XML Document not parsed properly!
+End if 
+Else 
+$Status:=$BlobResponse
+End if 
+Else 
+$Status:="201"//Unable to retrieve Backup Preferences file! - Timeout
+End if 
+
+//Handle any errors
+Case of 
+: ($Status="101")
+vtBackupPrefsErrorMessage:="Facility record was locked when retrieving Backup Preferences!  Please try again"
+: ($Status="102")
+vtBackupPrefsErrorMessage:="Facility record was not found when retrieving Backup Preferences!  Please contac"+"t Storman Support"
+: ($Status="103")
+vtBackupPrefsErrorMessage:="The backup preferences file was not found!   Initial backup not yet performed"
+: ($Status="104")
+vtBackupPrefsErrorMessage:="There was an error reading Backup Preferences!  Please try again"
+: ($Status="110")
+vtBackupPrefsErrorMessage:="There was an unknown error!  Please try again"
+: ($Status="201")
+vtBackupPrefsErrorMessage:="Backup Preferences were unable to be retrieved - Timeout!  Please try again"
+: ($Status="202")
+vtBackupPrefsErrorMessage:="Backup Preferences file parsing error!  Please try again"
+: ($Status="203")
+vtBackupPrefsErrorMessage:="There was an error reading a Backup Preference!  Please try again"
+: ($Status="204")
+vtBackupPrefsErrorMessage:="There was an error closing the Backup Preferences file!  Please try again"
+: ($Status="0")
+vtBackupPrefsErrorMessage:="No detected error."
+$0:=True
+Else 
+vtBackupPrefsErrorMessage:="There was an unknown error!  Please try again"
+End case 
+SET BLOB SIZE([Authenticate]Prefs;0)
+SAVE RECORD([Authenticate])
+DELETE RECORD([Authenticate])
+

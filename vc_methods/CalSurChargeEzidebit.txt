@@ -1,0 +1,335 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): Hamid Zarei
+// 
+// ----------------------------------------------------
+
+C_TEXT($0)// HTML String to be returned
+C_TEXT($1)// Digital Key
+C_TEXT($2)// Eizdebit Cust ID
+C_TEXT($3)// YourSystemReference
+C_TEXT($4)//PaymentSource // WEB
+C_TEXT($5)//Username
+C_LONGINT($6)// CardType - for Use card on file and Daily
+C_TEXT($NoteVal)
+
+// ----------------------------------------------------------------
+
+ARRAY TEXT(arEzidebitCustomerID;0)
+ARRAY REAL(arFeeAmount;0)
+ARRAY REAL(arFeeMaximumAmount;0)
+ARRAY REAL(arFeeMinimumAmount;0)
+ARRAY TEXT(arFeeName;0)
+ARRAY REAL(arFeePercent;0)
+ARRAY TEXT(arProductName;0)
+ARRAY TEXT(arProductVariant;0)
+ARRAY TEXT(arYourSystemReference;0)
+$NoteVal:=""
+C_BOOLEAN($FeeRetrived)
+C_TEXT(vXMLResponse)
+C_REAL($FeePercent;$FeeFixed)
+
+C_TEXT($proxy_ret1)
+C_REAL($proxy_ret2)
+C_REAL($proxy_ret3)
+C_REAL($proxy_ret4)
+C_TEXT($proxy_ret5)
+C_REAL($proxy_ret6)
+C_TEXT($proxy_ret7)
+C_TEXT($proxy_ret8)
+C_TEXT($proxy_ret9)
+C_LONGINT($proxy_ret10;$EziResult;$Count;$i)
+C_TEXT($proxy_ret11;vCCText)
+C_TEXT($Message)
+vCCText:=""
+$Message:=""
+$Count:=0
+$i:=0
+
+If ($5#"")
+C_REAL(TrxsTotAmt)
+TrxsTotAmt:=Num($5)
+End if 
+
+$oldErrMethod:=Method called on error
+
+ON ERR CALL("ERR_Ezi")
+
+C_TEXT($root)
+C_TEXT($subElem)
+C_TEXT($nameSpace)
+$nameSpace:="https://px.ezidebit.com.au/"
+$root:=DOM Create XML Ref("GetCustomerFees";$nameSpace)
+
+$subElem:=DOM Create XML element($root;"/GetCustomerFees/DigitalKey")
+DOM SET XML ELEMENT VALUE($subElem;$1)
+
+$subElem:=DOM Create XML element($root;"/GetCustomerFees/EziDebitCustomerID")
+DOM SET XML ELEMENT VALUE($subElem;$2)
+
+$subElem:=DOM Create XML element($root;"/GetCustomerFees/YourSystemReference")
+DOM SET XML ELEMENT VALUE($subElem;$3)
+
+$subElem:=DOM Create XML element($root;"/GetCustomerFees/PaymentSource")
+DOM SET XML ELEMENT VALUE($subElem;$4)
+
+$subElem:=DOM Create XML element($root;"/GetCustomerFees/Username")
+DOM SET XML ELEMENT VALUE($subElem;$5)
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+
+DOM EXPORT TO VAR($root;$Message)
+//SET TEXT TO PASTEBOARD($Message)
+SyncRecordLog ("EziDebit GetCustomerFee Request: "+$Message)
+
+
+If ([Facility]TestAccount)
+WEB SERVICE CALL("https://api.demo.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetCustomerFees";"GetCustomerFees";"https://px.ezidebit.com.au/";Web Service manual)
+Else 
+WEB SERVICE CALL("https://api.ezidebit.com.au/v3-5/nonpci";"https://px.ezidebit.com.au/INonPCIService/GetCustomerFees";"GetCustomerFees";"https://px.ezidebit.com.au/";Web Service manual)
+End if 
+
+$EziResult:=Num(WEB SERVICE Get info(0))
+
+If ($EziResult=0)
+C_BLOB($blob)
+C_TEXT($resRoot)
+C_TEXT($resSubElem)
+WEB SERVICE GET RESULT($blob;"XMLOut";*)
+$resRoot:=DOM Parse XML variable($blob)
+$Message:=""
+DOM EXPORT TO VAR($resroot;$Message)
+//SET TEXT TO PASTEBOARD($Message)
+//SyncRecordLog ("EziDebit GetCustomerFee Response: "+$Message)
+SyncRecordLog ("EziDebit GetCustomerFee Response: "+$Message)
+
+$resSubElem:=DOM Find XML element($resRoot;"/GetCustomerFeesResponse/GetCustomerFeesResult/Error")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret10)//Error
+
+If ($proxy_ret10=0)// no errors
+
+//Retriving the number of fees
+$GetCustomerFeesResultRef:=DOM Get first child XML element($resRoot)
+$DataRef:=DOM Get first child XML element($GetCustomerFeesResultRef)
+$CustomerFeeRef:=DOM Get first child XML element($DataRef)
+
+$Count:=DOM Count XML elements($DataRef;"CustomerFee")
+
+//looping throuhg all fees
+For ($i;1;$Count)
+
+$proxy_ret1:=""
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/EzidebitCustomerID")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret1)
+APPEND TO ARRAY(arEzidebitCustomerID;$proxy_ret1)
+
+$proxy_ret2:=0
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/FeeAmount")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret2)
+APPEND TO ARRAY(arFeeAmount;$proxy_ret2)
+
+$proxy_ret3:=0
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/FeeMaximumAmount")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret3)
+APPEND TO ARRAY(arFeeMaximumAmount;$proxy_ret3)
+
+$proxy_ret4:=0
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/FeeMinimumAmount")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret4)
+APPEND TO ARRAY(arFeeMinimumAmount;$proxy_ret4)
+
+$proxy_ret5:=""
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/FeeName")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret5)
+APPEND TO ARRAY(arFeeName;$proxy_ret5)
+
+$proxy_ret6:=0
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/FeePercent")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret6)
+APPEND TO ARRAY(arFeePercent;$proxy_ret6)
+
+$proxy_ret7:=""
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/ProductName")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret7)
+APPEND TO ARRAY(arProductName;$proxy_ret7)
+
+$proxy_ret8:=""
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/ProductVariant")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret8)
+APPEND TO ARRAY(arProductVariant;$proxy_ret8)
+
+$proxy_ret9:=""
+$resSubElem:=DOM Find XML element($CustomerFeeRef;"CustomerFee/YourSystemReference")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret9)
+APPEND TO ARRAY(arYourSystemReference;$proxy_ret9)
+
+$CustomerFeeRef:=DOM Get next sibling XML element($CustomerFeeRef)
+
+End for 
+
+//$0:=True
+Else 
+$resSubElem:=DOM Find XML element($resRoot;"/GetCustomerFeesResponse/GetCustomerFeesResult/ErrorMessage")
+DOM GET XML ELEMENT VALUE($resSubElem;$proxy_ret11)
+SyncRecordLog ("EziDebit GetCustFees error: "+String($proxy_ret10)+" Description: "+String($proxy_ret11);"Autopay")
+//SyncRecordLog ("EziDebit GetCustFees error: "+String($proxy_ret10)+" Message: "+$proxy_ret11)
+//$0:=False
+End if 
+
+DOM CLOSE XML($resRoot)
+
+Else 
+$Pos:=0
+$Pos:=Position("<s:Envelope";gError)
+If ($Pos>0)
+gError:=Substring(gError;$Pos)
+TEXT TO BLOB(gError;$blob)
+$resroot:=DOM Parse XML variable($blob)
+
+$ressubelem:=DOM Find XML element($resroot;"/Envelope/Body/Fault/detail/ExceptionDetail/Message")
+If ($ressubelem#"0000000000000000")
+DOM GET XML ELEMENT VALUE($ressubelem;vCCText)
+End if 
+End if 
+
+If (vCCText="")
+vCCText:=gError
+End if 
+SyncRecordLog ("EziDebit GetCustFees call result: "+String($EziResult)+" Message: "+gError;"Autopay")
+//SyncRecordLog ("EziDebit GetCustFees call result: "+String($EziResult)+" Message: "+gError)
+End if 
+
+DOM CLOSE XML($root)
+ON ERR CALL($oldErrMethod)
+
+$NoteVal:=""//$NoteVal+"Please note:<br>"
+$Product:=""
+//***
+
+//Find % for all card types
+
+$AmexPerc:=0
+$AmexFix:=0
+$DinersPerc:=0
+$DinersFix:=0
+$VisaPerc:=0
+$VisaFix:=0
+$MastercardPerc:=0
+$MastercardFix:=0
+
+If (Size of array(arProductVariant)>0)
+
+
+For ($i;1;Size of array(arProductVariant))
+Case of 
+: (arProductVariant{$i}="WebPay - Amex")
+Case of 
+: (arFeeName{$i}="Webpay Amex MSF")
+$AmexPerc:=arFeePercent{$i}
+: (arFeeName{$i}="Webpay Transaction Fee")
+$AmexFix:=arFeeAmount{$i}
+Else 
+//Do Nothing
+End case 
+: (arProductVariant{$i}="WebPay - Diners")
+Case of 
+: (arFeeName{$i}="Webpay Diners MSF")
+$DinersPerc:=arFeePercent{$i}
+: (arFeeName{$i}="Webpay Transaction Fee")
+$DinersFix:=arFeeAmount{$i}
+Else 
+//Do Nothing
+End case 
+: (arProductVariant{$i}="WebPay - Visa/MasterCard")
+Case of 
+: (arFeeName{$i}="Webpay Visa MSF")
+$VisaPerc:=arFeePercent{$i}
+: (arFeeName{$i}="Webpay MasterCard MSF")
+$MastercardPerc:=arFeePercent{$i}
+: (arFeeName{$i}="Webpay Transaction Fee")
+$VisaFix:=arFeeAmount{$i}
+$MastercardFix:=arFeeAmount{$i}
+Else 
+//Do Nothing
+End case 
+Else 
+//Do Nothing
+End case 
+End for 
+
+$NoteVal:=""
+If ($AmexPerc>0) | ($AmexFix>0)
+$NoteVal:=$NoteVal+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"Providers[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+"Amex"+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeePercent[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($AmexPerc)+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeeFixed[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($AmexFix)+Char(34)+" hidden />"+Char(13)
+
+If ($6=55)
+FeeFixed:=$AmexFix
+FeePercent:=$AmexPerc
+End if 
+
+End if 
+
+If ($DinersPerc>0) | ($DinersFix>0)
+$NoteVal:=$NoteVal+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"Providers[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+"Diners"+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeePercent[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($DinersPerc)+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeeFixed[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($DinersFix)+Char(34)+" hidden />"+Char(13)
+
+If ($6=56)
+FeeFixed:=$DinersFix
+FeePercent:=$DinersPerc
+End if 
+
+End if 
+
+If ($VisaPerc>0) | ($VisaFix>0)
+$NoteVal:=$NoteVal+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"Providers[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+"Visa"+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeePercent[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($VisaPerc)+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeeFixed[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($VisaFix)+Char(34)+" hidden />"+Char(13)
+
+If ($6=54)
+FeeFixed:=$VisaFix
+FeePercent:=$VisaPerc
+End if 
+
+End if 
+
+If ($MastercardPerc>0) | ($MastercardFix>0)
+$NoteVal:=$NoteVal+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"Providers[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+"Mastercard"+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeePercent[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($MastercardPerc)+Char(34)+" hidden/>"+Char(13)
+$NoteVal:=$NoteVal+"<input name="+Char(34)+"FeeFixed[]"+Char(34)+" Type="+Char(34)+"hidden"+Char(34)+" value="+Char(34)+String($MastercardFix)+Char(34)+" hidden />"+Char(13)
+
+If ($6=62)
+FeeFixed:=$MastercardFix
+FeePercent:=$MastercardPerc
+End if 
+
+End if 
+
+If ($6=1)//Daily if any amount is there -> should show surhcarge message
+If ($MastercardPerc>0) | ($MastercardFix>0) | ($VisaPerc>0) | ($VisaFix>0) | ($DinersPerc>0) | ($DinersFix>0) | ($AmexPerc>0) | ($AmexFix>0)
+FeeFixed:=28
+FeePercent:=28
+End if 
+End if 
+
+Else 
+$NoteVal:=""
+End if 
+
+//Clearing arrays
+CLEAR VARIABLE(arEzidebitCustomerID)
+CLEAR VARIABLE(arFeeAmount)
+CLEAR VARIABLE(arFeeMaximumAmount)
+CLEAR VARIABLE(arFeeMinimumAmount)
+CLEAR VARIABLE(arFeeName)
+CLEAR VARIABLE(arFeePercent)
+CLEAR VARIABLE(arProductName)
+CLEAR VARIABLE(arProductVariant)
+CLEAR VARIABLE(arYourSystemReference)
+$0:=$NoteVal

@@ -1,0 +1,64 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//17/11/05 NLT  - added vTotDet variable
+C_DATE($DateRec;$DateBank)
+If (Form event=On Load)
+OBJECT SET TITLE(*;"Text6";Get localized string("Total")+":")
+LoadGradients 
+CREATE SET([Trxs];"ToDisplay")
+vTitle:=Get localized string("Transaction Details")+"..."
+ARRAY TEXT(aAgreeNos;0)
+ARRAY REAL(aTotal;0)
+ARRAY DATE(aDates;0)
+vTotDet:=0
+If ([Trxs]Match=-1000)
+OBJECT SET VISIBLE(*;"ModBut";True)
+CREATE SET([Trxs];"Bank")
+Else 
+OBJECT SET VISIBLE(*;"ModBut";False)
+End if 
+$DateRec:=[Trxs]DateReconciled
+$DateBank:=[Trxs]DateBanked
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+QUERY([Analysis];[Analysis]GLCode=[Analysis]GLCode;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@")
+QUERY([Supplier];[Supplier]SupplierCode=[Analysis]GLCode)
+CREATE EMPTY SET([Trxs];"RecDetails")
+If ([Supplier]UserName="SUM")
+For ($d;1;Records in selection([Analysis]))
+QUERY([Trxs];[Trxs]DateReconciled=$DateRec;*)
+QUERY([Trxs]; & ;[Trxs]DateBanked=$DateBank;*)
+//QUERY([Transaction]; & ;[Transaction]Customer=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code)
+CREATE SET([Trxs];"TrxDetails")
+UNION("RecDetails";"TrxDetails";"RecDetails")
+NEXT RECORD([Analysis])
+End for 
+Else 
+ADD TO SET([Trxs];"RecDetails")//refunds/returned cheques - only show the single trx
+End if 
+USE SET("RecDetails")
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]AnalysisCode;>)
+SELECTION TO ARRAY([Trxs]AgreeNo;aAgreeNos;[Trxs]TrxDate;aDates;[Trxs]TotAmt;aTotal)
+ARRAY TEXT(aCustName;Records in selection([Trxs]))
+ARRAY TEXT(aAnalysis;Records in selection([Trxs]))
+FIRST RECORD([Trxs])
+For ($r;1;Records in selection([Trxs]))
+If (Substring([Trxs]CustomerCode;1;5)#<>sFacility)
+aCustName{$r}:=Get localized string("Pmt Taken for Other Site")+":"+Substring([Trxs]CustomerCode;1;5)
+Else 
+If ([Trxs]Match=-1000)
+aCustName{$r}:=[Trxs]Description
+Else 
+QUERY([Customer];[Customer]CustomerCode=[Trxs]CustomerCode)
+aCustName{$r}:=Substring([Customer]CustomerName;1;30)
+End if 
+End if 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+aAnalysis{$r}:=[Analysis]Description
+vTotDet:=vTotDet+[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+CLEAR SET("RecDetails")
+USE SET("ToDisplay")
+ORDER BY([Trxs];[Trxs]DateReconciled;>;[Trxs]DateBanked;>;[Trxs]AnalysisCode;>;[Trxs]TaxAmt;>)
+End if 

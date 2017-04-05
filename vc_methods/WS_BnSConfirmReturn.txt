@@ -1,0 +1,70 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_ResID;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+$String:="Start WS_BnSConfirmReturn"+Char(13)
+$String:=$String+"WS_ResID: "+WS_ResID+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_Reference;Is text;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+READ WRITE([Authenticate])
+
+QUERY([Authenticate];[Authenticate]ReferenceID=WS_ResID;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress="BnS")
+
+QUERY([Facility];[Facility]FacilityCode=Substring([Authenticate]RAgreeNo;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+Else 
+WS_ORErrorCode:=99
+WS_ORErrorDescription:="Incorrect password"
+WS_ORSuccess:=False
+End if 
+
+If (WS_ORSuccess=True)
+If (Records in selection([Authenticate])=0)
+WS_ORErrorCode:=100
+WS_ORErrorDescription:="The reference cannot be found in Storman"
+WS_ORSuccess:=False
+End if 
+End if 
+
+If (WS_ORSuccess)
+WS_Reference:=[Authenticate]ReferenceID
+//Send Email to facility letting know the units/agreement to move out
+If ([Facility]OResFacNotifEmail#"")
+$MessageBody:=""
+$MessageBody:="Customer: "+[Customer]CustomerName+" Agreement: "+[Agreement]AgreeNo+Char(Carriage return)
+$MessageBody:=$MessageBody+"Is ready to move out, from : "+GetTextNo ([Authenticate]SessionID;2;",")+Char(Carriage return)
+$MessageBody:=$MessageBody+Char(Carriage return)
+$MessageBody:=$MessageBody+"Plesae check the payment is received"+Char(Carriage return)
+$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - New Online Reservation";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")//Notification Email to Facility
+End if 
+DELETE SELECTION([Authenticate])
+End if 
+READ ONLY([Authenticate])
+
+$String:="End WS_BnSConfirmReturn"+Char(13)
+$String:=$String+"WS_Reference: "+WS_Reference+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+
+
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll //?

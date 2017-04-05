@@ -1,0 +1,36 @@
+//%attributes = {"folder":"CustomSearch","lang":"en"} comment added and reserved by 4D.
+C_TEXT($Code)
+C_LONGINT($i;$j)
+If (PermissionsControl (95))
+If (Current user#"Designer") & ((<>iTable=1) | (<>iTable=16) | (<>iTable=26))
+AlertMessage (Get localized string("You cannot Duplicate Records in this table!"))
+Else 
+CREATE SET(Current default table->;"ToDuplicate")
+CREATE EMPTY SET(Current default table->;"New")
+$Code:=RequestMessage (Get localized string("Duplicate")+" "+String(Records in set("ToDuplicate"))+" "+Get localized string("records with field1 code?"))
+If (OK=1)
+LogAction (True;"DUPLICATE records from table :"+Table name(vpFile)+":"+String(Records in selection);True)
+READ WRITE(vpFile->)
+$j:=Length($Code)+1
+$p:=Field(Table(Current default table);1)
+For ($i;1;Records in selection)
+USE SET("ToDuplicate")
+GOTO SELECTED RECORD($i)
+DUPLICATE RECORD
+$p->:=$Code+Substring($p->;$j)
+$PrimaryKeyFieldNum:=IsValidField (Current default table;"PrimaryKey")
+If ($PrimaryKeyFieldNum#-1)
+$PrimaryKeyField:=Field(Table(Current default table);$PrimaryKeyFieldNum)
+$PrimaryKeyField->:=0
+End if 
+SAVE RECORD
+ADD TO SET(Current default table->;"New")
+End for 
+READ ONLY(vpFile->)
+UNLOAD RECORD(vpFile->)
+End if 
+USE SET("New")
+CLEAR SET("New")
+CLEAR SET("ToDuplicate")
+End if 
+End if 

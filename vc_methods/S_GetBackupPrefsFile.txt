@@ -1,0 +1,48 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Load the Backup preferences file and place contents into a BLOB for Client process to retrieve
+$ErrorMethod:=Method called on error
+ON ERR CALL("ErrorNone")
+C_TEXT($1)//"Backup
+C_LONGINT($Offset)
+
+$Offset:=0
+OK:=1
+$Status:=""//The preferences were loaded successfully
+If (Application type=4D Volume desktop)
+If (<>iPlatform=3)
+$BackupXMLPathname:=GetPath (Application file)+"Database"+GetFolderDelimiter +"Preferences"+GetFolderDelimiter +"Backup"+GetFolderDelimiter +"Backup.xml"
+Else 
+$BackupXMLPathname:=GetPath (Structure file)+"Database"+GetFolderDelimiter +"Preferences"+GetFolderDelimiter +"Backup"+GetFolderDelimiter +"Backup.xml"
+$BackupXMLPathname:=Replace string($BackupXMLPathname;"MacOS:";"")
+End if 
+Else 
+$BackupXMLPathname:=GetPath (Structure file)+"Preferences"+GetFolderDelimiter +"Backup"+GetFolderDelimiter +"Backup.xml"
+End if 
+
+//Save the Arrays containing the Preferences
+READ WRITE([Authenticate])
+QUERY([Authenticate];[Authenticate]RAgreeNo=$1)
+Case of 
+: (Locked([Authenticate])=True)
+$Status:="101"//Facility record was locked when retrieving Backup Preferences!   Please try again!"
+: (Records in selection([Authenticate])#1)
+$Status:="102"//[Authenticate] record was not found when retrieving Backup Preferences!   Please contact Storman Suppo"+"rt."
+: (Test path name($BackupXMLPathname)#Is a document)
+$Status:="103"//Backup Preferences file not found!"
+: (Test path name($BackupXMLPathname)=Is a document)
+DOCUMENT TO BLOB($BackupXMLPathname;[Authenticate]Prefs)
+If (OK#1)
+$Status:="104"//Document not read into Blob correctly!"
+End if 
+Else 
+$Status:="110"//Unknown Error!"
+End case 
+$Offset:=0
+If ($Status#"")
+SET BLOB SIZE([Authenticate]Prefs;0)
+CONVERT FROM TEXT($Status;"UTF-8";[Authenticate]Prefs)
+End if 
+SAVE RECORD([Authenticate])
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+ON ERR CALL($ErrorMethod)

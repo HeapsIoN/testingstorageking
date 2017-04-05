@@ -1,0 +1,375 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$Unit)//Unit number / customer code if specified
+C_LONGINT($2;$FindCust)//1=Unit No, 2=CustCode, 3=Agreement/Reservn, 4=Map/Reservation
+C_LONGINT($3;$TakePayment)
+$Unit:=""
+$FindCust:=1
+$TakePayment:=0
+If (Count parameters>0)
+$Unit:=$1
+If (Count parameters>1)
+$FindCust:=$2
+If (Count parameters>2)
+$TakePayment:=$3
+End if 
+End if 
+End if 
+Repeat 
+$Repeat:=False
+bAll:=0
+If ($Unit>"")
+vFind:=$Unit
+OK:=1
+bSearch:=0
+Case of 
+: ($FindCust=3)
+If (Current default table=Table(4))
+bOK:=10
+Else 
+bOK:=13
+End if 
+: ($FindCust=2)
+If (Current default table=Table(4))
+bOK:=11
+Else 
+bOK:=12
+End if 
+: ($FindCust=4)
+bOK:=14
+Else 
+bOK:=5
+End case 
+Else 
+tFindWindow:=True
+Open window((Screen width/2)-234;(Screen height/2)-189;(Screen width/2)+234;(Screen height/2)+189;4;Get localized string("Find Agreement"))
+DIALOG([Agreement];"FindDialog")
+CLOSE WINDOW
+tFindWindow:=False
+End if 
+If (OK=1)
+If (bSearch=1)
+SET AUTOMATIC RELATIONS(True;True)
+QUERY([Agreement])
+SET AUTOMATIC RELATIONS(False;False)
+Else 
+If (bAll=1)
+Case of 
+: (bOK=1)
+QUERY([Customer];[Customer]CustomerName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]UserName="@"+vFind+"@")
+: (bOK=2)
+QUERY([Customer];[Customer]GatePIN="@"+vFind+"@")
+If (Records in selection([Customer])<1)
+QUERY([PhotosCards];[PhotosCards]PINCardNo="@"+vFind+"@")
+RELATE ONE SELECTION([PhotosCards];[Customer])
+End if 
+: (bOK=3)
+If ([Facility]InvStatement>0)
+QUERY([Trxs];[Trxs]InvNo=Num(vFind))
+Else 
+If (Num(vFind)>999999)
+QUERY([Trxs];[Trxs]SeqNo=(Num(vFind)-1000000)*-1)
+Else 
+QUERY([Trxs];[Trxs]SeqNo=Num(vFind))
+End if 
+End if 
+If (Records in selection([Trxs])=0)
+REDUCE SELECTION([Agreement];0)
+Else 
+RELATE ONE([Trxs]AgreeNo)
+End if 
+: (bOK=4)
+QUERY([Customer];[Customer]CustomerCode="@"+vFind+"@")
+: (bOK=5)
+QUERY([Unit];[Unit]RUnitNo="@"+vFind+"@")
+If (Records in selection([Unit])=0)
+REDUCE SELECTION([Agreement];0)
+Else 
+RELATE ONE SELECTION([Unit];[Agreement])
+End if 
+: (bOK=6)
+QUERY([Customer];[Customer]CustomerName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]UserName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AccessList="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AltContact="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AlternateName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]FirstName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]LastDrawer="@"+vFind+"@")
+: (bOK=7)
+QUERY([Customer];[Customer]EmailAddress="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AltEmail="@"+vFind+"@")
+: (bOK=8)
+QUERY([Customer];[Customer]CarRego="@"+vFind+"@")
+: (bOK=9)
+QUERY([Agreement];[Agreement]AutoPayAmt=Num(vFind))
+: (bOK=10)
+QUERY([Agreement];[Agreement]AgreeNo="@"+vFind+"@")
+: (bOK=11)
+QUERY([Agreement];[Agreement]CustomerCode=vFind)
+: (bOK=12)
+QUERY([Reservation];[Reservation]CustomerCode=vFind)
+: (bOK=13)
+QUERY([Reservation];[Reservation]ReserveNo="@"+vFind+"@")
+: (bOK=14)
+QUERY([Unit];[Unit]RUnitNo="@"+vFind+"@")
+If (Records in selection([Unit])=0)
+REDUCE SELECTION([Reservation];0)
+Else 
+RELATE ONE SELECTION([Unit];[Reservation])
+End if 
+Else 
+//Do Nothing
+End case 
+Else 
+Case of 
+: (bOK=1)
+QUERY([Customer];[Customer]CustomerName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]UserName="@"+vFind+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+: (bOK=2)
+QUERY([Customer];[Customer]GatePIN="@"+vFind+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+If (Records in selection([Customer])<1)
+QUERY([PhotosCards];[PhotosCards]PINCardNo="@"+vFind+"@";*)
+QUERY([PhotosCards]; & ;[PhotosCards]Code=<>sFacility+"@")
+RELATE ONE SELECTION([PhotosCards];[Customer])
+End if 
+: (bOK=3)
+If ([Facility]InvStatement>0)
+QUERY([Trxs];[Trxs]InvNo=Num(vFind);*)
+Else 
+If (Num(vFind)>999999)
+QUERY([Trxs];[Trxs]SeqNo=-1*(Num(vFind)-1000000);*)
+Else 
+QUERY([Trxs];[Trxs]SeqNo=Num(vFind);*)
+End if 
+End if 
+QUERY([Trxs]; & ;[Trxs]CustomerCode=<>sFacility+"@")
+If (Records in selection([Trxs])=0)
+REDUCE SELECTION([Agreement];0)
+Else 
+RELATE ONE([Trxs]AgreeNo)
+End if 
+: (bOK=4)
+QUERY([Customer];[Customer]CustomerCode="@"+vFind+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+: (bOK=5)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]UnitNo="@"+vFind+"@")
+If (Records in selection([Unit])=0)
+REDUCE SELECTION([Agreement];0)
+Else 
+RELATE ONE SELECTION([Unit];[Agreement])
+End if 
+: (bOK=6)
+QUERY([Customer];[Customer]CustomerName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]UserName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AccessList="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AltContact="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AlternateName="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]FirstName="@"+vFind+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+: (bOK=7)
+QUERY([Customer];[Customer]EmailAddress="@"+vFind+"@";*)
+QUERY([Customer]; | ;[Customer]AltEmail="@"+vFind+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+: (bOK=8)
+QUERY([Customer];[Customer]CarRego="@"+vFind+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+: (bOK=9)
+QUERY([Agreement];[Agreement]AutoPayAmt=Num(vFind);*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@")
+: (bOK=10)
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+QUERY([Agreement]; & ;[Agreement]AgreeNo="@"+vFind+"@")
+: (bOK=11)
+QUERY([Agreement];[Agreement]CustomerCode=vFind)
+: (bOK=12)
+QUERY([Reservation];[Reservation]CustomerCode=vFind)
+: (bOK=13)
+QUERY([Reservation];[Reservation]RReserveNo=<>sFacility+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReserveNo="@"+vFind+"@")
+: (bOK=14)
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@";*)
+QUERY([Unit]; & ;[Unit]UnitNo="@"+vFind+"@")
+If (Records in selection([Unit])=0)
+REDUCE SELECTION([Reservation];0)
+Else 
+RELATE ONE SELECTION([Unit];[Reservation])
+End if 
+Else 
+//Do Nothing
+End case 
+End if 
+If (bOK#5) & (bOK#3) & (bOK<9)
+SET AUTOMATIC RELATIONS(True;True)
+RELATE MANY SELECTION([Agreement]CustomerCode)
+SET AUTOMATIC RELATIONS(False;False)
+FIRST RECORD
+End if 
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+$string:=[UserLogins]AccessFacility
+If ([UserLogins]AccessFacility#"ALL") & ([UserLogins]AccessFacility#"")
+$i:=Position(",";$string)
+QUERY SELECTION([Agreement];[Agreement]RAgreeNo=Substring($string;1;$i-1)+"@";*)
+$string:=Substring($string;$i+1)
+Repeat 
+$i:=Position(",";$string)
+If ($i>1)
+QUERY SELECTION([Agreement]; | ;[Agreement]RAgreeNo=Substring($string;1;$i-1)+"@";*)
+$string:=Substring($string;$i+1)
+Else 
+QUERY([Agreement]; | ;[Agreement]RAgreeNo=$string+"@";*)
+$string:=""
+End if 
+Until ($string="")
+QUERY SELECTION([Agreement]; & ;[Agreement]RAgreeNo#"")
+End if 
+End if 
+If (Records in selection=0) | ((vFind="") & (bSearch=0))
+$Unit:=""
+$Repeat:=True
+Case of 
+: (bOK=3)
+AlertMessage (Get localized string("That invoice number does not exist."))
+: (bOK=5)
+If (Records in selection([Unit])=0)
+AlertMessage (Get localized string("That unit does not exist."))
+Else 
+AlertMessage (Get localized string("That unit is not rented."))
+End if 
+Else 
+AlertMessage (Get localized string("No agreement or customer could be found."))
+End case 
+Else 
+If (<>tFind) & ($TakePayment=0)
+QUERY SELECTION([Agreement];[Agreement]AgreeNo#"#@")
+End if 
+Case of 
+: ($TakePayment=2)
+Case of 
+: (Records in selection>1)
+vTitle:=Get localized string("Select Agreement")
+Open window((Screen width/2)-300;(Screen height/2)-180;(Screen width/2)+300;(Screen height/2)+180;5;Get localized string("Select Agreement"))
+DIALOG([Agreement];"SelectTakePayment")
+CLOSE WINDOW
+If (OK=1)
+If (asAgreeListing>=1)
+QUERY SELECTION([Agreement];[Agreement]AgreeNo=asAgreeListing{asAgreeListing})
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Customer]CustomerCode)
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=False)
+If (Records in selection([Agreement])>0)
+ConfirmTwo (Get localized string("Include inactive agreements for this customer?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+vmpActive:=False
+Else 
+vmpActive:=True
+End if 
+Else 
+vmpActive:=True
+End if 
+$Window2:=Open window((Screen width/2)-425;(Screen height/2)-318;(Screen width/2)+425;(Screen height/2)+318;5;Get localized string("Receipts")+"...")
+BPAYINTEX:=0//10781
+DIALOG([Trxs];"MassPayment")
+CLOSE WINDOW($Window2)
+UpdateAgreeBals 
+End if 
+End if 
+: (Records in selection=1)
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Customer]CustomerCode)
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=False)
+If (Records in selection([Agreement])>0)
+ConfirmTwo (Get localized string("Include inactive agreements for this customer?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+vmpActive:=True
+Else 
+vmpActive:=False
+End if 
+Else 
+vmpActive:=True
+End if 
+$Window2:=Open window((Screen width/2)-425;(Screen height/2)-318;(Screen width/2)+425;(Screen height/2)+318;5;Get localized string("Receipts")+"...")
+BPAYINTEX:=0//10781
+DIALOG([Trxs];"MassPayment")
+CLOSE WINDOW($Window2)
+UpdateAgreeBals 
+End case 
+: ($TakePayment=1)
+Case of 
+: (Records in selection>1)
+vTitle:=Get localized string("Select Agreement")
+Open window((Screen width/2)-300;(Screen height/2)-180;(Screen width/2)+300;(Screen height/2)+180;5;Get localized string("Select Agreement"))
+DIALOG([Agreement];"SelectTakePayment")
+CLOSE WINDOW
+If (OK=1)
+If (asAgreeListing>=1)
+QUERY SELECTION([Agreement];[Agreement]AgreeNo=asAgreeListing{asAgreeListing})
+If (bOK=3)
+If ([Facility]InvStatement>0)
+QUERY([Trxs];[Trxs]InvNo=Num(vFind))
+Else 
+If (Num(vFind)>999999)
+QUERY([Trxs];[Trxs]SeqNo=-1*(Num(vFind)-1000000))
+Else 
+QUERY([Trxs];[Trxs]SeqNo=Num(vFind))
+End if 
+End if 
+FIRST RECORD([Trxs])
+vAmount:=Sum([Trxs]TotAmt)
+Else 
+vAmount:=[Agreement]BalanceOwing
+End if 
+If (vAmount<0)
+vAmount:=0
+End if 
+ADD RECORD([Trxs];*)
+UpdateAgreeBals 
+End if 
+End if 
+: (Records in selection=1)
+If (bOK=3)
+If ([Facility]InvStatement>0)
+QUERY([Trxs];[Trxs]InvNo=Num(vFind))
+Else 
+If (Num(vFind)>999999)
+QUERY([Trxs];[Trxs]SeqNo=-1*(Num(vFind)-1000000))
+Else 
+QUERY([Trxs];[Trxs]SeqNo=Num(vFind))
+End if 
+End if 
+FIRST RECORD([Trxs])
+vAmount:=Sum([Trxs]TotAmt)
+Else 
+vAmount:=[Agreement]BalanceOwing
+End if 
+If (vAmount<0)
+vAmount:=0
+End if 
+ADD RECORD([Trxs];*)
+UpdateAgreeBals 
+End case 
+Else 
+If (Records in selection>1)
+If (bFind=1)
+CREATE SET([Agreement];"Current")
+Else 
+FORM SET OUTPUT([Agreement];"UnitHistOut")
+MODIFY SELECTION(*)
+End if 
+End if 
+If (Records in selection=0)
+If (bOK=3) & (Records in selection([Trxs])=1)
+AlertMessage ("An invoice was found - Try finding in Other Credit Sales")
+Else 
+AlertMessage (Get localized string("No agreement or customer could be found that matched your search type."))
+End if 
+End if 
+If (Records in selection=1)
+MODIFY RECORD(*)
+End if 
+End case 
+End if 
+End if 
+Until ($Repeat=False)

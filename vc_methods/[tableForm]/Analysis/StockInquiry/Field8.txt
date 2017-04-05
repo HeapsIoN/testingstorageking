@@ -1,0 +1,62 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$k)
+C_LONGINT(hlList;$hSubList;$Rec)
+$ItemRef:=0
+$ItemText:=""
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="AC")
+If (Records in selection([MarketingTypes])>0)
+Case of 
+: (Form event=On Load)
+hlList:=New list
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+For ($i;1;Records in selection([MarketingTypes]))
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)
+QUERY([Analysis]; & ;[Analysis]AnalysisCategory=[MarketingTypes]Description;*)
+QUERY([Analysis]; & ;[Analysis]InvItem=True)
+If (Records in selection([Analysis])>0)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+$Rec:=Record number([Analysis])
+$hSubList:=New list
+For ($j;1;Records in selection([Analysis]))
+$k:=Record number([Analysis])
+If ($k=0)
+$k:=32000
+End if 
+APPEND TO LIST($hSubList;[Analysis]Description;$k)
+NEXT RECORD([Analysis])
+End for 
+APPEND TO LIST(hlList;[MarketingTypes]Description;-1;$hSubList;False)
+End if 
+NEXT RECORD([MarketingTypes])
+End for 
+//INSERT IN LIST(*;"Field8";1;"<NONE>";1)
+SELECT LIST ITEMS BY POSITION(hlList;1)
+
+: (Form event=On Unload)
+CLEAR LIST(hlList;*)
+Else 
+SAVE RECORD([Analysis])
+$i:=Selected list items(hlList)
+If ($i#0)
+GET LIST ITEM(hlList;*;$ItemRef;$ItemText)//This version of the command (specifying the position $i) doesn't seem to work - possible 4D bug - GET LIST ITEM(hlList;$i;$ItemRef;$ItemText)
+If ($ItemRef>0)
+If ($ItemRef=32000)
+$ItemRef:=0
+End if 
+GOTO RECORD([Analysis];$ItemRef)
+If ([Analysis]Code=(<>sFacility+"@"))
+asCharges:=Find in array(asCharges;[Analysis]Code)
+Else 
+AlertMessage (Get localized string("The selected analysis code does not match the selected Facility."))
+End if 
+End if 
+End if 
+End case 
+OBJECT SET VISIBLE(*;"Field8";True)
+OBJECT SET VISIBLE(*;"Field82";False)
+Else 
+OBJECT SET VISIBLE(*;"Field82";True)
+OBJECT SET VISIBLE(*;"Field8";False)
+End if 

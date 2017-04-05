@@ -1,0 +1,115 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Printing Detail)
+C_LONGINT($MthsAdv;$Month)
+SetFormats 
+RELATE ONE([Agreement]CustomerCode)
+Case of 
+: ([Agreement]NoticeAmtToBill=-1)
+[Customer]CustomerName:=Get localized string("NOT BILLED UP TO DATE")
+[Agreement]NoticeAmtToBill:=0
+: ([Agreement]NoticeAmtToBill=-2)
+[Customer]CustomerName:=Get localized string("NOT BILLED this period")
+//Added following two lines & second condition of third line in v3.3
+//So that when doing data conversion from Domico it will still calc prepaid until 
+//the customer gets billed.
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@RF";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate)
+If ([Agreement]LastBillDate>vMthDate) & (Records in selection([Trxs])>0)
+[Agreement]NoticeAmtToBill:=0
+Else 
+RELATE ONE([Agreement]BillingPlanCode)
+If ([Facility]RentAdvFlag)//Calculate using daily basis
+$MthsAdv:=[Agreement]LastBillDate-vMthDate-1//Assume it has been billed in next month
+If ([BillPlan]PlanPeriod="Week")
+$Max:=[Agreement]MthsAdv*7
+[Agreement]NoticeAmtToBill:=Round([Agreement]LastBillAmt/[Agreement]MthsAdv*$MthsAdv*52/365;2)
+Else 
+$Max:=[Agreement]MthsAdv*31
+[Agreement]NoticeAmtToBill:=Round([Agreement]LastBillAmt/[Agreement]MthsAdv*$MthsAdv*12/365;2)
+End if 
+If ($MthsAdv>$Max)//This to stop it being calced if it has been billed more than one time in the future v4.0
+[Agreement]NoticeAmtToBill:=0
+End if 
+Else //Calculate using whole months basis  
+$MthsAdv:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30.42;0)
+$Month:=Trunc((vMthDate-[Agreement]LastBillDate)/30.42;0)+1
+If ($Month<0)
+$Month:=0
+End if 
+[Agreement]NoticeAmtToBill:=Round([Agreement]LastBillAmt*($MthsAdv-$Month)/$MthsAdv;2)
+End if 
+End if 
+[Agreement]NoticeAmtToBill:=0
+: ([Agreement]NoticeAmtToBill=-3)
+[Customer]CustomerName:="BILLED TWICE this period"
+[Agreement]NoticeAmtToBill:=0
+Else 
+If ([Agreement]BalFwd>0)
+GOTO RECORD([Trxs];Round([Agreement]BalFwd;0))
+If ([Trxs]CustomerCode=[Agreement]CustomerCode) & ([Trxs]AgreeNo=[Agreement]RAgreeNo)
+[Agreement]NextBillDate:=[Trxs]DateTo
+[Agreement]LastBillDate:=[Trxs]DateFrom
+[Agreement]LastBillAmt:=[Trxs]TotAmt
+Else 
+[Customer]CustomerName:=Get localized string("RENTAL trx not found")
+End if 
+End if 
+End case 
+//If ([Agreement]NoticeAmtToBill<0)
+//[Agreement]NoticeAmtToBill:=0
+//End if 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>vMthDate)
+For ($i;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+[Agreement]BalanceOwing:=Round([Agreement]NoticeAmtToBill-[Agreement]BalanceOwing;2)
+If ([Agreement]BalanceOwing<0)
+[Agreement]BalanceOwing:=0
+End if 
+If (tExTax=1)//SDD 11/12/12 Modified 2 CalcTaxAmt lines below to include Analysis Code so that if System tax rate is zero it will pick up Analysis tax rate
+If (Records in selection([Analysis])#1)
+GetAnalysis 
+End if 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-CalcTaxAmt ([Agreement]BalanceOwing;[Analysis]Code;vMthDate;vMthDate;2)
+[Agreement]NoticeAmtToBill:=[Agreement]NoticeAmtToBill-CalcTaxAmt ([Agreement]NoticeAmtToBill;[Analysis]Code;vMthDate;vMthDate;2)
+End if 
+End if 
+If (Form event=On Printing Break)
+If (Size of array(aPrepaidAnalysis)>0)
+//If (vNotes>"")
+//vNotes:=vNotes+Char(13)+Char(13)
+//End if 
+vNotes:=vNotes+Get localized string("SUMMARY BY PREPAID CATEGORY")+Char(13)
+$Total:=0
+For ($i;1;Size of array(aPrepaidAnalysis))
+$j:=Round((Length(aPrepaidAnalysis{$i})*1.5)+Length(String(aOBal{$i};"#,###,###.00"));0)
+If (tExTax=1)
+$Amt:=aOBal{$i}-CalcTaxAmt (aOBal{$i};"";vMthDate;vMthDate;2)//added 15/5/06
+Else 
+$Amt:=aOBal{$i}
+End if 
+vNotes:=vNotes+aPrepaidAnalysis{$i}+((40-$j)*" ")+String($Amt;"#,###,###.00")+Char(13)
+$Total:=$Total+$Amt//+aOBal{$i}
+End for 
+$j:=Length(String($Total;"#,###,###.00"))
+vNotes:=vNotes+"Total"+((32-$j)*" ")+String($Total;"#,###,###.00")
+End if 
+vTotal:=Subtotal([Agreement]NoticeAmtToBill)
+vTot:=Subtotal([Agreement]BalanceOwing)
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 
+
+If (Form event=On Header)
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 

@@ -1,0 +1,315 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($BackupPrefsLoaded;$BackupPrefsSaved)
+C_LONGINT($dotPos)
+C_TEXT($TempPath)
+//OK:=1
+If (PermissionsControl (113))
+SetFacility 
+//jIf (Application type=4D Remote Mode)
+ConfirmTwo (Get localized string("This may take some time if you have a large datafile. Please check with the Administrator before continuing.");Get localized string("Continue");Get localized string("Cancel"))
+//jEnd if 
+If (OK=1)
+$BackupPrefsLoaded:=LoadBackupPrefs //**
+//$BackupPrefsLoaded:=true
+//trace
+If ($BackupPrefsLoaded=True)
+$vtOldBackupDestinationFolder:=vtBackupDestinationFolder//Store the existing backup destination folder, to be restored after the backup.
+$vtBackupDestinationFolder:=select remote folder ([Facility]BackupFolder)
+
+If ($vtBackupDestinationFolder="")
+AlertMessage (Get localized string("Manual backup cancelled"))//Hamid - 9160
+Else 
+$pathInvalid:=0
+//replace forward slashes
+
+//***
+$RemotePlatformProperties:=remote platform properties 
+If (Num(GetSeparatedText ($RemotePlatformProperties;",";1))=3)//Windows
+$vtBackupDestinationFolder:=Replace string($vtBackupDestinationFolder;"/";"\\")
+$vtBackupDestinationFolder:=Replace string($vtBackupDestinationFolder;Char(92)+Char(92);Char(92);*)
+If (Substring($vtBackupDestinationFolder;Length($vtBackupDestinationFolder))#Char(92))
+$vtBackupDestinationFolder:=$vtBackupDestinationFolder+Char(92)
+End if 
+Else //Mac
+$vtBackupDestinationFolder:=Replace string($vtBackupDestinationFolder;"/";":")
+$vtBackupDestinationFolder:=Replace string($vtBackupDestinationFolder;"::";":";*)
+If (Substring($vtBackupDestinationFolder;Length($vtBackupDestinationFolder))#":")
+$vtBackupDestinationFolder:=$vtBackupDestinationFolder+":"
+End if 
+End if 
+
+$dotPos:=0
+If (Num(GetSeparatedText ($RemotePlatformProperties;",";1))=3)//Windows
+$dotPos:=Position("..\\";$vtBackupDestinationFolder)
+Else 
+$dotPos:=Position("..:";$vtBackupDestinationFolder)
+End if 
+If ($dotPos>0)
+If (Num(GetSeparatedText ($RemotePlatformProperties;",";1))=3)//Windows
+$vtBackupDestinationFolder:=Replace string($vtBackupDestinationFolder;"..\\";"")
+Else 
+$vtBackupDestinationFolder:=Replace string($vtBackupDestinationFolder;"..:";"")
+End if 
+End if 
+//***
+
+
+If (Application type#4D Remote mode) & (Test path name($vtBackupDestinationFolder)#Is a folder)
+AlertMessage ("Invalid Backup path in system setup, Backup unable to be saved. Please select a correct path.")
+$pathInvalid:=1
+End if 
+If (OK=1)
+$pathInvalid:=0
+//------------- Original place of replace forward slashes
+
+If (Application type#4D Remote mode)//Standalone
+
+If (Test path name($vtBackupDestinationFolder)=Is a folder)
+//READ WRITE([Facility])
+//[Facility]BackupFolder:=$vtBackupDestinationFolder
+//SAVE RECORD([Facility])
+Else 
+AlertMessage ("Invalid Backup path in system setup, Backup unable to be saved. Please select a valid path.")
+$pathInvalid:=1
+End if 
+Else //Server
+//Locked([Facility])
+//READ WRITE([Facility])
+//[Facility]BackupFolder:=$vtBackupDestinationFolder
+//SAVE RECORD([Facility])
+End if 
+If (Application type#4D Remote mode) & (Test path name($vtBackupDestinationFolder)#0)
+AlertMessage ("Please select a folder!")
+$pathInvalid:=1
+End if 
+
+If ($pathInvalid=0)
+
+//  //Start Is a folder
+//$start:=1
+//$valTemp:=0
+//$lengthfound:=Length($vtBackupDestinationFolder)
+//$look:="\\"
+//Repeat 
+//$vlResult:=Position($look;$vtBackupDestinationFolder;$start;$lengthfound)
+//$start:=$start+$lengthfound
+//$lengthfound:=Length($vtBackupDestinationFolder)-$start
+//
+//If ($vlResult>0)
+//$valTemp:=$vlResult
+//End if 
+//
+//
+//Until ($vlResult=0)
+//  //end Is a folder
+//If ($valTemp>3) & ($vtBackupDestinationFolder#"\\")  //
+//Get 4D folder(Database Folder)
+//*** start fix Is a folder problem
+//***********************************************    Original place of check dot
+//*** end fix Is a folder problem
+//$TempPath:=vtBackupDestinationFolder
+//SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";$vtBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue) //-- Commented by Hamid 11/3/2015 - 8642
+
+$tmpFacilityCode:=[Facility]FacilityCode
+UNLOAD RECORD([Facility])
+QUERY([Facility];[Facility]FacilityCode=$tmpFacilityCode)
+READ WRITE([Facility])
+[Facility]BackupFolder:=$vtBackupDestinationFolder
+SAVE RECORD([Facility])
+//LOAD RECORD([Facility])
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";[Facility]BackupFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+$BackupPrefsSaved:=SaveBackupPrefsFile 
+End if 
+
+Else 
+$pathInvalid:=1
+End if 
+
+//
+
+
+If ($BackupPrefsSaved=True) & ($pathInvalid=0)
+BACKUP
+
+If (ok=1)
+AlertMessage ("Backup successfully completed!")
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";$vtOldBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+$BackupPrefsSaved:=SaveBackupPrefsFile 
+//SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";$TempPath;->vtaBackupParameter;->vtaBackupParameterValue)
+//$BackupPrefsSaved:=SaveBackupPrefsFile 
+//vtBackupDestinationFolder:=$TempPath
+
+
+//vtBackupDestinationFolder:=$vtOldBackupDestinationFolder
+//SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";vtBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+//$BackupPrefsSaved:=SaveBackupPrefsFile 
+//If ($BackupPrefsSaved=False)
+//AlertMessage (Get localized string("Backup Preferences unable to be restored"))
+//End if 
+$Q:=Execute on server("DeleteLogFiles";400000;"DeleteLogFiles")//10776
+
+Else 
+AlertMessage (Get localized string("Backup Failed, please check Backup tab in System Setup for error message"))
+SetArrayPairValue ("Preferences4D/Backup/Settings/General/DestinationFolder";$vtOldBackupDestinationFolder;->vtaBackupParameter;->vtaBackupParameterValue)
+$BackupPrefsSaved:=SaveBackupPrefsFile 
+End if 
+Else 
+AlertMessage (Get localized string("Backup cancelled"))//johnno
+If ($pathInvalid=0)
+AlertMessage (Get localized string("Backup Preferences unable to be saved"))
+Else 
+AlertMessage (Get localized string("Backup cancelled"))
+End if 
+
+
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Backup cancelled"))//johnno
+End if 
+
+If (Application type=4D Remote mode)
+//AlertMessage (Get localized string("Backup Preferences could not be retrieved from the server. Please try again and if this same message contact Storman Support."))
+Else 
+//AlertMessage (Get localized string("InitialBackupAlert"))
+//xliffme
+End if 
+
+Else 
+AlertMessage ("Backup cancelled.")//johnno
+End if 
+
+End if 
+//End if 
+
+//C_LONGINT($i;$x;$y;$z)
+//C_TEXT($Data)
+//C_TEXT($Zipfile;$Command)
+//If (PermissionsControl (113))
+//SetFacility 
+//If (Application type=4D Remote Mode)
+//AlertMessage ("Please configure and perform backups on the server...")
+//Else 
+//If ([Facility]BackupFolder>"")
+//AlertMessage ("Please enter disk into "+[Facility]BackupFolder+" then click OK to continue...")
+//ARRAY TEXT(aText;0)
+//ON ERR CALL("ErrorNone")  `Otherwise if no files generates error and stops 2.6.3
+//DOCUMENT LIST([Facility]BackupFolder;aText)
+//ON ERR CALL("")
+//If (Size of array(aText)>0)
+//If (<>iPlatform=3)
+//$i:=Find in array(aText;"@.4dd")
+//Else 
+//$i:=Find in array(aText;"@.data")
+//End if 
+//If ($i<1)
+//$i:=1
+//End if 
+//vLine1:=aText{$i}
+//GET DOCUMENT PROPERTIES([Facility]BackupFolder+vLine1;$Locked;$Invis;$Date;$Time;vDate;vTime)
+//vTot:=Round(Get document size([Facility]BackupFolder+vLine1)/1024/1024;1)
+//Else 
+//vLine1:="No file at backup location"
+//vDate:=!01/01/1990!
+//vTime:=?00:00:00?
+//vTot:=0
+//End if 
+//If (<>iPlatform=3)
+//$Volume:=Substring([Facility]BackupFolder;1;3)
+//Else 
+//$VolumePosition:=Position(":";[Facility]BackupFolder)
+//$Volume:=Substring([Facility]BackupFolder;1;$VolumePosition)
+//End if 
+//VOLUME ATTRIBUTES([Facility]BackupFolder;$Size;$Used;vTotal)
+//vTotal:=Round(vTotal/1024/1024;1)
+//Open window((Screen width/2)-289;(Screen height/2)-183;(Screen width/2)+289;(Screen height/2)+183;5;"Backup Data File")
+//DIALOG([Facility];"Backup")
+//CLOSE WINDOW
+//If (OK=1)
+//LogAction (False;"Backup commenced")
+//If (<>tLogging=False)
+//  `Should shut down FrontDesk        
+//FLUSH BUFFERS
+//$Zipfile:=[Facility]BackupFolder+"StormanData"
+//If (<>iPlatform<3)  `Macintosh
+//COPY DOCUMENT(Data file;[Facility]BackupFolder;*)
+//Else   `Windows
+//PLATFORM PROPERTIES($x;$y;$z)
+//If ($y<0)  `Windows 95 / 98
+//$Data:=GetDosPathName (Data file)
+//If (vDec=1)
+//$Command:="command.com /P "  `P is mean't to leave window open
+//Else 
+//$Command:="command.com /C "
+//End if 
+//Else   `Windows NT / 2000 / XP
+//$Data:=Char(Double quote )+Data file+Char(Double quote )
+//  `If (vDec=1)
+//  `$Command:="cmd.exe /K "  `K is mean't to leave window open
+//  `Else 
+//  `$Command:="cmd.exe /C "
+//  `End if 
+//End if 
+//If (Substring([Facility]BackupInfo;2;1)="1")  `Do compression  See also CompressFile for Win2000
+//$Zipfile:=GetDosPathName (Data file;True)  `Get without path name
+//OK:=1
+//If (Test path name([Facility]BackupFolder+$Zipfile+".zip")=Is a document )
+//DELETE DOCUMENT([Facility]BackupFolder+$Zipfile+".zip")
+//End if 
+//If (OK=1)
+//  `$Command:=$Command+<>sBackupPath+<>sSeparator+"7za a -tzip "+[Facility]BackupFolder+$Zipfile+".zip "+$Data
+//$Command:=$Command+Char(Double quote )+<>sBackupPath+<>sSeparator+"zip.exe"+Char(Double quote )+" "+[Facility]BackupFolder+$Zipfile+".zip "+$Data
+//  `$Command:=$Command+"Backups\\zip "+[Facility]BackupFolder+$Zipfile+".zip "+$Data
+//Else 
+//AlertMessage ("ERROR - The previous backup file could not be deleted, so the backup could not b"+"e done!")
+//End if 
+//Else 
+//$Command:=$Command+"COPY "+$Data+" "+[Facility]BackupFolder+" /Y"
+//End if 
+//SET ENVIRONMENT VARIABLE("_4D_OPTION_CURRENT_DIRECTORY";[Facility]BackupFolder)
+//SET ENVIRONMENT VARIABLE("_4D_OPTION_HIDE_CONSOLE";"true")
+//LAUNCH EXTERNAL PROCESS($Command)
+//End if 
+//If (<>iPlatform=3)
+//$Size:=0
+//$OldSize:=0
+//$Time:=Current time+?00:03:00?  `Do not wait longer than 3 minutes
+//Open window(20;50;300;150;0;"Progress")
+//GOTO XY(2;2)
+//MESSAGE("Waiting for backup to complete..."+"    ")
+//$Locked:=True
+//Repeat 
+//$Tickcount:=Tickcount
+//Repeat 
+//DELAY PROCESS(Current process;600)
+//IDLE
+//Until (Tickcount>($Tickcount+600))  `5 secs
+//If (Test path name([Facility]BackupFolder+$Zipfile+".zip")=Is a document )
+//ON ERR CALL("ErrorNone")  `4D gives an error on the Get Doc Props because the file is in use
+//Repeat 
+//$Tickcount:=Tickcount
+//Repeat 
+//DELAY PROCESS(Current process;60)
+//IDLE
+//Until (Tickcount>($Tickcount+60))  `1 sec
+//viError:=0
+//GET DOCUMENT PROPERTIES([Facility]BackupFolder+$Zipfile+".zip";$Locked;$Invis;$CreateDate;$CreateTime;$ModDate;$ModTime)
+//$OldSize:=$Size
+//$Size:=Get document size([Facility]BackupFolder+$Zipfile+".zip")
+//Until (viError=0)
+//ON ERR CALL("")
+//End if 
+//Until (Current time>$Time) | (($Size=$OldSize) & ($Size#0))  `($Locked=False)
+//LogAction (True;"Backup completed")
+//End if 
+//End if 
+//Else 
+//Open window(20;45;580;430;0;"Backup Instructions")
+//DIALOG([Facility];"Backup")
+//CLOSE WINDOW
+//End if 
+//Else 
+//AlertMessage ("No backup location configured!")
+//End if 
+//End if 
+//End if 

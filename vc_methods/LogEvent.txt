@@ -1,0 +1,145 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//LogDetail
+C_BOOLEAN($2)//Alert
+C_TEXT($3)//Type
+C_LONGINT($4)//Table
+C_TEXT($5)//KeyFields
+C_TEXT($6)//KeyValue
+C_TEXT($7)//BillPlan / Analysis
+C_DATE($8)//TrxDate
+C_REAL($9)//TrxAmt
+C_TEXT($10)//LogSubtable
+C_POINTER($11)//LogBlob
+C_TEXT($12)//Code ` added 26/9/06
+C_TEXT($13)//Facility Code
+C_TEXT($14)//Agreement Number
+C_LONGINT($i)//SyncDecode
+$Write:=False
+If (Count parameters>10)
+
+If ($10>"")
+$Write:=True
+End if 
+
+If (Type($11->)=Is BLOB)
+If (BLOB size($11->)>0)
+$Write:=True
+End if 
+End if 
+
+End if 
+If ($1>"") | ($Write)
+READ WRITE([EventLog])
+CREATE RECORD([EventLog])
+[EventLog]EventDate:=UTCDate (Current time;True;Current date)
+[EventLog]EventTime:=UTCTime (Current time;True)
+[EventLog]Processed:=True
+[EventLog]EventAlert:=$2
+[EventLog]EventType:=$3
+[EventLog]EventTable:=$4
+If (([EventLog]EventTable=3) & ($1="@Status@")) | (([EventLog]EventTable=12) & ([EventLog]EventType="ADD"))//To update arrays in LogMonLoopCode
+[EventLog]Processed:=False
+End if 
+[EventLog]KeyFields:=$5
+[EventLog]KeyValue:=$6
+If ([EventLog]EventTable>0)
+[EventLog]EventRecNo:=Record number(Table($4)->)
+If ([EventLog]EventRecNo>=18000000)//This to account for triggers
+[EventLog]EventRecNo:=([EventLog]EventRecNo-17999990)*(-1)
+End if 
+End if 
+[EventLog]BillPAnlys:=$7
+[EventLog]TrxDate:=$8
+[EventLog]TrxAmount:=$9
+[EventLog]LogDetail:=$1
+If (Count parameters>9)
+//[EventLog]LogSubtable:=$10`don't need anymore as not using subtables
+End if 
+If (Count parameters>10)
+If (Type($11->)=Is BLOB)
+If (BLOB size($11->)>21)
+If (<>iCompressBlobOption>=1)
+COMPRESS BLOB($11->;<>iCompressBlobOption)//2=For speed 
+End if 
+[EventLog]LogBlob:=$11->
+End if 
+End if 
+If (Count parameters>11)
+[EventLog]Code:=$12
+End if 
+If (Count parameters>12)
+[EventLog]FacilityCode:=$13
+End if 
+If (Count parameters>13)
+[EventLog]AgreeNo:=$14
+End if 
+End if 
+[EventLog]UserLogin:=[UserLogins]Name
+If ([EventLog]UserLogin="")
+[EventLog]UserLogin:="None"
+End if 
+If ([EventLog]EventType="SND") | ([EventLog]EventType="CL@") | ([EventLog]EventType="FIX")//SDD 25/2/11 Otherwise it doesn't seem to get a facility code
+[EventLog]FacilityCode:=Substring($6;1;5)
+End if 
+If (Size of array(<>asSiteCodes)>0) & (Size of array(<>aiEventSeqNo)>0)
+$i:=Find in array(<>asSiteCodes;[EventLog]FacilityCode)
+If ($i<1)
+$i:=1
+End if 
+
+If (<>aiEventSeqNo{$i}<=1) & (Size of array(<>asSiteCodes)>1)
+[EventLog]SyncStatus:=5//These are not to be replicated anywhere
+End if 
+End if 
+
+If ([EventLog]FacilityCode=<>sHOFacility)\
+ | (([EventLog]EventTable=30) & (([Facility]CentralAddress#"@hub.storman.com@") & ([Facility]CentralAddress#"@destroyer@") & ([Facility]CentralAddress#"@valkyrie@")))\
+ | (([EventLog]EventTable=31) & (([Facility]CentralAddress#"@hub.storman.com@") & ([Facility]CentralAddress#"@destroyer@") & ([Facility]CentralAddress#"@valkyrie@")))\
+ | (([EventLog]EventTable=26) & (([Facility]CentralAddress#"@hub.storman.com@") & ([Facility]CentralAddress#"@destroyer@") & ([Facility]CentralAddress#"@valkyrie@")))\
+ | ([EventLog]KeyValue="") | (([EventLog]EventTable=10) & ([EventLog]Code#"SEND"))
+
+//JCW added above line so users can be sync'd to Storman Hub
+//Blank value should not be replicated but it is useful to see
+[EventLog]SyncStatus:=5//These are not to be replicated anywhere
+End if 
+
+If ([EventLog]EventTable=6) & (<>sProduct#"M@")
+If (Substring([Trxs]AgreeNo;1;5)#Substring([Trxs]AnalysisCode;1;5))
+If ([EventLog]EventType="ADD") & ($7#"LOG")
+[EventLog]SyncStatus:=5//To stop these records being replicated
+End if 
+If ([EventLog]EventType="MOD")
+[EventLog]FacilityCode:=<>sFacility//These to be replicated but with sending site code
+End if 
+End if 
+End if 
+If ([EventLog]EventType="MDB")
+[EventLog]EventType:="MOD"
+[EventLog]FacilityCode:=Substring([Trxs]AnalysisCode;1;5)
+End if 
+If ([EventLog]EventType="DDB")
+[EventLog]EventType:="DEL"
+[EventLog]FacilityCode:=Substring([Trxs]AnalysisCode;1;5)
+End if 
+If ([EventLog]EventType="FIX") & (Length([EventLog]LogDetail)>68)//Six customers
+[EventLog]SyncStatus:=5//Do not send to site if too many.  Can be done manually
+End if 
+If ([UserLogins]RecordStatus=-3) & ([EventLog]EventType="ADD")
+[EventLog]EventType:="AD+"
+End if 
+If (BLOB size([EventLog]LogBlob)>500000)//SDD 12/7/11 To ensure syncing doesn't stop because of large file
+[EventLog]SyncStatus:=13
+End if 
+If ([EventLog]Code="SHOF")//SDD 27/1/12 Add to allow Sync to StormanHOF
+[EventLog]Code:=""
+[EventLog]SyncStatus:=100//Sync to StormanHOF
+End if 
+If ([UserLogins]RecordStatus=-1)
+[EventLog]SyncStatus:=2
+SEND RECORD([EventLog])
+Else 
+SAVE RECORD([EventLog])
+End if 
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+End if 

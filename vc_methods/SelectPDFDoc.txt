@@ -1,0 +1,210 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: SelectPDFDoc
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($0;$2;;vPName)
+C_LONGINT($1)//1=Open Printer, 2=Set Document Name, 3=Close Printer, 4=Adobe only
+C_LONGINT($start;$lastresult;$lResult;$lengthfound)
+C_TEXT($Path;$Filename)
+vPName:=""
+
+Case of 
+: ($1=1)
+Case of 
+: (<>iPlatform=3)
+$Err:=sys_GetDefPrinter (vPName)
+
+//Johnno added FB9891
+$Time:=Current time
+//Repeat 
+//SET CURRENT PRINTER(PDFCreator Printer name)
+//$Tick:=Tickcount
+
+//Repeat 
+//IDLE
+//Until (Tickcount>=($Tick+60))
+
+//Until (Get current printer=PDFCreator Printer name) | ($Time+?00:00:30?>Current time)
+
+//If (Get current printer#PDFCreator Printer name) & ($Time+?00:00:30?>Current time)
+//SyncRecordLog ("Storman could not locate PDF Creator! Current printer is "+String(Get current printer))
+//End if 
+C_BOOLEAN($MicPDF)
+$MicPDF:=False
+C_TEXT($pdfprintername)
+$pdfprintername:="Microsoft Print to PDF"
+Repeat 
+//10/12/15 DAM Added ability to set PDF Creator for Win10
+ARRAY TEXT($name1;0)
+PRINTERS LIST($name1)
+If (Find in array($name1;$pdfprintername)>0)
+SET CURRENT PRINTER($pdfprintername)
+$MicPDF:=True
+Else 
+SET CURRENT PRINTER(PDFCreator Printer name)
+$MicPDF:=False
+End if 
+
+$Tick:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>=($Tick+60))
+
+Until (Get current printer=PDFCreator Printer name) | ($Time+?00:00:30?>Current time) | (Get current printer=$pdfprintername)
+
+If ($MicPDF=True)
+If (Get current printer#$pdfprintername) & ($Time+?00:00:30?>Current time)
+SyncRecordLog ("Storman could not locate Microsoft Print to PDF! Current printer is "+String(Get current printer))
+End if 
+Else 
+If (Get current printer#PDFCreator Printer name) & ($Time+?00:00:30?>Current time)
+SyncRecordLog ("Storman could not locate PDF Creator! Current printer is "+String(Get current printer))
+End if 
+End if 
+
+
+Else 
+//Do Nothing
+End case 
+$0:=vPName
+: ($1=2)
+Case of 
+: (<>iPlatform=3)
+If (Test path name($2)=Is a document)
+DELETE DOCUMENT($2)
+If (OK=0)
+AlertMessage (Get localized string("Unable to delete PDF, it may be open in another application."))
+End if 
+End if 
+$start:=1
+Repeat 
+$lastresult:=$lResult
+$lResult:=Position(<>sSeparator;$2;$start;$lengthfound)
+$start:=$start+$lengthfound
+Until ($lResult=0)
+$Path:=Substring($2;1;$lastresult)
+$Filename:=Substring($2;$lastresult+1)
+$Filename:=Substring($Filename;1;Length($filename)-4)
+
+C_TEXT($pdfprintername)
+$pdfprintername:="Microsoft Print to PDF"
+
+If (Get current printer=$pdfprintername)
+SET PRINT OPTION(Destination option;2;$Path+$Filename+".pdf")
+Else 
+SET PRINT OPTION(Destination option;3;$Path+$Filename)
+End if 
+
+//SET PRINT OPTION("PDFOptions:UseAutosave";1)
+//SET PRINT OPTION("PDFOptions:UseAutosaveDirectory";1)
+//SET PRINT OPTION("PDFOptions:AutosaveDirectory";$Path)
+//SET PRINT OPTION("PDFOptions:AutosaveFilename";$Filename)
+: (<>iPlatform=2)
+SET PRINT OPTION(Destination option;3;$2)
+Else 
+//Do Nothing
+End case 
+: ($1=3)
+Case of 
+: (<>iPlatform=3)
+SET PRINT OPTION("PDFInfo:Reset standard options";0)
+
+//Johnno added FB9891///////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+$Time:=Current time
+Repeat 
+SET CURRENT PRINTER(vPName)
+$Tick:=Tickcount
+
+Repeat 
+IDLE
+Until (Tickcount>=($Tick+60))
+
+Until (Get current printer=vPName) | ($Time+?00:00:30?>Current time)
+//Johnno added FB9891
+
+PAGE SETUP([Trxs];"TransOut")
+: (<>iPlatform=2)
+SET PRINT OPTION(Destination option;1)
+Else 
+//Do Nothing
+End case 
+: ($1=4)
+// Do Nothing
+End case 
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//Johnno - Original Method FB9891/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//C_TEXT($0;$2;;vPName)
+//C_LONGINT($1)  //1=Open Printer, 2=Set Document Name, 3=Close Printer, 4=Adobe only
+//C_LONGINT($start;$lastresult;$lResult;$lengthfound)
+//C_TEXT($Path;$Filename)
+//vPName:=""
+//Case of 
+//: ($1=1)
+//Case of 
+//: (<>iPlatform=3)
+//$Err:=sys_GetDefPrinter (vPName)
+//SET CURRENT PRINTER(PDFCreator Printer name)
+//Else 
+//  //Do Nothing
+//End case 
+//$0:=vPName
+//: ($1=2)
+//Case of 
+//: (<>iPlatform=3)
+//If (Test path name($2)=Is a document)
+//DELETE DOCUMENT($2)
+//If (OK=0)
+//AlertMessage (Get localized string("Unable to delete PDF, it may be open in another application."))
+//End if 
+//End if 
+//$start:=1
+//Repeat 
+//$lastresult:=$lResult
+//$lResult:=Position(<>sSeparator;$2;$start;$lengthfound)
+//$start:=$start+$lengthfound
+//Until ($lResult=0)
+//$Path:=Substring($2;1;$lastresult)
+//$Filename:=Substring($2;$lastresult+1)
+//$Filename:=Substring($Filename;1;Length($filename)-4)
+//
+//SET PRINT OPTION(Destination option;3;$Path+$Filename)
+//  //SET PRINT OPTION("PDFOptions:UseAutosave";1)
+//  //SET PRINT OPTION("PDFOptions:UseAutosaveDirectory";1)
+//  //SET PRINT OPTION("PDFOptions:AutosaveDirectory";$Path)
+//  //SET PRINT OPTION("PDFOptions:AutosaveFilename";$Filename)
+//: (<>iPlatform=2)
+//SET PRINT OPTION(Destination option;3;$2)
+//Else 
+//  //Do Nothing
+//End case 
+//: ($1=3)
+//Case of 
+//: (<>iPlatform=3)
+//SET PRINT OPTION("PDFInfo:Reset standard options";0)
+//SET CURRENT PRINTER(vPName)
+//PAGE SETUP([Trxs];"TransOut")
+//: (<>iPlatform=2)
+//SET PRINT OPTION(Destination option;1)
+//Else 
+//  //Do Nothing
+//End case 
+//: ($1=4)
+//  // Do Nothing
+//End case 

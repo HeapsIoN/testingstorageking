@@ -1,0 +1,44 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//took out ;* from end of Get WEb Service result line for WS_Action, line 20 17/11/05
+C_BOOLEAN($0)//True = success, Results are stored in vars vBankBal and vBBDate
+C_TEXT($1;$Facility)
+C_REAL($2;vBankBal)
+C_DATE($3;vBBDate)
+C_LONGINT($4;viAction)//1=Retrieve Bal & Lock, 2=Set Bal & Unlock
+C_LONGINT($TCPID;$Error)
+WEB SERVICE SET PARAMETER("WS_FacilityCodeIn";$1)
+WEB SERVICE SET PARAMETER("WS_BankBalAmtIn";$2)
+WEB SERVICE SET PARAMETER("WS_BankBalDateIn";$3)
+WEB SERVICE SET PARAMETER("WS_ActionIn";$4)
+$TCPID:=0
+$Error:=IT_SetTimeOut (1)
+$PortPos:=Position(":";[Facility]CentralAddress)
+If ($PortPos>0)
+$PortString:=Substring([Facility]CentralAddress;$PortPos+1)
+Else 
+$PortString:="19812"
+End if 
+$Port:=Num($PortString)
+$Error:=TCP_Open (GetDNS ("MV");$Port;$TCPID;0)
+If ($Error=0)
+$Error:=TCP_Close ($TCPID)
+WEB SERVICE CALL("https://"+GetDNS ("MV")+":"+$PortString+"/4DSOAP/";"Storman#WS_GetBankRecBal";"WS_GetBankRecBal";"Storman";Web Service dynamic)
+WEB SERVICE GET RESULT($Facility;"WS_FacilityCode")
+WEB SERVICE GET RESULT(vBankBal;"WS_BankBalAmt")
+WEB SERVICE GET RESULT(vBBDate;"WS_BankBalDate")
+WEB SERVICE GET RESULT(viAction;"WS_Action")// Memory clean-up on the final return value.
+If (viAction>=5)
+$0:=False
+//If (viAction=5)
+//AlertMessage ("Unable to locate bank account in MV head office server.  Please contact head offi"+"ce!")
+//Else 
+//AlertMessage ("The Chart of Accounts file is being modified at MV Head Office!")
+//End if 
+Else 
+$0:=True
+End if 
+Else 
+$0:=False
+//AlertMessage ("The Central Server could not be contacted to obtain the bank balance.  Please t"+"ry again later!")
+End if 
+$Error:=IT_SetTimeOut (30)

@@ -1,0 +1,79 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0;$Connection)
+C_TEXT($1;$2;$3;$4;$5;$6;WS_vtAgreementNumber;WS_vtPassword;WS_vtIPAddr)
+$0:=False
+$Connection:=False
+
+If (WEB Is secured connection)
+$Connection:=True
+$Header:="Strict-Transport-Security: max-age=31536000; includeSubdomains; preload"
+WEB SET HTTP HEADER($Header)
+Else 
+$Connection:=False
+
+//22-12-16 DAM
+// Added work around for NM and SK due to insomninac only connects using http
+If (Test path name(<>sPreferencesPath+"Insomniac.xml")=Is a document)
+$Connection:=True
+End if 
+End if 
+
+If ($Connection)
+Case of 
+: ($1="/4DCGI/SyncFromMaster") | ($1="/4DCGI/SyncToMaster")
+$0:=True
+: (SOAP Request)
+WS_vtIPAddr:=$3
+WS_vtAgreementNumber:=$5//e.g. PLMLB01023
+WS_vtPassword:=$6
+$0:=True
+
+
+: ($1="/4DCGI/reserve@") | ($1="favicon.ico")// /index.html")
+$0:=True
+
+: ($1="/4DCGI/Insomniac@")
+$0:=True
+
+//: ($1="/4DCGI/stats@")
+//$0:=True
+
+: ($1="/4DCGI/Account")
+//QUERY([Agreement];[Agreement]AgreeNo=$5
+$0:=True
+
+: ($1="/4DCGI/Account@")
+$0:=True
+
+: ($1="@WWW_AccountReservation@")
+$0:=True
+
+: ($1="/help/@") | ($1="help/@")
+$0:=True
+: ($1="/4DCGI/emailcust/unsubscribe@")
+$0:=True
+Unsubscribe ($1)
+
+: ($1="/4DCGI/4dwsdl@")
+$0:=True
+
+: ($1="/4DCGI/bpoint@")
+$0:=True
+
+: ($1="/4DCGI/gocardless@")
+$0:=True
+
+Else 
+ALL RECORDS([Facility])
+If ($5="AdminSupport") & ($6=GetTextNo ([Facility]AdminSPassDate;2;","))//Login
+$0:=True
+Else 
+If ($5>"") & ($6>"")
+QUERY([UserLogins];[UserLogins]Name=$5)
+If ([UserLogins]Password=$6)
+$0:=True
+End if 
+End if 
+End if 
+End case 
+End if 

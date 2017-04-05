@@ -1,0 +1,44 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header)
+//vTitle:=Get localized string("Unconfirmed Receipts")
+vLegend:=""
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+[Trxs]AnalysisCode:=Substring([Trxs]AnalysisCode;6)
+RELATE ONE([Trxs]AgreeNo)
+
+If (Records in selection([Agreement])=0)
+QUERY([Reservation];[Reservation]RReserveNo=[Trxs]AgreeNo)
+vAgreeNo:=[Reservation]ReserveNo
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+vUnitNos:=[Unit]UnitNo
+Else 
+vAgreeNo:=[Agreement]AgreeNo
+vUnitNos:=[Agreement]UnitsOccup
+End if 
+
+Case of 
+: ([Trxs]CustomerCode#(<>sFacility+"MISCL")) & ([Trxs]CustomerCode=(<>sFacility+"@"))
+RELATE ONE([Trxs]CustomerCode)
+vName:=[Customer]CustomerName
+vStatus:=[Trxs]Narration
+: ([Trxs]CustomerCode=(<>sFacility+"MISCL"))
+$Pos:=Position(Char(17);[Trxs]Narration;*)
+vName:=Substring([Trxs]Narration;1;$Pos-1)
+vStatus:=[Trxs]InvAdjReason
+Else 
+vName:=""
+vStatus:=[Trxs]Narration
+End case 
+
+
+bRepDate:=0
+bRepDesc:=0
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

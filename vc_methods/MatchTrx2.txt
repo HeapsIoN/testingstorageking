@@ -1,0 +1,263 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Called by CheckMatching and LogMonLoopCode  NB SDD Modified this on 31/8/05 to cause 0 TotAmt trxs to match
+C_LONGINT($0)//Result code 0=Successful 1=Locked 2=Other problem?
+C_TEXT($1)//AgreeNo to Match
+C_LONGINT($2;$Match)//Match Code
+C_BOOLEAN($3;$CustLoaded)//If true Customer & Agreement are already loaded
+C_LONGINT($i;$j;$x)
+$0:=0
+$Match:=$2
+If ($Match#-999)//Don't match stock purchase transactions
+If (Count parameters>=3)
+$CustLoaded:=$3
+Else 
+$CustLoaded:=False
+End if 
+$MatchNo:=1
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match)
+If (Records in selection([Trxs])>0)
+QUERY([Facility];[Facility]FacilityCode=Substring($1;1;5))
+If ($Match#0) & ([Trxs]CustomerCode#([Facility]FacilityCode+"MISCL"))//TriggerSubTrx for Misc Receipts is done from MiscReceipts layout
+$TotCharges:=0
+For ($i;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+$TotCharges:=$TotCharges+[Trxs]TotAmt
+Else 
+$TotCharges:=$TotCharges-[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+FIRST RECORD([Trxs])
+If (Round($TotCharges;2)#0)
+$Match:=0
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=0)
+End if 
+End if 
+If ($CustLoaded=False)
+READ WRITE([Customer])
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+End if 
+If (Locked([Customer]))//Lock these records to make it less likely [Transactions] will be locked
+$0:=1
+Else 
+For ($i;1;Records in selection([Trxs]))
+If (Locked([Trxs]))
+$0:=1
+LOCKED BY([Trxs];$Process;$User;$Machine;$ProcessName)
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ($0=0)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Analysis]SortOrder;<;[Trxs]TotAmt;<)
+ARRAY TEXT(aAnlys;0)
+ARRAY REAL(aTaxs;0)
+ARRAY REAL(aTotal;0)
+ARRAY TEXT(aCustName;0)
+ARRAY LONGINT(aRecNo;0)
+ARRAY LONGINT(aSeqNo;0)
+ARRAY LONGINT(aSelection;0)
+SELECTION TO ARRAY([Trxs]AnalysisCode;aAnlys;[Trxs]TaxAmt;aTaxs;[Trxs]TotAmt;aTotal;[Trxs]Description;aCustName;[Trxs]SeqNo;aSeqNo;[Trxs];aRecNo)
+ARRAY BOOLEAN(aPartial;Size of array(aTotal))
+For ($i;1;Size of array(aPartial))
+aPartial{$i}:=False
+End for 
+For ($j;1;2)
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+If ($j=1)
+QUERY([Trxs]; & ;[Trxs]TotAmt<0)//First pass any negative trxs 
+Else 
+QUERY([Trxs]; & ;[Trxs]TotAmt>=0)//Second pass all the positive payments
+End if 
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>;[Trxs]TotAmt;<)
+$New:=True
+$MatchAll:=False
+$MatchDirect:=False//New line
+$x:=1//Array pointer   
+Repeat 
+$TotCharges:=0
+For ($i;1;Size of array(aTotal))
+$TotCharges:=Round($TotCharges+aTotal{$i};2)
+End for 
+If (Locked([Trxs]))
+$0:=1
+End if 
+If ($New)
+INSERT IN ARRAY(aSelection;0)
+aSelection{1}:=Record number([Trxs])
+$ReceiptAmt:=[Trxs]TotAmt
+If ($ReceiptAmt=$TotCharges)
+$MatchAll:=True
+Else //Added else part on 19/9/05 SDD
+$i:=Find in array(aTotal;$ReceiptAmt)
+$MatchDirect:=($i>0)
+End if 
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//While (Records in subselection([Transaction]MiscDetls)>0)
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt*-1;[Transaction]MiscDetls'TotAmt*-1)
+//DELETE SUBRECORD([Transaction]MiscDetls)
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//End while 
+$New:=False
+End if 
+//Following line removed on 31/8/05 by SDD to enable 0 charge trxs to be successfully matched (in effect first condition has been removed)
+//If (aTotal{$x}#0) & ((($j=1) & (aTotal{$x}<0)) | ($j=2) | ($MatchAll))  `First pass negative charges only then any non-zero charges
+If (($j=1) & (aTotal{$x}<0)) | ($j=2) | ($MatchAll) | ($MatchDirect)//First pass negative charges only then any non-zero charges
+Case of 
+: ($MatchDirect)//This condition of Case statement added 19/9/05 SDD
+//CREATE SUBRECORD([Transaction]MiscDetls)
+//[Transaction]MiscDetls'TotAmt:=aTotal{$i}
+//[Transaction]MiscDetls'TaxAmt:=aTaxs{$i}
+//[Transaction]MiscDetls'AnalysisCode:=aAnlys{$i}
+//[Transaction]MiscDetls'Description:=aCustName{$i}
+//[Transaction]MiscDetls'SeqNo:=aSeqNo{$i}
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt;[Transaction]MiscDetls'TotAmt)
+INSERT IN ARRAY(aSelection;0)
+aSelection{1}:=aRecNo{$i}
+$ReceiptAmt:=$ReceiptAmt-aTotal{$i}
+DELETE FROM ARRAY(aTotal;$i;1)
+DELETE FROM ARRAY(aTaxs;$i;1)
+DELETE FROM ARRAY(aAnlys;$i;1)
+DELETE FROM ARRAY(aCustName;$i;1)
+DELETE FROM ARRAY(aSeqNo;$i;1)
+DELETE FROM ARRAY(aRecNo;$i;1)
+DELETE FROM ARRAY(aPartial;$i;1)
+If ($ReceiptAmt=0)
+CREATE SELECTION FROM ARRAY([Trxs];aSelection;"Match"+String($MatchNo))
+$MatchNo:=$MatchNo+1
+ARRAY LONGINT(aSelection;0)
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+$MatchDirect:=False
+$New:=True
+: (($j=1) & (aTotal{$x}>$ReceiptAmt)) | (($j=2) & (aTotal{$x}<$ReceiptAmt)) | ($MatchAll)
+//CREATE SUBRECORD([Transaction]MiscDetls)
+//[Transaction]MiscDetls'TotAmt:=aTotal{$x}
+//[Transaction]MiscDetls'TaxAmt:=aTaxs{$x}
+//[Transaction]MiscDetls'AnalysisCode:=aAnlys{$x}
+//[Transaction]MiscDetls'Description:=aCustName{$x}
+//[Transaction]MiscDetls'SeqNo:=aSeqNo{$x}
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt;[Transaction]MiscDetls'TotAmt)
+INSERT IN ARRAY(aSelection;0)
+aSelection{1}:=aRecNo{$x}
+$ReceiptAmt:=$ReceiptAmt-aTotal{$x}
+aTotal{$x}:=0
+aPartial{$x}:=False
+aTaxs{$x}:=0
+If ($ReceiptAmt=0) & (Find in array(aPartial;True)<1)
+CREATE SELECTION FROM ARRAY([Trxs];aSelection;"Match"+String($MatchNo))
+$MatchNo:=$MatchNo+1
+ARRAY LONGINT(aSelection;0)
+End if 
+$x:=$x+1
+Else 
+//CREATE SUBRECORD([Transaction]MiscDetls)
+//[Transaction]MiscDetls'TotAmt:=$ReceiptAmt
+//[Transaction]MiscDetls'TaxAmt:=Round(aTaxs{$x}*$ReceiptAmt/aTotal{$x};2)
+//[Transaction]MiscDetls'Description:=aCustName{$x}
+//[Transaction]MiscDetls'AnalysisCode:=aAnlys{$x}
+//[Transaction]MiscDetls'SeqNo:=aSeqNo{$x}
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt;[Transaction]MiscDetls'TotAmt)
+INSERT IN ARRAY(aSelection;0)
+aSelection{1}:=aRecNo{$x}
+aTotal{$x}:=aTotal{$x}-$ReceiptAmt
+If (aTotal{$x}#0)
+aPartial{$x}:=True
+End if 
+//aTaxs{$x}:=Round(aTaxs{$x}-[Transaction]MiscDetls'TaxAmt;2)
+//$ReceiptAmt:=$ReceiptAmt-[Transaction]MiscDetls'TotAmt  //This line added as $ReceiptAmt was out of balance
+If (aTotal{$x}=0) & (Find in array(aPartial;True)<1)
+CREATE SELECTION FROM ARRAY([Trxs];aSelection;"Match"+String($MatchNo))
+$MatchNo:=$MatchNo+1
+ARRAY LONGINT(aSelection;0)
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+$New:=True
+End case 
+Else 
+$x:=$x+1
+End if 
+Until (End selection([Trxs])) | ($x>Size of array(aTotal))
+//While (End selection([Transaction])=False) | ($ReceiptAmt#0)
+//If ($New)
+//$ReceiptAmt:=[Transaction]TotAmt
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//While (Records in subselection([Transaction]MiscDetls)>0)
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt*-1;[Transaction]MiscDetls'TotAmt*-1)
+//DELETE SUBRECORD([Transaction]MiscDetls)
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//End while 
+//End if 
+//If (Round($ReceiptAmt;2)#0)
+//CREATE SUBRECORD([Transaction]MiscDetls)
+//[Transaction]MiscDetls'TotAmt:=Round($ReceiptAmt;2)
+//[Transaction]MiscDetls'TaxAmt:=CalcTaxAmt ($ReceiptAmt;<>sFacility+"RF";[Transaction]TrxDate;[Transaction]TrxDate;2)
+//[Transaction]MiscDetls'Description:="Rental Fee"
+//[Transaction]MiscDetls'AnalysisCode:=<>sFacility+"RF"  //Should be Rental Fee Code
+//[Transaction]MiscDetls'SeqNo:=-9  //Unallocated
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt;[Transaction]MiscDetls'TotAmt)
+//$ReceiptAmt:=0  //This line added 2.5.4 29/12/00
+//ARRAY LONGINT(aSelection;0)  //If anything matches to -9 it cannot be part of a match
+//End if 
+//SAVE RECORD([Transaction])
+//NEXT RECORD([Transaction])
+//$New:=True
+//End while 
+End if 
+End for 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+For ($j;1;Records in selection([Trxs]))
+If (Locked([Trxs]))
+$0:=1
+End if 
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//While (Records in subselection([Transaction]MiscDetls)>0)
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt*-1;[Transaction]MiscDetls'TotAmt*-1)
+//DELETE SUBRECORD([Transaction]MiscDetls)
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//End while 
+//CREATE SUBRECORD([Transaction]MiscDetls)
+//[Transaction]MiscDetls'TotAmt:=[Transaction]TotAmt
+//[Transaction]MiscDetls'TaxAmt:=CalcTaxAmt ([Transaction]TotAmt;<>sFacility+"RF";[Transaction]TrxDate;[Transaction]TrxDate;2)
+//[Transaction]MiscDetls'Description:="Rental Fee"
+//[Transaction]MiscDetls'AnalysisCode:=<>sFacility+"RF"
+//[Transaction]MiscDetls'SeqNo:=-9  //Unallocated
+//TriggerSubTrx ([Transaction]MiscDetls'AnalysisCode;[Transaction]TrxDate;[Transaction]MiscDetls'TaxAmt;[Transaction]MiscDetls'TotAmt)
+//SAVE RECORD([Transaction])
+NEXT RECORD([Trxs])
+End for 
+End if 
+If ($0=0)
+For ($i;1;$MatchNo-1)
+USE NAMED SELECTION("Match"+String($i))
+FIRST RECORD([Trxs])
+If ([Trxs]Match=0)
+[Customer]NextMatch:=[Customer]NextMatch+1//Must increment first as new customers start at 0
+SAVE RECORD([Customer])
+APPLY TO SELECTION([Trxs];[Trxs]Match:=[Customer]NextMatch)
+End if 
+CLEAR NAMED SELECTION("Match"+String($i))
+End for 
+End if 
+End if 
+End if 
+If ($CustLoaded=False)
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+End if 
+SetFacility 
+End if 

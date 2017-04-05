@@ -1,0 +1,82 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Header)
+//RNE1 decrease font size for MAC users
+If (<>iPlatform<3)//for MAC users
+ARRAY LONGINT($pagesArray;0)
+ARRAY TEXT($objectsArray;0)
+ARRAY POINTER($variablesArray;0)
+FORM GET OBJECTS($objectsArray;$variablesArray;$pagesArray;Form current page)
+$objNums:=Size of array($objectsArray)
+If (forCompleted=False)
+For ($v;0;$objNums)
+$objName:=$objectsArray{$v}
+$variableName:=$variablesArray{$v}
+$font_size:=OBJECT Get font size(*;$objName)//getting one of obeject's font size
+OBJECT SET FONT SIZE(*;$objName;$font_size-1)
+End for 
+forCompleted:=True
+End if 
+End if 
+Case of 
+: (<>sProduct="@B")
+vTitle:=Get localized string("Dynamic Rent Control for Occupied Berths")
+OBJECT SET TITLE(*;"Text2";Get localized string("Berth"))
+OBJECT SET TITLE(*;"Text13";Get localized string("Berth Val"))
+: (<>sProduct="@R")
+vTitle:=Get localized string("Dynamic Rent Control for Rented Appliances")
+OBJECT SET TITLE(*;"Text2";Get localized string("Appliance"))
+OBJECT SET TITLE(*;"Text13";Get localized string("Appliance Val"))
+: (<>sProduct="@C")
+vTitle:=Get localized string("Dynamic Rent Control for Occupied Spaces")
+OBJECT SET TITLE(*;"Text2";Get localized string("Space"))
+OBJECT SET TITLE(*;"Text13";Get localized string("Space Val"))
+Else 
+vTitle:=Get localized string("Dynamic Rent Control for Occupied Units")
+OBJECT SET TITLE(*;"Text2";Get localized string("Unit"))
+OBJECT SET TITLE(*;"Text13";Get localized string("Unit Val"))
+End case 
+Case of 
+: (vFrom=1)
+vLegend:=Get localized string("Last Rent Increases from")+" "+String(vSDate)+" "+Get localized string("to")+" "+String(vEDate)
+: (vFrom=3)
+vLegend:=Get localized string("Rent Increases to apply from")+" "+String(vDateFrom)//[Notices]DateFrom)
+Else 
+vLegend:=Get localized string("Rent Increases processed for")+" "+String([Facility]LastDaily)
+End case 
+
+If (BLOB size([Facility]ReportLogo_)#0)
+LoadReferences (4)
+End if 
+End if 
+If (Form event=On Printing Detail)
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+vAgree:=Substring([Unit]AgreeNo;6)
+If (Records in selection([Customer])=0)
+vCust:=""
+Else 
+vCust:=[Customer]CustomerName
+End if 
+If (vFrom=1)
+vNetInc:=0
+Else 
+vNetInc:=[Unit]NewRentAmt-[Unit]RentedValue
+End if 
+vTotNetInc:=vTotNetInc+vNetInc
+RELATE ONE([Unit]UnitTypeCode)
+vUnitBaseRate:=CalculateBaseRate (2;0)
+End if 
+If (Form event=On Printing Break)
+If (Level=0)
+vTotCurVal:=Subtotal([Unit]RentedValue)
+vTotNewVal:=Subtotal([Unit]NewRentAmt)
+If (vTotNetInc=0)
+OBJECT SET VISIBLE(*;"oNetInc@";False)
+Else 
+OBJECT SET VISIBLE(*;"oNetInc@";True)
+End if 
+End if 
+End if 
+If (Form event=On Printing Footer)
+SetFooter 
+End if 

@@ -1,0 +1,365 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: PrintSelection
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($0)//True if printed / False if cancelled
+C_TEXT($1)// P or L  plus * to suppress dialog
+C_POINTER($2)//Pointer to table
+C_BOOLEAN($3;$Set;$4;$Alert)
+C_LONGINT($iErr)
+C_TEXT($tWindowTitle;$tFileType;$tFileDescription;$tStartFolder;$tFileNameShort;$tFileNameFull;$File)
+C_LONGINT($start;$lastresult;$lResult;$lengthfound)
+C_TEXT($Path;$Filename)
+ON ERR CALL("ErrorLog")
+$tFileNameShort:=""
+$tFileNameFull:=""
+$0:=False
+$Set:=False
+$Alert:=True
+If (Count parameters>2)
+$Set:=$3
+End if 
+If ($Set)
+SetFacility (False)
+End if 
+If (Count parameters>3)
+$Alert:=$4
+End if 
+$p:=Current default table
+If (Count parameters>1)
+$p:=$2
+End if 
+
+If (Records in selection($p->)=0) & (<>tBatch=False) & ($Alert=True)
+AlertMessage (Get localized string("There are no records to print for this report"))
+Else 
+Case of 
+: (<>iPrinttoFile=1)//Save to CSV File
+FldDelimit:=9
+RecDelimit:=13
+
+If (Count parameters>1)
+EXPORT TEXT($2->;"")
+
+Else 
+EXPORT TEXT("")
+End if 
+: (<>iPrinttoFile=2)//Save as PDF file
+$tWindowTitle:=""
+$tFileType:="*.pdf"
+$tFileDescription:="PDF Documents ("+$tFileType+")"
+$tStartFolder:="c:\\"
+$iErr:=gui_GetSaveFileName ($tWindowTitle;$tFileType;$tFileDescription;$tStartFolder;$tFileNameShort;$tFileNameFull;0)
+If (Position(".pdf";$tFileNameFull)=0)
+$File:=$tFileNameFull+Substring($tFileType;2)
+Else 
+$File:=$tFileNameFull
+End if 
+$start:=1
+Repeat 
+$lastresult:=$lResult
+$lResult:=Position(<>sSeparator;$File;$start;$lengthfound)
+$start:=$start+$lengthfound
+Until ($lResult=0)
+$Path:=Substring($File;1;$lastresult)
+$Filename:=Substring($File;$lastresult+1)
+$Filename:=Substring($Filename;1;Length($filename)-4)
+$File:=Substring($File;1;Length($File)-4)
+vPName:=Get current printer
+
+//Johnno added FB9891
+$Time:=Current time
+
+C_BOOLEAN($MicPDF)
+$MicPDF:=False
+C_TEXT($pdfprintername)
+$pdfprintername:="Microsoft Print to PDF"
+Repeat 
+//10/12/15 DAM Added ability to set PDF Creator for Win10
+ARRAY TEXT($name1;0)
+PRINTERS LIST($name1)
+If (Find in array($name1;$pdfprintername)>0)
+SET CURRENT PRINTER($pdfprintername)
+$MicPDF:=True
+Else 
+SET CURRENT PRINTER(PDFCreator Printer name)
+$MicPDF:=False
+End if 
+
+$Tick:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>=($Tick+60))
+
+Until (Get current printer=PDFCreator Printer name) | ($Time+?00:00:30?>Current time) | (Get current printer=$pdfprintername)
+
+If ($MicPDF=True)
+If (Get current printer#$pdfprintername) & ($Time+?00:00:30?>Current time)
+SyncRecordLog ("Storman could not locate Microsoft Print to PDF! Current printer is "+String(Get current printer))
+End if 
+SET PRINT OPTION(Destination option;2;$File+".pdf")
+Else 
+If (Get current printer#PDFCreator Printer name) & ($Time+?00:00:30?>Current time)
+SyncRecordLog ("Storman could not locate PDF Creator! Current printer is "+String(Get current printer))
+End if 
+SET PRINT OPTION(Destination option;3;$File)
+End if 
+
+//SET PRINT OPTION("PDFOptions:UseAutosave";1)
+//SET PRINT OPTION("PDFOptions:UseAutosaveDirectory";1)
+//SET PRINT OPTION("PDFOptions:AutosaveDirectory";$Path)
+//SET PRINT OPTION("PDFOptions:AutosaveFilename";$Filename)
+//11/12/15 DAM Added for Win 10 PDF Creator
+If ((Get current printer=$pdfprintername))
+SET PRINT PREVIEW(False)
+PRINT SELECTION($p->;>)
+Else 
+PRINT SELECTION($p->;*)
+End if 
+
+SET PRINT OPTION("PDFInfo:Reset standard options";0)
+
+$Time:=Current time
+Repeat 
+SET CURRENT PRINTER(vPName)
+$Tick:=Tickcount
+
+Repeat 
+IDLE
+Until (Tickcount>=($Tick+60))
+
+Until (Get current printer=vPName) | ($Time+?00:00:30?>Current time)
+//Johnno added FB9891///////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+If (<>tPDFDisplay=True)
+
+If (Position(".pdf";$File)<1)
+$File:=$File+".pdf"
+End if 
+
+//Delay added as executing before PDF is created
+$vhTimeStart:=Current time
+Repeat 
+$Time:=Current time
+Until ((Current time-$vhTimeStart)>=?00:00:10?) | (Test path name($File)=Is a document)
+
+If (Test path name($File)=Is a document)
+
+//Delay added as PDF not opening until after about 2 seconds
+//$vhTimeStart:=Current time
+//Repeat 
+//$Time:=Current time
+//Until ((Current time-$vhTimeStart)>=?00:00:02?)
+
+If (<>iPlatform=3)//Windows
+LAUNCH EXTERNAL PROCESS("cmd.exe /C start "+$File)
+Else 
+LAUNCH EXTERNAL PROCESS("open "+UnixPath ($File))
+End if 
+
+Else 
+AlertMessage (Get localized string("The PDF document does not exist on the disk!"))
+End if 
+End if 
+: (<>iPrinttoFile=3)//Save to Excel file
+AlertMessage (Get localized string("There is not currently an option to print to Excel for this report. Please use another Print Location option."))
+Else 
+If (<>iPlatform=3)
+SET PRINT OPTION(Paper option;<>tWinLetterFormat)
+Else 
+SET PRINT OPTION(Paper option;<>tMacLetterFormat)
+End if 
+If ($1="@P@")
+SET PRINT OPTION(Orientation option;1)//Portrait
+Else 
+SET PRINT OPTION(Orientation option;2)//Landscape
+End if 
+If (<>tBatch=False)
+SET PRINT OPTION(Number of copies option;1)
+End if 
+Case of 
+: (<>tPrintPDF)
+SET PRINT PREVIEW(False)
+PRINT SELECTION($p->;>)
+//If (<>iPlatform=3)  //Pause on Windows for pdf995
+//Open window(20;50;300;150;5;Get localized string("Progress"))
+//GOTO XY(2;2)
+//MESSAGE(Get localized string("Waiting for PDF creation...")+"    ")
+//$Time:=Current time
+//Repeat 
+//IDLE
+//Until (Current time>($Time+?00:00:05?))
+//CLOSE WINDOW
+//End if 
+: (<>tBatch)
+PRINT SELECTION($p->;>)
+: (Substring($1;2;1)="*")
+PRINT SELECTION($p->;*)
+Else 
+BEEP
+PRINT SELECTION($p->)
+End case 
+End case 
+End if 
+$0:=(OK=1)
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//Johnno - Original Method FB9891/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//C_BOOLEAN($0)  //True if printed / False if cancelled
+//C_TEXT($1)  // P or L  plus * to suppress dialog
+//C_POINTER($2)  //Pointer to table
+//C_BOOLEAN($3;$Set;$4;$Alert)
+//C_LONGINT($iErr)
+//C_TEXT($tWindowTitle;$tFileType;$tFileDescription;$tStartFolder;$tFileNameShort;$tFileNameFull;$File)
+//C_LONGINT($start;$lastresult;$lResult;$lengthfound)
+//C_TEXT($Path;$Filename)
+//ON ERR CALL("")
+//$tFileNameShort:=""
+//$tFileNameFull:=""
+//$0:=False
+//$Set:=False
+//$Alert:=True
+//If (Count parameters>2)
+//$Set:=$3
+//End if 
+//If ($Set)
+//SetFacility (False)
+//End if 
+//If (Count parameters>3)
+//$Alert:=$4
+//End if 
+//$p:=Current default table
+//If (Count parameters>1)
+//$p:=$2
+//End if 
+//
+//If (Records in selection($p->)=0) & (<>tBatch=False) & ($Alert=True)
+//AlertMessage (Get localized string("There are no records to print for this report"))
+//Else 
+//Case of 
+//: (<>iPrinttoFile=1)  //Save to CSV File
+//FldDelimit:=9
+//RecDelimit:=13
+//
+//If (Count parameters>1)
+//EXPORT TEXT($2->;"")
+//
+//Else 
+//EXPORT TEXT("")
+//End if 
+//: (<>iPrinttoFile=2)  //Save as PDF file
+//$tWindowTitle:=""
+//$tFileType:="*.pdf"
+//$tFileDescription:="PDF Documents ("+$tFileType+")"
+//$tStartFolder:="c:\\"
+//$iErr:=gui_GetSaveFileName ($tWindowTitle;$tFileType;$tFileDescription;$tStartFolder;$tFileNameShort;$tFileNameFull;0)
+//If (Position(".pdf";$tFileNameFull)=0)
+//$File:=$tFileNameFull+Substring($tFileType;2)
+//Else 
+//$File:=$tFileNameFull
+//End if 
+//$start:=1
+//Repeat 
+//$lastresult:=$lResult
+//$lResult:=Position(<>sSeparator;$File;$start;$lengthfound)
+//$start:=$start+$lengthfound
+//Until ($lResult=0)
+//$Path:=Substring($File;1;$lastresult)
+//$Filename:=Substring($File;$lastresult+1)
+//$Filename:=Substring($Filename;1;Length($filename)-4)
+//$File:=Substring($File;1;Length($File)-4)
+//vPName:=Get current printer
+//SET CURRENT PRINTER(PDFCreator Printer name)
+//SET PRINT OPTION(Destination option;3;$File)
+//  //SET PRINT OPTION("PDFOptions:UseAutosave";1)
+//  //SET PRINT OPTION("PDFOptions:UseAutosaveDirectory";1)
+//  //SET PRINT OPTION("PDFOptions:AutosaveDirectory";$Path)
+//  //SET PRINT OPTION("PDFOptions:AutosaveFilename";$Filename)
+//PRINT SELECTION($p->;*)
+//SET PRINT OPTION("PDFInfo:Reset standard options";0)
+//SET CURRENT PRINTER(vPName)
+//If (<>tPDFDisplay=True)
+//
+//If (Position(".pdf";$File)<1)
+//$File:=$File+".pdf"
+//End if 
+//
+//  //Delay added as executing before PDF is created
+//$vhTimeStart:=Current time
+//Repeat 
+//$Time:=Current time
+//Until ((Current time-$vhTimeStart)>=?00:00:10?) | (Test path name($File)=Is a document)
+//
+//If (Test path name($File)=Is a document)
+//
+//  //Delay added as PDF not opening until after about 2 seconds
+//$vhTimeStart:=Current time
+//Repeat 
+//$Time:=Current time
+//Until ((Current time-$vhTimeStart)>=?00:00:02?)
+//
+//If (<>iPlatform=3)  //Windows
+//LAUNCH EXTERNAL PROCESS("cmd.exe /C start "+$File)
+//Else 
+//LAUNCH EXTERNAL PROCESS("open "+UnixPath ($File))
+//End if 
+//
+//Else 
+//AlertMessage (Get localized string("The PDF document does not exist on the disk!"))
+//End if 
+//End if 
+//: (<>iPrinttoFile=3)  //Save to Excel file
+//AlertMessage (Get localized string("There is not currently an option to print to Excel for this report. Please use another Print Location option."))
+//Else 
+//If (<>iPlatform=3)
+//SET PRINT OPTION(Paper option;<>tWinLetterFormat)
+//Else 
+//SET PRINT OPTION(Paper option;<>tMacLetterFormat)
+//End if 
+//If ($1="@P@")
+//SET PRINT OPTION(Orientation option;1)  //Portrait
+//Else 
+//SET PRINT OPTION(Orientation option;2)  //Landscape
+//End if 
+//If (<>tBatch=False)
+//SET PRINT OPTION(Number of copies option;1)
+//End if 
+//Case of 
+//: (<>tPrintPDF)
+//SET PRINT PREVIEW(False)
+//PRINT SELECTION($p->;>)
+//If (<>iPlatform=3)  //Pause on Windows for pdf995
+//Open window(20;50;300;150;5;Get localized string("Progress"))
+//GOTO XY(2;2)
+//MESSAGE(Get localized string("Waiting for PDF creation...")+"    ")
+//$Time:=Current time
+//Repeat 
+//IDLE
+//Until (Current time>($Time+?00:00:05?))
+//CLOSE WINDOW
+//End if 
+//: (<>tBatch)
+//PRINT SELECTION($p->;>)
+//: (Substring($1;2;1)="*")
+//PRINT SELECTION($p->;*)
+//Else 
+//BEEP
+//PRINT SELECTION($p->)
+//End case 
+//End case 
+//End if 
+//$0:=(OK=1)

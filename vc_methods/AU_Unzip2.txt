@@ -1,0 +1,94 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Storman Update: AU_Unzip: Start";"UpdateLog")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 27/01/16, 15:47:21
+// ----------------------------------------------------
+// Method: AU_Unzip
+// Description
+//
+// $1 name of update file
+// $2 location of update file
+// FB10273
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($Update;$Location;$1;$2)//folder,zipfile
+C_TEXT($extra_path;$App;$AppFolder)
+C_TEXT($PHPUnZipCode;$PHPLocation;$result;$Zipfile;$UnZipLoc)
+C_BOOLEAN($0;$isOK)
+
+$Update:=""
+$Location:=""
+$0:=False
+
+
+If (Records in selection([Facility])=0)
+If (<>sFacility="ST@")
+QUERY([Facility];[Facility]FacilityCode="STHOF")
+Else 
+SetFacility 
+End if 
+End if 
+
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+
+
+//$AppFolder:=$1
+
+$Update:=$1+Folder separator+$2//$AppFolder  //[Facility]DownloadFolder+Folder separator+$1
+$Location:=$1//$App+"Plugins"  //[Facility]DownloadFolder
+
+//$Update:="C:\_test\Storman10032\Plugins\Common Crypto.bundle.zip"
+//$Location:="C:\_test\Storman10032\Plugins\"
+
+If (Test path name($Update)=Is a document)
+
+SyncRecordLog ("Storman Update: AU_Unzip: Extracting update: "+$Update;"UpdateLog")
+SyncRecordLog ("Storman Update: AU_Unzip: Extracting to: "+$Location;"UpdateLog")
+
+$PHPFile:=Get 4D folder(Current resources folder)+"HTML"+Folder separator
+
+$PHPCode:=""
+$PHPCode:=$PHPCode+"<?php"+Char(13)
+$PHPCode:=$PHPCode+"$zip = new ZipArchive;"+Char(13)
+$PHPCode:=$PHPCode+"$res = $zip->open('"+$Update+"');"+Char(13)
+$PHPCode:=$PHPCode+"if ($res === TRUE) {"+Char(13)
+$PHPCode:=$PHPCode+"$zip->extractTo('"+$Location+"');"+Char(13)
+$PHPCode:=$PHPCode+"$zip->close();"+Char(13)
+$PHPCode:=$PHPCode+"echo 'OK';"+Char(13)
+$PHPCode:=$PHPCode+"} else {"+Char(13)
+$PHPCode:=$PHPCode+"echo 'NO';"+Char(13)
+$PHPCode:=$PHPCode+"}"+Char(13)
+$PHPCode:=$PHPCode+"?>"
+
+$Doc:=Create document($PHPFile+"UnzipUpdate.php")
+SEND PACKET($Doc;$PHPCode)
+CLOSE DOCUMENT($Doc)
+
+$isOK:=PHP Execute($PHPFile+"UnzipUpdate.php";"";$Result)
+
+$Success1:=PHP Execute("";"quit_4d_php")
+
+If ($Result="OK")
+SyncRecordLog ("Storman Update: AU_Unzip: Extracted: "+$Update+" to "+$Location;"UpdateLog")
+DELETE DOCUMENT($PHPFile+"UnzipUpdate.php")
+$0:=True
+Else 
+SyncRecordLog ("Storman Update: AU_Unzip: Failed: "+$Update+" to "+$Location;"UpdateLog")
+DELETE DOCUMENT($PHPFile+"UnzipUpdate.php")
+$0:=False
+End if 
+
+Else 
+SyncRecordLog ("Storman Update: AU_Unzip: Nothing to unzip!";"UpdateLog")
+//$0:="NO"
+$0:=False
+End if 
+
+
+SyncRecordLog ("Storman Update: AU_Unzip: End";"UpdateLog")

@@ -1,0 +1,74 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//New method create by SDD 9/4/07 to confirm the results of a sync operation
+C_LONGINT($0;$Error;$TCPID;$Status)//Error Code
+C_TEXT($1;$Body;$Footer;$Header;$Buffer)//Post Event
+C_TEXT($cr)
+
+$TCPID:=0
+$Buffer:=""
+
+$cr:=Char(Carriage return)+Char(Line feed)
+
+$Body:="---------------------------123456789"+$cr
+$Body:=$Body+"Content-Disposition: form-data; name="+Char(Double quote)+"vbEventContent"+Char(Double quote)+"; filename="+Char(Double quote)+"source.txt"+Char(Double quote)+$cr//24 chars here
+$Body:=$Body+"Content-Type: text/plain"+$cr+$cr//28 chars here = total 52
+
+$Footer:="---------------------------123456789"+$cr
+$Footer:=$Footer+"Content-Disposition; form-data; name="+Char(Double quote)+"submit"+Char(Double quote)+$cr
+$Footer:=$Footer+$cr
+$Footer:=$Footer+"Upload"+$cr
+$Footer:=$Footer+"---------------------------123456789--"+$cr
+
+$Header:="POST "+$1+" HTTP/1.1"+$cr
+$PortPos:=Position(":";[Facility]CentralAddress)
+If ($PortPos>0)
+$PortString:=Substring([Facility]CentralAddress;$PortPos+1)
+$Address:=Substring([Facility]CentralAddress;$PortPos-1)
+Else 
+$PortString:="19812"
+$Address:=[Facility]CentralAddress
+End if 
+$Port:=Num($PortString)
+$Header:=$Header+"Host: "+$Address+":"+$PortString+$cr
+$Header:=$Header+"Accept: */*"+$cr
+$Header:=$Header+"Accept-Language: en"+$cr
+$Header:=$Header+"Pragma: no-cache"+$cr
+$Header:=$Header+"Connection: Keep-Alive"+$cr
+$Header:=$Header+"User-Agent: Mozilla/4.0 (compatible; MSIE 5.22; Mac_PowerPC)"+$cr
+$Header:=$Header+"UA-OS: MacOS"+$cr
+$Header:=$Header+"UA-CPU: PPC"+$cr
+$Header:=$Header+"Content-type: multipart/form-data; boundary=---------------------------123456789"+$cr
+$Header:=$Header+"Extension: Security/Remote-Passphrase"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Body)+BLOB size(vbEventContent)+Length($Footer)+2)+$cr+$cr
+
+$Error:=TCP_Open ($Address;$Port;$TCPID;1)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header+$Body)
+If ($Error=0)
+$Error:=TCP_SendBLOB ($TCPID;vbEventContent)
+If ($Error=0)
+SET BLOB SIZE(vbEventContent;0)
+$Error:=TCP_Send ($TCPID;$cr+$Footer)
+$Status:=0
+If ($Error=0)
+$Timeout:=Tickcount+(20*60)//Wait 20 seconds with no response
+Repeat 
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$Error:=TCP_State ($TCPID;$Status)
+If ($Buffer>"")
+TEXT TO BLOB($Buffer;vbResponse;Mac text without length;*)
+//CONVERT FROM TEXT($Buffer;"UTF-8";vbResponse)
+$Timeout:=Tickcount+(15*60)
+End if 
+Until ($Status=0) | ($Error>0) | (Tickcount>$Timeout)
+If (Tickcount>$Timeout)
+$Error:=1//Timeout waiting for server
+End if 
+End if 
+End if 
+End if 
+$0:=$Error
+$Error:=TCP_Close ($TCPID)
+Else 
+$0:=$Error
+End if 

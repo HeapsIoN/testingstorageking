@@ -1,0 +1,203 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 14/04/11, 14:48:13
+// ----------------------------------------------------
+// Method: WSC_CheqChargeFromPrev
+// Description
+// Take payment using previously stored Credit Card indentifier
+//
+// Parameters
+// $1 - Display Decline / Error Alerts
+// $2 - Transaction Amount
+// $3 - Expiry Date
+// $4 - Agreement Number
+// $5 - Address
+// $6 - ZIP Code
+// $7 - custProfileID
+// $8 - CCV
+// $9 - MerchantID
+// $10 - Password
+// ----------------------------------------------------
+
+
+C_TEXT($0;$3;$4;$5;$6;$7;$8;$9;$10;$Header;$Message)
+C_BOOLEAN($1)
+C_REAL($2)
+C_LONGINT($Error;$TCPID)
+
+C_TEXT($root;$response;$resultRef)
+C_TEXT($subelem)
+$Buffer:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+$TransactionResponse:=""
+
+$ServerAddress:="dev.nocheck.com"
+$ServerPort:=443
+
+$ExpiryMonth:=Substring($3;1;2)
+$ExpiryYear:="20"+Substring($3;3;2)
+
+$oldErrMethod:=Method called on error
+
+ON ERR CALL("ErrorLog")
+
+
+$root:=DOM Create XML Ref("SVCRequest")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Authentication/SignOnID")
+DOM SET XML ELEMENT VALUE($subelem;$9)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Authentication/Password")
+DOM SET XML ELEMENT VALUE($subelem;$10)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Type")
+DOM SET XML ELEMENT VALUE($subelem;"CreditCard")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Name")
+DOM SET XML ELEMENT VALUE($subelem;"SalePrevID")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/TransactionID")
+DOM SET XML ELEMENT VALUE($subelem;$7)
+
+If ($3#"")
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/ExpMonth")
+DOM SET XML ELEMENT VALUE($subelem;$ExpiryMonth)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/ExpYear")
+DOM SET XML ELEMENT VALUE($subelem;$ExpiryYear)
+End if 
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Amount")
+DOM SET XML ELEMENT VALUE($subelem;String($2;"####0.00"))
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Address")
+DOM SET XML ELEMENT VALUE($subelem;$5)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/ZipCode")
+DOM SET XML ELEMENT VALUE($subelem;$6)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/OriginID")
+DOM SET XML ELEMENT VALUE($subelem;$4)
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/TID")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/eCommerceID")
+DOM SET XML ELEMENT VALUE($subelem;"3")
+
+$subelem:=DOM Create XML element($root;"/SVCRequest/Service/Memo")
+DOM SET XML ELEMENT VALUE($subelem;"")
+
+WEB SERVICE SET PARAMETER("XMLIn";$root)
+
+
+DOM EXPORT TO VAR($root;$Message)
+DOM CLOSE XML($root)
+
+$Folder:="/eservices/api/request.pl"
+
+
+$Header:=$Header+"POST "+$Folder+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+":"+String($ServerPort)+$cr
+$Header:=$Header+"Connection: close"+$cr
+$Header:=$Header+"Content-type: application/xml"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr
+
+Progress (Get localized string("Contacting Server")+"...")
+<>ProgressInd:=1
+
+$Error:=TCP_Open ($ServerAddress;$ServerPort;$TCPID;3)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header+$cr+$Message+$cr+$cr)
+$Reply:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 15 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10))
+$Error:=TCP_Close ($TCPID)
+<>ProgressInd:=100
+Case of 
+: ($Error>1)
+$0:="ERRTCP"
+AlertMessage (Get localized string("TCP Sending Error")+" # "+String($Error))
+: ($Error=1)
+$0:="ERR4TO"
+AlertMessage (Get localized string("TCP Timeout Error"))
+Else 
+Repeat //While a complete HTTP request and response is being received
+$HTTPResponse:=Substring($Reply;1;Position($cr+$cr;$Reply)-1)
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Reply:=Substring($Reply;Position($cr+$cr;$Reply)+Length($cr+$cr))
+Else //If not an HTTPResponse Header then must be the Verisign Payment Response message content
+Case of 
+: (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$TransactionResponse:=$Reply
+Else 
+$TransactionResponse:=" "//To Break out of the Until loop
+$Error:=Num($HTTPResponseCode)
+End case 
+End if 
+Until ($TransactionResponse#"")
+End case 
+
+$Reply:=Substring($Reply;Position("<";$Reply))
+$Reply:=Substring($Reply;1;Position("</Response>";$Reply)+11)
+$response:=DOM Parse XML variable($Reply)
+
+//Check whether charge was successful
+$resultRef:=DOM Find XML element($response;"Response/Status/Error")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+If ($value#"0")
+//Return fail message if failed
+$0:="ERR "+$value
+$alertfail:=Get localized string("Error")+" - Error Code: "+$value
+$resultRef:=DOM Find XML element($response;"Response/Status/Message")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+$alertfail:=$alertfail+" - "+$value
+If ($1)
+AlertMessage ($alertfail)
+End if 
+Else 
+//Return CCID value if successful
+$resultRef:=DOM Find XML element($response;"Response/DebitResponse/TransactionResponse")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+
+If ($value#"@(Y)")
+//Declined
+$resultRef:=DOM Find XML element($response;"Response/DebitResponse/AVSResponse")
+DOM GET XML ELEMENT VALUE($resultRef;$valueAVS)
+$resultRef:=DOM Find XML element($response;"Response/DebitResponse/CVVResponse")
+DOM GET XML ELEMENT VALUE($resultRef;$valueCVV)
+If ($1)
+AlertMessage ($value+$cr+"AVS: "+$valueAVS+$cr+"CVV: "+$valueCVV)
+End if 
+$0:=$value
+Else 
+$resultRef:=DOM Find XML element($response;"Response/DebitResponse/TransactionID")
+DOM GET XML ELEMENT VALUE($resultRef;$value)
+[Trxs]CCTransID:=$value
+$0:=$value
+End if 
+End if 
+
+//Close off XML we used to read response
+DOM CLOSE XML($response)
+Else 
+//TCP Open failed, return error message
+AlertMessage (Get localized string("ServerError")+$ServerAddress)
+$0:="ERRTCP"
+End if 
+
+ON ERR CALL($oldErrMethod)

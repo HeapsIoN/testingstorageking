@@ -1,0 +1,132 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Data Change)
+QUERY([Analysis];[Analysis]Code=asAnalysis{asAnalysis})
+If (Records in selection([Analysis])#0)
+$i:=aQuantity
+$j:=aTot{$i}
+If ([Analysis]InvItem) & ((aQuantity{aQuantity}-vPrevQty)>[Analysis]InvQtyonHand)
+
+AlertMessage (Get localized string("Quantity cannot be more than the remaining units on hand of")+" "+String([Analysis]InvQtyonHand+vPrevQty)+"!")
+If ([Analysis]WholeNumbers=True)
+aQuantity{$i}:=Round([Analysis]InvQtyonHand+vPrevQty;0)
+Else 
+aQuantity{$i}:=Round([Analysis]InvQtyonHand+vPrevQty;2)
+End if 
+End if 
+If ([Facility]TaxAddtoAmt=True)
+aNet{$i}:=Round((aCost{$i})*aQuantity{$i};2)
+aTax{$i}:=CalcTaxAmt (aNet{$i};asAnalysis{$i})
+aTot{$i}:=Round(aNet{$i}+aTax{$i};2)
+Else 
+aTot{$i}:=aCost{$i}*aQuantity{$i}
+aTax{$i}:=CalcTaxAmt (aTot{$i};asAnalysis{$i})
+aNet{$i}:=Round(aTot{$i}-aTax{$i};2)
+End if 
+QUERY([Analysis];[Analysis]Code=asAnalysis{asAnalysis})
+If (aQuantity{$i}>1)
+adDesc{$i}:=[Analysis]Description+" x "+String(aQuantity{$i})
+Else 
+adDesc{$i}:=[Analysis]Description
+End if 
+
+If ([MerchPlan]Description#"")
+If (aQuantity{$i}>1)
+adDesc{$i}:=[MerchPlan]Description+" x "+String(aQuantity{$i})
+Else 
+adDesc{$i}:=[MerchPlan]Description
+End if 
+End if 
+
+If ([Analysis]WholeNumbers=True)
+aQuantity{$i}:=Round(aQuantity{$i};0)
+Else 
+aQuantity{$i}:=Round(aQuantity{$i};2)
+End if 
+//aFullAmt{$i}:=aTot{$i}
+vrTotal:=vrTotal+aTot{$i}-$j
+[Trxs]TotAmt:=vrTotal
+
+If ([Analysis]InvItem=True)
+READ WRITE([Analysis])
+LOAD RECORD([Analysis])
+
+If ([Analysis]WholeNumbers=True)
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+vPrevQty-aQuantity{aQuantity};0)
+Else 
+[Analysis]InvQtyonHand:=Round([Analysis]InvQtyonHand+vPrevQty-aQuantity{aQuantity};2)
+End if 
+SAVE RECORD([Analysis])
+READ ONLY([Analysis])
+LOAD RECORD([Analysis])
+End if 
+
+Else 
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=Substring(asAnalysis{asAnalysis};1;8))
+
+If (Records in selection([MerchPlan])#0)
+$i:=aQuantity
+$OK:=True
+$planItems:=[MerchPlan]AnalysisCodes
+$stockAlert:=""
+While ($planItems#"")
+$aCode:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$aCode+",";"";1)
+$qAmount:=Substring($planItems;1;Position(",";$planItems)-1)
+$planItems:=Replace string($planItems;$qAmount+",";"";1)
+
+QUERY([Analysis];[Analysis]Code=$aCode)
+If (([Analysis]InvItem) & (([Analysis]InvQtyonHand-(Num($qAmount)*aQuantity{$i}))<0))
+$stockAlert:=$stockAlert+Char(Carriage return)+Char(Line feed)+[Analysis]Description+" - quantity on hand: "+String([Analysis]InvQtyonHand)
+End if 
+End while 
+
+
+If ($stockAlert#"")
+AlertMessage ("Cannot sell Inventory Pack: "+[MerchPlan]Description+"."+Char(Carriage return)+Char(Line feed)\
++"Insufficient stock on hand for:"+$stockAlert)
+$OK:=False
+Else 
+$OK:=True
+End if 
+
+
+If ($OK)
+If (aQuantity{$i}>1)
+adDesc{$i}:=[MerchPlan]Description+" x "+String(aQuantity{$i})
+Else 
+adDesc{$i}:=[MerchPlan]Description
+End if 
+
+If ([Facility]TaxAddtoAmt=True)
+aNet{$i}:=Round(aCost{$i}*aQuantity{$i};2)
+aTax{$i}:=CalcTaxAmt (aNet{$i};[MerchPlan]DiscountAnalysis)
+aTot{$i}:=Round(aNet{$i}+aTax{$i};2)
+Else 
+aTot{$i}:=aCost{$i}*aQuantity{$i}
+aTax{$i}:=CalcTaxAmt (aTot{$i};[MerchPlan]DiscountAnalysis)
+aNet{$i}:=Round(aTot{$i}-aTax{$i};2)
+End if 
+
+Else 
+aQuantity{$i}:=vPrevQty
+End if 
+
+
+End if 
+
+End if 
+bDiscount:=True
+End if 
+
+If (Form event=On Before Data Entry)
+If (aQuantity=0)
+$SizeofArray:=Size of array(aQuantity)
+Else 
+$SizeofArray:=aQuantity
+End if 
+If (aQuantity{$SizeofArray}#0)
+vPrevQty:=aQuantity{$SizeofArray}
+End if 
+
+End if 
+

@@ -1,0 +1,60 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($Valid)
+C_TEXT(vCCExpiryMonth)
+C_TEXT(vCCExpiryYear)
+$Country:=[Facility]Country
+If (Form event=On Clicked)
+If (vCCNo="") | ((vCCExpiryYear="") & (vCCExpiryMonth=""))
+AlertMessage (Get localized string("Please check Credit Card Details are entered"))
+If (bEdit=1) | (bDelCC=1)
+$Valid:=True
+End if 
+Else 
+$Year:="20"+vCCExpiryYear
+$Month:=vCCExpiryMonth
+If (Num($Year)>=Year of(Current date))
+If (Num($Year)>Year of(Current date))
+$Valid:=True
+End if 
+If (Num($Month)>=Month of(Current date))
+$Valid:=True
+End if 
+
+End if 
+If ($Valid=False)
+AlertMessage (Get localized string("Invalid date"))
+Else 
+vCCExpiryDate:=vCCExpiryMonth+"/"+vCCExpiryYear
+End if 
+End if 
+
+If ($Valid=True)
+If (bNew=1)
+$Error:=WSC_NAB (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");GetTextNo ([Facility]MerchantDetails;6;",");"addcrn";"5";[Customer]CustomerCode;vCCNo;vCCExpiryDate;"";"";"";0;$Country;"")
+End if 
+If (bEdit=1)
+$Error:=WSC_NAB (GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;",");GetTextNo ([Facility]MerchantDetails;6;",");"editcrn";"5";[Customer]CustomerCode;vCCNo;vCCExpiryDate;"";"";"";0;$Country;"")
+End if 
+
+If ($Error#"ERR@")
+[Customer]customerProfileID:=[Customer]CustomerCode
+vCCNo:=""
+vCCExpiryDate:=""
+vCCExpiryMonth:=""
+vCCExpiryYear:=""
+OBJECT SET ENABLED(bEdit;True)
+OBJECT SET ENABLED(bDelCC;True)
+OBJECT SET ENABLED(bNew;False)
+SAVE RECORD([Customer])
+ACCEPT
+OBJECT SET VISIBLE(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+End if 
+End if 

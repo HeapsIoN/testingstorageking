@@ -1,0 +1,26 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)
+C_TEXT($Message;$Address)
+C_LONGINT($i)
+$Message:="Storman Alerted Items - "+[Facility]FacilityName+Char(13)+Char(13)
+QUERY([EventLog];[EventLog]DateEmailed=!00-00-00!)
+CREATE SET([EventLog];"ToSet")
+QUERY SELECTION([EventLog];[EventLog]EventAlert=True)
+ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>)
+For ($i;1;Records in selection([EventLog]))
+$Message:=$Message+String([EventLog]EventDate)+" "+String([EventLog]EventTime)+" "+[EventLog]UserLogin+" "+FormatLog ([EventLog]LogDetail;[EventLog]EventType)+Char(13)+Char(13)
+NEXT RECORD([EventLog])
+End for 
+SetFacility 
+$Address:=GetEmailSendTo ("@L")
+If (SendEmail ($Address;"Storman Events "+String(Current date);$Message))
+$0:=True
+READ WRITE([EventLog])
+USE SET("ToSet")
+APPLY TO SELECTION([EventLog];[EventLog]DateEmailed:=Current date)
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+Else 
+$0:=False
+End if 
+CLEAR SET("ToSet")

@@ -1,0 +1,95 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Storman Update: AU_DownloadServer: Start";"UpdateLog")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 29/01/16, 12:12:20
+// ----------------------------------------------------
+// Method: AU_DownloadServer
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($Update;$UpdateVersion)
+
+//If (Count parameters=1)
+//  //this has come logmonloop overnight so we want to be silent and force
+//$Overnight:=True
+//SyncRecordLog ("Storman Update: AU_DownloadServer: Overnight";"UpdateLog")
+//End if 
+
+
+If (Records in selection([Facility])=0)
+If (<>sFacility="ST@")
+QUERY([Facility];[Facility]FacilityCode="STHOF")
+Else 
+SetFacility 
+End if 
+End if 
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+$Update:="Server"
+
+READ WRITE([AutoUpdates])
+
+If (Records in selection([AutoUpdates])=1)
+TRACE
+$Update:=$Update+String([AutoUpdates]NextVersion)+".zip"
+SyncRecordLog ("Storman Update: AU_DownloadServer: Receive update: "+$Update+". Download folder: "+String([Facility]DownloadFolder);"UpdateLog")
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Downloading";[Facility]Version;[Facility]VersionDate;True)//;[Facility]ODBCPassword)
+LAUNCH EXTERNAL PROCESS("curl --fail --silent --show-error --stderr "+[Facility]DownloadFolder+"UpdateDownload.log -vk --ftp-ssl -u stormanupdates:rD78Q3n1 ftp://ftp.storman.com/updates/autoupdates/"+$Update+" --ftp-pasv -o "+[Facility]DownloadFolder+<>sSeparator+$Update)
+
+
+If (Test path name([Facility]DownloadFolder+$Update)=Is a document)
+SyncRecordLog ("Storman Update: AU_DownloadServer: Receive complete: "+String([Facility]DownloadFolder+$Update);"UpdateLog")
+
+If (AU_VerifyUpdate ([Facility]DownloadFolder;$Update)) & (Locked([AutoUpdates])=False) & (Read only state([AutoUpdates])=False)
+
+If (Locked([AutoUpdates])) | (Read only state([AutoUpdates]))
+SyncRecordLog ("Locked "+String(Locked([AutoUpdates]))+" Read only "+String(Read only state([AutoUpdates])))
+End if 
+
+//SyncRecordLog ("BEFOREStorman Update: AU_DownloadServer: [AutoUpdates]UpdateStatus: "+String([AutoUpdates]UpdateStatus);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]Name: "+[Facility]FacilityCode;"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]NotUsed: "+String(WS_NextVersion);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]Password: "+String(<>iVersion);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]PrintLog: "+String([AutoUpdates]UpdateReady);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]Description: "+$Update;"UpdateLog")
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+[AutoUpdates]UpdateStatus:=1
+[AutoUpdates]OldVersion:=String(<>iVersion)
+[AutoUpdates]UpdateReady:=True
+[AutoUpdates]UpdateFile:=$Update
+SAVE RECORD([AutoUpdates])
+
+//SyncRecordLog ("AFTERStorman Update: AU_DownloadServer: [AutoUpdates]UpdateStatus: "+String([AutoUpdates]UpdateStatus);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]Name: "+[Facility]FacilityCode;"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]NotUsed: "+String(WS_NextVersion);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]Password: "+String(<>iVersion);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]PrintLog: "+String([AutoUpdates]UpdateReady);"UpdateLog")
+//SyncRecordLog ("Storman Update: AU_DownloadServer: [AutoUpdates]Description: "+$Update;"UpdateLog")
+
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Downloaded";[Facility]Version;[Facility]VersionDate;True)//[Facility]ODBCPassword)
+
+//EXECUTE ON CLIENT("@";"AU_UpdateReady")
+Else 
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Download Failed";[Facility]Version;[Facility]VersionDate;True)//;[Facility]ODBCPassword)
+SyncRecordLog ("Storman Update: AU_Download: Download failed: "+String([Facility]DownloadFolder+$Update);"UpdateLog")
+End if 
+Else 
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Download Incomplete";[Facility]Version;[Facility]VersionDate;True)//;[Facility]ODBCPassword)
+SyncRecordLog ("Storman Update: AU_Download: Not able to locate the file "+String([Facility]DownloadFolder+$Update);"UpdateLog")
+End if 
+End if 
+
+
+SyncRecordLog ("Storman Update: AU_DownloadServer: End";"UpdateLog")
+UnloadAll 

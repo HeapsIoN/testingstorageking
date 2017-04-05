@@ -1,0 +1,206 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Not(Form event=On Validate))
+If (Form event=On Load)
+LoadBackground 
+vCents:=<>tCurrencyCents
+OBJECT SET TITLE(*;"Text11";Get localized string("Round rents to nearest")+" "+vCents)
+
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Field7";Get localized string("Use Rate from")+" "+Get localized string("Berth Types and Rates"))
+//OBJECT SET TITLE(*;"Field7";Get localized string("Berths Affected Rent Inc Rule"))
+OBJECT SET TITLE(*;"vRadioUnit";Get localized string("Berth"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Field7";Get localized string("Use Rate from")+" "+Get localized string("Appliance Types and Rates"))
+//OBJECT SET TITLE(*;"Field7";Get localized string("Appliances Affected Rent Inc Rule"))
+OBJECT SET TITLE(*;"vRadioUnit";Get localized string("Appliance"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Field7";Get localized string("Use Rate from")+" "+Get localized string("Space Types and Rates"))
+//OBJECT SET TITLE(*;"Field7";Get localized string("Units Affected Rent Inc Rule"))
+OBJECT SET TITLE(*;"vRadioUnit";Get localized string("Space"))
+Else 
+OBJECT SET TITLE(*;"Field7";Get localized string("Use Rate from")+" "+Get localized string("Unit Types and Rates"))
+//OBJECT SET TITLE(*;"Field7";Get localized string("Units Affected Rent Inc Rule"))
+OBJECT SET TITLE(*;"vRadioUnit";Get localized string("Unit"))
+End case 
+
+vSrchMths:=Num(GetTextNo ([Notices]SMSMessage;3;","))
+vSrchNotice:=Num(GetTextNo ([Notices]SMSMessage;6;","))
+vSrchBillPlan:=GetTextNo ([Notices]SMSMessage;9;",")
+vDte:=Num(GetTextNo ([Notices]SMSMessage;1;","))
+vSign:=Find in array(asSigns1;GetTextNo ([Notices]SMSMessage;2;","))
+
+If ([Notices]InvoiceFee=0)
+[Notices]InvoiceFee:=1
+End if 
+If ([Notices]DaysAfter=0)
+[Notices]DaysAfter:=[Notices]InvoiceFee
+End if 
+
+//NOTE: aPageNo arrray initialisation done in 'On Double Clicked' event of output form.   Need to do this to have Tab Control to default to page 1 (SG)
+
+//Set 0 Element to record which page the user is on - so we can detect page change
+ARRAY TEXT(aPageNo;2)
+aPageNo{1}:=Get localized string("Rules")
+aPageNo{2}:=Get localized string("Preview")
+aPageNo:=1
+aPageNo{0}:=Get localized string("Rules")
+vCents:=<>tCurrencyCents
+$Mths:=vSrchMths*(-1)
+vSampleDate:=Add to date(Current date;0;$Mths;0)
+If ([Notices]Active=True)
+OBJECT SET VISIBLE(bDailyRun;False)
+OBJECT SET VISIBLE(bDisableDaily;True)
+Else 
+OBJECT SET VISIBLE(bDailyRun;True)
+OBJECT SET VISIBLE(bDisableDaily;False)
+End if 
+If ([Notices]SendToAll)
+Case of 
+: (vDte=3)
+asDates:=1
+: (vDte=58)
+asDates:=2
+Else 
+asDates:=1
+[Notices]RefDateField:=3
+End case 
+Else 
+Case of 
+: (vDte=8)
+asUnitDates:=1
+: (vDte=48)
+asUnitDates:=2
+Else 
+asUnitDates:=1
+[Notices]RefDateField:=8
+End case 
+End if 
+If (vSrchNotice>=0)
+$NoticeNo:=Find in array(asNoticeNo;vSrchNotice)
+If ($NoticeNo>0)
+asNoticeNo:=$NoticeNo
+End if 
+Else 
+asNoticeNo:=Size of array(asNoticeNo)
+vSrchNotice:=asNoticeNo{Size of array(asNoticeNo)}
+End if 
+If (vSrchMths<=0)
+vSrchMths:=1
+End if 
+If (vSrchBillPlan>"")
+$Bill:=Find in array(asBillCode;vSrchBillPlan)
+If ($Bill>0)
+asBillDesc:=$Bill//asBillDesc{$Bill}
+End if 
+Else 
+asBillDesc:=Size of array(asBillDesc)// should be 'All' billing plans
+vSrchBillPlan:=asBillDesc{Size of array(asBillDesc)}
+End if 
+If (vSign=-1)
+asSigns1:=1
+Else 
+asSigns1:=vSign
+End if 
+vSign:=Find in array(asSigns2;GetTextNo ([Notices]SMSMessage;5;","))
+If (vSign=-1)
+asSigns2:=1
+Else 
+asSigns2:=vSign
+End if 
+vSign:=Find in array(asSigns3;GetTextNo ([Notices]SMSMessage;8;","))
+If (vSign=-1)
+asSigns3:=1
+Else 
+asSigns3:=vSign
+End if 
+If ([Notices]SendToAll=True)
+OBJECT SET VISIBLE(*;"aAgree";True)
+OBJECT SET VISIBLE(*;"aUnit";False)
+vRadioUnit:=0
+vRadioAgree:=1
+//SET VISIBLE(*;"Incr"+"@";True)
+Else 
+OBJECT SET VISIBLE(*;"aAgree";False)
+OBJECT SET VISIBLE(*;"aUnit";True)
+vRadioAgree:=0
+vRadioUnit:=1
+//SET VISIBLE(*;"Incr"+"@";False)
+End if 
+
+//If new record is loaded and on Page 2, then Apply Rent Rules
+If (aPageNo=2)
+CREATE EMPTY SET([Unit];"ToPrint")
+$From:="Preview"
+ApplyRentRules ($From)
+End if 
+End if 
+If (Form event=On Clicked)
+If ([Notices]SendToAll=True)
+OBJECT SET VISIBLE(*;"aAgree";True)
+OBJECT SET VISIBLE(*;"aUnit";False)
+//SET VISIBLE(*;"Incr"+"@";True)
+If (Modified([Notices]SendToAll))
+asDates:=1
+[Notices]RefDateField:=3
+End if 
+Else 
+OBJECT SET VISIBLE(*;"aAgree";False)
+OBJECT SET VISIBLE(*;"aUnit";True)
+//SET VISIBLE(*;"Incr"+"@";False)
+If (Modified([Notices]SendToAll))
+asUnitDates:=1
+[Notices]RefDateField:=8
+End if 
+End if 
+If (aPageNo=2) & (aPageNo{0}=Get localized string("Rules"))//If page has been changed to "Preview" then Apply Rent Rules
+//aPageNo{0}:="Preview"  `Record Page Change
+CREATE EMPTY SET([Unit];"ToPrint")
+//SaveRule 
+//SAVE RECORD([Notices])
+//LOAD RECORD([Notices])
+$From:="Preview"
+ApplyRentRules ($From)
+End if 
+If (aPageNo=1)
+aPageNo{0}:=Get localized string("Rules")
+Else 
+aPageNo{0}:=Get localized string("Preview")
+End if 
+End if 
+If ([Notices]FacilityCode="")
+[Notices]FacilityCode:=<>sFacility
+[Notices]RuleNotice:=True
+End if 
+End if 
+
+If (Form event=On Double Clicked)
+FILTER EVENT
+End if 
+
+If (Form event=On Load) | (Form event=On Clicked)
+RentIncrComment 
+
+If ([Notices]SendToAll=False)
+
+///fb11146/////
+Case of //unit
+: (asUnitDates=1)
+[Notices]RefDateField:=8
+: (asUnitDates=2)
+[Notices]RefDateField:=48
+Else 
+End case 
+
+Else 
+
+Case of //agreement
+: (asUnitDates=1)
+[Notices]RefDateField:=3
+: (asUnitDates=2)
+[Notices]RefDateField:=58
+Else 
+End case 
+
+End if 
+End if 

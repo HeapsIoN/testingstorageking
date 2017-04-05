@@ -1,0 +1,217 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($Period;$x)
+C_TEXT($Filename)
+C_TEXT($JournalText)
+C_BOOLEAN(vNewQB)
+If (PermissionsControl (107))
+SetFacility 
+//$Period:=ConfirmThree ("Please select GL to export to:";"Quickbooks";"Great Plains";"CostCon";"Cancel")
+
+Case of 
+: ([Facility]AcctgSystem="QB")
+$Period:=1
+If (<>sProduct="M@") | ([Facility]UseCashBook=False)//This added by SDD 2/5/05 for NMS` second parameter added 25/2/08 - don't know what the second lot under the Else SM does for single sites
+//Dialog here
+ConfirmTwo (Get localized string("Export Receipts or Revenue?");Get localized string("Receipts");Get localized string("Revenue"))
+If (OK=1)
+$Date1:=RequestDate (Get localized string("Enter report start date:");Current date)
+$Date2:=RequestDate (Get localized string("Enter report end date:");Current date)
+If (OK=1)
+If (Shift down=False)
+CreateRecJrnls ($Date1;$Date2;$Period)
+End if 
+QUERY([Journal];[Journal]JrnlType="REC";*)
+QUERY([Journal]; & ;[Journal]JrnlDate>=$Date1;*)
+QUERY([Journal]; & ;[Journal]JrnlDate<=$Date2)
+$JournalText:=ExportQuickBooks 
+End if 
+Else 
+ConfirmTwo (Get localized string("Please select the version of Quickbooks you are using:");Get localized string("Up to 07/08");Get localized string("08/09 and later"))
+If (OK=1)
+vNewQB:=False
+Else 
+vNewQB:=True
+End if 
+$Date1:=GetDate (1;Month of(Current date);Year of(Current date))-1
+$Date1:=RequestDate (Get localized string("Enter month end date for journal?");$Date1)
+If (OK=1)
+If (Shift down=False)
+CreateRevJrnls ($Date1;0)
+End if 
+QUERY([Journal];[Journal]JrnlType="REV";*)
+QUERY([Journal]; | ;[Journal]JrnlType="PRE";*)
+QUERY([Journal]; & ;[Journal]PeriodNo=GetPeriod ($Date1))
+$JournalText:=ExportQuickBooks 
+End if 
+End if 
+Else 
+$Period:=Num(RequestMessage (Get localized string("Export to Quick Books for what period no?");String(((Year of(Current date)-2000)*100)+Month of(Current date))))
+If (OK=1)
+If ($Period>0)
+QUERY([Journal];[Journal]PeriodNo=$Period)
+If (Records in selection([Journal])>0)
+ConfirmTwo (Get localized string("Export")+" "+String(Records in selection([Journal]))+" "+Get localized string("journals for Quick Books for period")+" "+String($Period)+" "+Get localized string("from")+" "+String(GetPeriodEndDate ($Period;True);6)+Get localized string("to")+String(GetPeriodEndDate ($Period);6)+".  Continue?";"Yes";"No")
+If (OK=1)
+$x:=Find in array(<>asEmailSendToCode;"J")
+ORDER BY([Journal];[Journal]JournalNo;>)
+If ($x>0)//Send Journal automatically by email
+$Filename:=[Facility]FacilityCode+String($Period)+".IIF"
+$JournalText:=ExportQuickBooks ($Filename)
+If (Test path name(<>sExportPath+$Filename)=Is a document)
+CREATE RECORD([Message])
+[Message]Subject:="QuickBooks Export file from "+[Facility]FacilityCode
+[Message]Address:=<>asEmailSendToAddress{$x}
+[Message]OutIn:=True
+[Message]Facility:=<>sFacility
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=[Facility]FacilityName+" "+Get localized string("is sending the enclosed QuickBooks export file that is named :")+Char(13)+Char(13)+$Filename+Char(13)+Char(13)+$JournalText
+[Message]Attachments:=<>sExportPath+$Filename
+SAVE RECORD([Message])
+QUERY([Message];[Message]OutIn=True;*)
+QUERY([Message]; & ;[Message]SentRead=False;*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+If (Records in selection([Message])>0)
+READ WRITE([Message])
+CheckMail 
+READ ONLY([Message])
+UNLOAD RECORD([Message])
+End if 
+Else 
+AlertMessage (Get localized string("The QuickBooks export file could not be emailed as it does not appear to exist!"))
+End if 
+Else 
+$JournalText:=ExportQuickBooks 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("There are no journals for period number")+" "+String($Period)+"!")
+End if 
+Else 
+AlertMessage (Get localized string("Invalid Period No!"))
+End if 
+End if 
+End if 
+SetFacility 
+: ([Facility]AcctgSystem="GP")
+$Period:=2
+//Dialog here
+ConfirmTwo (Get localized string("Export Receipts or Revenue?");Get localized string("Receipts");Get localized string("Revenue"))
+If (OK=1)
+$Date1:=RequestDate (Get localized string("Enter report start date:");Current date)
+$Date2:=RequestDate (Get localized string("Enter report end date:");Current date)
+If (OK=1)
+If (Shift down=False)
+CreateRecJrnls ($Date1;$Date2;$Period)
+End if 
+ExportRecJrnls ($Date1;$Date2)
+End if 
+Else 
+$Date1:=GetDate (1;Month of(Current date);Year of(Current date))-1
+$Date1:=RequestDate (Get localized string("Enter month end date for journal?");$Date1)
+If (OK=1)
+If (Shift down=False)
+CreateRevJrnls ($Date1;1)
+End if 
+ExportRevJrnls ($Date1)
+End if 
+End if 
+SetFacility 
+: ([Facility]AcctgSystem="CC")
+$Period:=3
+ConfirmTwo (Get localized string("Export Receipts or Revenue?");Get localized string("Receipts");Get localized string("Revenue"))
+If (OK=1)
+ExportGLReceipts 
+Else 
+ExportGLSales 
+End if 
+: (([Facility]AcctgSystem="MY") | ([Facility]AcctgSystem="MN"))//- Modified by Hamid - 31/08/2015 - 9706
+$Period:=4
+ConfirmTwo (Get localized string("Export Receipts or Revenue?");Get localized string("Receipts");Get localized string("Revenue"))
+If (OK=1)//Receipts
+$Date1:=RequestDate (Get localized string("Enter report start date:");Current date)
+$Date2:=RequestDate (Get localized string("Enter report end date:");Current date)
+If (OK=1)
+If (Shift down=False)
+CreateRecJrnls ($Date1;$Date2;$Period)
+End if 
+QUERY([Journal];[Journal]JrnlType="REC";*)
+QUERY([Journal]; & ;[Journal]JrnlDate>=$Date1;*)
+QUERY([Journal]; & ;[Journal]JrnlDate<=$Date2)
+$JournalText:=ExportMYOB (vSeparateFiles)
+End if 
+Else //Revenue
+$Date1:=GetDate (1;Month of(Current date);Year of(Current date))-1
+$Date1:=RequestDate (Get localized string("Enter month end date for journal?");$Date1)
+If (OK=1)
+If (Shift down=False)
+CreateRevJrnls ($Date1;0)
+SetFacility 
+End if 
+QUERY([Journal];[Journal]JrnlType="REV";*)
+QUERY([Journal]; | ;[Journal]JrnlType="PRE";*)
+QUERY([Journal]; & ;[Journal]PeriodNo=GetPeriod ($Date1))
+$JournalText:=ExportMYOB (vSeparateFiles)
+End if 
+End if 
+: ([Facility]AcctgSystem="SG")
+$Period:=5
+ConfirmTwo (Get localized string("GL Report1");Get localized string("Invoices");Get localized string("Journals"))
+If (OK=1)
+ExportSageInvoices 
+Else 
+ConfirmTwo (Get localized string("Export Receipts or Revenue?");Get localized string("Receipts");Get localized string("Revenue"))
+If (OK=1)
+$Date1:=RequestDate (Get localized string("Enter report start date:");Current date)
+$Date2:=RequestDate (Get localized string("Enter report end date:");Current date)
+If (OK=1)
+If (Shift down=False)
+CreateRecJrnls ($Date1;$Date2;$Period)
+End if 
+QUERY([Journal];[Journal]JrnlType="REC";*)
+QUERY([Journal]; & ;[Journal]JrnlDate>=$Date1;*)
+QUERY([Journal]; & ;[Journal]JrnlDate<=$Date2)
+$JournalText:=ExportSage 
+End if 
+Else 
+$Date1:=GetDate (1;Month of(Current date);Year of(Current date))-1
+$Date1:=RequestDate (Get localized string("Enter month end date for journal?");$Date1)
+If (OK=1)
+If (Shift down=False)
+CreateRevJrnls ($Date1;0)
+End if 
+QUERY([Journal];[Journal]JrnlType="REV";*)
+QUERY([Journal]; | ;[Journal]JrnlType="PRE";*)
+QUERY([Journal]; & ;[Journal]PeriodNo=GetPeriod ($Date1))
+$JournalText:=ExportSage 
+End if 
+End if 
+End if 
+: ([Facility]AcctgSystem="XE")//xero
+$Period:=6
+//$Note:=ConfirmThree (Get localized string("Xero Report");Get localized string("Invoices");Get localized string("Statements");Get localized string("Accounts"))
+//$Note:=ConfirmThree ("What would you like to export to Xero?";"Invoices (Sales)";Get localized string("Statements");"Chart of Accounts")
+$Note:=ConfirmFour ("What would you like to export to Xero?";"Invoices Tax Exclusive";"Invoices Tax Inclusive";Get localized string("Statements");"Chart of Accounts")
+
+///////////
+Case of 
+: ($Note=4)
+If (ExportXeroAccounts =1)
+Else 
+ALERT("Account codes in Chart of Accounts table must be unique for Xero")
+End if 
+: ($Note=1)
+ExportXeroInvoices //excl
+: ($Note=2)
+ExportXeroInvoices2 //inclusive
+: ($Note=3)
+ExportXeroStatements 
+Else 
+//Do Nothing
+End case 
+//////////////
+
+Else 
+AlertMessage (Get localized string("You need to set an Accounting Package to export to under System Setup!"))
+End case 
+End if 

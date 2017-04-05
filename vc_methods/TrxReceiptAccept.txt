@@ -1,0 +1,244 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+$OK:=True
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+$CCTransID:=[Trxs]CCTransID
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+$CCTransID:=[Trxs]CCAuthNo
+End if 
+
+//04/01/16 DM Added 2 last conditions for preventing the alertmessage when DD payment is processed
+If ([Analysis]SpecialOptions=57) & (([Trxs]CCAuthNo="") | ($CCTransID=""))
+
+ConfirmTwo (Get localized string("The Direct Debit has no");Get localized string("Continue Anyway"))
+If (OK=1)
+$OK:=True
+Else 
+AlertMessage (Get localized string("The Direct Debit has not been processed."))
+$OK:=False
+End if 
+
+End if 
+
+If (([Trxs]CCAuthNo="") | ($CCTransID="")) & ([Analysis]SpecialOptions>=54) & ([Analysis]SpecialOptions<=56)
+If (PermissionsControl (203;False))
+ConfirmTwo (Get localized string("The Credit Card has not been processed. Do you wish to continue?");Get localized string("Continue Anyway"))
+If (OK=1)
+$OK:=True
+Else 
+$OK:=False
+End if 
+Else 
+AlertMessage (Get localized string("The Credit Card has not been processed."))
+$OK:=False
+End if 
+End if 
+If ([Facility]BatchRefunds=True) & ([Analysis]SpecialOptions=53)
+If ([Facility]FacilityCode="KE@")
+If ([Facility]Country="AU")
+If (Length([Customer]BSB)>3) & ([Customer]BankAcct#"") & ([Customer]BankAccountName#"")
+ConfirmTwo (Get localized string("By adding this Direct Refund transaction you are authorising THQ to pay this amount directly into the bank account of this customer.")+Char(13)+Char(13)+Get localized string("If this is a mistake or you need more information click cancel."))
+Else 
+AlertMessage (Get localized string("By adding this Direct Refund transaction you are authorising THQ to pay this amount directly into the bank account of this customer.")+Char(13)+Char(13)+Get localized string("To add this refund transaction you will need to go back and complete the customer bank account details."))
+OK:=0
+End if 
+Else 
+$BankAcctFull:=vBank+vBankBranch+vBankAcct+vBankSuffix
+If ((Length([Customer]BankAcct)>15) | (Length($BankAcctFull)>15)) & ([Customer]BankAccountName#"")
+ConfirmTwo (Get localized string("By adding this Direct Refund transaction you are authorising THQ to pay this amount directly into the bank account of this customer.")+Char(13)+Char(13)+Get localized string("If this is a mistake or you need more information click cancel."))
+Else 
+AlertMessage (Get localized string("By adding this Direct Refund transaction you are authorising THQ to pay this amount directly into the bank account of this customer.")+Char(13)+Char(13)+Get localized string("To add this refund transaction you will need to go back and complete the customer bank account details."))
+OK:=0
+End if 
+End if 
+Else 
+ConfirmTwo (Get localized string("This refund will be processed by head office, please do not pay the customer directly"))
+End if 
+If (OK=0)
+$OK:=False
+End if 
+End if 
+If ([Trxs]TotAmt=0)
+AlertMessage (Get localized string("You cannot create a receipt or refund for $0")+" "+<>sCurrency+"0")
+$OK:=False
+End if 
+If (Old([Trxs]TotAmt)#0) & ([Trxs]TotAmt=0) & (PermissionsControl (165;False)=False)
+AlertMessage (Get localized string("You cannot set the transaction to $0"))
+$OK:=False
+End if 
+If ([Trxs]TotAmt<([Facility]MaxRefund*-1)) & (PermissionsControl (164;False)=False)
+AlertMessage (Get localized string("You cannot give a refund more than $")+String([Facility]MaxRefund))
+$OK:=False
+End if 
+If ([Reservation]RReserveNo>"")
+If ([Reservation]ActiveReserve=False) & ([Reservation]Balance>=0) & (PermissionsControl (166;False)=False) & (vtReverse) & ([Trxs]TotAmt#Old([Trxs]TotAmt))
+AlertMessage (Get localized string("You cannot give a refund when the balance is not in credit"))
+$OK:=False
+End if 
+If ([Reservation]ActiveReserve=False) & ([Trxs]TotAmt<[Reservation]Balance) & (vtReverse) & (PermissionsControl (167;False)=False) & ([Trxs]TotAmt#Old([Trxs]TotAmt))
+AlertMessage (Get localized string("You cannot give a refund greater than the current credit balance!"))
+$OK:=False
+End if 
+Else 
+If ([Agreement]ActiveAgreemt=False) & ([Agreement]BalanceOwing>=0) & (PermissionsControl (166;False)=False) & (vtReverse) & ([Trxs]TotAmt#Old([Trxs]TotAmt))
+AlertMessage (Get localized string("You cannot give a refund when the balance is not in credit"))
+$OK:=False
+End if 
+If ([Agreement]ActiveAgreemt=False) & ([Trxs]TotAmt<[Agreement]BalanceOwing) & (vtReverse) & (PermissionsControl (167;False)=False) & ([Trxs]TotAmt#Old([Trxs]TotAmt))
+AlertMessage (Get localized string("You cannot give a refund greater than the current credit balance!"))
+$OK:=False
+End if 
+End if 
+If ([Analysis]MinAmt#0)
+If ([Trxs]TotAmt<[Analysis]MinAmt)
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of less than")+" "+String([Analysis]MinAmt)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+If ([Analysis]MaxAmt#0)
+If ([Trxs]TotAmt>[Analysis]MaxAmt)
+AlertMessage (Get localized string("You cannot enter an amount for")+" "+[Analysis]Description+" "+Get localized string("of more than")+" "+String([Analysis]MaxAmt)+".  "+Get localized string("Please re-enter!"))
+$OK:=False
+End if 
+End if 
+
+//Logging addition of Direct Refunds - custom development for KSS
+If ([Facility]FacilityCode="KE@") & ([Trxs]AnalysisCode=(<>sFacility+"VSI")) & ($OK)
+
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+[NotesHistory]Category:="Refunds"
+[NotesHistory]Note:="Direct Refund added for $"+String(([Trxs]TotAmt*-1);"###,###.00")+" and the Bank Account details at the time were "+Char(Carriage return)+Char(Line feed)
+[NotesHistory]Note:=[NotesHistory]Note+"Bank Account Name: "+[Customer]BankAccountName+Char(Carriage return)+Char(Line feed)
+If ([Customer]BSB#"")
+[NotesHistory]Note:=[NotesHistory]Note+"BSB: "+[Customer]BSB+Char(Carriage return)+Char(Line feed)
+End if 
+[NotesHistory]Note:=[NotesHistory]Note+"Bank Account: "+[Customer]BankAcct+Char(Carriage return)+Char(Line feed)
+SAVE RECORD([NotesHistory])
+
+End if 
+
+//If ((GetTextNo ([Facility]MerchantDetails;1;",")="eMatters") & ([Customer]customerProfileID=""))
+//
+//$User:=Substring(GetTextNo ([Facility]MerchantDetails;3;",");1;20)
+//$PassW:=Substring(GetTextNo ([Facility]MerchantDetails;4;",");1;20)
+//
+//$Expiry:=Replace string(VCCEXPIRY;"/";"")
+//If (Length($Expiry)>4)
+//$Expiry:=Substring($Expiry;1;2)+Substring($Expiry;5;2)
+//End if 
+//$Name:=[Customer]CustomerName
+//$CreditCardHolderName:=VCCNAME
+//$CreditCardNumber:=VCCNO
+//$FinalPrice:=Abs(Round([Trxs]TotAmt;2))
+//
+//$varD:=Current date
+//$varT:=Current time
+//$UID:=""
+//$varct:=Replace string(String($vart);":";"")
+//$UID:=String(Day of($varD))+String(Month of($varD))+String(Year of($varD))+$varCT
+//$strResult:=EmattersPaymentRefund ($User;$PassW;"";$Name;"";$CreditCardHolderName;$CreditCardNumber;Substring($Expiry;1;2);Substring($Expiry;3;2);"";$FinalPrice;"";"";0;"";"";0;0;"";"";"";$UID;0;"Refund")
+//End if 
+If ([Trxs]CashReceived<[Trxs]TotAmt)
+AlertMessage (Get localized string("You cannot enter an amount tendered less than the total amount."))
+[Trxs]CashReceived:=0
+vChange:=0
+$OK:=False
+End if 
+
+If ($OK)
+
+If ([Trxs]AgreeNo="@MISCL")
+[Trxs]Match:=viCashMatch
+End if 
+
+If (bAbortArray=0)
+[Customer]Balance:=[Customer]Balance-[Trxs]TotAmt
+SAVE RECORD([Customer])
+If ([Reservation]RReserveNo>"")
+[Reservation]Balance:=[Reservation]Balance-[Trxs]TotAmt
+SAVE RECORD([Reservation])
+Else 
+[Agreement]BalanceOwing:=[Agreement]BalanceOwing-[Trxs]TotAmt
+SAVE RECORD([Agreement])
+End if 
+End if 
+
+If (<>sProduct="M@") & (Old([Trxs]SeqNo)=0)
+QUERY([Facility];[Facility]FacilityCode=Substring([Trxs]AgreeNo;1;5))
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="ReceiptSite")
+If (Records in selection([Notices])=1)
+//veLetter:=WR New offscreen area 
+EXPAND BLOB([Notices]Email)
+//WR BLOB TO AREA (veLetter;[Notices]Email)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+CREATE RECORD([Message])
+[Message]Address:=[Facility]EmailAddress
+[Message]Subject:=[Notices]EmailSubject
+[Message]Facility:=[Facility]FacilityCode
+$emailText:=Convert to text([Notices]Email;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Message]EmailMsg)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+//WR GET COMMAND INFO (veLetter;wr cmd view references;$i;$a;$b;$c)
+//If ($i=1)
+//WR EXECUTE COMMAND (veLetter;wr cmd view references)
+//End if 
+//
+//If ([Reservation]RReserveNo>"")
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Reservation]RReserveNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Reservation]RReserveNo
+//Else 
+//WR SAVE DOCUMENT (veLetter;<>sTutPath+"Email"+[Agreement]RAgreeNo;wr HTML 3 document)
+//$Document:=<>sTutPath+"Email"+[Agreement]RAgreeNo
+//End if 
+//
+//If ((Test path name($Document)=Is a document))
+//$vhDocRef:=Open document($Document)  // Select the document of your choice
+//CLOSE DOCUMENT($vhDocRef)
+//DOCUMENT TO BLOB(Document;$Blob74)
+//$Blobtext74:=BLOB to text($Blob74;Mac text without length)
+//$Blobtext74:=Replace string($Blobtext74;"./images/";<>sTutPath+"images\\")
+//$Blobtext74:=Replace string($Blobtext74;"<p>";"<br>")
+//$Blobtext74:=Replace string($Blobtext74;"</p>";"<br>")
+//TEXT TO BLOB($Blobtext74;[Message]EmailMsg;Mac text without length)
+//DELETE DOCUMENT($Document)
+//Else 
+//[Message]MsgBody:=WR Get text (veLetter;0;32000)
+//End if 
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]OutIn:=True
+SAVE RECORD([Message])
+//WR DELETE OFFSCREEN AREA (veLetter)
+SendMail 
+End if 
+End if 
+
+If ([Trxs]SeqNo>1000000)
+[Trxs]SeqNo:=([Trxs]SeqNo-1000000)*-1
+End if 
+If ([Analysis]SetBankedDate=True)
+[Trxs]DateBanked:=[Trxs]TrxDate
+End if 
+
+vOriginalReceipt:=""
+vTransID:=""
+vPayments:=vPayments+[Trxs]TotAmt
+ACCEPT
+
+
+//UNLOAD RECORD([Customer])
+//UNLOAD RECORD([Agreement])
+End if 

@@ -1,0 +1,253 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+LoadBackground 
+
+GuideLineDis:=False// Variable for guidelines when formatting SVG
+//SetColours
+
+C_LONGINT($InvFooter)
+
+//If ([Facility]InvoiceFooter=0)
+//asFooters:=1
+//else
+//asFooters:=[Facility]InvoiceFooter
+//end if
+
+
+
+
+
+If (<>tWinLetterFormat#"A4")
+OBJECT MOVE(*;"Field42CustomFooter";0;0;10;0)
+OBJECT MOVE(*;"Field183CustomHeader";0;0;10;0)
+End if 
+
+Case of 
+: (<>sProduct="@B")
+OBJECT SET TITLE(*;"Field1110";Get localized string("Show berth size on invoice"))
+: (<>sProduct="@R")
+OBJECT SET TITLE(*;"Field1110";Get localized string("Show appliance size on invoice"))
+: (<>sProduct="@C")
+OBJECT SET TITLE(*;"Field1110";Get localized string("Show space size on invoice"))
+Else 
+OBJECT SET TITLE(*;"Field1110";Get localized string("Show unit size on invoice"))
+End case 
+C_PICTURE(PicInvHeader;PicInvFooter)
+C_LONGINT(vSVG)// 1= Header 2 = Footer 3 = Receipt
+
+OBJECT SET TITLE(*;"Text7";Get localized string("Balance Forward Date")+":")
+OBJECT SET TITLE(*;"Field1";Get localized string("Show")+" "+<>tABNName+" "+Get localized string("on invoice"))
+OBJECT SET VISIBLE(*;"Field1";<>bShowAbnInv)
+If ([Facility]InvStatement>0)
+$InvStatement:=True
+Else 
+$InvStatement:=False
+End if 
+OBJECT SET VISIBLE([Facility]StatementDetail;$InvStatement)
+
+If ([Facility]InvStatement=1)
+OBJECT SET VISIBLE([Facility]GenerateInvNo;True)
+Else 
+OBJECT SET VISIBLE([Facility]GenerateInvNo;False)
+End if 
+
+ARRAY TEXT(aPageNo;5)
+aPageNo{1}:=Get localized string("Preferences")
+aPageNo{2}:=Get localized string("Invoice Header")
+aPageNo{3}:=Get localized string("Invoice Footer")
+aPageNo{4}:=Get localized string("Receipt Design")
+aPageNo{5}:=Get localized string("Other")
+aPageNo:=1
+vLastPage:=1
+[Facility]TriggerUpdate:=True
+ARRAY TEXT(aInvoicePer;2)
+aInvoicePer{1}:=Get localized string("One invoice per Agreement")
+aInvoicePer{2}:=Get localized string("One invoice per Customer")
+If ([Facility]InvUseAgrBalFwd=True)
+aInvoicePer:=1
+Else 
+aInvoicePer:=2
+End if 
+ARRAY TEXT(aBalFwd;2)
+aBalFwd{1}:=Get localized string("Last Bill Date")
+aBalFwd{2}:=Get localized string("1st of Last Month")
+If ([Facility]BalFwdDateOpt=True)
+aBalFwd:=1
+Else 
+aBalFwd:=2
+End if 
+ARRAY TEXT(aPrintOrder;2)
+aPrintOrder{1}:=Get localized string("Print by Customer Code")
+aPrintOrder{2}:=Get localized string("Print by Agreement Number")
+If ([Facility]InvAgreeCust=True)
+aPrintOrder:=2
+Else 
+aPrintOrder:=1
+End if 
+ARRAY TEXT(aInvFooter;4)
+aInvFooter{1}:=Get localized string("Standard without Credit Card section")
+aInvFooter{2}:=Get localized string("Standard with Credit Card section")
+aInvFooter{3}:=Get localized string("Custom invoice (design it below)")
+aInvFooter{4}:=Get localized string("Custom invoice - Large (design it below)")
+
+OBJECT GET COORDINATES(*;"Field42CustomFooter";$l;$t;$r;$b)
+Case of 
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False)
+aInvFooter:=4
+If ($b=407)
+OBJECT MOVE(*;"Field42CustomFooter";0;0;0;110)
+End if 
+: ([Facility]CustomInvFooter=True)
+aInvFooter:=3
+If ($b=517)
+OBJECT MOVE(*;"Field42CustomFooter";0;0;0;-110)
+End if 
+: ([Facility]StandardInvFooter=True)
+aInvFooter:=1
+: (([Facility]InvoiceFooter>0) & ([Facility]StandardInvFooter=False) & ([Facility]CustomInvFooter=False))//new footers
+aInvFooter:=1
+Else 
+aInvFooter:=2
+End case 
+
+OBJECT SET VISIBLE(*;"@CustomFooter";[Facility]CustomInvFooter)
+OBJECT SET VISIBLE(*;"@CustomHeader";[Facility]GraphiconInv)
+OBJECT SET VISIBLE(*;"@CustomReceipt";[Facility]UseCustomReceipt)
+
+ARRAY TEXT(aInvDetailsOpt;4)
+aInvDetailsOpt{1}:=Get localized string("Agreement Number & Customer Code")
+aInvDetailsOpt{2}:=Get localized string("Agreement Number")
+aInvDetailsOpt{3}:=Get localized string("Prefixed Agreement Number")
+aInvDetailsOpt{4}:=Get localized string("Customer Code")
+aInvDetailsOpt:=[Facility]InvDetailsOpt+1
+ARRAY TEXT(aReceipt;2)
+aReceipt{1}:=Get localized string("Use Standard Receipt")
+aReceipt{2}:=Get localized string("Use Custom Receipt")
+If ([Facility]UseCustomReceipt=True)
+aReceipt:=2
+Else 
+aReceipt:=1
+End if 
+
+ARRAY TEXT(aInvHeader;3)
+aInvHeader{1}:=Get localized string("Use Standard Header")
+aInvHeader{2}:=Get localized string("Use Custom Header (design it below)")
+aInvHeader{3}:=Get localized string("No Header")
+Case of 
+: ([Facility]HeaderonInv=False)
+aInvHeader:=3
+: ([Facility]GraphiconInv=True)
+aInvHeader:=2
+Else 
+aInvHeader:=1
+End case 
+ARRAY TEXT(aEmailHeader;3)
+aEmailHeader{1}:=Get localized string("Email and Letter")
+aEmailHeader{2}:=Get localized string("Email Only")
+aEmailHeader{3}:=Get localized string("Letter Only")
+aEmailHeader:=[Facility]HeaderEmail+1
+
+If ([Facility]Highlander=True) & (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")
+OBJECT SET VISIBLE(*;"@EziSurcharge";True)
+Else 
+OBJECT SET VISIBLE(*;"@EziSurcharge";False)
+End if 
+
+////new footers
+//OBJECT SET VISIBLE(*;"asFooters";False)
+//If (aInvFooter=1)
+//OBJECT SET VISIBLE(*;"asFooters";True)
+//Else 
+//OBJECT SET VISIBLE(*;"asFooters";False)
+//OBJECT SET VISIBLE(*;"footernz";False)
+//OBJECT SET VISIBLE(*;"footerau";False)
+//OBJECT SET VISIBLE(*;"footeruk";False)
+
+//asFooters:=4
+//End if 
+
+
+
+ARRAY TEXT(asFooters;4)
+asFooters{1}:="New Zealand Standard"
+asFooters{2}:="Australian Standard with BPay"
+asFooters{3}:="United Kingdom Standard"
+asFooters{4}:="Blank"
+
+OBJECT SET VISIBLE(*;"footernz";False)
+OBJECT SET VISIBLE(*;"footerau";False)
+OBJECT SET VISIBLE(*;"footeruk";False)
+
+
+asFooters:=[Facility]InvoiceFooter
+$Footer:=asFooters{asFooters}
+Case of 
+: ($Footer="New Zealand Standard")
+$InvFooter:=1
+OBJECT SET VISIBLE(*;"footernz";True)
+: ($Footer="Australian Standard with BPay")
+$InvFooter:=2
+OBJECT SET VISIBLE(*;"footerau";True)
+: ($Footer="United Kingdom Standard")
+$InvFooter:=3
+OBJECT SET VISIBLE(*;"footeruk";True)
+Else 
+$InvFooter:=0
+End case 
+
+
+End if 
+
+If (Form event=On Clicked)
+If (aPageNo#vLastPage)
+FORM GOTO PAGE(aPageNo)
+vLastPage:=aPageNo
+End if 
+End if 
+
+If (Form event=On Activate)
+If (BLOB size([Facility]InvHeader_)#0)
+C_TEXT($vRef;$vXML)
+EXPAND BLOB([Facility]InvHeader_)
+BLOB TO VARIABLE([Facility]InvHeader_;$vXML)
+$vRef:=DOM Parse XML variable($vXML)
+PicInvHeader:=SVG_Export_to_picture ($vRef)
+COMPRESS BLOB([Facility]InvHeader_)
+SVG_CLEAR ($vRef)
+Else 
+CLEAR VARIABLE(PicInvHeader)
+End if 
+If (BLOB size([Facility]InvFooter_)#0)
+C_TEXT($vRef;$vXML)
+EXPAND BLOB([Facility]InvFooter_)
+BLOB TO VARIABLE([Facility]InvFooter_;$vXML)
+$vRef:=DOM Parse XML variable($vXML)
+PicInvFooter:=SVG_Export_to_picture ($vRef)
+COMPRESS BLOB([Facility]InvFooter_)
+SVG_CLEAR ($vRef)
+Else 
+CLEAR VARIABLE(PicInvFooter)
+End if 
+If (BLOB size([Facility]Receipt_)#0)
+C_TEXT($vRef;$vXML)
+EXPAND BLOB([Facility]Receipt_)
+BLOB TO VARIABLE([Facility]Receipt_;$vXML)
+$vRef:=DOM Parse XML variable($vXML)
+PicReceipt:=SVG_Export_to_picture ($vRef)
+COMPRESS BLOB([Facility]Receipt_)
+SVG_CLEAR ($vRef)
+Else 
+CLEAR VARIABLE(PicReceipt)
+End if 
+If (BLOB size([Facility]ReportLogo_)#0)
+C_TEXT($vRef;$vXML)
+EXPAND BLOB([Facility]ReportLogo_)
+BLOB TO VARIABLE([Facility]ReportLogo_;$vXML)
+$vRef:=DOM Parse XML variable($vXML)
+PicReportLogo:=SVG_Export_to_picture ($vRef)
+COMPRESS BLOB([Facility]ReportLogo_)
+SVG_CLEAR ($vRef)
+Else 
+CLEAR VARIABLE(PicReportLogo)
+End if 
+End if 

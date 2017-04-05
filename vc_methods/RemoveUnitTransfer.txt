@@ -1,0 +1,430 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$x;$OK;$xDays;$yDays)
+C_REAL($Tax)
+C_TEXT($Desc)
+$x:=Selected record number([Unit])
+If ($x>0) & ($x<=Records in selection([Unit]))
+READ WRITE([Unit])
+LOAD RECORD([Unit])
+READ WRITE([UnitType])
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+READ WRITE([RCHistory])
+
+If (Locked([Unit])=False) & (Locked([UnitType])=False)
+LOCKED BY([UnitType];$process;$4Duser;$sessionUser;$processName)
+LOCKED BY([UnitType];$process1;$4Duser1;$sessionUser1;$processName1)
+If (vUnits="")
+$t:=""
+Else 
+$t:=","
+End if 
+vUnits:=vUnits+$t+[UnitType]UnitTypeCode//to check if there is a unit of this type on the waiting list
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+APPEND TO ARRAY(aProrate;0)
+Else 
+$xDays:=[Agreement]NextBillDate-vDate-1
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+If ([BillPlan]PlanPeriod="Week")
+If (vAgreePeriods=0)
+$Amt:=0
+Else 
+//QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+
+If (vDate>[Agreement]BillPlanValidTo)
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]WeeklyRentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]LastMthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+
+End if 
+End if 
+$Mths:=Round($yDays/7;0)
+Else 
+If (vAgreePeriods=0)
+$Amt:=0
+Else 
+//QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+If ([BillPlan]PeriodicBilling=True)
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*1//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+
+//20/06/13 DAM added it to be able to move out units if the billing plan is changed. Added for weekly as well
+If (vDate>[Agreement]BillPlanValidTo)
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]MthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+Else 
+$Amt:=[Unit]RentedValue*([Agreement]RentAmt/vAgreePeriods)*[Agreement]LastMthsAdv//[Agreement]LastBillAmt*[UnitType]WeeklyRate/vTotal  `Calculate portion of LastBillAmt relevant to this unit
+End if 
+
+End if 
+End if 
+$Mths:=Round($yDays/30;0)
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+Case of 
+: ([BillPlan]CasualBilling=True)
+$MonthlyRate:=CalculateBaseRate (3;0)
+: ([BillPlan]PlanPeriod="Week")
+$MonthlyRate:=CalculateBaseRate (1;0)
+Else 
+$MonthlyRate:=CalculateBaseRate (0;0)
+End case 
+
+$Rate:=$MonthlyRate*(1-([BillPlan]DiscPercentage/100))
+$Amt:=RoundAmt ($xDays/$yDays*$Amt*(-1))
+
+If ([Customer]CustomerCode#[Agreement]CustomerCode)
+RELATE ONE([Agreement]CustomerCode)
+End if 
+
+Case of 
+: ([UnitType]OrgAnalysis#"") & ([Customer]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+[UnitType]OrgAnalysis)
+: ([UnitType]RentAnalysis#"")
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+[UnitType]RentAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+"RF")
+End case 
+
+If ([Facility]TaxAddtoAmt=True) & ([Analysis]Taxable=True)
+$Tax:=$Amt*[Facility]TaxRate/100
+$Amt:=$Amt+$Tax
+//If ([Facility]Country="DE") & ([Customer]Organization=False)
+//$Amt:=$Amt-$Tax
+//End if 
+End if 
+
+APPEND TO ARRAY(aProrate;$Amt)
+End if 
+
+If ([Unit]Deposit>0)
+Deposit:=RoundAmt ([Unit]Deposit*-1)
+APPEND TO ARRAY(aDeposit;True)
+Else 
+APPEND TO ARRAY(aDeposit;False)
+End if 
+
+If ([Agreement]BnS#"")
+$xDays:=[Agreement]NextBillDate-vDate-1
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description="@"+[Unit]RUnitNo+"@")
+$Amt:=Sum([OtherChgs]Amount)
+$Amt:=RoundAmt ($xDays/$yDays*$Amt*(-1))
+APPEND TO ARRAY(aIns;$Amt)
+Else 
+[Unit]InsureValue:=0
+End if 
+
+
+//If (Form event=On Data Change) //Commented out so the Removal of a unit will trigger Modified by: nicholas.wykes (28/10/2010)
+RELATE ONE([Agreement]BillingPlanCode)
+$Premium:=-9999
+
+If ([Agreement]BnS="")// 18/02/14 DAM Added for removing Extra+Compuslory insurances for BnS
+If (<>sProduct#"@T")//02/07/13 DAM Added for vaults not to delete insurance
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility)
+If ([Facility]InsuranceAgentType=3) & (Records in selection([InsuranceRates])>0)
+If ([Unit]InsureValue#Old([Unit]InsureValue))
+$Code:=<>sFacility+"IN"
+$Description:=Get localized string("Insurance")+" "+[Unit]UnitNo
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description=$Description)
+
+$Premium:=Sum([OtherChgs]Amount)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=False)
+
+If (Records in selection([InsuranceRates])>0)
+If ([InsuranceRates]Verify=True) & ([Unit]InsureValue#[InsuranceRates]EndValue)
+APPEND TO ARRAY(aIns;0)
+Else 
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+APPEND TO ARRAY(aIns;0)
+Else 
+$xDays:=[Agreement]NextBillDate-Current date
+If ($xDays>0)
+$Rate:=[InsuranceRates]Premium
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+
+APPEND TO ARRAY(aIns;$Amt)
+
+//If ($2=True)
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Removal Date for this Insurance")+" = "+String([Unit]MoveOut)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//Else 
+//If ([Unit]InsureValue=0)
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Removal Date for this Insurance")+" = "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//Else 
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Start Date for this Insurance")+" = "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//End if 
+//End if 
+//If (OK=1)
+//[Transaction]TotAmt:=RoundAmt ($Amt)
+//Else 
+//AlertMessage (Get localized string("You will need to manually adjust the insurance."))
+//End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+End if 
+Else 
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+If (Records in selection([InsuranceRates])>0)
+$Value:=[Unit]InsureValue/[InsuranceRates]RepeatValue
+$Trunc:=Trunc([Unit]InsureValue/[InsuranceRates]RepeatValue;0)
+$Test:=$Value-$Trunc
+If ([InsuranceRates]Verify=True) & ($Test#0)
+APPEND TO ARRAY(aIns;0)
+Else 
+//If ($Premium=-9999)
+//$Premium:=Trunc((([Unit]InsureValue-Old([Unit]InsureValue))/[InsuranceRates]StartValue)*-1;0)*-1
+//Else 
+//If (Old([Unit]InsureValue)<[Unit]InsureValue)
+//$Premium:=Trunc((([Unit]InsureValue)/[InsuranceRates]StartValue)*-1;0)*-1
+//End if 
+//End if 
+
+$Insure:=[Unit]InsureValue
+$Premium:=0
+
+Repeat 
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+
+$Insure:=Round($Insure-[InsuranceRates]StartValue;0)
+
+$Premium:=$Premium+(($Insure/[InsuranceRates]RepeatValue)*[InsuranceRates]Premium)
+
+$Insure:=Round([InsuranceRates]StartValue;0)
+
+Until ($Insure<=0)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+APPEND TO ARRAY(aIns;0)
+//AlertMessage ("This agreement appears to have not been billed. Last Bill Date is "+String([Agreement]LastBillDate;6)+", Next Bill Date is "+String([Agreement]NextBillDate;6)+". Unable to calculate pro-rata!")
+Else 
+$xDays:=[Agreement]NextBillDate-Current date
+If ($xDays>0)
+
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+
+If ($Premium#-9999) & ([Unit]InsureValue=0)
+$Rate:=$Premium/([Agreement]MthsAdv+[BillPlan]FreePeriods)
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)*-1
+Else 
+$Rate:=$Premium
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+End if 
+
+APPEND TO ARRAY(aIns;$Amt)
+
+//If ($2=True)
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Removal Date for this Insurance")+" = "+String([Unit]MoveOut)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//Else 
+//If ([Unit]InsureValue=0)
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Removal Date for this Insurance")+" = "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//Else 
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Start Date for this Insurance")+" = "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//End if 
+//
+//End if 
+//If (OK=1)
+//[Transaction]TotAmt:=RoundAmt ($Amt)
+//Else 
+//AlertMessage (Get localized string("You will need to manually adjust the insurance."))
+//End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+
+Else 
+If (vOthInsurance#vOldOthInsurance)
+$Code:=<>sFacility+"IN"
+$Description:=Get localized string("Insurance")
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description=$Description)
+
+$Premium:=Sum([OtherChgs]Amount)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=vOthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=vOthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=False)
+
+If (Records in selection([InsuranceRates])>0)
+If ([InsuranceRates]Verify=True) & (vOthInsurance#[InsuranceRates]EndValue)
+AlertMessage (Get localized string("The next available insurance coverage is")+" "+String([InsuranceRates]EndValue))
+APPEND TO ARRAY(aIns;0)
+Else 
+
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+APPEND TO ARRAY(aIns;0)
+//AlertMessage ("This agreement appears to have not been billed. Last Bill Date is "+String([Agreement]LastBillDate;6)+", Next Bill Date is "+String([Agreement]NextBillDate;6)+". Unable to calculate pro-rata!")
+Else 
+$xDays:=[Agreement]NextBillDate-Current date
+If ($xDays>0)
+$Rate:=[InsuranceRates]Premium
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+APPEND TO ARRAY(aIns;$Amt)
+
+If (OK=1)
+[Trxs]TotAmt:=RoundAmt ($Amt)
+Else 
+AlertMessage (Get localized string("You will need to manually adjust the insurance."))
+End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+End if 
+Else 
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=vOthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=vOthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+If (Records in selection([InsuranceRates])>0)
+$Value:=vOthInsurance/[InsuranceRates]EndValue
+$Trunc:=Trunc(vOthInsurance/[InsuranceRates]EndValue;0)
+$Test:=$Value-$Trunc
+If ([InsuranceRates]Verify=True) & ($Test#0)
+AlertMessage (Get localized string("The insurance coverage must be a multiple of")+" "+String([InsuranceRates]EndValue))
+APPEND TO ARRAY(aIns;0)
+Else 
+
+//If ($Premium=-9999)
+//$Premium:=Trunc(((vOthInsurance-vOldOthInsurance)/[InsuranceRates]StartValue)*-1;0)*-1
+//Else 
+//If (vOldOthInsurance<vOthInsurance)
+//$Premium:=Trunc(((vOthInsurance)/[InsuranceRates]StartValue)*-1;0)*-1
+//End if 
+//
+//End if 
+
+$Insure:=vOthInsurance
+$Premium:=0
+
+Repeat 
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+
+$Insure:=Round($Insure-[InsuranceRates]StartValue;0)
+
+$Premium:=$Premium+(($Insure/[InsuranceRates]RepeatValue)*[InsuranceRates]Premium)
+
+$Insure:=Round([InsuranceRates]StartValue;0)
+
+Until ($Insure<=0)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=vOthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=vOthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+APPEND TO ARRAY(aIns;0)
+//AlertMessage ("This agreement appears to have not been billed. Last Bill Date is "+String([Agreement]LastBillDate;6)+", Next Bill Date is "+String([Agreement]NextBillDate;6)+". Unable to calculate pro-rata!")
+Else 
+$xDays:=[Agreement]NextBillDate-Current date
+If ($xDays>0)
+
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+
+If ($Premium#-9999) & (vOthInsurance=0)
+$Rate:=$Premium/([Agreement]MthsAdv+[BillPlan]FreePeriods)
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)*-1
+Else 
+$Rate:=$Premium
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+End if 
+
+APPEND TO ARRAY(aIns;$Amt)
+
+//If (vOthInsurance=0)
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Removal Date for this Insurance")+" = "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//Else 
+//ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Start Date for this Insurance")+" = "+String(Current date)+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+Get localized string("Insurance to Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+//End if 
+//If (OK=1)
+//[Transaction]TotAmt:=RoundAmt ($Amt)
+//Else 
+//AlertMessage (Get localized string("You will need to manually adjust the insurance."))
+//End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+Else 
+APPEND TO ARRAY(aIns;0)
+End if 
+End if 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+
+Else 
+AlertMessage (Get localized string("Either the Unit or UnitType file is locked by another process. Unable to remove unit from agreement!"))
+CANCEL
+End if 
+Else 
+AlertMessage (Get localized string("Please select unit to remove first"))
+End if 

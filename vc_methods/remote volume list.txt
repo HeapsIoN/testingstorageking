@@ -1,0 +1,28 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Calls a Server-side method to return the list of volumes available on the server
+C_LONGINT($Offset)
+C_POINTER($1)
+C_LONGINT($VolListProcessID)
+
+$Offset:=0
+
+READ WRITE([Authenticate])
+CREATE RECORD([Authenticate])
+[Authenticate]RAgreeNo:=String(Sequence number([Authenticate]))
+SAVE RECORD([Authenticate])
+$RecordID:=[Authenticate]RAgreeNo
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+
+$VolListProcessID:=Execute on server("S_RemoteVolumeList";400000;"S_RemoteVolumeList";$RecordID)
+
+Repeat 
+QUERY([Authenticate];[Authenticate]RAgreeNo=$RecordID;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress="1")
+Until (Records in selection([Authenticate])=1)
+
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+BLOB TO VARIABLE([Authenticate]Prefs;$1->;$Offset)
+DELETE RECORD([Authenticate])
+READ ONLY([Authenticate])

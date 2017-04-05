@@ -1,0 +1,265 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// Method to generate URL that will be sent to a customer to authorize Storman for Processing payments
+//
+//
+//[Facility]ExternalIP should be with port number http://rdc.storman.com:19812
+
+
+C_TEXT(GoCardlessURL;$MaxAmt)
+$utctime:=UTCTime (Current time;True)
+$utcdate:=UTCDate (Current time;True;Current date)
+$Month:=String(Month of($utcdate))
+$Success:=True
+If (Length($Month)=1)
+$Month:="0"+$Month
+End if 
+$Day:=String(Day of($utcdate))
+If (Length($Day)=1)
+$Day:="0"+$Day
+End if 
+$PickupDateTime:=String(Year of($utcdate))+"-"+$Month+"-"+$Day+"T"+String($utctime)+"Z"
+$PickupDateTime:=URLEncode ($PickupDateTime)
+
+C_TEXT($AppID;$AppSecret;$AccessToken;$MerchantID;$Result)
+// Merchant ID + App Identifier + App secret + Access Token
+$MerchantID:=GetTextNo ([Facility]DDAccountDetails;1;",")
+$AppID:=GetTextNo ([Facility]DDAccountDetails;2;",")
+$AppSecret:=GetTextNo ([Facility]DDAccountDetails;3;",")
+$AccessToken:=GetTextNo ([Facility]DDAccountDetails;4;",")
+
+//For sandbox account
+If ([Facility]TestAccount)
+$Server:="sandbox.gocardless.com"
+Else 
+$Server:="gocardless.com"
+End if 
+
+
+$Param1:="client_id"
+$Param2:="timestamp"
+$Param3:="nonce"
+$Param4:="pre_authorization[amount]"//"10"
+$Param5:="pre_authorization[interval_length]"
+$Param6:="pre_authorization[interval_unit]"
+$Param7:="pre_authorization[max_amount]"
+$Param8:="pre_authorization[merchant_id]"
+$Param9:="redirect_uri"
+$Param10:="state"
+
+//$Param9:="pre_authorization[user[first_name]]"
+//$Param10:="pre_authorization[user[last_name]]"
+//$Param11:="pre_authorization[user[company_name]]"
+//$Param12:="pre_authorization[user[email]]"
+//$Param13:="pre_authorization[user[billing_address1]]"
+//$Param14:="pre_authorization[user[billing_address2]]"
+//$Param15:="pre_authorization[user[billing_town]]"
+//$Param16:="pre_authorization[user[billing_postcode]]"
+//$Param17:="pre_authorization[user[country_code]]"
+
+$Param1:=URLEncode ($Param1)
+$Param2:=URLEncode ($Param2)
+$Param3:=URLEncode ($Param3)
+$Param4:=URLEncode ($Param4)
+$Param5:=URLEncode ($Param5)
+$Param6:=URLEncode ($Param6)
+$Param7:=URLEncode ($Param7)
+$Param8:=URLEncode ($Param8)
+$Param9:=URLEncode ($Param9)
+$Param10:=URLEncode ($Param10)
+GoCardlessURL:=[Facility]ExternalIP+"/4DCGI/gocardless"
+GoCardlessURL:=URLEncode (GoCardlessURL)
+
+//DAM Added for Max Amount 8550
+$MaxAmt:=RequestMessage ("Please enter max authorized amount for this customer";String([Agreement]AutoPayAmt))
+If (OK=1)
+// Set Nonce as Random
+$nonce:=Random
+
+ARRAY TEXT($ParametersValue;0)
+APPEND TO ARRAY($ParametersValue;$AppID)
+APPEND TO ARRAY($ParametersValue;$PickupDateTime)
+APPEND TO ARRAY($ParametersValue;String($nonce))
+APPEND TO ARRAY($ParametersValue;String([Agreement]AutoPayAmt))
+APPEND TO ARRAY($ParametersValue;String([Agreement]MthsAdv))
+APPEND TO ARRAY($ParametersValue;Lowercase([BillPlan]PlanPeriod))
+APPEND TO ARRAY($ParametersValue;$MaxAmt)
+APPEND TO ARRAY($ParametersValue;$MerchantID)
+APPEND TO ARRAY($ParametersValue;GoCardlessURL)
+APPEND TO ARRAY($ParametersValue;[Customer]CustomerCode)
+
+ARRAY TEXT($Parameters;0)
+ARRAY TEXT($SortedParameters;10)
+APPEND TO ARRAY($Parameters;$Param1)
+APPEND TO ARRAY($Parameters;$Param2)
+APPEND TO ARRAY($Parameters;$Param3)
+APPEND TO ARRAY($Parameters;$Param4)
+APPEND TO ARRAY($Parameters;$Param5)
+APPEND TO ARRAY($Parameters;$Param6)
+APPEND TO ARRAY($Parameters;$Param7)
+APPEND TO ARRAY($Parameters;$Param8)
+APPEND TO ARRAY($Parameters;$Param9)
+APPEND TO ARRAY($Parameters;$Param10)
+
+ARRAY LONGINT($Compare;10;10)
+ARRAY LONGINT($arBigSmall;10;3)
+
+$Messge:=""
+For ($j;1;Size of array($Parameters))
+For ($i;1;Size of array($Parameters))
+$Success:=PHP Execute("";"strcmp";$Result;$Parameters{$j};$Parameters{$i})
+If ($Success=True)
+$Compare{$j}{$i}:=Num($Result)
+$Messge:=""
+Case of 
+: ($Compare{$j}{$i}>0)
+$arBigSmall{$j}{1}:=$arBigSmall{$j}{1}+1
+: ($Compare{$j}{$i}<0)
+$arBigSmall{$j}{2}:=$arBigSmall{$j}{2}+1
+: ($Compare{$j}{$i}=0)
+$arBigSmall{$j}{3}:=$arBigSmall{$j}{3}+1
+End case 
+Else 
+$i:=Size of array($Parameters)
+$Messge:="PHP strcmp failed"
+End if 
+End for 
+End for 
+
+For ($i;1;Size of array($arBigSmall))
+If (($arBigSmall{$i}{3}-1)=0)
+//Sort by number in column 1
+$SortedParameters{($arBigSmall{$i}{1})+1}:=$Parameters{$i}
+Else 
+AlertMessage ("Sorting might not be correct!"+$Parameters{$i})
+$Success:=False
+End if 
+End for 
+
+C_TEXT($Signature)
+For ($k;1;Size of array($SortedParameters))
+$Poz:=Find in array($Parameters;$SortedParameters{$k})
+If ($k>1)
+$Signature:=$Signature+"&"+$SortedParameters{$k}+"="+String($ParametersValue{$Poz})
+//Remove name from array to pick up next one for equal values
+$NewPoz:=Find in array($Parameters;$SortedParameters{$k};$Poz+1)
+If ($NewPoz>0)
+$Parameters{$Poz}:=""
+End if 
+Else 
+$Signature:=$SortedParameters{$k}+"="+String($ParametersValue{$Poz})
+End if 
+End for 
+
+If ($Success)
+
+$Success1:=PHP Execute("";"hash_hmac";$Result;"sha256";$Signature;$AppSecret)
+
+If ($Success1=True)
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+$Header:=$Header+"GET /connect/pre_authorizations/new?"+$Signature
+$Header:=$Header+"&signature="+$Result+" HTTP/1.1 "+$cr
+$Header:=$Header+"Host: "+$Server+$cr+$cr
+GoCardlessURL:=$Server+"/connect/pre_authorizations/new?"+$Signature
+GoCardlessURL:=GoCardlessURL+"&signature="+$Result
+SyncRecordLog ("GoCardless URL "+GoCardlessURL)
+
+QUERY([Notices];[Notices]NoticePlanNo=0;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description="GoCardless")
+
+If (Records in selection([Notices])=1)
+BLOB PROPERTIES([Notices]Email;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Notices]Email)
+End if 
+
+//Create the Email Message
+CREATE RECORD([Message])
+[Message]Subject:=[Notices]EmailSubject
+[Message]Address:=[Customer]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+
+$emailContent:=Convert to text([Notices]Email;"UTF-8")
+$emailContent:=ProcessStormanHTMLTags ($emailContent)
+[Message]Subject:=ProcessStormanHTMLTags ([Message]Subject)
+[Message]MsgBody:=$emailContent
+CONVERT FROM TEXT($emailContent;"UTF-8";[Message]EmailMsg)
+[Message]Attachments:=""
+SAVE RECORD([Message])
+
+//Create the Letter 
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]SentViaEmail:=True
+[Letters]LetterBLOB:=[Message]EmailMsg
+[Letters]DateSent:=Current date
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+$OK:=OR_NewMailMessage ("";[Message]Address;"";"";[Message]Subject;[Message]MsgBody;False;->Attachments;"";"";"";"";"";"";"")
+If ($OK=True)
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+End if 
+
+Else 
+$cr:=Char(13)+Char(10)
+$MessageBody:="Dear "+[Customer]CustomerName+$cr
+$MessageBody:=$MessageBody+"Please follow the link to register and authorize "+[Facility]BusinessName+" charge Direct Debits"+$cr
+//$MessageBody:=$MessageBody+GoCardlessURL+$cr
+$MessageBody:=$MessageBody+"<a href="+String(Char(34))+"https://"+GoCardlessURL+String(Char(34))+">GoCardless Link</a>"
+
+//Create the Email Message
+CREATE RECORD([Message])
+[Message]CustCode:=[Customer]CustomerCode
+[Message]Subject:=[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Direct Debit authorization"
+[Message]Address:=[Customer]EmailAddress
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]MsgBody:=$MessageBody
+[Message]Facility:=Substring([Customer]CustomerCode;1;5)
+CONVERT FROM TEXT($MessageBody;"UTF-8";[Message]EmailMsg)
+[Message]Attachments:=""
+SAVE RECORD([Message])
+$OK:=OR_NewMailMessage ("";[Customer]EmailAddress;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - Direct Debit";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")
+If ($OK=True)//Email Failed
+[Message]SentDate:=Current date
+[Message]SentRead:=True
+SAVE RECORD([Message])
+
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+[Letters]LetterDesc:=[Message]Subject
+[Letters]SentViaEmail:=True
+[Letters]LetterBLOB:=[Message]EmailMsg
+[Letters]DateSent:=Current date
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+
+Else 
+WS_ORErrorCode:=9//Email Failed
+WS_ORErrorDescription:="Facility Notification Email failed!"
+End if 
+End if 
+
+QUERY([Letters];[Letters]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+AlertMessage ("An Email has been sent to the customer for Direct Debit Authorization. You can check the emails in Notice History")
+Else 
+AlertMessage ("Direct Debit authorization has failed. Please contact Storman Support.")
+SyncRecordLog ("GoCardless PHP hash_hmac failed - "+$Result)
+SyncRecordLog ("GoCardless Signature - "+$Signature)
+SyncRecordLog ("GoCardless App secret - "+$AppSecret)
+End if 
+Else 
+AlertMessage ("Direct Debit authorization has failed. Please contact Storman Support.")
+End if 
+End if 

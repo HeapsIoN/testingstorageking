@@ -1,0 +1,184 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 27/04/11, 11:47:44
+// ----------------------------------------------------
+// Method: CalculateBaseRateNoUT
+// Description
+// Calculates base rate for a given unit and doesn't change the UT selected
+//
+// Parameters
+//$1 = 0 - Monthly, 1 = Weekly, 2 = Use Agreement Billing Plan for agreements, reservation weekly field for reservations defaults to monthly if no agreement set
+//$2 = 0 - From agreement, 1 - From reservation, 2 - From contact
+//$3 = Custom Length
+// ----------------------------------------------------
+C_LONGINT($1;$Weekly;$2)
+C_REAL($0)
+
+$Weekly:=$1
+
+If ($Weekly=2)
+Case of 
+: ($2=0)
+If ([Unit]AgreeNo>"")
+If ([Agreement]RAgreeNo#[Unit]AgreeNo)
+RELATE ONE([Unit]AgreeNo)
+End if 
+If (Records in selection([BillPlan])#1)//SDD 23/05/13 Added this condition so that this method does not change the already loaded BillPlan record
+RELATE ONE([Agreement]BillingPlanCode)// as it was stopping the Swapping of BillPlan to SwapToPlan
+End if 
+Case of 
+: ([BillPlan]CasualBilling) | ([BillPlan]PlanPeriod="Day")
+$Weekly:=3
+: ([BillPlan]PlanPeriod="Week")
+$Weekly:=1
+Else 
+$Weekly:=0
+End case 
+Else 
+$Weekly:=0
+End if 
+
+: ($2=1)
+If ([Unit]ReservedTo>"")
+If ([Reservation]RReserveNo#[Unit]ReservedTo)
+RELATE ONE([Unit]ReservedTo)
+End if 
+If ([Reservation]Weekly)
+$Weekly:=1
+Else 
+$Weekly:=0
+End if 
+Else 
+$Weekly:=0
+End if 
+Else 
+$Weekly:=0
+End case 
+End if 
+
+$DailyRate:=[UnitType]DailyRate
+$WeeklyRate:=[UnitType]WeeklyRate
+$MonthlyRate:=[UnitType]MonthlyRate
+
+If ([Facility]CTPrices)
+If (([Unit]AgreeNo>"") & ($2=0)) | (([Unit]ReservedTo>"") & ($2=1)) | ($2=2)
+Case of 
+: ($2=1)
+If ([Reservation]RReserveNo#[Unit]ReservedTo)
+RELATE ONE([Unit]ReservedTo)
+End if 
+If ([Customer]CustomerCode#[Reservation]CustomerCode)
+RELATE ONE([Reservation]CustomerCode)
+End if 
+: ($2=0)
+If ([Agreement]RAgreeNo#[Unit]AgreeNo)
+RELATE ONE([Unit]AgreeNo)
+End if 
+If ([Customer]CustomerCode#[Agreement]CustomerCode)
+RELATE ONE([Agreement]CustomerCode)
+End if 
+End case 
+
+ARRAY LONGINT(aiCustTypeID;0)
+ARRAY REAL(arMonthlyRate;0)
+ARRAY REAL(arWeeklyRate;0)
+ARRAY REAL(arDailyRate;0)
+ARRAY LONGINT(aiLength;4)
+aiLength{1}:=-2
+aiLength{2}:=-3
+aiLength{3}:=-3
+aiLength{4}:=-3
+
+TextToArrays (->[UnitType]CTPrices;->aiLength;->aiCustTypeID;->arMonthlyRate;->arWeeklyRate;->arDailyRate)
+
+$j:=Size of array(aiCustTypeID)
+$i:=1
+
+While ($j>0) & ($i#0)
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=aiCustTypeID{$i};*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([UnitType]RUnitType;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+If (Records in selection([MarketingTypes])#1)
+DELETE FROM ARRAY(aiCustTypeID;$i)
+DELETE FROM ARRAY(arMonthlyRate;$i)
+DELETE FROM ARRAY(arWeeklyRate;$i)
+DELETE FROM ARRAY(arDailyRate;$i)
+End if 
+
+$j:=Size of array(aiCustTypeID)
+$i:=$i+1
+
+If ($i>$j)
+$i:=0
+End if 
+
+End while 
+
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=Substring([UnitType]RUnitType;1;5);*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Inactive=False)
+
+
+For ($i;1;Records in selection([MarketingTypes]))
+
+$j:=Find in array(aiCustTypeID;[MarketingTypes]PrimaryKey)
+
+If ($j<1)
+APPEND TO ARRAY(aiCustTypeID;[MarketingTypes]PrimaryKey)
+APPEND TO ARRAY(arMonthlyRate;[UnitType]MonthlyRate)
+APPEND TO ARRAY(arWeeklyRate;[UnitType]WeeklyRate)
+APPEND TO ARRAY(arDailyRate;[UnitType]DailyRate)
+End if 
+
+NEXT RECORD([MarketingTypes])
+End for 
+
+ARRAY TEXT(atCustType;Size of array(aiCustTypeID))
+
+
+For ($i;1;Size of array(aiCustTypeID))
+QUERY([MarketingTypes];[MarketingTypes]PrimaryKey=aiCustTypeID{$i})
+atCustType{$i}:=[MarketingTypes]Description
+End for 
+
+If ($2=2)
+$Pos:=Find in array(atCustType;[Contacts]CustType)
+Else 
+$Pos:=Find in array(atCustType;[Customer]CustType)
+End if 
+
+If ($Pos>0)
+$DailyRate:=arDailyRate{$pos}
+$WeeklyRate:=arWeeklyRate{$pos}
+$MonthlyRate:=arMonthlyRate{$pos}
+End if 
+
+End if 
+End if 
+
+If ([UnitType]VariableLength)
+If ([Unit]UnitLength<[UnitType]VariableMinimum)
+$DailyRate:=[UnitType]VariableMinimum*$DailyRate
+$WeeklyRate:=[UnitType]VariableMinimum*$WeeklyRate
+$MonthlyRate:=[UnitType]VariableMinimum*$MonthlyRate
+Else 
+$DailyRate:=[Unit]UnitLength*$DailyRate
+$WeeklyRate:=[Unit]UnitLength*$WeeklyRate
+$MonthlyRate:=[Unit]UnitLength*$MonthlyRate
+End if 
+End if 
+
+
+Case of 
+: ($Weekly=3)
+$0:=Round($DailyRate;2)
+: ($Weekly=1)
+$0:=Round($WeeklyRate;2)
+Else 
+$0:=Round($MonthlyRate;2)
+End case 
+

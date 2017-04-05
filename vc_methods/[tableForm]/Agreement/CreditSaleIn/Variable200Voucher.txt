@@ -1,0 +1,150 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+VoucherRedemption 
+//If (Form event=On Data Change)
+//C_BOOLEAN($ReceiptVoucher)
+//C_LONGINT($Agreement)
+//C_TEXT($AgreementNumber)
+//QUERY([Promotions];[Promotions]VoucherCode=vVoucher;*)
+//QUERY([Promotions]; & ;[Promotions]Active=True)
+//If (Records in selection([Promotions])=1)
+//QUERY([PromotionHistory];[PromotionHistory]AgreeNo=[Agreement]RAgreeNo;*)
+//QUERY([PromotionHistory]; & ;[PromotionHistory]VoucherNo=vVoucher)
+//If (Records in selection([PromotionHistory])=0)
+//$ReceiptVoucher:=True
+//If ([Promotions]ValidFrom>Current date)
+//ConfirmTwo ("The voucher is not valid till the "+String([Promotions]ValidFrom)+" do you wish to continue anyway?")
+//If (OK=0)
+//$ReceiptVoucher:=False
+//End if 
+//End if 
+//If ([Promotions]ValidTo#!00/00/00!) & ([Promotions]ValidTo<Current date) & ($ReceiptVoucher=True)
+//ConfirmTwo ("The voucher is no longer valid since the "+String([Promotions]ValidTo)+" do you wish to continue anyway?")
+//If (OK=0)
+//$ReceiptVoucher:=False
+//End if 
+//End if 
+//If ([Promotions]ValidTo#!00/00/00!) & ([Promotions]ValidTo<[Agreement]MoveIn) & ($ReceiptVoucher=True)
+//ConfirmTwo ("The voucher is no longer valid since the "+String([Promotions]ValidTo)+" do you wish to continue anyway? ")
+//If (OK=0)
+//$ReceiptVoucher:=False
+//End if 
+//End if 
+//If ($ReceiptVoucher=True)
+//If ([Promotions]PromoType=True)
+//  //Billing Plan
+//QUERY([BillPlan];[BillPlan]Code=[Promotions]BillingPlanCode)
+//If (Records in selection([BillPlan])=1)
+//If ([Promotions]NewMoveIn=True)
+//If ((bAdd=0) & (([Agreement]MoveIn#[Agreement]NextBillDate) | (([Facility]BillonFirst=True) & (GetDate (1;Month of([Agreement]MoveIn)+1;Year of([Agreement]MoveIn))#[Agreement]NextBillDate))))
+//AlertMessage ("This voucher is only available on Move In")
+//Else 
+//$Position:=Find in array(asBillingPlan;[Promotions]BillingPlanCode)
+//If ($Position<1)
+//QUERY([BillPlan];[BillPlan]Code=[Promotions]BillingPlanCode)
+//If ([BillPlan]SortOrder<=Size of array(asBillingPlan))
+//INSERT IN ARRAY(asBillingPlan;[BillPlan]SortOrder)
+//INSERT IN ARRAY(asBillingDesc;[BillPlan]SortOrder)
+//asBillingPlan{[BillPlan]SortOrder}:=[BillPlan]Code
+//asBillingDesc{[BillPlan]SortOrder}:=[BillPlan]Description
+//Else 
+//INSERT IN ARRAY(asBillingPlan;Size of array(asBillingPlan)+1)
+//INSERT IN ARRAY(asBillingDesc;Size of array(asBillingPlan)+1)
+//asBillingPlan{Size of array(asBillingPlan)}:=[BillPlan]Code
+//asBillingDesc{Size of array(asBillingPlan)}:=[BillPlan]Description
+//End if 
+//End if 
+//$Position:=Find in array(asBillingPlan;[Promotions]BillingPlanCode)
+//asBillingDesc:=$Position
+//MoveInChangeBillPlan 
+//CREATE RECORD([PromotionHistory])
+//[PromotionHistory]AgreeNo:=[Agreement]RAgreeNo
+//[PromotionHistory]VoucherNo:=[Promotions]VoucherCode
+//[PromotionHistory]RedeemedDate:=Current date
+//SAVE RECORD([PromotionHistory])
+//End if 
+//Else 
+//$Position:=Find in array(asBillingPlan;[Promotions]BillingPlanCode)
+//If ($Position<1)
+//QUERY([BillPlan];[BillPlan]Code=[Promotions]BillingPlanCode)
+//If ([BillPlan]SortOrder<=Size of array(asBillingPlan))
+//INSERT IN ARRAY(asBillingPlan;[BillPlan]SortOrder)
+//INSERT IN ARRAY(asBillingDesc;[BillPlan]SortOrder)
+//asBillingPlan{[BillPlan]SortOrder}:=[BillPlan]Code
+//asBillingDesc{[BillPlan]SortOrder}:=[BillPlan]Description
+//Else 
+//INSERT IN ARRAY(asBillingPlan;Size of array(asBillingPlan)+1)
+//INSERT IN ARRAY(asBillingDesc;Size of array(asBillingPlan)+1)
+//asBillingPlan{Size of array(asBillingPlan)}:=[BillPlan]Code
+//asBillingDesc{Size of array(asBillingPlan)}:=[BillPlan]Description
+//End if 
+//$Position:=Find in array(asBillingPlan;[Promotions]BillingPlanCode)
+//asBillingDesc:=$Position
+//MoveInChangeBillPlan 
+//CREATE RECORD([PromotionHistory])
+//[PromotionHistory]AgreeNo:=[Agreement]RAgreeNo
+//[PromotionHistory]VoucherNo:=[Promotions]VoucherCode
+//[PromotionHistory]RedeemedDate:=Current date
+//SAVE RECORD([PromotionHistory])
+//End if 
+//End if 
+//Else 
+//AlertMessage ("Problem adding voucher, please contact support")
+//End if 
+//Else 
+//OK:=1
+//$AgreementNumber:=""
+//If ([Promotions]AgreementSpecific=True)
+//$AgreementNumber:=<>sFacility+RequestMessage ("Please enter the referral agreement number";"000000000")
+//If (OK=1)
+//$err:=WSC_AddVoucher (vVoucher;[Agreement]RAgreeNo;$AgreementNumber;False)
+//If ($err#0)
+//Case of 
+//: ($err=3)
+//AlertMessage ("No referral agreement found")
+//Else 
+//AlertMessage ("Problem adding voucher, please contact support")
+//End case 
+//OK:=0
+//End if 
+//End if 
+//End if 
+//  //Analysis Code
+//If (OK=1)
+//QUERY([Analysis];[Analysis]Code=[Promotions]AnalysisCode)
+//If (Records in selection([Analysis])=1)
+//CREATE RECORD([Transaction])
+//[Transaction]CustomerCode:=[Agreement]CustomerCode
+//[Transaction]AgreeNo:=[Agreement]RAgreeNo
+//[Transaction]Charge:=True
+//[Transaction]AnalysisCode:=[Analysis]Code
+//If ([Promotions]ShowDiscount=True)
+//[Transaction]Description:=[Analysis]Description
+//Else 
+//[Transaction]Description:=[Promotions]Description
+//End if 
+//[Transaction]TrxDate:=Current date
+//[Transaction]DateFrom:=Current date
+//[Transaction]DateTo:=Current date
+//[Transaction]TotAmt:=[Promotions]DiscountAmount*-1
+//[Transaction]TaxAmt:=CalcTaxAmt ([Transaction]TotAmt)
+//SAVE RECORD([Transaction])
+//CREATE RECORD([PromotionHistory])
+//[PromotionHistory]AgreeNo:=[Agreement]RAgreeNo
+//[PromotionHistory]VoucherNo:=[Promotions]VoucherCode
+//[PromotionHistory]RedeemedDate:=Current date
+//[PromotionHistory]RefAgreeNo:=$AgreementNumber
+//SAVE RECORD([PromotionHistory])
+//Else 
+//AlertMessage ("Problem adding voucher, please contact support")
+//End if 
+//End if 
+//End if 
+//End if 
+//Else 
+//AlertMessage ("This voucher has already been redeemed by this agreement")
+//End if 
+//Else 
+//AlertMessage ("Invalid voucher")
+//End if 
+//vVoucher:=""
+//End if 

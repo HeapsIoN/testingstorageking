@@ -1,0 +1,80 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Receives a date string and separates the Day, Month, and Year components.   The Date is checked as follows and an appropriate error is returned to the calling method
+//- Checks to see if the Month is valid
+//- Checks to see if the Day is valid for the Month entered
+//- Checks to see if year is last century or this and prepends 20 or 19
+//- Checks to see if more recent than $2 date (if passed)
+//All checks are done taking into consideration which country the data file is set to.
+
+//$0 Error Message
+//$1 Date in text format
+//$2 Date to compare against
+
+C_TEXT($0;$1)
+C_DATE($2)
+
+//Determine positions of the slashes
+$DateSlashOnePos:=Position("/";$1)
+$Temp:=Replace string($1;"/";"a";1)
+$DateSlashTwoPos:=Position("/";$Temp)
+
+
+Case of 
+: (<>tDateFormat="US")
+$Month:=Substring($1;1;$DateSlashOnePos-1)
+$Date:=Substring($1;$DateSlashOnePos+1;($DateSlashTwoPos-$DateSlashOnePos)-1)
+$Year:=Substring($1;$DateSlashTwoPos+1)
+: (<>tDateFormat="ISO")
+$Year:=Substring($1;1;$DateSlashOnePos-1)
+$Month:=Substring($1;$DateSlashOnePos+1;($DateSlashTwoPos-$DateSlashOnePos)-1)
+$Date:=Substring($1;$DateSlashTwoPos+1)
+Else 
+$Date:=Substring($1;1;$DateSlashOnePos-1)
+$Month:=Substring($1;$DateSlashOnePos+1;($DateSlashTwoPos-$DateSlashOnePos)-1)
+$Year:=Substring($1;$DateSlashTwoPos+1)
+End case 
+
+$NumMonth:=Num($Month)
+$NumDate:=Num($Date)
+$NumYear:=Num($Year)
+
+
+If (Length($Year)=2)
+If ($NumYear>=0)
+$Year:="20"+$Year
+Else 
+$Year:="19"+$Year
+End if 
+End if 
+
+
+//Check the numbers for invalid values
+Case of 
+: ($NumMonth>12) | ($NumMonth<1)
+$0:="Error:Invalid Month in Date"
+
+: (($NumMonth=1) | ($NumMonth=3) | ($NumMonth=5) | ($NumMonth=7) | ($NumMonth=8) | ($NumMonth=10) | ($NumMonth=12)) & ($NumDate>31)
+$0:="Error:Invalid Day in Date"
+
+: (($NumMonth=9) | ($NumMonth=4) | ($NumMonth=6) | ($NumMonth=11)) & ($NumDate>30)
+$0:="Error:Invalid Day in Date"
+
+: (($NumMonth=2)) & ($NumDate>29)
+$0:="Error:Invalid Day in Date"
+
+Else 
+Case of 
+: ([Facility]Country="US")
+$0:=String(Num($Month);"00")+"/"+String(Num($Date);"00")+"/"+$Year
+: ([Facility]Country="ISO")
+$0:=$Year+"/"+String(Num($Month);"00")+"/"+String(Num($Date);"00")
+Else 
+$0:=String(Num($Date);"00")+"/"+String(Num($Month);"00")+"/"+$Year
+End case 
+vtDateUnitRequired:=$0
+If (Count parameters>1)
+If (Date($0)<$2)
+$0:="Error:Date cannot be in the past"
+End if 
+End if 
+End case 

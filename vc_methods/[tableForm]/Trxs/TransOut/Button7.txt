@@ -1,0 +1,222 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+vtInvAgree:=""
+OK:=1
+CREATE SET([Trxs];"Temp")
+
+If (vMisc=True)
+USE SET("UserSet")
+If ([Trxs]AgreeNo#"")
+CREATE EMPTY SET([Trxs];"PrintAll")
+ADD TO SET([Trxs];"PrintAll")
+vAddr1:=""
+$Narration:=[Trxs]Narration
+For ($i;1;5)
+$Pos:=Position(Char(17);$Narration;*)
+$String:=Substring($Narration;1;$Pos-1)
+$Narration:=Substring($Narration;$Pos+1)
+Case of 
+
+: ($i=1)
+vAddr2:=$String//[Transaction]MiscDetls'CustName
+: ($i=2)
+vAddr3:=$String//[Transaction]MiscDetls'MailAddress
+: ($i=3)
+vAddr4:=$String//[Transaction]MiscDetls'MailCity
+: ($i=4)
+vAddr5:=$String//[Transaction]MiscDetls'MailState
+: ($i=5)
+vAddr6:=$String//[Transaction]MiscDetls'MailPostZIPCode
+Else 
+//do nothing 
+End case 
+End for 
+vAddr7:=""
+$Match:=[Trxs]Match
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+QUERY([Trxs];[Trxs]CustomerCode=$Facility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match)
+For ($k;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"PrintAll")
+NEXT RECORD([Trxs])
+End for 
+REDUCE SELECTION([Unit];0)
+REDUCE SELECTION([Agreement];0)
+USE SET("PrintAll")
+ORDER BY([Trxs];[Trxs]CustomerCode;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+RELATE ONE([Trxs]CustomerCode)
+[Customer]BalFwdDate:=[Trxs]TrxDate-1
+$Date1:=[Customer]BalFwdDate
+$Date2:=[Trxs]TrxDate
+Else 
+AlertMessage (Get localized string("Please highlight the transaction to print a statement for"))
+OK:=0
+End if 
+Else 
+FIRST RECORD([Trxs])
+If ([Facility]InvStatement>0)
+$Date1:=RequestDate (Get localized string("Transaction Start Date")+":";[Agreement]LastBillDate)
+Else 
+$Date1:=RequestDate (Get localized string("Transaction Start Date")+":";[Trxs]TrxDate)
+End if 
+End if 
+If (OK=1)
+vOpenBalText:=Get localized string("Opening balance as at")+" "+String($Date1)
+vOpenBal:=0
+vCloseBal:=0
+If (vMisc=True)
+OK:=1
+vCloseBalText:=Get localized string("Closing balance")
+Else 
+If ([Facility]InvUseAgrBalFwd=True)
+If ([Reservation]RReserveNo>"")
+vOpenBal:=BalanceDateCalc (0;$Date1;True;[Reservation]RReserveNo)
+vCloseBal:=BalanceDateCalc (0;!00-00-00!;False;[Reservation]RReserveNo)
+Else 
+vOpenBal:=BalanceDateCalc (0;$Date1;True;[Agreement]RAgreeNo)
+vCloseBal:=BalanceDateCalc (0;!00-00-00!;False;[Agreement]RAgreeNo)
+End if 
+Else 
+If ([Reservation]RReserveNo>"")
+vOpenBal:=BalanceDateCalc (1;$Date1;True;[Reservation]CustomerCode)
+vCloseBal:=BalanceDateCalc (1;!00-00-00!;False;[Reservation]CustomerCode)
+Else 
+vOpenBal:=BalanceDateCalc (1;$Date1;True;[Agreement]CustomerCode)
+vCloseBal:=BalanceDateCalc (1;!00-00-00!;False;[Agreement]CustomerCode)
+End if 
+End if 
+LAST RECORD([Trxs])
+If ([Facility]InvStatement>0)
+$Date2:=RequestDate (Get localized string("Transaction End Date")+":";Current date)
+Else 
+$Date2:=RequestDate (Get localized string("Transaction End Date")+":";[Trxs]TrxDate)
+End if 
+vCloseBalText:=Get localized string("Closing balance as at")+" "+String($Date2)
+End if 
+If (OK=1)
+If ([Facility]InvStatement>0) & (Windows Ctrl down=False)
+CREATE EMPTY SET([Trxs];"Statement")
+If (vMisc=True)
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+Else 
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$Date2;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=False)
+End if 
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+If (vMisc=True)
+USE SET("PrintAll")
+CLEAR SET("PrintAll")
+Else 
+USE SET("Temp")
+End if 
+If (vMisc=True)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+Else 
+QUERY SELECTION([Trxs];[Trxs]InvDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]InvDate<=$Date2;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Charge=True)
+End if 
+For ($i;1;Records in selection([Trxs]))
+ADD TO SET([Trxs];"Statement")
+NEXT RECORD([Trxs])
+End for 
+USE SET("Statement")
+ARRAY DATE(adTransactionDate;0)
+ARRAY TEXT(asTransactionDescription;0)
+ARRAY REAL(arTransactionCharge;0)
+ARRAY REAL(arTransactionReceipt;0)
+ARRAY LONGINT(aiTransactionInvNo;0)
+DISTINCT VALUES([Trxs]InvNo;aiTransactionInvNo)
+For ($i;1;Size of array(aiTransactionInvNo))
+If (aiTransactionInvNo{$i}=0)
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:=[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+If ([Trxs]Charge)
+arTransactionCharge{Size of array(arTransactionCharge)}:=[Trxs]TotAmt
+Else 
+arTransactionCharge{Size of array(arTransactionCharge)}:=0
+End if 
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+If ([Trxs]Charge)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+Else 
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+Else 
+QUERY SELECTION([Trxs];[Trxs]InvNo=aiTransactionInvNo{$i})
+If ([Facility]StatementDetail)
+For ($j;1;Records in selection([Trxs]))
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+If ([Facility]InvStatement=2)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]TrxDate
+Else 
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+End if 
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)+" "+[Trxs]Description
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=[Trxs]TotAmt
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+NEXT RECORD([Trxs])
+End for 
+Else 
+INSERT IN ARRAY(adTransactionDate;Size of array(adTransactionDate)+1)
+adTransactionDate{Size of array(adTransactionDate)}:=[Trxs]InvDate
+INSERT IN ARRAY(asTransactionDescription;Size of array(asTransactionDescription)+1)
+asTransactionDescription{Size of array(asTransactionDescription)}:="Invoice #"+String([Trxs]InvNo)
+INSERT IN ARRAY(arTransactionCharge;Size of array(arTransactionCharge)+1)
+arTransactionCharge{Size of array(arTransactionCharge)}:=Sum([Trxs]TotAmt)
+INSERT IN ARRAY(arTransactionReceipt;Size of array(arTransactionReceipt)+1)
+arTransactionReceipt{Size of array(arTransactionReceipt)}:=0
+End if 
+End if 
+USE SET("Statement")
+End for 
+REDUCE SELECTION([Trxs];Size of array(adTransactionDate))
+SORT ARRAY(adTransactionDate;asTransactionDescription;arTransactionCharge;arTransactionReceipt;>)
+vi:=1
+Case of 
+: ([Facility]CustomInvFooter=True) & ([Facility]StandardInvFooter=False) & ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintFooterTwo")
+: ([Facility]InvStatement=2)
+FORM SET OUTPUT([Trxs];"InquiryPrintTwo")
+Else 
+FORM SET OUTPUT([Trxs];"InquiryPrintNew")
+End case 
+CLEAR SET("Statement")
+Else 
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=$Date1;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate<=$Date2)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+FIRST RECORD([Trxs])
+FORM SET OUTPUT([Trxs];"InquiryPrint")
+End if 
+PrintSelection ("P";->[Trxs])
+FORM SET OUTPUT([Trxs];"TransOut")
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+End if 
+
+USE SET("Temp")
+CLEAR SET("Temp")
+ORDER BY([Trxs]TrxDate;<;[Trxs]AnalysisCode;>;[Trxs]TotAmt;>)
+

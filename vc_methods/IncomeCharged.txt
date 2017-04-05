@@ -1,0 +1,275 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 19/01/11 Added the option to print for all analysis codes within a Key Stats category and these are at the top of the array list
+//SDD 19/01/11 Also added the Description field to the IncomeDetail
+LogAction (False;"Income Charged Report started.")// records the report being started in the eventlog
+If (PermissionsControl (81))
+ARRAY TEXT(asDescription;0)
+ARRAY TEXT(asAnalysisCode;0)
+//10782
+C_LONGINT($numDays)
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+bAdjIncomePre:=False
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+ORDER BY([Analysis];[Analysis]SortOrder;>;[Analysis]Code;>)
+SELECTION TO ARRAY([Analysis]Description;asDescription)
+
+SELECTION TO ARRAY([Analysis]Code;asAnalysisCode)
+ARRAY REAL(asAdIncomeAmt;Size of array(asAnalysisCode))//10782
+ARRAY REAL(asAdIncomeTaxAmt;Size of array(asAnalysisCode))//10782
+ARRAY REAL(asAmouts;Size of array(asAnalysisCode))
+
+INSERT IN ARRAY(asDescription;0;7)
+asDescription{1}:=Get localized string("All Analysis Codes")
+asDescription{2}:=<>asChgCategory{1}//InitArrays
+asDescription{3}:=<>asChgCategory{2}
+asDescription{4}:=<>asChgCategory{3}
+asDescription{5}:=<>asChgCategory{4}
+asDescription{6}:=<>asChgCategory{5}
+asDescription{7}:=<>asChgCategory{6}
+asDescription:=1
+SetFacility 
+vTitle:=Get localized string("MenuMoreReportsincomeChargedReport")
+vLegend:=Get localized string("Income Charged Report1")
+vReportSettings:=[Facility]ReportSettings
+If (<>tBatch=False)
+vMthDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+vDatePick:=vDate
+vDatePick1:=vMthDate
+Open window((Screen width/2)-200;(Screen height/2)-168;(Screen width/2)+200;(Screen height/2)+168;5;Get localized string("MenuMoreReportsincomeChargedReport"))
+DIALOG([Trxs];"IncomeDialog")
+CLOSE WINDOW
+vReportSettings[[24]]:=String(bPrevious)
+vReportSettings[[25]]:=String(bNext)
+If (vReportSettings#[Facility]ReportSettings) & (OK=1)
+UpdateSystem (128;->vReportSettings;Get localized string("KeyStatsDialogMethod"))
+End if 
+Else 
+bPrevious:=Num(vReportSettings[[24]])
+bNext:=Num(vReportSettings[[25]])
+OK:=1
+vDate:=GetDate (1;Month of(vMthDate);Year of(vMthDate))
+End if 
+If (OK=1)
+Case of 
+: (asDescription=1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+vCol1:="@"
+: (asDescription<=7)//KeyStatCategory
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory=asDescription{asDescription};*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+vCol1:="Z9"
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Description=asDescription{asDescription};*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+vCol1:=[Analysis]Code
+End case 
+If (Records in selection([Analysis])=0)
+AlertMessage (Get localized string("Income Charged Report2"))
+Else 
+
+
+If (<>iPrinttoFile=3)
+
+//SET AUTOMATIC RELATIONS(True;False)
+//QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+//QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+//QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+//QUERY([Trxs]; & ;[Trxs]AnalysisCode="@";*)
+//QUERY([Trxs]; & ;[Trxs]Match#-999)
+//ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>;[Trxs]AnalysisCode;>)
+
+//For ($i;1;Records in selection([Trxs]))
+//$posArray:=0
+//$posArray:=Find in array(asAnalysisCode;[Trxs]AnalysisCode)
+//If ($posArray>0)
+//asAdIncomeAmt{$posArray}:=asAdIncomeAmt{$posArray}+[Trxs]TotAmt
+
+//If (asAdIncomeAmt{$posArray}=0)
+//asAdIncomeTaxAmt{$posArray}:=0
+//Else 
+//asAdIncomeTaxAmt{$posArray}:=asAdIncomeTaxAmt{$posArray}+[Trxs]TaxAmt  //[Trxs]TaxAmt
+//End if 
+//Else 
+//SyncRecordLog ("Analysis code "+[Trxs]AnalysisCode+" not found")
+//End if 
+//NEXT RECORD([Trxs])
+//End for 
+
+FIRST RECORD([Trxs])
+ARRAY TEXT(asAnalysisCode2Excel;0)
+ARRAY INTEGER(asValuePosition;0)
+For ($i;1;Records in selection([Trxs]))
+$posArray:=0
+$posArray:=Find in array(asAnalysisCode2Excel;[Trxs]AnalysisCode)
+If ($posArray<1)
+$posArray:=Find in array(asAnalysisCode;[Trxs]AnalysisCode)
+If ($posArray>0)
+APPEND TO ARRAY(asAnalysisCode2Excel;asAnalysisCode{$posArray})
+APPEND TO ARRAY(asValuePosition;$posArray)
+$posArray:=0
+End if 
+End if 
+NEXT RECORD([Trxs])
+End for 
+FIRST RECORD([Trxs])
+End if 
+
+
+If (bAdjIncomePre=True) & (bPrevious#1)
+//$numDays:=vMthDate-vDate
+$WinRef:=Open window(20;50;350;150;0;Get localized string("Progress"))
+CalcRentAdvanceNew (vDate;True;True)
+CLOSE WINDOW($WinRef)
+
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode="@";*)
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>;[Trxs]AnalysisCode;>)
+
+
+CREATE SET([Trxs];"ToPrint")
+READ WRITE([Trxs])
+QUERY SELECTION([Trxs];[Trxs]SetMatch=True)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+USE SET("ToPrint")
+QUERY SELECTION([Trxs];[Trxs]TotAmt<0)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=True)
+USE SET("ToPrint")
+Else 
+
+SET AUTOMATIC RELATIONS(True;False)
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If (vCol1="Z9")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=asDescription{asDescription};*)
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=vCol1;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+CREATE SET([Trxs];"ToPrint")
+READ WRITE([Trxs])
+QUERY SELECTION([Trxs];[Trxs]SetMatch=True)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+USE SET("ToPrint")
+QUERY SELECTION([Trxs];[Trxs]TotAmt<0)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=True)
+USE SET("ToPrint")
+
+If (bAdjIncomePre)
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#<>sFacility+"PETTY";*)
+QUERY([Trxs]; & ;[Trxs]DateFrom<=vMthDate;*)
+QUERY([Trxs]; & ;[Trxs]DateTo>vMthDate;*)
+If (<>sFacility="ST@")
+QUERY([Trxs]; & ;[Trxs]TrxDate>=!2016-06-01!;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If (vCol1="Z9")
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory=asDescription{asDescription};*)
+Else 
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=vCol1;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Match#-999)
+
+CREATE SET([Trxs];"ToAdd")
+QUERY SELECTION([Trxs];[Trxs]SetMatch=True)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+USE SET("ToAdd")
+QUERY SELECTION([Trxs];[Trxs]TotAmt<0)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=True)
+USE SET("ToAdd")
+
+UNION("ToPrint";"ToAdd";"ToPrint")
+USE SET("ToPrint")
+End if 
+
+End if 
+
+If (<>iPrinttoFile=3)// Excel
+ARRAY TEXT($UniqAnalysisCodes;0)
+DISTINCT VALUES([Trxs]AnalysisCode;$UniqAnalysisCodes)
+If (bPrevious=1)// Details
+ARRAY TEXT(aFieldNames;11)
+aFieldNames{1}:="Unit No"
+aFieldNames{2}:="Agree't"
+aFieldNames{3}:="Date"
+aFieldNames{4}:="Customer"
+aFieldNames{5}:=Get localized string("Tax Amount")
+aFieldNames{6}:=Get localized string("Net of Tax")
+aFieldNames{7}:=Get localized string("Inc Tax")
+aFieldNames{8}:="Inv No"
+aFieldNames{9}:="Analysis"
+aFieldNames{10}:="GL Code"
+aFieldNames{11}:="Months"
+vpTable:=->[Trxs]
+CreateExcelReport (11;(Records in selection([Trxs])+Size of array($UniqAnalysisCodes)+3);"MethodOnLoadIncomeChargedReportDetails";[Facility]FacilityName;Get localized string("Income Charged from ")+String(vDate;6)+" to "+String(vMthDate;6))//no of columns on report, no of rows, lines to execute, header 1, header 2, footer
+Else 
+ARRAY TEXT(aFieldNames;7)
+aFieldNames{1}:=Get localized string("Code")
+aFieldNames{2}:=Get localized string("Description")
+aFieldNames{3}:=Get localized string("Category")
+aFieldNames{4}:=Get localized string("Tax")
+aFieldNames{5}:=Get localized string("Tax Amount")
+aFieldNames{6}:=Get localized string("Net of Tax")
+aFieldNames{7}:=Get localized string("Inc Tax")
+vpTable:=->[Trxs]
+CreateExcelReport (7;(Size of array(asAnalysisCode2Excel)+3);"MethodOnLoadIncomeChargedReport";[Facility]FacilityName;Get localized string("Income Charged from ")+String(vDate;6)+" to "+String(vMthDate;6))//no of columns on report, no of rows, lines to execute, header 1, header 2, footer
+End if 
+
+CLEAR VARIABLE(asAnalysisCode2Excel)
+CLEAR VARIABLE(asValuePosition)
+CLEAR VARIABLE(asAdIncomeAmt)
+CLEAR VARIABLE(asAdIncomeTaxAmt)
+
+Else 
+vLegend:=Get localized string("Income Charged from ")+String(vDate;6)+" to "+String(vMthDate;6)
+Case of 
+: (bPrevious=1)//checkbox for showing detail
+FORM SET OUTPUT([Trxs];"IncomeDetailNew")
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>;[Trxs]TrxDate;>)
+BREAK LEVEL(2)
+: (bNext=1)//checkbox to show negative trxs on a separate line
+FORM SET OUTPUT([Trxs];"IncomeCharged")
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>;[Trxs]SetMatch;>;[Trxs]TrxDate;>)
+BREAK LEVEL(3)
+Else //The most common version - no boxes checked
+FORM SET OUTPUT([Trxs];"IncomeCharged")
+ORDER BY([Trxs];[Analysis]SortOrder;>;[Trxs]AnalysisCode;>;[Trxs]AnalysisCode;>)
+BREAK LEVEL(3)
+End case 
+ACCUMULATE([Trxs]TaxAmt;[Trxs]TotAmt;vAmt2;vAmt1;vAmt3)
+PrintSelection ("P";->[Trxs])
+SET AUTOMATIC RELATIONS(False;False)
+QUERY SELECTION([Trxs];[Trxs]SetMatch=True)
+APPLY TO SELECTION([Trxs];[Trxs]SetMatch:=False)
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+CLEAR SET("ToPrint")
+FORM SET OUTPUT([Trxs];"Output")
+End if 
+
+CLEAR VARIABLE(asAdIncomeAmt)
+CLEAR VARIABLE(asAdIncomeTaxAmt)
+End if 
+End if 
+End if 
+LogAction (True;"Income Charged Report ended.")

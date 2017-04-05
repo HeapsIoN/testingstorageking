@@ -1,0 +1,125 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j;$TotalSize;$DeleteSize;$Compress)
+C_PICTURE($BlankPic;$Picture)
+If (<>sCurrentUser="AdminSupport")
+$i:=ConfirmThree (Get localized string("Delete from which table?");Get localized string("Letters");Get localized string("Photos");Get localized string("Contact Letters");Get localized string("Cancel"))
+If ($i=1) | ($i=2) | ($i=3)
+Case of 
+: ($i=1)
+$p1:=Table(11)//Letters
+$p2:=Field(11;4)//DateSent
+$p3:=Field(11;11)//Size
+$p4:=Field(11;2)
+$Name:=Get localized string("Letters")
+: ($i=2)
+$p1:=Table(14)//Photos
+$p2:=Field(14;7)//DateTaken
+$p3:=Field(14;3)//Size
+$p4:=Field(14;2)
+$Name:=Get localized string("Photos")
+ConfirmTwo (Get localized string("Reduce resolution of photos? (This will adjust photos to 400 x 300 pixils. Set photo compression in System Setup before doing this.)");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ALL RECORDS([Facility])
+$Compress:=[Facility]PhotoCompression
+If ($Compress<20) | ($Compress>1000)
+$Compress:=800
+End if 
+READ WRITE([PhotosCards])
+QUERY([PhotosCards];[PhotosCards]Size>30000)
+$TotalSize:=Records in selection([PhotosCards])
+Open window(20;50;300;150;Get localized string("Progress"))
+For ($i;1;$TotalSize)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Compressing")+" "+$Name+" "+String($i)+" "+Get localized string("of")+" "+String($TotalSize)+"    ")
+CREATE THUMBNAIL([PhotosCards]Photo;$Picture;400;300)
+CONVERT PICTURE($Picture;"jpeg";$Compress)//Test on windows
+[PhotosCards]Photo:=$Picture
+[PhotosCards]Size:=Picture size([PhotosCards]Photo)
+SAVE RECORD([PhotosCards])
+NEXT RECORD([PhotosCards])
+End for 
+CLOSE WINDOW
+READ ONLY([PhotosCards])
+UNLOAD RECORD([PhotosCards])
+ABORT
+End if 
+: ($i=3)
+$p1:=Table(12)//Contacts
+$p2:=Field(12;1)//CallDate
+$p3:=Field(12;33)//Size
+$p4:=Field(12;30)
+$p5:=Field(12;31)
+$Name:=Get localized string("Contact Letters")
+Else 
+//Do Nothing
+End case 
+$Date:=RequestDate (Get localized string("Delete")+" "+$Name+" "+Get localized string("prior to")+" :";Current date-90)
+If (OK=1)
+QUERY($p1->;$p2-><$Date)
+CREATE SET($p1->;"ToDelete")
+Else 
+CREATE EMPTY SET($p1->;"ToDelete")
+End if 
+ConfirmTwo (Get localized string("Only delete")+" "+$Name+" "+Get localized string("for Inactive customers?");"Yes";"No")
+If (OK=1)
+Case of 
+: ($i=1)
+QUERY([Agreement];[Agreement]ActiveAgreemt=False)
+RELATE MANY SELECTION([Letters]AgreeNo)
+QUERY SELECTION([Letters];[Letters]AgreeNo#"UNITP";*)
+QUERY SELECTION([Letters]; & ;[Letters]Size>0)
+: ($i=2)
+QUERY([Customer];[Customer]NoActiveAgreemts=0)
+RELATE MANY SELECTION([PhotosCards]Code)
+QUERY SELECTION([PhotosCards];[PhotosCards]Size>0)
+: ($i=3)
+QUERY([Contacts];[Contacts]FollowUpDone=True;*)
+QUERY([Contacts]; & ;[Contacts]Size>0)
+Else 
+//Do Nothing
+End case 
+CREATE SET($p1->;"Temp")
+INTERSECTION("ToDelete";"Temp";"ToDelete")
+End if 
+QUERY($p1->;$p3->#0)
+CREATE SET($p1->;"Temp")
+DIFFERENCE("Temp";"ToDelete";"Temp")
+USE SET("Temp")
+Open window(20;50;300;150;Get localized string("Progress"))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Calculating size of deletion...")+"    ")
+$TotalSize:=Round(Sum($p3->)/1024;0)
+USE SET("ToDelete")
+CLEAR SET("ToDelete")
+CLEAR SET("Temp")
+$DeleteSize:=Round(Sum($p3->)/1024;0)
+$TotalSize:=$TotalSize+$DeleteSize
+CLOSE WINDOW
+ConfirmTwo (Get localized string("Delete")+" "+String(Records in selection($p1->))+" ["+String($DeleteSize;"#,###,##0")+"kb] of "+String(Records in table($p1->))+" ["+String($TotalSize;"#,###,##0")+"kb] "+Get localized string("selected")+" "+$Name+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+ConfirmTwo (Get localized string("Delete")+" "+$Name+".  "+Get localized string("Are you sure?");Get localized string("No");Get localized string("Delete"))
+If (OK=0)
+READ WRITE($p1->)
+FIRST RECORD($p1->)
+Open window(20;50;300;150;Get localized string("Progress"))
+$TotalSize:=Records in selection($p1->)
+For ($j;1;$TotalSize)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Deleting")+" "+$Name+" "+String($j)+" "+Get localized string("of")+" "+String($TotalSize)+"    ")
+$p4->:=$BlankPic
+If ($i=3)
+$p5->:=$BlankPic
+End if 
+SAVE RECORD($p1->)
+NEXT RECORD($p1->)
+End for 
+CLOSE WINDOW
+READ ONLY($p1->)
+UNLOAD RECORD($p1->)
+AlertMessage (Get localized string("To reduce the size of the datafile you will need to compact the datafile  using the compact option of 4D Tools. Please contact Technical Support for further information."))
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("Please contact Storman Support about using this feature"))
+End if 

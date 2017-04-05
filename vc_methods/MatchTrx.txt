@@ -1,0 +1,277 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 17/08/12 Rewritten to use new text field for MiscDetls instead of subrecords
+//Called by CheckMatching and LogMonLoopCode and GetArrayfromMiscDetls
+C_LONGINT($0)//Result code 0=Successful 1=Locked 2=Other problem?
+C_TEXT($1)//AgreeNo to Match
+C_LONGINT($2;$Match)//Match Code
+C_BOOLEAN($3;$CustLoaded;$Cont)//If true Customer & Agreement are already loaded
+C_LONGINT($i;$j;$x)
+$0:=0
+$Match:=$2
+ARRAY INTEGER($aType;4)
+$aType{1}:=8
+$aType{2}:=-3
+$aType{3}:=-3
+$aType{4}:=-2
+If ($Match#-999) & ($Match#-1000)//Don't match stock purchase transactions. //23/09/14 DAM Added ($Match#-1000) to stop from matching "Other" bank rec trxs
+If (Count parameters>=3)
+$CustLoaded:=$3
+Else 
+$CustLoaded:=False
+End if 
+$MatchNo:=1
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match)
+If (Records in selection([Trxs])>0)
+If ($Match#0) & ([Trxs]CustomerCode#(Substring($1;1;5)+"MISCL"))//TriggerSubTrx for Misc Receipts is done from MiscReceipts layout
+$TotCharges:=0
+For ($i;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+$TotCharges:=$TotCharges+[Trxs]TotAmt
+Else 
+$TotCharges:=$TotCharges-[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+FIRST RECORD([Trxs])
+If (Round($TotCharges;2)#0)
+$Match:=0
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=0)
+End if 
+End if 
+If ($CustLoaded=False)
+READ WRITE([Customer])
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+End if 
+If (Locked([Customer]))//Lock these records to make it less likely [Transactions] will be locked
+$0:=1
+Else 
+For ($i;1;Records in selection([Trxs]))
+If (Locked([Trxs]))
+$0:=1
+LOCKED BY([Trxs];$Process;$User;$Machine;$ProcessName)
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ($0=0)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Analysis]SortOrder;<;[Trxs]TotAmt;<)
+//The Charges are stored in these arrays
+ARRAY TEXT($aAnlys;0)
+ARRAY REAL($aTaxs;0)
+ARRAY REAL($aTotal;0)
+ARRAY TEXT($aCustName;0)
+ARRAY LONGINT($aRecNo;0)
+ARRAY LONGINT($aSeqNo;0)
+ARRAY LONGINT($aSelection;0)
+SELECTION TO ARRAY([Trxs]AnalysisCode;$aAnlys;[Trxs]TaxAmt;$aTaxs;[Trxs]TotAmt;$aTotal;[Trxs]Description;$aCustName;[Trxs]SeqNo;$aSeqNo;[Trxs];$aRecNo)
+ARRAY BOOLEAN($aPartial;Size of array($aTotal))
+For ($i;1;Size of array($aPartial))
+$aPartial{$i}:=False
+End for 
+For ($j;1;2)
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+If ($j=1)
+QUERY([Trxs]; & ;[Trxs]TotAmt<0)//First pass any negative trxs 
+Else 
+QUERY([Trxs]; & ;[Trxs]TotAmt>=0)//Second pass all the positive payments
+End if 
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>;[Trxs]TotAmt;<)
+$New:=True
+$MatchAll:=False
+$x:=1//Array pointer   
+Repeat 
+$TotCharges:=0
+For ($i;1;Size of array($aTotal))
+$TotCharges:=Round($TotCharges+$aTotal{$i};2)
+End for 
+If (Locked([Trxs]))
+$0:=1
+End if 
+If ($New)
+INSERT IN ARRAY($aSelection;0)
+$aSelection{1}:=Record number([Trxs])
+$ReceiptAmt:=[Trxs]TotAmt
+If ($ReceiptAmt=$TotCharges)
+$MatchAll:=True
+End if 
+ARRAY TEXT(aAnalysisCode;0)//GetArrayfromMiscDetls
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+TextToArrays (->[Trxs]MiscDetls;->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+For ($k;1;Size of array(aAnalysisCode))
+TriggerSubTrx (aAnalysisCode{$k};[Trxs]TrxDate;aTaxAmt{$k}*-1;aTotAmt{$k}*-1)
+End for 
+[Trxs]MiscDetls:=""
+ARRAY TEXT(aAnalysisCode;0)//SDD 13/09/12 Must clear the arrays before they are appended too
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+$New:=False
+End if 
+//Removed from beginning of next line 
+If ($aTotal{$x}#0) & ((($j=1) & ($aTotal{$x}<0)) | ($j=2) | ($MatchAll))//First pass negative charges only then any non-zero charges
+If (($j=1) & ($aTotal{$x}>$ReceiptAmt)) | (($j=2) & ($aTotal{$x}<$ReceiptAmt)) | ($MatchAll)
+APPEND TO ARRAY(aTotAmt;$aTotal{$x})
+APPEND TO ARRAY(aTaxAmt;$aTaxs{$x})
+APPEND TO ARRAY(aAnalysisCode;$aAnlys{$x})
+APPEND TO ARRAY(aSeqNo;$aSeqNo{$x})
+$k:=Size of array(aTotAmt)
+TriggerSubTrx (aAnalysisCode{$k};[Trxs]TrxDate;aTaxAmt{$k};aTotAmt{$k})
+INSERT IN ARRAY($aSelection;0)
+$aSelection{1}:=$aRecNo{$x}
+$ReceiptAmt:=$ReceiptAmt-$aTotal{$x}
+$aTotal{$x}:=0
+$aPartial{$x}:=False
+$aTaxs{$x}:=0
+$Cont:=False
+If ($ReceiptAmt=0) & ($x<Size of array($aTotal))
+If ($aTotal{$x+1}=0)
+$Cont:=True
+End if 
+End if 
+If ($ReceiptAmt=0) & (Find in array($aPartial;True)<1) & ($Cont=False)
+CREATE SELECTION FROM ARRAY([Trxs];$aSelection;"Match"+String($MatchNo))
+$MatchNo:=$MatchNo+1
+ARRAY LONGINT($aSelection;0)
+End if 
+$x:=$x+1
+Else 
+APPEND TO ARRAY(aTotAmt;$ReceiptAmt)
+APPEND TO ARRAY(aTaxAmt;Round($aTaxs{$x}*$ReceiptAmt/$aTotal{$x};2))
+APPEND TO ARRAY(aAnalysisCode;$aAnlys{$x})
+APPEND TO ARRAY(aSeqNo;$aSeqNo{$x})
+$k:=Size of array(aTotAmt)
+TriggerSubTrx (aAnalysisCode{$k};[Trxs]TrxDate;aTaxAmt{$k};aTotAmt{$k})
+INSERT IN ARRAY($aSelection;0)
+$aSelection{1}:=$aRecNo{$x}
+$aTotal{$x}:=$aTotal{$x}-$ReceiptAmt
+If ($aTotal{$x}#0)
+$aPartial{$x}:=True
+End if 
+//$aTaxs{$x}:=Round($aTaxs{$x}-CalcTaxAmt ([Transaction]TotAmt;<>sFacility+"RF";[Transaction]TrxDate;[Transaction]TrxDate;2);2)
+$aTaxs{$x}:=Round($aTaxs{$x}-aTaxAmt{Size of array(aTaxAmt)};2)//SDD 17/09/12 Problem calculating tax amounts - should use [Transaction]TaxAmt not calculated
+$ReceiptAmt:=$ReceiptAmt-[Trxs]TotAmt//This line added as $ReceiptAmt was out of balance
+If ($aTotal{$x}=0) & (Find in array($aPartial;True)<1)
+CREATE SELECTION FROM ARRAY([Trxs];$aSelection;"Match"+String($MatchNo))
+$MatchNo:=$MatchNo+1
+ARRAY LONGINT($aSelection;0)
+End if 
+[Trxs]MiscDetls:=ArraysToText (->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+SAVE RECORD([Trxs])
+ARRAY TEXT(aAnalysisCode;0)//GetArrayfromMiscDetls
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+NEXT RECORD([Trxs])
+$New:=True
+End if 
+Else 
+$x:=$x+1
+End if 
+Until (End selection([Trxs])) | ($x>Size of array($aTotal))
+While (End selection([Trxs])=False) | ($ReceiptAmt#0)
+If ($New)
+$ReceiptAmt:=[Trxs]TotAmt
+ARRAY TEXT(aAnalysisCode;0)//GetArrayfromMiscDetls
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+TextToArrays (->[Trxs]MiscDetls;->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+For ($k;1;Size of array(aAnalysisCode))
+TriggerSubTrx (aAnalysisCode{$k};[Trxs]TrxDate;aTaxAmt{$k}*-1;aTotAmt{$k}*-1)
+End for 
+[Trxs]MiscDetls:=""
+ARRAY TEXT(aAnalysisCode;0)
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+End if 
+If (Round($ReceiptAmt;2)#0)
+$FacilityCode:=Substring([Trxs]AnalysisCode;1;5)
+APPEND TO ARRAY(aTotAmt;Round($ReceiptAmt;2))
+APPEND TO ARRAY(aTaxAmt;Round(CalcTaxAmt ($ReceiptAmt;$FacilityCode+"RF";[Trxs]TrxDate;[Trxs]TrxDate;2);2))
+APPEND TO ARRAY(aAnalysisCode;$FacilityCode+"RF")
+APPEND TO ARRAY(aSeqNo;-9)
+$k:=Size of array(aTotAmt)
+TriggerSubTrx (aAnalysisCode{$k};[Trxs]TrxDate;aTaxAmt{$k};aTotAmt{$k})
+$ReceiptAmt:=0//This line added 2.5.4 29/12/00
+ARRAY LONGINT($aSelection;0)//If anything matches to -9 it cannot be part of a match
+End if 
+[Trxs]MiscDetls:=ArraysToText (->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+SAVE RECORD([Trxs])
+ARRAY TEXT(aAnalysisCode;0)//GetArrayfromMiscDetls
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+NEXT RECORD([Trxs])
+$New:=True
+End while 
+End if 
+End for 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=$1;*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+For ($j;1;Records in selection([Trxs]))
+If (Locked([Trxs]))
+$0:=1
+End if 
+ARRAY TEXT(aAnalysisCode;0)//GetArrayfromMiscDetls
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+TextToArrays (->[Trxs]MiscDetls;->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+For ($k;1;Size of array(aAnalysisCode))
+TriggerSubTrx (aAnalysisCode{$k};[Trxs]TrxDate;aTaxAmt{$k}*-1;aTotAmt{$k}*-1)
+End for 
+[Trxs]MiscDetls:=""
+ARRAY TEXT(aAnalysisCode;0)//GetArrayfromMiscDetls
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+$FacilityCode:=Substring([Trxs]AnalysisCode;1;5)
+APPEND TO ARRAY(aTotAmt;Round([Trxs]TotAmt;2))
+APPEND TO ARRAY(aTaxAmt;Round(CalcTaxAmt ([Trxs]TotAmt;$FacilityCode+"RF";[Trxs]TrxDate;[Trxs]TrxDate;2);2))
+APPEND TO ARRAY(aAnalysisCode;$FacilityCode+"RF")
+APPEND TO ARRAY(aSeqNo;-9)
+$k:=Size of array(aTotAmt)
+TriggerSubTrx (aAnalysisCode{$k};[Trxs]TrxDate;aTaxAmt{$k};aTotAmt{$k})
+[Trxs]MiscDetls:=ArraysToText (->$aType;->aAnalysisCode;->aTaxAmt;->aTotAmt;->aSeqNo)
+SAVE RECORD([Trxs])
+ARRAY TEXT(aAnalysisCode;0)//GetArrayfromMiscDetls
+ARRAY REAL(aTaxAmt;0)
+ARRAY REAL(aTotAmt;0)
+ARRAY LONGINT(aSeqNo;0)
+NEXT RECORD([Trxs])
+End for 
+End if 
+If ($0=0)
+For ($i;1;$MatchNo-1)
+USE NAMED SELECTION("Match"+String($i))
+FIRST RECORD([Trxs])
+If ([Trxs]Match=0)
+[Customer]NextMatch:=[Customer]NextMatch+1//Must increment first as new customers start at 0
+SAVE RECORD([Customer])
+APPLY TO SELECTION([Trxs];[Trxs]Match:=[Customer]NextMatch)
+End if 
+CLEAR NAMED SELECTION("Match"+String($i))
+End for 
+End if 
+End if 
+End if 
+If ($CustLoaded=False)
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+End if 
+SetFacility 
+End if 

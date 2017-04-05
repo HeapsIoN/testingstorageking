@@ -1,0 +1,184 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// ----------------------------------------------------
+// User name (OS):
+// Date and time: 
+// ----------------------------------------------------
+// Method: Generic_Error_Proc
+// Description
+// Specify with ON ERR CALL(&quot;Generic_Error_Proc&quot;) to
+// capture and report 4D errors. This method can handle
+// 4D Engine Errors, SQL Engine Errors and Trigger Errors
+// It also collects some information about the execution context
+// The diagnostic information included is intended for developers, not end users.
+// 
+// Parameters
+// ----------------------------------------------------
+// 4D does not pass in params to this function instead it sets
+// System Variables Error, Error method, and Error Line (the latter two only in v12 http://kb.4d.com/search/assetid=76150)
+
+C_LONGINT($errCode;$i)
+C_TEXT($errText;$vt_TableName;$errODBC)
+C_LONGINT($errSQLServer)
+
+C_LONGINT($Error;$win32;$versionInt)
+C_TEXT($Message;$version;$versionDetails)
+
+C_POINTER($vp_ParentTable)
+C_LONGINT($vl_RecordNum)
+
+C_LONGINT($Platform;$System;$Processor;$Language)
+
+PLATFORM PROPERTIES($Platform;$System;$Processor;$Language)
+
+If ($Platform=3)
+$win32:=sys_GetOSVersion ($versionInt;$versionDetails)
+Case of 
+: ($versionInt=OS_WIN95)
+$version:="Windows 95"
+: ($versionInt=OS_WIN98)
+$version:="Windows 98"
+: ($versionInt=OS_ME)
+$version:="Windows ME"
+: ($versionInt=OS_NT351)
+$version:="Windows NT 3.5.1"
+: ($versionInt=OS_NT4)
+$version:="Windows NT 4"
+: ($versionInt=OS_XP)
+$version:="Windows XP"
+: ($versionInt=OS_VISTA_LONGHORN)
+$version:="Windows Vista"
+: ($versionInt=OS_WIN7)
+$version:="Windows 7"
+: ($versionInt=OS_WIN8)
+$version:="Windows 8"
+: ($versionInt=OS_WIN81)
+$version:="Windows 8.1"
+: ($versionInt=1000)
+$version:="Windows 10"
+: ($versionInt=OS_SERVER2012)
+$version:="Windows Server 2012"
+: ($versionInt=OS_SERVER2012R2)
+$version:="Windows Server 2012R2"
+: ($versionInt=OS_SERVER2K8)
+$version:="Windows Server 2008"
+: ($versionInt=OS_SERVER2K8R2)
+$version:="Windows Server 2008R2"
+: ($versionInt=OS_W2K)
+$version:="Windows 2000"
+: ($versionInt=OS_WIN03)
+$version:="Windows 2003"
+Else 
+$version:="Windows "+String($versionInt)
+End case 
+If ($versionDetails>"")
+$version:=$version+" - "+$versionDetails
+End if 
+Else 
+$version:="Mac OSX "
+$version:=$version+String(Num(String($System >> 8;"&X")))+"."
+$version:=$version+String($System & 0x00F0 >> 4)+"."+String($System & 0x000F)
+End if 
+
+SQL GET LAST ERROR($errCode;$errText;$errODBC;$errSQLServer)
+
+ARRAY INTEGER($codesArray;0)
+ARRAY TEXT($internalCompArray;0)
+ARRAY TEXT($textArray;0)
+
+GET LAST ERROR STACK($codesArray;$internalCompArray;$textArray)
+
+$Message:=Char(Carriage return)+Char(Line feed)
+// general 4D error stack only if there is an error
+If (Error#0)
+$Message:=$Message+"General Message(Error Stack): "+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Error: "+String(Error)+Char(Carriage return)+Char(Line feed)
+// Available in 4Dv12 is Error Line and Error method process variables
+For ($i;1;Size of array($codesArray))
+// Do something with the element
+$Message:=$Message+String($codesArray{$i})+Char(Tab key)+$internalCompArray{$i}+Char(Carriage return)+Char(Line feed)+$textArray{$i}+Char(Carriage return)+Char(Line feed)+Char(Carriage return)+Char(Line feed)
+End for 
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)
+End if 
+
+// return information if it is a trigger based error too
+C_LONGINT($tLevel)
+$tLevel:=Trigger level
+If ($tLevel#0)
+C_LONGINT($dbEvent;$tableNum;$recordNum)
+TRIGGER PROPERTIES($tLevel;$dbEvent;$tableNum;$recordNum)
+
+$Message:=$Message+"Trigger Message: "+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Table name-Record Number: "+Table name($tableNum)+"-"+String($recordNum)+Char(Carriage return)+Char(Line feed)
+// Choose is 0 based, Database event is 1 based. so pad the results with a blank string
+$Message:=$Message+"Event: "+Choose($dbEvent;"";"Saving New";"Saving Existing";"Deleting")+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+Char(Carriage return)+Char(Line feed)
+
+End if 
+
+// 4D SQL error stack (thrown by new SQL engine)
+If ($errCode#0)
+$Message:=$Message+"SQL MESSAGE: "+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Data Source: "+Get current data source+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Error Code: "+String($errCode)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Error Text: "+$errText+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Error ODBC: "+$errODBC+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Error SQL Server: "+String($errSQLServer)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+Char(Carriage return)+Char(Line feed)
+End if 
+
+// Finally lets collect some user information and timestamps
+$vp_ParentTable:=Current form table
+If (Not(Nil($vp_ParentTable)))
+$vl_RecordNum:=Record number($vp_ParentTable->)
+$vt_TableName:=Table name($vp_ParentTable)
+Else 
+$vl_RecordNum:=-1
+$vt_TableName:="Nil"
+End if 
+
+$Message:=$Message+Char(Carriage return)+Char(Line feed)+"Client Information: "+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Error method: "+Error method+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Error line: "+String(Error Line)+Char(Carriage return)+Char(Line feed)
+// Only available in 4D v15R4
+//$Message:=$Message+"Error formula: "+String(Error Formula)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Current form table: "+$vt_TableName+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Current record num: "+String($vl_RecordNum)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Current User: "+Current user+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Current Machine: "+Current machine+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Current Version: "+String(<>iVersion)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Current Build Date: "+String(<>dCompileDate)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Current OS: "+$version+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Date: "+String(Current date(*);Internal date long)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"Time: "+String(Current time(*);HH MM AM PM)+Char(Carriage return)+Char(Line feed)
+$Message:=$Message+"_____________________________________"+Char(Carriage return)+Char(Line feed)+Char(Carriage return)+Char(Line feed)
+
+// alert this to the user. or store it in the database in the above for loops.
+
+SyncRecordLog ($Message;"ErrorLog")
+/////////////////////fb11134/////////////////
+If (Position("InvRecCode";$Message)>0)
+$ss:=Error method+Char(Carriage return)+Char(Line feed)
+Else 
+If (Application type#4D Server)
+////$ss:=Error method+Char(Carriage return)+Char(Line feed)
+//AlertMessage ("A critical error has occured, please contact Storman Support as soon as possible.")
+AlertMessage ("An error has occured, please contact Storman Support.")
+End if 
+If (Not(Is compiled mode))
+AlertMessage ($Message)
+End if 
+End if 
+
+
+//If (Application type#4D Server)
+//AlertMessage ("A critical error has occured, please contact Storman Support as soon as possible.")
+//End if 
+//If (Not(Is compiled mode))
+//AlertMessage ($Message)
+//End if 

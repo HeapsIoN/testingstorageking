@@ -1,0 +1,69 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($1)
+If (Records in selection([Trxs])>0)
+$t:=Char(9)
+FIRST RECORD([Trxs])
+If ([Facility]FacilityCode="KE@")
+SEND PACKET(vDoc;"AgreeNo"+$t+"CustNo"+$t+"MoveOutDte"+$t+"LastPmtDte"+$t+"BalOwing"+$t+"ActiveAgreemt"+$t+"TrxDate"+$t)
+SEND PACKET(vDoc;"TrxSeqNo"+$t+"TotAmt"+$t)
+SEND PACKET(vDoc;"AccountNo"+$t+"BankAccName"+$t+"BatchNo"+Char(13))
+End if 
+For ($i;1;Records in selection([Trxs]))
+RELATE ONE([Trxs]CustomerCode)
+RELATE ONE([Trxs]AgreeNo)
+$Active:="False"
+Case of 
+: ([Trxs]CustomerCode="KEZ@")
+[Facility]Country:="NZ"
+: ([Trxs]CustomerCode="KE@")
+[Facility]Country:="AU"
+Else 
+//do nothing
+End case 
+If ((Length([Customer]BankAcct)=17) & ([Facility]Country="NZ")) | (([Facility]Country="AU") & (Length([Customer]BSB)>=4) & (Length([Customer]BankAcct)>=5) & (Length([Customer]BankAcct)<=10))// if record has a valid bank a/c length
+Case of 
+: ([Facility]FacilityCode="KE@")
+RELATE ONE([Trxs]AgreeNo)
+RELATE ONE([Trxs]CustomerCode)
+If ([Agreement]ActiveAgreemt=True)
+$Active:="True"
+End if 
+[Trxs]CCAuthNo:=String(Year of(vDate);"0000")+String(Month of(vDate);"00")+String(Day of(vDate);"00")
+: ([Facility]Country="NZ") & ([Facility]FacilityCode="NM@")
+$Amount:=[Trxs]TotAmt*-1
+$RefundString:="DC Refund "+<>asSiteCodes{$1}+","+String(Day of(vDate);"00")+"/"+String(Month of(vDate);"00")+"/"+String(Year of(vDate);"0000")+","+Substring([Facility]BankAcNo;1;6)+Substring([Facility]BankAcNo;8)+","+String($Amount;"##,##0.00")+","+Substring([Facility]BusinessName;1;11)+","
+$RefundString:=$RefundString+Substring([Facility]BusinessName;12;12)+","+Substring([Trxs]AgreeNo;6)+","+Substring([Customer]BankAcct;1;6)+Substring([Customer]BankAcct;8)+",Rent Refund,"
+$RefundString:=$RefundString+"Refunds,"+<>asSiteCodes{$1}+","+Substring(Replace string([Customer]CustomerName;",";"");1;32)
+SEND PACKET(vDoc;$RefundString+Char(13)+Char(10))
+[Trxs]CCAuthNo:=vShortDte
+Else 
+AlertMessage (Get localized string("Your facility is not supported, please contact Storman Support for further information."))
+End case 
+Else 
+[Trxs]CCAuthNo:="BadAC"
+End if 
+If ([Facility]FacilityCode="KE@")
+If ([Customer]BankAccountName="")
+[Trxs]CCAuthNo:="BadAC"
+End if 
+SEND PACKET(vDoc;[Trxs]AgreeNo+$t+[Trxs]CustomerCode+$t+String([Agreement]MoveOut)+$t+String([Agreement]LastPmtDate)+$t+String([Agreement]BalanceOwing)+$t)
+SEND PACKET(vDoc;$Active+$t+String([Trxs]TrxDate)+$t+String([Trxs]SeqNo)+$t+String([Trxs]TotAmt)+$t)
+If ([Facility]Country="AU")
+If (Length([Customer]BSB)<6)
+Case of 
+: (Length([Customer]BSB)=5)
+SEND PACKET(vDoc;"0"+[Customer]BSB)//+$t)
+: (Length([Customer]BSB)=4)
+SEND PACKET(vDoc;"00"+[Customer]BSB)//)+$t)
+End case 
+Else 
+SEND PACKET(vDoc;[Customer]BSB)//+$t)
+End if 
+End if 
+SEND PACKET(vDoc;[Customer]BankAcct+$t+[Customer]BankAccountName+$t+[Trxs]CCAuthNo+Char(13))
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+CLOSE DOCUMENT(vDoc)
+End if 

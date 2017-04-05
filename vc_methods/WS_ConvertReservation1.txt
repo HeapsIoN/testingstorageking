@@ -1,0 +1,520 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 02/07/10, 10:17:55
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_ConvertReservation
+// Description
+// Converts reservation to agreement (can add to existing agreement)
+// 
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_ResNo;Is string var;SOAP input;"WS_ResNo")
+SOAP DECLARATION(WS_RAgreeNo;Is string var;SOAP input;"WS_RAgreeNo")
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP input;"WS_MoveInDate")
+SOAP DECLARATION(WS_Locked;Is Boolean;SOAP input)
+SOAP DECLARATION(WS_aUnitNo;Text array;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+SOAP DECLARATION(WS_stDigAgmtID;Is string var;SOAP input;"WS_stDigAgmtID")
+SOAP DECLARATION(WS_inDigAgmtID;Is string var;SOAP input;"WS_inDigAgmtID")
+
+SOAP DECLARATION(WS_RAgreeNo;Is string var;SOAP output;"WS_RAgreeNo")
+SOAP DECLARATION(WS_Edit;Is Boolean;SOAP output;"WS_Edit")
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")
+SOAP DECLARATION(WS_UnitsOccupied;Is text;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+//Clear Variables before running method.
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+$String:="Start WS_ConvertReservation"+Char(13)
+$String:=$String+"WS_ResNo: "+WS_ResNo+Char(13)
+$String:=$String+"WS_RAgreeNo: "+WS_RAgreeNo+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+$String:=$String+"WS_Locked: "+String(WS_Locked)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+
+$String:=$String+"WS_stDigAgmtID: "+WS_stDigAgmtID+Char(13)
+$String:=$String+"WS_inDigAgmtID: "+WS_inDigAgmtID+Char(13)
+$sizeofarray:=Size of array(WS_aUnitNo)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_aUnitNo("+String($vlElem)+"):"+WS_aUnitNo{$vlElem}+Char(13)
+End for 
+WSRecordLog ($String)
+
+
+READ WRITE([Reservation])
+READ WRITE([Customer])
+READ WRITE([Unit])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+LOAD RECORD([Reservation])
+LOAD RECORD([Customer])
+LOAD RECORD([Unit])
+LOAD RECORD([Agreement])
+
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>sProduct:=[Facility]ProductCode
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asSiteCodes)
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+//<>sFacility:=Substring(WS_ResNo;1;5)
+
+
+
+WS_CustomerID:="Invalid"
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_ResNo;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_ResNo)
+If (Records in selection([Reservation])=1) & (Locked([Reservation])=False)
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+If (Size of array(WS_aUnitNo)>0)
+QUERY([Unit];[Unit]RUnitNo=WS_aUnitNo{1};*)
+For ($p;1;Size of array(WS_aUnitNo))
+QUERY([Unit]; | ;[Unit]RUnitNo=WS_aUnitNo{$p};*)
+End for 
+QUERY([Unit]; & ;[Unit]ReservedTo=[Reservation]RReserveNo)
+Else 
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+WS_Edit:=True
+
+
+
+$NewAgree:=True
+If (WS_RAgreeNo>"")
+QUERY([Agreement];[Agreement]RAgreeNo=WS_RAgreeNo)
+If (Records in selection([Agreement])=1) & (Locked([Agreement])=False)
+WS_Edit:=True
+$NewAgree:=False
+$AgreeNo:=[Agreement]AgreeNo
+Else 
+WS_Edit:=False
+WS_RAgreeNo:=""
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+End if 
+If (WS_Edit=True)
+If ($NewAgree=True)
+$Continue:=False
+If (Not(Semaphore("<>bNextAgreeNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//If (Application type=4D Remote Mode)
+GET PROCESS VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+//End if 
+$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+Repeat 
+If (<>aiNextAgreeNo{$arraypos}>[Facility]NextAgreeNo)
+//ConfirmTwo (Get localized string("It appears the next agreement number of")+" "+String([Facility]NextAgreeNo;"000000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+OK:=1
+If (OK=1)
+$AgreeNo:=String(<>aiNextAgreeNo{$arraypos};"000000000")
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$arraypos}+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+Else 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+Else 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+<>aiNextAgreeNo{$arraypos}:=[Facility]NextAgreeNo
+End if 
+vOldUser:=[Facility]NextAgreeNo
+
+$Key:=[Facility]FacilityCode+$AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+//If (Application type=4D Remote Mode)
+VARIABLE TO VARIABLE(-1;<>aiNextAgreeNo;<>aiNextAgreeNo)
+//End if 
+Else 
+//AlertMessage ("Could not get next agreement number")
+Repeat 
+$AgreeNo:=String([Facility]NextAgreeNo;"000000000")
+[Facility]NextAgreeNo:=[Facility]NextAgreeNo+1
+vOldUser:=[Facility]NextAgreeNo
+$Key:=[Facility]FacilityCode+$AgreeNo
+$i:=Find in field([Agreement]RAgreeNo;$Key)
+Until ($i<=0)
+End if 
+If ($Continue)
+CLEAR SEMAPHORE("<>bNextAgreeNo")
+End if 
+End if 
+
+$Date:=WS_MoveInDate
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+LOAD RECORD([Agreement])
+If ($NewAgree=True)
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:=$AgreeNo
+[Agreement]RAgreeNo:=[Facility]FacilityCode+$AgreeNo
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+WS_RAgreeNo:=[Agreement]RAgreeNo
+[Agreement]CustomerCode:=[Reservation]CustomerCode
+[Customer]AgreemtsOperating:=[Agreement]AgreeNo
+[Customer]NoActiveAgreemts:=[Customer]NoActiveAgreemts+1
+If (WS_Locked)
+[Customer]Overdue:=1
+End if 
+[Agreement]MoveIn:=$Date
+[Agreement]DaytoBill:=Day of([Agreement]MoveIn)
+[Agreement]NextBillDate:=[Agreement]MoveIn
+[Agreement]LastBillDate:=[Agreement]MoveIn
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+[Agreement]ActiveAgreemt:=True
+[Agreement]BillUtilities:=<>tUtilities
+QUERY([BillPlan];[BillPlan]Code=[Facility]FacilityCode+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]CasualBilling=False;*)
+If ([Reservation]Weekly=True)
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod="Week")
+Else 
+QUERY([BillPlan]; & ;[BillPlan]PlanPeriod="Month")
+End if 
+ORDER BY([BillPlan]SortOrder;>)
+FIRST RECORD([BillPlan])
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]ContactNo:=[Reservation]ContactNo
+[Agreement]CallTakenBy:=[Reservation]CallTakenBy
+//15/07/13 DAM Added for conversion
+[Agreement]UserLogin:=[Reservation]UserLogin
+[Agreement]KQ1:=[Reservation]KQ1
+[Agreement]KQ2:=[Reservation]KQ2
+[Agreement]KQ3:=[Reservation]KQ3
+[Agreement]KQ4:=[Reservation]KQ4
+[Agreement]KQ5:=[Reservation]KQ5
+[Agreement]KQ6:=[Reservation]KQ6
+[Agreement]KQ7:=[Reservation]KQ7
+[Agreement]KQ8:=[Reservation]KQ8
+[Agreement]KQ9:=[Reservation]KQ9
+[Agreement]KQ10:=[Reservation]KQ10
+[Agreement]KTS:=[Reservation]KTS
+[Agreement]KCN:=[Reservation]KCN
+Else 
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+End if 
+FIRST RECORD([Unit])
+If ([BillPlan]PlanPeriod="Week")
+For ($i;1;Records in selection([Unit]))
+[Unit]RentedValue:=[Unit]QuotedRate/0.2308
+[Unit]ExtraDisc:=[UnitType]MonthlyRate-[Unit]RentedValue
+[Unit]NewRentAmt:=[Unit]RentedValue
+[Unit]Deposit:=[Unit]ReserveDeposit
+If ([Facility]AgreeOnlyDeposit=True) & ([Unit]Deposit=0)
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]Deposit:=[UnitType]DepositAmt
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Unit]Deposit
+End if 
+[Unit]ReserveDeposit:=0
+If ($NewAgree=False)
+[Unit]AgreeNo:=[Facility]FacilityCode+$AgreeNo
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+Else 
+For ($i;1;Records in selection([Unit]))
+[Unit]RentedValue:=[Unit]QuotedRate
+[Unit]ExtraDisc:=[UnitType]MonthlyRate-[Unit]RentedValue
+[Unit]NewRentAmt:=[Unit]RentedValue
+[Unit]Deposit:=[Unit]ReserveDeposit
+If ([Facility]AgreeOnlyDeposit=True) & ([Unit]Deposit=0)
+RELATE ONE([Unit]UnitTypeCode)
+[Unit]Deposit:=[UnitType]DepositAmt
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Unit]Deposit
+End if 
+[Unit]ReserveDeposit:=0
+If ($NewAgree=False)
+[Unit]AgreeNo:=[Facility]FacilityCode+$AgreeNo
+End if 
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+End if 
+If ($NewAgree=True)
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+QUERY([Notices];[Notices]FacilityCode=[Facility]FacilityCode;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]RefDateField=11;*)
+QUERY([Notices]; & ;[Notices]DaysAfter<0)
+If (Records in selection([Notices])>0)
+[Agreement]NoticeDaysPrior:=Abs([Notices]DaysAfter)
+End if 
+End if 
+If ($NewAgree=False)
+CREATE SET([Unit];"ReservationUnits")
+QUERY([Unit];[Unit]AgreeNo=[Facility]FacilityCode+$AgreeNo)
+End if 
+If ([BillPlan]PlanPeriod="Week")
+[Agreement]RegularRent:=Sum([Unit]RentedValue)*0.2308
+Else 
+[Agreement]RegularRent:=Sum([Unit]RentedValue)
+End if 
+[Agreement]RentAmt:=RoundAmt (([Agreement]RegularRent*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100)-[BillPlan]DiscFixedAmt)
+[Agreement]DiscountAmt:=Round(([Agreement]RegularRent*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+//QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"DP")
+If ($NewAgree=True)
+
+If ([Reservation]DepositAmt=0) & ([Facility]AgreeOnlyDeposit=True)
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If ([Analysis]DfltSellAmt#0)
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Analysis]DfltSellAmt
+End if 
+Else 
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Reservation]DepositAmt
+End if 
+Else 
+[Agreement]DepositAmt:=[Agreement]DepositAmt+[Reservation]DepositAmt
+End if 
+//This should not be otherwise Deposit is refunded on MoveOut incorrectly
+//SAVE RECORD([Agreement])
+If (Records in set("ReservationUnits")>0)
+USE SET("ReservationUnits")
+CLEAR SET("ReservationUnits")
+End if 
+READ WRITE([Unit])
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+FIRST RECORD([Unit])
+If ($NewAgree=True)
+[Agreement]UnitsOccup:=""
+Else 
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+", "
+End if 
+For ($i;1;Records in selection([Unit]))
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+[Unit]UnitNo+", "
+If ($NewAgree=True)
+[Unit]AgreeNo:=[Facility]FacilityCode+$AgreeNo
+End if 
+[Unit]Vacant:=False
+If (WS_Locked)
+[Unit]Status:=<>asUnitStatus{7}
+Else 
+[Unit]Status:=<>asUnitStatus{1}
+End if 
+If ($NewAgree=True)
+[Unit]MoveIn:=[Agreement]MoveIn
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+Else 
+[Unit]MoveIn:=$Date
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+End if 
+[Unit]ReservedTo:=""
+[Unit]ReservedDate:=!00-00-00!
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+If ($NewAgree=False)//& ([Unit]MoveIn<[Agreement]NextBillDate) //24/02/17 DM Removed the second condition in a case MI is after NBD
+$MonthlyRate:=[Unit]RentedValue
+$yDays:=[Agreement]NextBillDate-[Agreement]LastBillDate
+If ($yDays<2)
+//AlertMessage ("This agreement appears to have not been billed. Last Bill Date is "+String([Agreement]LastBillDate;6)+", Next Bill Date is "+String([Agreement]NextBillDate;6)+". Unable to calculate pro-rata!")
+Else 
+$xDays:=[Agreement]NextBillDate-[Unit]MoveIn
+If ($xDays#0)
+Repeat 
+$Rate:=$MonthlyRate*(1-([BillPlan]DiscPercentage/100))
+If ([BillPlan]PlanPeriod="Week")
+$Mths:=Round($yDays/7;0)
+Else 
+$Mths:=Round($yDays/30;0)
+End if 
+$Amt:=RoundAmt ($Mths*$Rate*$xDays/$yDays)
+$i:=1
+//$i:=ConfirmThree ("Next Bill Date = "+String([Agreement]NextBillDate)+Char(13)+"Move In Date for this Unit = "+String([Unit]MoveIn)+Char(13)+"Create Pro-rata charge for this "+<>sCurrency+String($MonthlyRate;<>sFormat)+" Unit to Next Bill Date of "+String([Agreement]NextBillDate)+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";"Yes";"No";"Change Rent")
+//If ($i=3)
+//$MonthlyRate:=Num(RequestMessage ("Enter new rate for this unit "+[Unit]UnitNo+" to be rented at:";String([UnitType]MonthlyRate;<>sFormat)))
+//If (OK#1)
+//$MonthlyRate:=[UnitType]MonthlyRate
+//End if 
+//End if 
+Until ($i<3)
+If ($i=1)
+READ WRITE([Trxs])
+GetAnalysis (True)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Unit]MoveIn)
+[Trxs]Charge:=True
+If (Records in selection([Analysis])=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+$Desc:=[Analysis]Description
+$i:=Position(" ";$Desc)-1
+If ($i<2)
+$i:=Length($Desc)
+End if 
+Else 
+[Trxs]AnalysisCode:=[Facility]FacilityCode+"RF"
+$Desc:="Rental Fee"
+$i:=6
+End if 
+[Trxs]Description:="Prorata "+Substring($Desc;1;$i)+" Unit "+[Unit]UnitNo
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Narration:="X = No of Days to NextBillDate"+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Unit]MoveIn)+" = "+String($xDays)+" days"+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"Y = No of Days from LastBillDate to NextBillDate"+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    = "+String([Agreement]NextBillDate)+" - "+String([Agreement]LastBillDate)+" = "+String($yDays)+" days"+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"M = Monthly Rate for Unit = "+String([UnitType]MonthlyRate;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"    less Billing Plan Disc "+String([BillPlan]DiscPercentage)+"% = "+String($Rate;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N = No of Months = "+String($Mths;"##0")+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"N x M x X / Y = "+String($Amt;<>sFormat)+Char(13)
+SAVE RECORD([Trxs])
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+//AlertMessage ("You will need to manually adjust the rent.")
+End if 
+End if 
+End if 
+End if 
+//20/02/17 DM Added for KSS
+[Unit]stDigiAgmtID:=WS_stDigAgmtID
+[Unit]inDigiAgmtID:=WS_inDigAgmtID
+SAVE RECORD([Unit])
+SAVE RECORD([Unit])
+//**Added by Hamid
+READ WRITE([UnitHistory])
+
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+//[UnitHistory]RentedValue:=$CustProrate
+[UnitHistory]stDigiAgmtID:=WS_stDigAgmtID
+[UnitHistory]inDigiAgmtID:=WS_inDigAgmtID
+SAVE RECORD([UnitHistory])
+//**
+RELATE ONE([Unit]UnitTypeCode)
+If ([UnitType]DepositAmt>0) & ([Agreement]DepositAmt<=0)
+[Agreement]DepositAmt:=[UnitType]DepositAmt
+End if 
+[UnitType]NoVacant:=[UnitType]NoVacant-1
+SAVE RECORD([UnitType])
+NEXT RECORD([Unit])
+End for 
+[Agreement]UnitsOccup:=Substring([Agreement]UnitsOccup;1;Length([Agreement]UnitsOccup)-2)
+WS_UnitsOccupied:=[Agreement]UnitsOccup
+SAVE RECORD([Agreement])
+If (Size of array(WS_aUnitNo)>0)
+QUERY([Unit];[Unit]RUnitNo#WS_aUnitNo{1};*)
+For ($p;1;Size of array(WS_aUnitNo))
+QUERY([Unit]; & ;[Unit]RUnitNo#WS_aUnitNo{$p};*)
+End for 
+QUERY([Unit]; & ;[Unit]ReservedTo=[Reservation]RReserveNo)
+
+For ($q;1;Records in selection([Unit]))
+[Unit]ReservedDate:=!00-00-00!
+[Unit]ReservedTo:=""
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+
+End if 
+READ ONLY([Unit])
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode)
+QUERY SELECTION BY FORMULA([Trxs];(Length([Trxs]AgreeNo)<10))//Do not convert a prior agreement to new one.  Only reservation trxs.
+APPLY TO SELECTION([Trxs];[Trxs]AgreeNo:=[Facility]FacilityCode+$AgreeNo)//Added the above line in 4.0.0 22/3/04
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([UnitType])
+UNLOAD RECORD([RCHistory])
+UNLOAD RECORD([Agreement])
+UpdateSystem (20;->vOldUser;"";True)
+[Reservation]ActiveReserve:=False
+[Reservation]Outcome:="Rented"
+[Reservation]OutcomeDate:=Current date
+//vActive:="Non-Active"
+//$0:=True
+WS_CustomerID:=[Customer]CustomerCode
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Reservation successfully converted to Agreement in database Storman."
+SAVE RECORD([Customer])
+SAVE RECORD([Reservation])
+End if 
+Else 
+WS_Edit:=False
+WS_RAgreeNo:=""
+WS_ORSuccess:=False
+WS_ORErrorCode:=1014
+WS_ORErrorDescription:="Reservation record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_Edit:=False
+//WS_OLD=WS_RAgreeNo:=""
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ WRITE([Reservation])
+READ WRITE([Customer])
+READ WRITE([Unit])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+UNLOAD RECORD([Reservation])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([UnitHistory])
+
+
+$String:="End WS_ConvertReservation"+Char(13)
+$String:=$String+"WS_RAgreeNo: "+WS_RAgreeNo+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_UnitsOccupied: "+WS_UnitsOccupied+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

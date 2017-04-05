@@ -1,0 +1,550 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1;$Suppress;$2;$WriteProgress;$3;$Deny;$4;$Ignore;$5;$AllCust)//Suppress dialog
+C_LONGINT($i;$j;$k;$Proc;$Progress;$ResBalance;$j;$bFail)
+C_TEXT($Code;$Customer)
+C_TEXT($User;$Comp;$ProcName)
+vtFormula:=""
+$Deny:=True
+$Ignore:=False
+$AllCust:=False
+If (Count parameters>=3)
+If ($3=True)
+$Deny:=False
+End if 
+If (Count parameters>=4)
+$Ignore:=$4
+If (Count parameters>=5)// For all customers
+$AllCust:=$5
+End if 
+End if 
+End if 
+If (PermissionsControl (130;$Deny)) | ($Ignore=True)
+$Suppress:=False
+$WriteProgress:=False
+If (Count parameters>=1)
+$Suppress:=$1
+If (Count parameters>=2)
+$WriteProgress:=$2
+End if 
+End if 
+LogAction (False;"Recalc Balances commenced")
+bDelete:=0//Used to check for Miscl
+If (<>tLogging=False)
+If ($WriteProgress)
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=1)
+If (Records in selection([Analysis])>0)
+$Code:=[Analysis]Code
+Else 
+$Code:=<>sFacility+"RF"
+End if 
+SET AUTOMATIC RELATIONS(False;False)
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Reservation])
+READ WRITE([Unit])
+READ WRITE([Customer])
+READ WRITE([Trxs])
+DEFAULT TABLE([Agreement])
+If ($AllCust)
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"@")
+Else 
+QUERY([Customer];[Customer]LatestTrxDate>(Current date-92);*)//Don't calculate for old customers whose balance is zero.
+QUERY([Customer]; | ;[Customer]LatestTrxDate=!00-00-00!;*)
+QUERY([Customer]; | ;[Customer]Balance#0;*)
+QUERY([Customer]; | ;[Customer]NoActiveAgreemts>0;*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+End if 
+bLast:=0
+bNext:=0
+bPrev:=0
+bAdd:=0
+sAll:=1
+If (<>tBatch=False) & ($Suppress=False)
+BEEP
+vTitle:=Get localized string("Recalculate Balances")+"..."
+//Open window(80;100;467;465;0)
+Open window((Screen width/2)-194;(Screen height/2)-183;(Screen width/2)+194;(Screen height/2)+183;5;Get localized string("Recalculate Balances"))
+DIALOG([Facility];"CalcBalances")
+CLOSE WINDOW
+If (OK=1)
+If (bPrev=1)
+$Message:=""
+READ WRITE([Analysis])
+QUERY([Analysis];[Analysis]InvItem=True;*)
+If (sCust=1)
+QUERY([Analysis]; & ;[Analysis]Code="@"+vLastNo+"@";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50)
+For ($i;1;Records in selection([Analysis]))
+QUERY([Trxs];[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=[Facility]StockSysStart)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]CustomerCode;>)
+vQtyBal:=0
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]Match=-999)
+vQtyBal:=vQtyBal+[Trxs]Qty
+Else 
+vQtyBal:=vQtyBal-[Trxs]Qty
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ([Analysis]InvQtyonHand#vQtyBal)
+$Message:=$Message+[Analysis]Code+" "+Get localized string("qty reset from")+" "+String([Analysis]InvQtyonHand)+" "+Get localized string("to")+" "+String(vQtyBal)+Char(13)
+[Analysis]InvQtyonHand:=vQtyBal
+SAVE RECORD([Analysis])
+End if 
+NEXT RECORD([Analysis])
+End for 
+READ ONLY([Analysis])
+UNLOAD RECORD([Analysis])
+If ($Message>"")
+//AlertMessage($Message)
+End if 
+End if 
+If (bMod=1)
+QUERY BY FORMULA([Trxs];([Trxs]TotAmt#Round([Trxs]TotAmt;2)) | ([Trxs]TaxAmt#Round([Trxs]TaxAmt;2)))
+//Open window(50;100;500;200;0;Get localized string("Progress"))
+$ProgressWin:=Open window(20;50;450;150;0)
+
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Trx")+" : "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Trxs]))+"    ")
+//GOTO XY(2;2)
+//MESSAGE("Recalculating Balances for Transaction "+String($i)+" of "+String(Records in selection([Trxs])))
+[Trxs]TaxAmt:=Round([Trxs]TaxAmt;2)
+[Trxs]TotAmt:=Round([Trxs]TotAmt;2)
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+CLOSE WINDOW($ProgressWin)
+
+End if 
+
+
+If (sCust=1)
+QUERY([Customer];[Customer]CustomerCode="@"+vLastNo+"@";*)
+QUERY([Customer]; & ;[Customer]CustomerCode=<>sFacility+"@")
+CREATE SET([Customer];"Found")
+QUERY([Agreement];[Agreement]RAgreeNo="@"+vLastNo+"@";*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=<>sFacility+"@")
+RELATE ONE SELECTION([Agreement];[Customer])
+CREATE SET([Customer];"Temp")
+UNION("Found";"Temp";"Found")
+QUERY([Reservation];[Reservation]RReserveNo="@"+vLastNo+"@";*)
+QUERY([Reservation]; & ;[Reservation]RReserveNo=<>sFacility+"@")
+RELATE ONE SELECTION([Reservation];[Customer])
+CREATE SET([Customer];"Temp")
+UNION("Found";"Temp";"Found")
+USE SET("Found")
+CLEAR SET("Found")
+CLEAR SET("Temp")
+FIRST RECORD([Customer])
+If (Records in selection([Customer])=0)
+AlertMessage (Get localized string("Customer not found."))
+READ ONLY(*)
+LogAction (True;"Recalc Balances aborted")
+ABORT
+End if 
+End if 
+Else 
+READ ONLY(*)
+LogAction (True;"Recalc Balances aborted")
+ABORT
+End if 
+End if 
+While (Records in selection([Customer])>0) & (bPrev#1)
+SetFacility 
+RELATE MANY SELECTION([Agreement]CustomerCode)
+RELATE MANY SELECTION([Reservation]CustomerCode)
+ORDER BY([Agreement];[Agreement]RAgreeNo;>)
+If (bLast=1)//Check Matching
+CheckMatching (True;0;False;!00-00-00!;<>sFacility;$Suppress)//bFirst=Force Rematch - no longer required
+End if 
+FIRST RECORD
+MESSAGES OFF
+Open window(50;100;500;200;0;Get localized string("Progress"))
+For ($i;1;Records in selection)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreement:")+" "+[Agreement]AgreeNo+" - "+String($i)+" "+Get localized string("of")+" "+String(Records in selection)+"   ")
+If ($WriteProgress)
+$Progress:=$i/Records in selection*50
+If ($Progress>Num([Authenticate]IPAddress))
+[Authenticate]IPAddress:=String($Progress)
+SAVE RECORD([Authenticate])
+End if 
+End if 
+If (Locked([Agreement]))
+LOCKED BY([Agreement];$Proc;$User;$Comp;$ProcName)
+If (Application type#4D Server) & ($Suppress=False)
+AlertMessage (Get localized string("Locked Agreement Record for")+" "+[Agreement]AgreeNo+" "+Get localized string("by process")+" "+String($Proc)+":"+$ProcName+".  "+Get localized string("Unable to Check Balances!"))
+End if 
+Else 
+If ([Agreement]CustomerCode=(<>sFacility+"MISCL"))
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=0)
+If (Records in selection([Trxs])>0) & (Application type#4D Server) & ($Suppress=False)
+AlertMessage (Get localized string("There are")+" "+String(Records in selection([Trxs]))+" "+Get localized string("Cash Sale records that are not matched. Please contact Support"))
+End if 
+End if 
+RELATE MANY([Agreement]RAgreeNo)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+RELATE ONE([Agreement]CustomerCode)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+SAVE RECORD([Customer])
+End if 
+FIRST RECORD([Unit])
+[Agreement]UnitsOccup:=""
+While (End selection([Unit])=False)
+If ([Unit]MoveIn=!00-00-00!) & (bAdd=1)
+[Unit]MoveIn:=[Agreement]MoveIn
+If ([Unit]MoveIn>[Unit]LastInc)
+[Unit]LastInc:=[Unit]MoveIn
+End if 
+SAVE RECORD([Unit])
+End if 
+[Agreement]UnitsOccup:=[Agreement]UnitsOccup+", "+[Unit]UnitNo
+NEXT RECORD([Unit])
+End while 
+[Agreement]UnitsOccup:=Substring([Agreement]UnitsOccup;3)
+
+CREATE SET([Trxs];"All")
+ARRAY TEXT(aCustCode;0)
+DISTINCT VALUES([Trxs]CustomerCode;aCustCode)
+If (Size of array(aCustCode)>1)
+SET QUERY DESTINATION(3;$k)
+For ($j;1;Size of array(aCustCode))
+QUERY([Customer];[Customer]CustomerCode=aCustCode{$j})
+If ($k=0)
+aCustCode{$j}:=""
+End if 
+End for 
+SET QUERY DESTINATION(0)
+SORT ARRAY(aCustCode;>)
+While (aCustCode{1}="")
+DELETE FROM ARRAY(aCustCode;1;1)
+End while 
+If (Size of array(aCustCode)>1)
+$j:=Find in array(aCustCode;[Agreement]CustomerCode)
+If ($j>0)
+$Customer:=aCustCode{$j}
+Else 
+$Customer:=aCustCode{1}//Randomly pick the first!
+End if 
+Else 
+$Customer:=aCustCode{1}
+End if 
+APPLY TO SELECTION([Trxs];[Trxs]CustomerCode:=$Customer)
+End if 
+If (bNext=1)
+QUERY SELECTION([Trxs];[Trxs]Charge=True;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]AnalysisCode=$Code;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]TrxDate#[Agreement]MoveOut;*)
+QUERY SELECTION([Trxs]; & ;[Trxs]Description#"@prorata@")
+If (Records in selection([Trxs])>1)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+If ([Trxs]DateFrom=!00-00-00!)
+$Date:=[Trxs]TrxDate
+Else 
+$Date:=[Trxs]DateFrom
+End if 
+NEXT RECORD([Trxs])
+While (End selection([Trxs])=False)
+If ([Trxs]DateTo#$Date)
+[Trxs]DateTo:=$Date
+End if 
+If ([Trxs]DateFrom=!00-00-00!)
+$Date:=[Trxs]TrxDate
+[Trxs]DateFrom:=[Trxs]TrxDate
+Else 
+$Date:=[Trxs]DateFrom
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End while 
+End if 
+USE SET("All")
+End if 
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+CREATE SET([Trxs];"Credits")
+$Total:=Sum([Trxs]TotAmt)
+DIFFERENCE("All";"Credits";"Debits")
+USE SET("Debits")
+[Agreement]BalanceOwing:=Round(Sum([Trxs]TotAmt)-$Total;2)
+QUERY SELECTION([Trxs];[Trxs]Match=0)
+ReCalcUnpaid 
+SAVE RECORD([Agreement])
+End if 
+NEXT RECORD
+End for 
+FIRST RECORD([Reservation])
+For ($i;1;Records in selection([Reservation]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Reservation")+" : "+[Reservation]ReserveNo+" - "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Reservation]))+"   ")
+If ($WriteProgress)
+$Progress:=$i/Records in selection([Reservation])*50
+If ($Progress>Num([Authenticate]IPAddress))
+[Authenticate]IPAddress:=String($Progress)
+SAVE RECORD([Authenticate])
+End if 
+End if 
+If (Locked([Reservation]))
+LOCKED BY([Reservation];$Proc;$User;$Comp;$ProcName)
+If (Application type#4D Server) & ($Suppress=False)
+AlertMessage (Get localized string("Locked Agreement Record for")+" "+[Reservation]ReserveNo+" "+Get localized string("by process")+" "+String($Proc)+":"+$ProcName+".  "+Get localized string("Unable to Check Balances!"))
+End if 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+ORDER BY([Trxs];[Trxs]TrxDate;<)
+$ResBalance:=0
+For ($z;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+$ResBalance:=$ResBalance+[Trxs]TotAmt
+Else 
+$ResBalance:=$ResBalance-[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+[Reservation]Balance:=$ResBalance
+//[Reservation]Balance:=Round(Sum([Transaction]TotAmt);2) // 22/05/12 Commented as it was calculateing incorrectly. Added lines from 286
+SAVE RECORD([Reservation])
+End if 
+NEXT RECORD([Reservation])
+End for 
+CLOSE WINDOW
+CLEAR SET("All")
+CLEAR SET("Credits")
+CLEAR SET("Debits")
+RELATE ONE SELECTION([Reservation];[Customer])
+CREATE SET([Customer];"Process")
+RELATE ONE SELECTION([Agreement];[Customer])
+CREATE SET([Customer];"More")
+UNION("Process";"More";"Process")
+CLEAR SET("More")
+USE SET("Process")
+CLEAR SET("Process")
+ORDER BY([Customer];[Customer]CustomerCode;>)
+Open window(50;100;500;200;0;Get localized string("Progress"))
+READ WRITE([Customer])
+FIRST RECORD([Customer])
+ARRAY TEXT($asCust;0)
+For ($i;1;Records in selection([Customer]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Customer")+" : "+[Customer]CustomerCode+" - "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Customer]))+"   ")
+If ($WriteProgress)
+$Progress:=($i/Records in selection([Customer])*30)+50
+If ($Progress>Num([Authenticate]IPAddress))
+[Authenticate]IPAddress:=String($Progress)
+SAVE RECORD([Authenticate])
+End if 
+End if 
+If (Locked([Customer]))
+LOCKED BY([Customer];$Proc;$User;$Comp;$ProcName)
+If (Application type#4D Server) & ($Suppress=False)
+AlertMessage (Get localized string("Locked Customer Record for")+" "+[Customer]CustomerCode+" "+Get localized string("by process")+" "+String($Proc)+":"+$ProcName+".  "+Get localized string("Unable to Check Balances!"))
+End if 
+Else 
+$TrxBal:=0
+RELATE MANY([Customer]CustomerCode)
+If (Records in selection([Trxs])=0)
+[Customer]NoTrxs:=True
+Else 
+[Customer]NoTrxs:=False
+QUERY SELECTION([Trxs];[Trxs]Match=0)
+CREATE SET([Trxs];"Temp")
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+$TrxBal:=Sum([Trxs]TotAmt)
+USE SET("Temp")
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+$TrxBal:=Round($TrxBal-Sum([Trxs]TotAmt);2)
+End if 
+$Balance:=Round(Sum([Agreement]BalanceOwing);2)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+For ($j;1;Records in selection([Reservation]))
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo)
+For ($k;1;Records in selection([Trxs]))
+If ([Trxs]Charge)
+$Balance:=$Balance+[Trxs]TotAmt
+Else 
+$Balance:=$Balance-[Trxs]TotAmt
+End if 
+NEXT RECORD([Trxs])
+End for 
+NEXT RECORD([Reservation])
+End for 
+If ($Balance#$TrxBal)
+If ([Customer]CustomerCode#(<>sFacility+"MISCL"))//Don't think we should do force rematch on MISCL - This needs to be investigated
+INSERT IN ARRAY($asCust;0)
+$asCust{1}:=[Customer]CustomerCode
+vtFormula:=vtFormula+[Customer]CustomerCode+Char(13)
+End if 
+//If (Application type#4D Server) & ($Suppress=False)
+//If (Size of array($asCust)=5)
+//AlertMessage (Get localized string("There are too many errors to keep displaying. Will continue without error reporting!"))
+//Else 
+//If (Size of array($asCust)<5)
+//If (bLast=1)
+//AlertMessage (Get localized string("There is a problem with Customer")+":"+[Customer]CustomerCode+" - "+Get localized string("Sum of trxs do not equal Agreements & Reservations! View this customer's transactions with history and check balance owing."))
+//Else 
+//AlertMessage (Get localized string("There is a problem with Customer")+":"+[Customer]CustomerCode+" - "+Get localized string("Sum of trxs do not equal Agreements & Reservations! You should run Recalc Balances again for this Customer with Check Matching checked which may fix this problem."))
+//End if 
+//End if 
+//End if 
+//End if 
+End if 
+[Customer]Balance:=Round($Balance;2)
+QUERY SELECTION([Agreement];[Agreement]ActiveAgreemt=True)
+[Customer]AgreemtsOperating:=""
+[Customer]NoActiveAgreemts:=Records in selection([Agreement])
+FIRST RECORD([Agreement])
+For ($j;1;Records in selection([Agreement]))
+[Customer]AgreemtsOperating:=[Customer]AgreemtsOperating+[Agreement]AgreeNo+", "
+NEXT RECORD([Agreement])
+End for 
+[Customer]AgreemtsOperating:=Substring([Customer]AgreemtsOperating;1;Length([Customer]AgreemtsOperating)-2)
+//This code added 3.2.8 to ensure NextMatch is correct - Hopefully it won't slow
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]Match>=[Customer]NextMatch)
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]Match;<)
+If ([Trxs]Match>[Customer]NextMatch)
+[Customer]NextMatch:=[Trxs]Match
+End if 
+End if 
+While (Records in selection([Trxs])=0) & ([Customer]NextMatch>0)
+[Customer]NextMatch:=[Customer]NextMatch-1
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]Match=[Customer]NextMatch)
+End while 
+//End changed 3.2.8
+SAVE RECORD([Customer])
+End if 
+NEXT RECORD([Customer])
+End for 
+CLOSE WINDOW
+MESSAGES ON
+REDUCE SELECTION([Customer];0)
+If (Size of array($asCust)>0) & (bLast=0)//Don't do it a third time
+OK:=1
+If (Application type#4D Server) & ($Suppress=False)
+ConfirmTwo (Get localized string("There were")+" "+String(Size of array($asCust))+" "+Get localized string("errors. Correct the Trx Matching for these customers?");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=$asCust{1};*)
+For ($i;2;Size of array($asCust))
+QUERY([Customer]; | ;[Customer]CustomerCode=$asCust{$i};*)
+End for 
+QUERY([Customer])
+bLast:=1//Turn on Check Matching
+//bFirst:=1  //Turn on Force Rematch
+sCust:=1
+End if 
+End if 
+End while 
+If (Application type#4D Server) & ($Suppress=False)
+If (vtFormula>"")
+vTitle:=Get localized string("ReCalc1")
+vtFormula:=Get localized string("ReCalc2")+Char(Carriage return)+vtFormula
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("ReCalc4"))
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+
+ConfirmTwo (Get localized string("ReCalc3");Get localized string("Yes");Get localized string("No"))
+
+If (OK=1)
+READ WRITE([Customer])
+LOAD RECORD([Customer])
+QUERY WITH ARRAY([Customer]CustomerCode;$asCust)
+
+READ WRITE([Trxs])
+For ($j;1;Records in selection([Customer]))
+If ([Customer]CustomerCode#"@MISCL")
+$bFail:=0
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode)
+APPLY TO SELECTION([Trxs];[Trxs]Match:=0)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode)
+
+If (Records in selection([Agreement])=0)
+QUERY([Reservation];[Reservation]CustomerCode=[Customer]CustomerCode)
+
+If (Records in selection([Reservation])=0)
+AlertMessage (Get localized string("ReCalc5")+[Customer]CustomerCode)
+$bFail:=1
+End if 
+
+End if 
+
+If ($bFail=0)
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=1
+asShowHistory:=1
+ReCalc 
+SAVE RECORD([Customer])
+End if 
+End if 
+NEXT RECORD([Customer])
+End for 
+
+AlertMessage (Get localized string("ReCalc6");Get localized string("OK"))
+
+READ ONLY([Customer])
+READ ONLY([Trxs])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Trxs])
+
+
+End if 
+
+End if 
+End if 
+If (bPrev#1)
+ALL RECORDS([Customer])
+CREATE SET([Customer];"Process")
+ALL RECORDS([Agreement])
+RELATE ONE SELECTION([Agreement];[Customer])
+CREATE SET([Customer];"Agreement")
+DIFFERENCE("Process";"Agreement";"Process")
+ALL RECORDS([Reservation])
+RELATE ONE SELECTION([Reservation];[Customer])
+CREATE SET([Customer];"Agreement")
+DIFFERENCE("Process";"Agreement";"Process")
+USE SET("Process")
+CLEAR SET("Process")
+CLEAR SET("Agreement")
+QUERY SELECTION([Customer];[Customer]Balance#0)
+If (Records in selection([Customer])>0)
+APPLY TO SELECTION([Customer];[Customer]Balance:=0)
+End if 
+If (Count parameters>=2) & (Application type=4D Server)
+CalcCustBals ($WriteProgress;Date([Authenticate]SessionID))
+End if 
+End if 
+READ ONLY(*)
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Trxs])
+If (bDelete=1)
+USE SET("MiscCheck")
+ORDER BY([Trxs];[Trxs]Match;>;[Trxs]Charge;>;[Trxs]TotAmt;>)
+CLEAR SET("MiscCheck")
+End if 
+LogAction (True;"Recalc Balances finished")
+
+//If ($1=false) //need to hide alerts for first time demo
+//AlertMessage ("Recalculate Balances Complete.")
+//End if 
+
+Else 
+LogAction (True;"Recalc Balances finished")
+End if 
+End if 

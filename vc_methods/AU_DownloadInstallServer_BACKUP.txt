@@ -1,0 +1,356 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SyncRecordLog ("Storman Update: AU_DownloadInstallServer: Start";"UpdateLog")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 29/01/16, 12:12:20
+// ----------------------------------------------------
+// Method: AU_DownloadInstallServer
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+C_TEXT($Update;$UpdateVersion)
+
+//If (Count parameters=1)
+//  //this has come logmonloop overnight so we want to be silent and force
+//$Overnight:=True
+//SyncRecordLog ("Storman Update: AU_DownloadServer: Overnight";"UpdateLog")
+//End if 
+
+
+If (Records in selection([Facility])=0)
+If (<>sFacility="ST@")
+QUERY([Facility];[Facility]FacilityCode="STHOF")
+Else 
+SetFacility 
+End if 
+End if 
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+$Update:="Server"
+
+READ WRITE([AutoUpdates])
+
+If (Records in selection([AutoUpdates])=1)
+TRACE
+$Update:=$Update+String([AutoUpdates]NextVersion)+".zip"
+SyncRecordLog ("Storman Update: AU_DownloadServer: Receive update: "+$Update+". Download folder: "+String([Facility]DownloadFolder);"UpdateLog")
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Downloading";[Facility]Version;[Facility]VersionDate;True)//;[Facility]ODBCPassword)
+LAUNCH EXTERNAL PROCESS("curl --fail --silent --show-error --stderr "+[Facility]DownloadFolder+"UpdateDownload.log -vk --ftp-ssl -u stormanupdates:rD78Q3n1 ftp://ftp.storman.com/updates/autoupdates/"+$Update+" --ftp-pasv -o "+[Facility]DownloadFolder+<>sSeparator+$Update)
+
+
+If (Test path name([Facility]DownloadFolder+$Update)=Is a document)
+SyncRecordLog ("Storman Update: AU_DownloadServer: Receive complete: "+String([Facility]DownloadFolder+$Update);"UpdateLog")
+
+If (AU_VerifyUpdate ([Facility]DownloadFolder;$Update)) & (Locked([AutoUpdates])=False) & (Read only state([AutoUpdates])=False)
+
+If (Locked([AutoUpdates])) | (Read only state([AutoUpdates]))
+SyncRecordLog ("Locked "+String(Locked([AutoUpdates]))+" Read only "+String(Read only state([AutoUpdates])))
+End if 
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+[AutoUpdates]UpdateStatus:=1
+[AutoUpdates]OldVersion:=String(<>iVersion)
+[AutoUpdates]UpdateReady:=True
+[AutoUpdates]UpdateFile:=$Update
+SAVE RECORD([AutoUpdates])
+
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Downloaded";[Facility]Version;[Facility]VersionDate;True)//[Facility]ODBCPassword)
+
+Else 
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Download Failed";[Facility]Version;[Facility]VersionDate;True)//;[Facility]ODBCPassword)
+SyncRecordLog ("Storman Update: AU_Download: Download failed: "+String([Facility]DownloadFolder+$Update);"UpdateLog")
+End if 
+Else 
+WSC_CheckForUpdates (Num([Facility]UserCode);[Facility]FacilityCode;"Notify";"Download Incomplete";[Facility]Version;[Facility]VersionDate;True)//;[Facility]ODBCPassword)
+SyncRecordLog ("Storman Update: AU_Download: Not able to locate the file "+String([Facility]DownloadFolder+$Update);"UpdateLog")
+End if 
+End if 
+
+
+SyncRecordLog ("Storman Update: AU_DownloadServer: End";"UpdateLog")
+
+
+
+
+
+
+
+
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Start";"UpdateLog")
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 27/01/16, 14:07:30
+// ----------------------------------------------------
+// Method: AU_UpdateInstallerServer
+// Description
+// 
+// This is the method that runs the actual updating process.
+//
+// FB10273
+// Parameters
+// ----------------------------------------------------
+
+C_BOOLEAN($Continue)
+C_TEXT($UpdateFolder;$Archive)
+$UpdateFolder:="Storman Server"
+
+//If (Count parameters=1)
+//this has come logmonloop overnight so we want to be silent
+$Silent:=True
+$Overnight:=True
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Overnight";"UpdateLog")
+//End if 
+
+
+If (Records in selection([Facility])=0)
+If (<>sFacility="ST@")
+QUERY([Facility];[Facility]FacilityCode="STHOF")
+Else 
+SetFacility 
+End if 
+End if 
+
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+//EXECUTE ON CLIENT("@";"AlertMessage";"Storman must backup before applying the update, this may take some time if you have a large database.")
+If (AU_Backup (True))
+$Continue:=True
+Else 
+//EXECUTE ON CLIENT("@";"AlertMessage";"Storman was unable to complete the backup. Please check the backup settings in System Setup and try again from File > Update Storman, or contact Storman Support!")
+$Continue:=False
+End if 
+
+//  //EXECUTE ON CLIENT("@";"AlertMessage";"Storman must perform a check on your database before updating, this may take some time if you have a large database.")
+//If (AU_VerifyDatabaseServer )
+//$Continue:=True
+//Else 
+//$Continue:=False
+//End if 
+
+If ($Continue=True)
+//SyncRecordLog ("Storman Update: AU_VerifyUpdate: Start";"UpdateLog")
+
+//$Doc:=Create document(<>sResourcesPath+"7zverify.bat")
+//SEND PACKET($Doc;"7za t "+[Facility]DownloadFolder+<>sSeparator+"Server10007.zip"+" > "+[Facility]DownloadFolder+<>sSeparator+"error.txt"+Char(13))
+//CLOSE DOCUMENT($Doc)
+//LAUNCH EXTERNAL PROCESS(<>sResourcesPath+"7zverify.bat")
+//DELETE DOCUMENT(<>sResourcesPath+"7zverify.bat")
+
+//DOCUMENT TO BLOB([Facility]DownloadFolder+<>sSeparator+"error.txt";$ErrorBlob)
+
+//$ErrorText:=BLOB to text($ErrorBlob;Mac text without length)
+
+//If ($ErrorText>"")
+//AlertMessage ($ErrorText)
+//SyncRecordLog ("Storman Update: AU_VerifyUpdate: Verify update: "+[Facility]DownloadFolder+<>sSeparator+"Server10007.zip"+" FAILED CHECKSUM";"UpdateLog")
+//SyncRecordLog ($ErrorText)
+//  //$0:=False
+//Else 
+//SyncRecordLog ("Storman Update: AU_VerifyUpdate: Verify update: "+[Facility]DownloadFolder+<>sSeparator+"Server10007.zip"+" PASSED CHECKSUM";"UpdateLog")
+//  //$0:=True
+//End if 
+
+//SyncRecordLog ("Storman Update: AU_VerifyUpdate: End";"UpdateLog")
+End if 
+
+
+
+
+If (Records in selection([Facility])=0)
+If (<>sFacility="ST@")
+QUERY([Facility];[Facility]FacilityCode="STHOF")
+Else 
+SetFacility 
+End if 
+End if 
+
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+
+//$Update:=[Facility]DownloadFolder+Folder separator+[AutoUpdates]Description
+$Archive:=[Facility]DownloadFolder+"Server"+String([AutoUpdates]NextVersion)+".zip"
+
+$Location:=[Facility]DownloadFolder
+$longfin:=Length($Location)
+$longstart:=$longfin-1
+$Location:=Substring($Location;1;$longstart)
+
+SyncRecordLog ("location after "+$Location;"UpdateLog")
+
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: update: "+$Archive;"UpdateLog")
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: location: "+$Location;"UpdateLog")
+
+ARRAY TEXT(Files;0)
+
+DOCUMENT LIST([Facility]DownloadFolder;Files)
+
+For ($a;1;Size of array(Files))
+
+If (Files{$a}="@.zip")
+$Archive:=[Facility]DownloadFolder+Files{$a}
+Else 
+End if 
+End for 
+
+If (Test path name($Archive)=Is a document)
+
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Extracting update: "+$Archive;"UpdateLog")
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Extracting to: "+$Location;"UpdateLog")
+
+C_TEXT($0)
+C_TEXT($PHPUnZipCode;$PHPLocation;$result;$Zipfile;$UnZipLoc)
+C_BOOLEAN($isOK)
+
+$PHPFile:=[Facility]DownloadFolder//Get 4D folder(Current resources folder)+"HTML"+Folder separator
+
+$PHPCode:=""
+$PHPCode:=$PHPCode+"<?php"+Char(13)
+$PHPCode:=$PHPCode+"$zip = new ZipArchive;"+Char(13)
+$PHPCode:=$PHPCode+"$res = $zip->open('"+$Archive+"');"+Char(13)
+$PHPCode:=$PHPCode+"if ($res === TRUE) {"+Char(13)
+$PHPCode:=$PHPCode+"$zip->extractTo('"+$Location+"');"+Char(13)
+$PHPCode:=$PHPCode+"$zip->close();"+Char(13)
+$PHPCode:=$PHPCode+"echo 'OK';"+Char(13)
+$PHPCode:=$PHPCode+"} else {"+Char(13)
+$PHPCode:=$PHPCode+"echo 'NO';"+Char(13)
+$PHPCode:=$PHPCode+"}"+Char(13)
+$PHPCode:=$PHPCode+"?>"
+
+$Doc:=Create document($PHPFile+"UnzipUpdate.php")
+SEND PACKET($Doc;$PHPCode)
+CLOSE DOCUMENT($Doc)
+
+$isOK:=PHP Execute($PHPFile+"UnzipUpdate.php";"";$Result)
+
+//If (Test path name([Facility]DownloadFolder+"Storman.4DC")=Is a document)
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Extracted: "+$Archive;"UpdateLog")
+//DELETE DOCUMENT($PHPFile+"UnzipUpdate.php")
+
+
+
+
+Else 
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Nothing to unzip!";"UpdateLog")
+End if 
+
+
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: End";"UpdateLog")
+
+
+
+If (Test path name([Facility]DownloadFolder+$UpdateFolder)=Is a folder)
+SyncRecordLog ("Storman Update: AU_UpdateInstaller: Update extract success!";"UpdateLog")
+Else 
+
+If (Test path name([Facility]DownloadFolder+"Storman.4DC")=Is a document)
+AU_CopyInstallationServer 
+
+If (Test path name([Facility]DownloadFolder+$UpdateFolder)#Is a document)
+
+$App:=Application file
+
+C_LONGINT($Res2;$Res;$lengthfound)
+ARRAY TEXT(aTFolders;0)
+$start:=1
+$a:=0
+
+Repeat 
+$Res:=Position(Char(92);$App;$start;$lengthfound)
+If ($Res2#$Res)
+$FolderName:=Substring($App;$start;$Res-$Res2-1)
+$a:=$a+1
+//SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Folder name "+$FolderName;"UpdateLog")
+APPEND TO ARRAY(aTFolders;$FolderName)
+End if 
+$Res2:=$Res
+$start:=$start+$lengthfound
+Until ($Res=0)
+
+$Size:=Size of array(aTFolders)
+$Size:=$Size-1
+//SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: size "+String($Size);"UpdateLog")
+$UpdateFolder:=String(aTFolders{$Size})
+End if 
+
+
+$4DC:=[Facility]DownloadFolder+"Storman.4DC"
+$4DIndy:=[Facility]DownloadFolder+"Storman.4DIndy"
+$NewBuild:=[Facility]DownloadFolder+$UpdateFolder+Folder separator+"Server Database"+Folder separator
+
+
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Installing new structure "+$4DC;"UpdateLog")
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Installing new structure "+$4DIndy;"UpdateLog")
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Installing new structure to "+$NewBuild;"UpdateLog")
+
+
+COPY DOCUMENT($4DC;$NewBuild;*)
+COPY DOCUMENT($4DIndy;$NewBuild;*)
+
+
+DELETE DOCUMENT($4DC)
+DELETE DOCUMENT($4DIndy)
+
+$Continue:=True
+End if 
+
+//SyncRecordLog ("Storman Update: AU_UpdateInstaller: Update extract failed!";"UpdateLog")
+//AlertMessage ("Extract failed!")
+//$Continue:=False
+End if 
+
+
+If ($Continue=True)
+//READ WRITE([AutoUpdates])
+
+If (Locked([AutoUpdates])=True)
+
+C_TEXT($User;$Comp;$ProcName)
+C_LONGINT($Proc)
+
+LOCKED BY([AutoUpdates];$Proc;$User;$Comp;$ProcName)
+SyncRecordLog ("[AutoUpdates] LOCKED";"UpdateLog")
+SyncRecordLog ("[AutoUpdates] LOCKED"+String($Proc);"UpdateLog")
+SyncRecordLog ("[AutoUpdates] LOCKED"+$User;"UpdateLog")
+SyncRecordLog ("[AutoUpdates] LOCKED"+$Comp;"UpdateLog")
+SyncRecordLog ("[AutoUpdates] LOCKED"+$ProcName;"UpdateLog")
+
+UNLOAD RECORD([AutoUpdates])
+End if 
+
+If (Records in selection([AutoUpdates])=0)
+QUERY([AutoUpdates];[AutoUpdates]FacilityCode=[Facility]FacilityCode)
+End if 
+
+[AutoUpdates]UpdateStatus:=2
+[AutoUpdates]OldVersion:=String(<>iVersion)
+[AutoUpdates]UpdateReady:=False//this means installer has run
+SAVE RECORD([AutoUpdates])
+
+$LastUpdateLogPath:=Get last update log path
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Update folder set to: "+[Facility]DownloadFolder+$UpdateFolder;"UpdateLog")
+SET UPDATE FOLDER([Facility]DownloadFolder+$UpdateFolder+Folder separator;False)
+
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: Storman Server restarted to complete the update";"UpdateLog")
+RESTART 4D(120;"Please close Storman Client to apply the update")
+
+End if 
+
+SyncRecordLog ("Storman Update: AU_UpdateInstallerServer: End"+Char(13);"UpdateLog")
+
+
+SyncRecordLog ("Storman Update: AU_DownloadInstallServer: End";"UpdateLog")

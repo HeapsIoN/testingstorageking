@@ -1,0 +1,138 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_vtAgreementNumber;Is text;SOAP input;"WS_vtAgreementNumber")
+SOAP DECLARATION(WS_vtPassword;Is text;SOAP input;"WS_vtPassword")
+SOAP DECLARATION(WS_IsWebID;Is Boolean;SOAP input;"WS_IsWebID")
+
+SOAP DECLARATION(WS_asOCDescription;Text array;SOAP output;"WS_asOCDescription")
+SOAP DECLARATION(WS_arOCAmount;Real array;SOAP output;"WS_arOCAmount")
+SOAP DECLARATION(WS_arOCNewAmount;Real array;SOAP output;"WS_arOCNewAmount")
+SOAP DECLARATION(WS_adOCIncreaseFrom;Date array;SOAP output;"WS_adOCIncreaseFrom")
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output;"WS_ORSuccess")
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output;"WS_ORErrorCode")
+SOAP DECLARATION(WS_ORErrorDescription;Is text;SOAP output;"WS_ORErrorDescription")
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP output;"WS_MoveInDate")
+SOAP DECLARATION(WS_NextBillDte;Is text;SOAP output;"WS_NextBillDate")
+SOAP DECLARATION(WS_NoticePlanNo;Is integer;SOAP output;"WS_NoticePlanNo")
+SOAP DECLARATION(WS_DaytoBill;Is integer;SOAP output;"WS_DaytoBill")
+SOAP DECLARATION(WS_LateFeeAmt;Is real;SOAP output;"WS_LateFeeAmt")
+SOAP DECLARATION(WS_Password;Is text;SOAP output;"WS_Password")
+SOAP DECLARATION(WS_PriorLastBill;Is date;SOAP output;"WS_PriorLastBill")
+SOAP DECLARATION(WS_LastBillDate;Is date;SOAP output;"WS_LastBillDate")
+SOAP DECLARATION(WS_LastBillAmt;Is real;SOAP output;"WS_LastBillAmt")
+SOAP DECLARATION(WS_LastBillPlan;Is text;SOAP output;"WS_LastBillPlan")
+SOAP DECLARATION(WS_LastDiscAmt;Is real;SOAP output;"WS_LastDiscAmt")
+SOAP DECLARATION(WS_CallTakenBy;Is text;SOAP output;"WS_CallTakenBy")
+SOAP DECLARATION(WS_OthTotal;Is real;SOAP output;"WS_OthTotal")
+SOAP DECLARATION(WS_NewOthTotal;Is real;SOAP output;"WS_NewOthTotal")
+SOAP DECLARATION(WS_BalanceOwing;Is real;SOAP output;"WS_BalanceOwing")
+
+$String:="Start WS_GetAgreementInfoFull"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+WS_vtAgreementNumber+Char(13)
+$String:=$String+"WS_vtPassword: "+WS_vtPassword+Char(13)
+$String:=$String+"WS_IsWebID: "+String(WS_IsWebID)+Char(13)
+
+WSRECORDLOG ($String)
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_vtAgreementNumber)
+
+WS_ORSuccess:=True
+WS_ORErrorDescription:=""
+WS_IsWebID:=False
+
+If (WS_IsWebID=False)
+Case of 
+: (Records in selection([Agreement])=0)
+WS_ORSuccess:=False
+WS_ORErrorCode:=1//Agreement doesn't exist.
+WS_ORErrorDescription:="No agreement found"
+: (Records in selection([Agreement])=1)
+RELATE ONE([Agreement]CustomerCode)
+
+If ([Customer]Password=WS_vtPassword)
+WS_MoveInDate:=[Agreement]MoveIn
+WS_NextBillDte:=[Agreement]NextBillDate
+WS_NoticePlanNo:=[Agreement]NoticePlanNo
+WS_DaytoBill:=[Agreement]DaytoBill
+WS_LateFeeAmt:=[Agreement]LateFeeAmt
+WS_Password:=[Customer]Password
+WS_PriorLastBill:=[Agreement]PriorLastBill
+WS_LastBillDate:=[Agreement]LastBillDate
+WS_LastBillAmt:=[Agreement]LastBillAmt
+WS_LastBillPlan:=[Agreement]LastBillPlan
+WS_LastDiscAmt:=[Agreement]LastDiscAmt
+WS_CallTakenBy:=[Agreement]CallTakenBy
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=WS_vtAgreementNumber)
+For ($k;1;Records in selection([OtherChgs]))
+RELATE ONE([OtherChgs]AnalysisCode)
+APPEND TO ARRAY(WS_asOCAnalysisCode;[OtherChgs]AnalysisCode)
+APPEND TO ARRAY(WS_asOCDescription;[OtherChgs]Description)
+APPEND TO ARRAY(WS_arOCAmount;[OtherChgs]Amount)
+APPEND TO ARRAY(WS_arOCNewAmount;[OtherChgs]NewAmount)
+APPEND TO ARRAY(WS_adOCIncreaseFrom;[OtherChgs]IncreaseFrom)
+NEXT RECORD([OtherChgs])
+End for 
+
+WS_OthTotal:=Sum([OtherChgs]Amount)
+WS_NewOthTotal:=Sum([OtherChgs]NewAmount)
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=2//Customer password doesn't match one given. 
+WS_ORErrorDescription:="Invalid customer password."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=4//There is a duplicate of agreement. 
+WS_ORErrorDescription:="There are duplicate agreements."
+
+End case 
+End if 
+
+ReadOnlyAll 
+UnloadAll 
+
+$String:="End WS_GetAgreementInfoFull"+Char(13)
+$String:=$String+"WS_vtAgreementNumber: "+String(WS_vtAgreementNumber)+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+$String:=$String+"WS_NextBillDte: "+String(WS_NextBillDate)+Char(13)
+$String:=$String+"WS_NoticePlanNo: "+String(WS_NoticePlanNo)+Char(13)
+$String:=$String+"WS_DaytoBill: "+String(WS_DaytoBill)+Char(13)
+$String:=$String+"WS_LateFeeAmt: "+String(WS_LateFeeAmt)+Char(13)
+$String:=$String+"WS_Password: "+WS_Password+Char(13)
+$String:=$String+"WS_PriorLastBill: "+String(WS_PriorLastBill)+Char(13)
+$String:=$String+"WS_LastBillDate: "+String(WS_LastBillDate)+Char(13)
+$String:=$String+"WS_LastBillAmt: "+String(WS_LastBillAmt)+Char(13)
+$String:=$String+"WS_LastDiscAmt: "+String(WS_LastDiscAmt)+Char(13)
+$String:=$String+"WS_CallTakenBy: "+WS_CallTakenBy+Char(13)
+$String:=$String+"WS_OthTotal: "+String(WS_OthTotal)+Char(13)
+$String:=$String+"WS_NewOthTotal: "+String(WS_NewOthTotal)+Char(13)
+$String:=$String+"WS_BalanceOwing: "+String(WS_BalanceOwing)+Char(13)
+
+$sizeofarray:=Size of array(WS_asOCAnalysisCode)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asOCAnalysisCode("+String($vlElem)+"):"+WS_asOCAnalysisCode{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_asOCDescription)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_asOCDescription("+String($vlElem)+"):"+WS_asOCDescription{$vlElem}+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arOCAmount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arOCAmount("+String($vlElem)+"):"+String(WS_arOCAmount{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_arOCNewAmount)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_arOCNewAmount("+String($vlElem)+"):"+String(WS_arOCNewAmount{$vlElem})+Char(13)
+End for 
+$vlElem:=1
+$sizeofarray:=Size of array(WS_adOCIncreaseFrom)
+For ($vlElem;1;$sizeofarray)
+$String:=$String+"WS_adOCIncreaseFrom("+String($vlElem)+"):"+String(WS_adOCIncreaseFrom{$vlElem})+Char(13)
+End for 
+
+WSRECORDLOG ($String)

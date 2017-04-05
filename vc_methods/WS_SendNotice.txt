@@ -1,0 +1,251 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 05/08/15, 19:38:53
+// ----------------------------------------------------
+// Method: WS_SendNotice
+// Description
+// This method is used to send notices from Storman to a requested email address.
+// 
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_ORFacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_AgreeNo2;Is string var;SOAP input)
+SOAP DECLARATION(WS_NoticeType;Is integer;SOAP input)
+SOAP DECLARATION(WS_NoticePlanNo;Is integer;SOAP input)
+SOAP DECLARATION(WS_NoticeDescription;Is string var;SOAP input;"WS_NoticeDescription")
+SOAP DECLARATION(WS_WebServicePassword;Is string var;SOAP input)
+
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+$String:="Start WS_SendNotice"+Char(13)
+$String:=$String+"WS_ORFacilityCode: "+WS_ORFacilityCode+Char(13)
+$String:=$String+"WS_AgreeNo2: "+WS_AgreeNo2+Char(13)
+$String:=$String+"WS_NoticeType: "+String(WS_NoticeType)+Char(13)
+$String:=$String+"WS_NoticePlanNo: "+String(WS_NoticePlanNo)+Char(13)
+$String:=$String+"WS_NoticeDescription: "+WS_NoticeDescription+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+
+QUERY([Facility];[Facility]FacilityCode=WS_ORFacilityCode)
+
+If (Records in selection([Facility])=1)
+
+If ([Facility]ODBCPassword#"") & ([Facility]ODBCPassword=WS_WebServicePassword)
+
+SET AUTOMATIC RELATIONS(True;True)
+
+Case of 
+: (Length(WS_AgreeNo2)=14)//agreement
+QUERY([Agreement];[Agreement]RAgreeNo=WS_AgreeNo2)
+QUERY([Customer];[Customer]CustomerCode=[Agreement]CustomerCode)
+QUERY([Unit];[Agreement]CustomerCode=[Customer]CustomerCode)
+QUERY([UnitType];[Unit]AgreeNo=[Agreement]RAgreeNo)
+
+: (Length(WS_AgreeNo2)=13)//reservation
+QUERY([Reservation];[Reservation]RReserveNo=WS_AgreeNo2)
+QUERY([Customer];[Customer]CustomerCode=[Reservation]CustomerCode)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+QUERY([UnitType];[UnitType]RUnitType=[Unit]UnitTypeCode)
+
+: (Length(WS_AgreeNo2)=15)//contact
+QUERY([Contacts];[Contacts]ContactNo=WS_AgreeNo2)
+QUERY([Quote];[Quote]ContactNo=WS_AgreeNo2)
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1037
+WS_ORErrorDescription:="No records found in database Storman."
+End case 
+
+
+
+Case of 
+: (WS_NoticeType=0)
+QUERY([Notices];[Notices]FacilityCode=WS_ORFacilityCode;*)
+QUERY([Notices];[Notices]Description=WS_NoticeDescription;*)
+QUERY([Notices];[Notices]NoticePlanNo=WS_NoticePlanNo)
+
+If (Records in selection([Notices])=1)
+
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+If (Length(WS_AgreeNo2)=13)
+[Letters]AgreeNo:=[Reservation]RReserveNo
+End if 
+If (Length(WS_AgreeNo2)=15)
+[Letters]AgreeNo:=""
+[Letters]ContactNo:=[Contacts]ContactNo
+End if 
+[Letters]LetterBLOB:=[Notices]Email
+[Letters]LetterDesc:=[Notices]Description
+$p:=->[Notices]Email
+[Letters]SentViaEmail:=True
+If ([Notices]EmailSubject#"")
+[Letters]Custom1:=[Notices]EmailSubject
+Else 
+[Letters]Custom1:=[Letters]LetterDesc
+End if 
+[Letters]SentwithInv:=False
+[Letters]DateSent:=Current date
+[Letters]TimeSent:=Current time
+BLOB PROPERTIES($p->;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB($p->)
+End if 
+$emailText:=Convert to text($p->;"UTF-8")
+$emailText:=ProcessStormanHTMLTags ($emailText)
+CONVERT FROM TEXT($emailText;"UTF-8";[Letters]LetterBLOB)
+[Letters]Custom1:=ProcessStormanHTMLTags ([Letters]Custom1)
+COMPRESS BLOB([Letters]LetterBLOB)
+
+If ([Letters]AgreeNo#"") | ([Letters]ContactNo#"")
+SAVE RECORD([Letters])
+End if 
+
+CREATE RECORD([Message])
+[Message]Subject:=[Letters]Custom1
+[Message]Address:=[Customer]EmailAddress
+If (Length(WS_AgreeNo2)=15)
+[Message]Address:=[Contacts]EmailAddress
+End if 
+[Message]OutIn:=True
+[Message]MsgDate:=Current date
+[Message]MsgTime:=Current time
+[Message]Facility:=WS_ORFacilityCode
+BLOB PROPERTIES([Letters]LetterBLOB;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Letters]LetterBLOB)
+End if 
+[Message]EmailMsg:=[Letters]LetterBLOB
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Message])
+
+SendMail 
+SetFacility 
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1048
+WS_ORErrorDescription:="Notice record not found in database Storman."
+End if 
+
+
+: (WS_NoticeType=1)
+QUERY([Notices];[Notices]FacilityCode=WS_ORFacilityCode;*)
+QUERY([Notices];[Notices]Description=WS_NoticeDescription;*)
+QUERY([Notices];[Notices]NoticePlanNo=WS_NoticePlanNo)
+
+If (Records in selection([Notices])=1)
+
+$SMSText:=[Notices]SMSMessage
+$SMSText:=Replace string($SMSText;"{balance}";String([Customer]Balance;"#######0.00"))
+$SMSText:=Replace string($SMSText;"{agreebalance}";String([Agreement]BalanceOwing;"#######0.00"))
+$SMSText:=Replace string($SMSText;"{rentamt}";String([Agreement]RentAmt;"#######0.00"))
+$SMSText:=Replace string($SMSText;"{nextbill}";String([Agreement]NextBillDate))
+$SMSText:=Replace string($SMSText;"{lastbill}";String([Agreement]LastBillDate))
+$SMSText:=Replace string($SMSText;"{firstname}";[Customer]FirstName)
+$SMSText:=Replace string($SMSText;"{facilityphone}";[Facility]Phone)
+$SMSText:=ProcessStormanHTMLTags ($SMSText)
+TRACE
+
+Case of 
+: (Records in selection([Contacts])>0)
+$SMSResult:=SendSMS ([Contacts]MobilePhone;$SMSText;[Contacts]ContactNo;False;True;True)
+
+If ($SMSResult="T")
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1034
+WS_ORErrorDescription:="The SMS could not be sent."
+End if 
+
+: (Records in selection([Reservation])>0)
+$SMSResult:=SendSMS ([Customer]MobilePhone;$SMSText;[Reservation]RReserveNo;False;True;True)
+
+If ($SMSResult="T")
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1034
+WS_ORErrorDescription:="The SMS could not be sent."
+End if 
+
+: (Records in selection([Agreement])>0)
+$SMSResult:=SendSMS ([Customer]MobilePhone;$SMSText;[Agreement]RAgreeNo;False;True;True)
+
+If ($SMSResult="T")
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1034
+WS_ORErrorDescription:="The SMS could not be sent."
+End if 
+
+: (Records in selection([Customer])>0)
+$SMSResult:=SendSMS ($Phone;vLeg3;[Customer]CustomerCode;True;False;True)
+
+If ($SMSResult="T")
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1034
+WS_ORErrorDescription:="The SMS could not be sent."
+End if 
+
+End case 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1048
+WS_ORErrorDescription:="Notice record not found in database Storman."
+End if 
+
+: (WS_NoticeType=2)
+//print notice
+WS_ORSuccess:=False
+WS_ORErrorCode:=1048
+WS_ORErrorDescription:="Notice record not found in database Storman."
+End case 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+SET AUTOMATIC RELATIONS(False;False)
+$String:="End WS_SendNotice"+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 

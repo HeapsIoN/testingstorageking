@@ -1,0 +1,42 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)
+C_TEXT($1)//Facility Code
+
+QUERY([Facility];[Facility]FacilityCode=$1)
+
+If (([Facility]OnlineReserveIncl))
+QUERY([Reservation];[Reservation]RReserveNo=$1+"@";*)
+QUERY([Reservation]; & ;[Reservation]ActiveReserve=True;*)
+QUERY([Reservation]; & ;[Reservation]Balance#0;*)
+QUERY([Reservation]; & ;[Reservation]OnlineRes=True)
+vtFormula:=""
+FIRST RECORD([Reservation])
+Open window(20;150;400;250;0;Get localized string("Progress"))
+For ($i;1;Records in selection([Reservation]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Reservation:")+" "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Reservation]))+"    ")
+RELATE ONE([Reservation]CustomerCode)
+vtFormula:=vtFormula+Get localized string("Res. #")+":"+[Reservation]ReserveNo+", "+Get localized string("Res. Date")+":"+String([Reservation]ReservedDate)+Char(13)
+vtFormula:=vtFormula+Get localized string("Customer Name")+":"+[Customer]CustomerName+", "+Get localized string("Balance")+":"+String([Reservation]Balance;"###,###.00")+Char(13)
+
+NEXT RECORD([Reservation])
+End for 
+CLOSE WINDOW
+
+
+If (vtFormula>"")
+//vTitle:=Get localized string("Online Reservation Errors")
+vTitle:=("Incomplete Online Reservations")
+//vtFormula:=Get localized string("These online reservations need to check.")+":"+Char(13)+Char(13)+vtFormula
+vtFormula:=("The following Online Reservations  have not yet been completed, please follow up:")+":"+Char(13)+Char(13)+vtFormula
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Online Reservation Errors"))
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+$0:=False
+Else 
+$0:=True
+End if 
+End if 

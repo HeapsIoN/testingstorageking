@@ -1,0 +1,70 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i)
+If (Form event=On Load)
+OBJECT SET TITLE(*;"Text19";Get localized string("Description")+":")
+OBJECT SET TITLE(*;"Text2";Get localized string("Filter this data:"))
+OBJECT SET TITLE(*;"Text12";Get localized string("Cost Price")+":")
+ARRAY LONGINT(aDataIn;0)
+ARRAY REAL(aTotal;0)
+REDUCE SELECTION([Trxs];0)
+REDUCE SELECTION([Analysis];0)
+If (PermissionsControl (8;False)=False)
+OBJECT SET ENTERABLE([Analysis]CostPrice;False)
+OBJECT SET ENTERABLE([Analysis]DfltSellAmt;False)
+End if 
+asChargeDesc{0}:="<None>"
+
+// Modified by: nicholas.wykes (28/10/2010)
+//Build asSortList
+ARRAY TEXT(asSortList;3)
+asSortList{1}:=Get localized string("Last Month")
+asSortList{2}:=Get localized string("Last 6 Months")
+asSortList{3}:=Get localized string("All Transactions")
+asSortList:=[Facility]ShowHistoryDefault-1
+If ([Facility]ShowHistoryDefault<2) | ([Facility]ShowHistoryDefault>4)
+asSortList:=1
+End if 
+End if 
+
+If (asCharges#bLast)
+QUERY([Trxs];[Trxs]AgreeNo=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=[Analysis]Code;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=[Facility]StockSysStart)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]CustomerCode;>)
+ARRAY LONGINT(aDataIn;0)
+ARRAY REAL(aTotal;0)
+vQtyBal:=0
+vLastQtyBalance:=0
+For ($i;1;Records in selection([Trxs]))
+[Trxs]Balance:=CalcInvBal (0)//vQtyBal also returned in this method
+[Trxs]QtyBal:=vQtyBal
+If ([Analysis]CostPrice#0)
+[Trxs]Balance:=Round(vQtyBal*[Analysis]CostPrice;2)
+End if 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+If ([Analysis]InvQtyonHand#vQtyBal)
+//ConfirmTwo (Get localized string("The stock quantity on hand shows")+" "+String([Analysis]InvQtyonHand)+", "+Get localized string("but the calculated value is")+" "+String(vQtyBal)+". "+Get localized string("Correct Stock Qty?");Get localized string("Yes");Get localized string("No"))
+//If (OK=1)
+[Analysis]InvQtyonHand:=vQtyBal
+//End if 
+End if 
+bLast:=asCharges
+CREATE SET([Trxs];"$ToSort")
+Case of 
+: (asSortList=1)
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=Add to date(Current date;0;-1;(Day of(Current date)-1)*-1))
+: (asSortList=2)
+QUERY SELECTION([Trxs];[Trxs]TrxDate>=Add to date(Current date;0;-6;(Day of(Current date)-1)*-1))
+End case 
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]CustomerCode;>)
+End if 
+
+If (Form event=On Unload)
+CLEAR SET("$ToSort")
+End if 
+
+If (Form event=On Double Clicked)
+FILTER EVENT
+End if 

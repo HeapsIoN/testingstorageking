@@ -1,0 +1,90 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+READ WRITE([Trxs])
+C_LONGINT($i;$j;$Order)
+
+ALL RECORDS([Facility])
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+
+If ($InvContinue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+For ($i;1;Records in selection([Facility]))
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+ORDER BY([Trxs];[Trxs]InvNo;<)
+<>aiNextInvNo{$arraypos}:=[Trxs]InvNo+1
+End for 
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+End if 
+
+QUERY([Customer];[Customer]CustomerCode#"@MISCL";*)
+QUERY([Customer]; & ;[Customer]NoActiveAgreemts#0)
+ORDER BY([Customer];[Customer]CustomerCode;>)
+For ($i;1;Records in selection([Customer]))
+$Facility:=Substring([Customer]CustomerCode;1;5)
+$Order:=0
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]InvNo#0)
+ORDER BY([Trxs];[Trxs]InvDate;>;[Trxs]InvNo;>)
+For ($j;1;Records in selection([Trxs]))
+Case of 
+: ([Trxs]InvNo<$Order)
+$InvContinue:=False
+
+If ([Facility]CentralAddress="") | (<>sProduct="M@")
+If (Not(Semaphore("<>bNextInvNo";1800)))
+$InvContinue:=True
+End if 
+End if 
+
+If ($InvContinue)
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+$arraypos:=Find in array(<>asSiteCodes;$Facility)
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}-1
+Repeat 
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+SET QUERY DESTINATION(Into variable;$TransactionsFound)
+QUERY([Trxs];[Trxs]AgreeNo=$Facility+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=<>aiNextInvNo{$arraypos})
+Until ($TransactionsFound<1)
+SET QUERY DESTINATION(Into current selection)
+[Trxs]InvNo:=<>aiNextInvNo{$arraypos}
+<>aiNextInvNo{$arraypos}:=<>aiNextInvNo{$arraypos}+1
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextInvNo;<>aiNextInvNo)
+End if 
+CLEAR SEMAPHORE("<>bNextInvNo")
+Else 
+$InvNo:=InvoiceNumber 
+[Trxs]InvNo:=$InvNo
+End if 
+$Order:=[Trxs]InvNo
+Else 
+$Order:=[Trxs]InvNo
+End case 
+SAVE RECORD([Trxs])
+NEXT RECORD([Trxs])
+End for 
+NEXT RECORD([Customer])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+AlertMessage ("Fix complete")

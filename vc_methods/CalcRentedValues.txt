@@ -1,0 +1,380 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//True if completed otherwise false
+C_TEXT($1)//Facility Code
+C_DATE($2;$Date)//Date to calculate occupied value if given
+C_BOOLEAN($3;$DontSave)//If true then dont save records so it will go faster
+C_BOOLEAN($4;$FromUpgrade)//if true then called from CreateTutorial or Checkversion
+C_BOOLEAN($5;$Web)//if true then called from WS, silent mode
+C_BOOLEAN($6;$FromActivity)//if true then called from Activity
+C_LONGINT($i;$j;$Count)
+C_TEXT($CurrentUser)
+$Date:=!00-00-00!
+If (Count parameters>1)
+$Date:=$2
+End if 
+$DontSave:=False
+If (Count parameters>2)
+$DontSave:=$3
+End if 
+$FromUpgrade:=False
+If (Count parameters>3)
+$FromUpgrade:=$4
+End if 
+$Web:=False
+If (Count parameters=5)//From Web - silent mode
+$Web:=$5
+End if 
+$FromActivity:=False
+If (Count parameters=6)//From Activity
+$FromActivity:=$6
+End if 
+$CurrentUser:=[UserLogins]Name
+QUERY([UserLogins];[UserLogins]Name="Daily")
+READ WRITE([Unit])
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([UnitHistory])
+QUERY([Agreement];[Agreement]RAgreeNo=$1+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+ORDER BY([Agreement];[Agreement]AgreeNo;>)
+
+//$window:=Open window(20;300;300;400;0;Get localized string("Progress"))
+$window:=Open window(20;50;450;150;0)
+//GOTO XY(2;2)
+//MESSAGE(Get localized string("Checking Agreement Discounts...")+"    ")
+
+For ($i;1;Records in selection([Agreement]))
+
+GOTO XY(2;2)
+MESSAGE("Checking Agreement discounts "+String($i)+" of "+String(Records in selection([Agreement])))
+
+//GOTO XY(2;2)
+//MESSAGE("Calculating Agreement "+String($i)+" of "+String(Records in selection([Agreement])))
+
+RELATE MANY([Agreement]RAgreeNo)
+RELATE ONE([Agreement]BillingPlanCode)
+$Total:=0
+LOAD RECORD([Unit])
+[Agreement]AgreedDisc:=Sum([Unit]ExtraDisc)//Stops weird agreed discount values
+For ($j;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([BillPlan]PlanPeriod="Week")
+If ([UnitType]WeeklyRate<=0)
+[UnitType]WeeklyRate:=Round([UnitType]MonthlyRate*[Facility]RentWeeklyMthly;2)
+End if 
+$UnitRate:=CalculateBaseRate (2;0)//added this variable 10/5/06
+$Total:=$Total+CalculateBaseRate (2;0)
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]WeeklyRentedValue;2)
+Else 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]RentedValue;2)
+$UnitRate:=CalculateBaseRate (2;0)
+$Total:=$Total+CalculateBaseRate (2;0)
+End if 
+If ($FromUpgrade=False)
+If ([BillPlan]PlanPeriod="Week")
+[Unit]BillPlanDisc:=Round(([Unit]RentedValue*([BillPlan]DiscPercentage/100))-((([BillPlan]DiscFixedAmt/[Agreement]MthsAdv)/Records in selection([Unit]))/0.2308);2)//Round([UnitType]MonthlyRate*[BillPlan]DiscPercentage/100;2)`commented out 23/6/09
+Else 
+[Unit]BillPlanDisc:=Round(([Unit]RentedValue*([BillPlan]DiscPercentage/100))-(([BillPlan]DiscFixedAmt/[Agreement]MthsAdv)/Records in selection([Unit]));2)//Round([UnitType]MonthlyRate*[BillPlan]DiscPercentage/100;2)`commented out 23/6/09
+End if 
+If (Old([Unit]ExtraDisc)#[Unit]ExtraDisc) | (Old([Unit]BillPlanDisc)#[Unit]BillPlanDisc)
+SAVE RECORD([Unit])
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+If ($FromUpgrade=True)
+[Agreement]AgreedDisc:=Round($Total-[Agreement]RegularRent;2)
+[Agreement]DiscountAmt:=Round(([Agreement]RegularRent*[Agreement]MthsAdv)-[Agreement]RentAmt;2)
+If (Old([Agreement]AgreedDisc)#[Agreement]AgreedDisc) | (Old([Agreement]DiscountAmt)#[Agreement]DiscountAmt)
+SAVE RECORD([Agreement])
+End if 
+End if 
+NEXT RECORD([Agreement])
+End for 
+ERASE WINDOW($window)
+$Count:=0
+QUERY([Unit];[Unit]RUnitNo=$1+"@")
+ORDER BY([Unit];[Unit]UnitNo;>)
+GOTO XY(2;2)
+//ARRAY REAL(aTotal;13)
+ARRAY REAL(aTotal;19)
+//01/09/15 DAM added new elements calc only for SK activity 
+//14 OtherRentedUnitNo
+//15 OtherRentedArea
+//16 OtherRentedValue
+//17 OtherRentedValActual
+//18 [Activity]OtherDiscUnitNo
+//19 [Activity]OtherDiscArea
+For ($i;1;19)
+aTotal{$i}:=0
+End for 
+
+For ($i;1;Records in selection([Unit]))
+
+GOTO XY(2;2)
+MESSAGE("Calculating Unit "+String($i)+" of "+String(Records in selection([Unit])))
+
+//GOTO XY(2;3)
+//MESSAGE([Unit]RUnitNo+"           ")
+
+If (Locked([Unit]))
+If ($Web)
+SyncRecordLog (Get localized string("WARNING - Unit")+" "+[Unit]UnitNo+Get localized string(" is locked by another"))
+Else 
+AlertServer (Get localized string("WARNING - Unit")+" "+[Unit]UnitNo+Get localized string(" is locked by another"))
+End if 
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+If (Records in selection([UnitType])#1)
+If ($Web)
+SyncRecordLog (Get localized string("WARNING - Unit")+" "+[Unit]UnitNo+" "+Get localized string("of type")+" "+[Unit]UnitTypeCode+Get localized string(" does not have a")+[Unit]UnitTypeCode+Get localized string(" for this unit,"))
+Else 
+AlertServer (Get localized string("WARNING - Unit")+" "+[Unit]UnitNo+" "+Get localized string("of type")+" "+[Unit]UnitTypeCode+Get localized string(" does not have a")+[Unit]UnitTypeCode+Get localized string(" for this unit,"))
+End if 
+End if 
+RELATE ONE([Unit]AgreeNo)
+$j:=Find in array(<>asUnitStatus;[Unit]Status)
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+If ([Unit]AgreeNo="") | (Records in selection([Agreement])=0)
+[Unit]Vacant:=True
+Case of 
+: ($j<1)
+[Unit]Status:=<>asUnitStatus{2}
+: (<>asUnitCategory{$j}="R")
+[Unit]Status:=<>asUnitStatus{2}//Set back to vacant as we don't know what it was before
+End case 
+[Unit]RentedValue:=0//is ok because unit is vacant
+[Unit]UnitValue:=0
+[Unit]BillPlanDisc:=0
+[Unit]ExtraDisc:=0
+Else 
+[Unit]Vacant:=False
+Case of 
+: ($j<1)
+[Unit]Status:=<>asUnitStatus{1}
+: (<>asUnitCategory{$j}#"R")//InitArrays
+[Unit]Status:=<>asUnitStatus{1}
+End case 
+[Unit]MoveOut:=[Agreement]MoveOut
+If ([Agreement]RegularRent=0) | ([Agreement]RegularRent+[Agreement]AgreedDisc=0)//20/4/10
+SyncRecordLog (Get localized string("Possible creation of NAN")+[Agreement]AgreeNo+"  - [Ag]RegularRent="+String([Agreement]RegularRent)+" [Ag]DiscAmt="+String([Agreement]DiscountAmt))
+End if 
+If ($FromUpgrade=True)//do not set [unit]rentedvalue or [unit]billplandisc or [unit]extradisc
+RELATE ONE([Agreement]BillingPlanCode)
+If ([Agreement]RentAmt>0)
+If ([BillPlan]PlanPeriod="Week")
+Case of 
+: (([Agreement]RentAmt+[Agreement]DiscountAmt)=0)
+[Unit]RentedValue:=Round((([UnitType]WeeklyRate*[Agreement]RentAmt/([Agreement]RegularRent+[Agreement]AgreedDisc))/0.2308);2)
+: (([Agreement]RegularRent+[Agreement]AgreedDisc)=0)
+[Unit]RentedValue:=0//Unable to calculate
+Else 
+[Unit]RentedValue:=Round((([UnitType]WeeklyRate*[Agreement]RentAmt/([Agreement]RentAmt+[Agreement]DiscountAmt)*[Agreement]RegularRent/([Agreement]RegularRent+[Agreement]AgreedDisc))/0.2308);2)
+End case 
+Else 
+Case of 
+: (([Agreement]RentAmt+[Agreement]DiscountAmt)=0)
+[Unit]RentedValue:=Round((CalculateBaseRate (2;0)*[Agreement]RentAmt/([Agreement]RegularRent+[Agreement]AgreedDisc));2)
+: (([Agreement]RegularRent+[Agreement]AgreedDisc)=0)
+[Unit]RentedValue:=0//Unable to calculate
+Else 
+[Unit]RentedValue:=Round((CalculateBaseRate (2;0)*[Agreement]RentAmt/([Agreement]RentAmt+[Agreement]DiscountAmt)*[Agreement]RegularRent/([Agreement]RegularRent+[Agreement]AgreedDisc));2)
+End case 
+End if 
+Else 
+[Unit]RentedValue:=0
+End if 
+[Unit]ExtraDisc:=Round(CalculateBaseRate (2;0)-[Unit]RentedValue;2)
+[Unit]UnitValue:=[Unit]RentedValue
+Else 
+RELATE ONE([Agreement]BillingPlanCode)
+If ([Agreement]RentAmt>0)
+If ([BillPlan]PlanPeriod="Week")
+Case of 
+: (([Agreement]RentAmt+[Agreement]DiscountAmt)=0)
+[Unit]UnitValue:=Round((CalculateBaseRate (2;0)*[Agreement]RentAmt/([Agreement]RegularRent+[Agreement]AgreedDisc))/0.2308;2)
+: (([Agreement]RegularRent+[Agreement]AgreedDisc)=0)
+[Unit]UnitValue:=0//Unable to calculate
+Else 
+[Unit]UnitValue:=Round((CalculateBaseRate (2;0)*[Agreement]RentAmt/([Agreement]RentAmt+[Agreement]DiscountAmt)*[Agreement]RegularRent/([Agreement]RegularRent+[Agreement]AgreedDisc))/0.2308;2)
+End case 
+Else 
+Case of 
+: (([Agreement]RentAmt+[Agreement]DiscountAmt)=0)
+[Unit]UnitValue:=Round(CalculateBaseRate (2;0)*[Agreement]RentAmt/([Agreement]RegularRent+[Agreement]AgreedDisc);2)
+: (([Agreement]RegularRent+[Agreement]AgreedDisc)=0)
+[Unit]UnitValue:=0//Unable to calculate
+Else 
+[Unit]UnitValue:=Round(CalculateBaseRate (2;0)*[Agreement]RentAmt/([Agreement]RentAmt+[Agreement]DiscountAmt)*[Agreement]RegularRent/([Agreement]RegularRent+[Agreement]AgreedDisc);2)
+End case 
+End if 
+//If ([BillPlan]DiscPercentage>0)
+[Unit]UnitValue:=Round([Unit]RentedValue-[Unit]BillPlanDisc;2)
+//End if 
+Else 
+[Unit]UnitValue:=0
+End if 
+
+End if 
+If (([Agreement]RegularRent+[Agreement]AgreedDisc)>0)//Added this to correct BillPlanDisc too high when AgreedDisc > 0
+[Unit]BillPlanDisc:=Round([Unit]RentedValue*([Agreement]RegularRent/([Agreement]RegularRent+[Agreement]AgreedDisc))*[BillPlan]DiscPercentage/100;2)
+//Round([UnitType]MonthlyRate*([Agreement]RegularRent/([Agreement]RegularRent+[Agreement]AgreedDisc))*[BillPlan]DiscPercentage/100;2)
+Else 
+[Unit]BillPlanDisc:=Round([Unit]RentedValue*[BillPlan]DiscPercentage/100;2)
+//Round([UnitType]MonthlyRate*[BillPlan]DiscPercentage/100;2)
+End if 
+If (Records in selection([UnitHistory])=0)
+If ([Unit]MoveIn>!1970-01-01!)
+CREATE RECORD([UnitHistory])
+[UnitHistory]UnitNo:=[Unit]RUnitNo
+[UnitHistory]AgreeNo:=[Unit]AgreeNo
+[UnitHistory]MoveIn:=[Unit]MoveIn
+[UnitHistory]RentedValue:=[Unit]UnitValue
+SAVE RECORD([UnitHistory])
+Else 
+If ($Web)
+SyncRecordLog (Get localized string("Invalid move-in date of ")+String([Unit]MoveIn)+Get localized string(" for Unit ")+[Unit]UnitNo+Get localized string(". Please correct!"))
+Else 
+AlertServer (Get localized string("Invalid move-in date of ")+String([Unit]MoveIn)+Get localized string(" for Unit ")+[Unit]UnitNo+Get localized string(". Please correct!"))
+End if 
+$Count:=$Count+1
+If ($Count>4)
+$i:=Records in selection([Unit])+1
+End if 
+End if 
+Else 
+COPY NAMED SELECTION([UnitHistory];"Retain")
+QUERY SELECTION([UnitHistory];[UnitHistory]AgreeNo=[Unit]AgreeNo;*)
+QUERY SELECTION([UnitHistory]; & ;[UnitHistory]MoveIn=[Unit]MoveIn)
+If (Records in selection([UnitHistory])>0) & ([UnitHistory]RentedValue#[Unit]UnitValue)
+If (Locked([UnitHistory]))
+If ($Web)
+SyncRecordLog (Get localized string("WARNING - UnitHistory")+" "+[Unit]UnitNo+Get localized string(" is locked by another"))
+Else 
+AlertServer (Get localized string("WARNING - UnitHistory")+" "+[Unit]UnitNo+Get localized string(" is locked by another"))
+End if 
+End if 
+[UnitHistory]RentedValue:=[Unit]UnitValue
+SAVE RECORD([UnitHistory])
+End if 
+USE NAMED SELECTION("Retain")
+CLEAR NAMED SELECTION("Retain")
+End if 
+End if 
+If ($Date>!00-00-00!)
+QUERY SELECTION([UnitHistory];[UnitHistory]MoveOut>$Date;*)
+QUERY SELECTION([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY SELECTION([UnitHistory]; & ;[UnitHistory]MoveIn<=$Date)
+If (Records in selection([UnitHistory])>0)
+If (Records in selection([UnitHistory])>1)
+ORDER BY([UnitHistory];[UnitHistory]MoveOut;>)//If possible choose currently occupied
+End if 
+If ([UnitHistory]MoveOut=!00-00-00!)
+[Unit]OccupRentedVal:=[Unit]UnitValue
+If ([Facility]CalcOccupValOption=True)//There is no equivalent to BillPlanDisc in the [UnitHistory] file 
+[Unit]OccupRentedVal:=[Unit]OccupRentedVal+[Unit]BillPlanDisc
+End if 
+Else 
+[Unit]OccupRentedVal:=[UnitHistory]RentedValue
+End if 
+Else 
+[Unit]OccupRentedVal:=-999//Unit was vacant
+End if 
+End if 
+If ($DontSave=False)
+If (Old([Unit]Vacant)#[Unit]Vacant) | (Old([Unit]Status)#[Unit]Status) | (Old([Unit]OccupRentedVal)#[Unit]OccupRentedVal) | (Old([Unit]MoveOut)#[Unit]MoveOut) | (Old([Unit]RentedValue)#[Unit]RentedValue) | (Old([Unit]BillPlanDisc)#[Unit]BillPlanDisc) | (Old([Unit]ExtraDisc)#[Unit]ExtraDisc)
+[Unit]LastStatusDate:=Current date
+SAVE RECORD([Unit])
+End if 
+End if 
+$j:=Find in array(<>asUnitStatus;[Unit]Status)
+If ($j<1)//In case it is not found
+$j:=2//Use Vacant
+End if 
+
+If ($FromActivity)
+If ([UnitType]ExcludeReports=True)//DAM Modified calculation for #-999
+
+Case of 
+: (<>asUnitCategory{$j}="X") | (([Unit]StartDate>$Date) & ($Date#!00-00-00!))//InitArrays
+//Do nothing for UnitCategory="X" as these Units not to be counted
+: (($j=4) | ($j=5)) & (($1="SSCSD") | ([Unit]OccupRentedVal=-999))
+aTotal{1}:=aTotal{1}+1//[Activity]OtherUnitNo
+aTotal{2}:=aTotal{2}+[Unit]UnitAreaSize//[Activity]OtherArea
+aTotal{3}:=aTotal{3}+CalculateBaseRate (0;0)//[Activity]OtherValue
+: ([Unit]OccupRentedVal#-999)
+aTotal{14}:=aTotal{14}+1//[Activity]OtherRentedUnitNo
+aTotal{15}:=aTotal{15}+[Unit]UnitAreaSize//[Activity]OtherRentedArea
+aTotal{16}:=aTotal{16}+CalculateBaseRate (0;0)//[Activity]OtherRentedValue
+aTotal{17}:=aTotal{17}+[Unit]OccupRentedVal//[Activity]OtherRentedValActual
+
+If ([Unit]OccupRentedVal<[UnitType]MonthlyRate)
+aTotal{18}:=aTotal{18}+1//[Activity]OtherDiscUnitNo
+aTotal{19}:=aTotal{19}+[Unit]UnitAreaSize//[Activity]OtherDiscArea
+End if 
+
+Else 
+aTotal{10}:=aTotal{10}+1//[Activity]VacantUnitNo
+aTotal{11}:=aTotal{11}+[Unit]UnitAreaSize//[Activity]VacantArea
+aTotal{12}:=aTotal{12}+CalculateBaseRate (0;0)//[Activity]VacantValue
+End case 
+
+Else 
+Case of 
+: (<>asUnitCategory{$j}="X") | (([Unit]StartDate>$Date) & ($Date#!00-00-00!))//InitArrays
+//Do nothing for UnitCategory="X" as these Units not to be counted
+: (($j=4) | ($j=5)) & (($1="SSCSD") | ([Unit]OccupRentedVal=-999))
+aTotal{1}:=aTotal{1}+1//[Activity]OtherUnitNo
+aTotal{2}:=aTotal{2}+[Unit]UnitAreaSize//[Activity]OtherArea
+aTotal{3}:=aTotal{3}+CalculateBaseRate (0;0)//[Activity]OtherValue
+: ([Unit]OccupRentedVal#-999)
+aTotal{4}:=aTotal{4}+1//[Activity]OccupUnitNo
+aTotal{5}:=aTotal{5}+[Unit]UnitAreaSize//[Activity]OccupArea
+aTotal{6}:=aTotal{6}+CalculateBaseRate (0;0)//[Activity]OccupValue
+aTotal{7}:=aTotal{7}+[Unit]OccupRentedVal//[Activity]OccupValActual
+If ([Unit]OccupRentedVal<[UnitType]MonthlyRate)
+aTotal{8}:=aTotal{8}+1//[Activity]DiscUnitNo
+aTotal{9}:=aTotal{9}+[Unit]UnitAreaSize//[Activity]DiscArea
+End if 
+Else 
+aTotal{10}:=aTotal{10}+1//[Activity]VacantUnitNo
+aTotal{11}:=aTotal{11}+[Unit]UnitAreaSize//[Activity]VacantArea
+aTotal{12}:=aTotal{12}+CalculateBaseRate (0;0)//[Activity]VacantValue
+End case 
+End if 
+Else 
+Case of 
+: (<>asUnitCategory{$j}="X") | (([Unit]StartDate>$Date) & ($Date#!00-00-00!))//InitArrays
+//Do nothing for UnitCategory="X" as these Units not to be counted
+: (($j=4) | ($j=5)) & (($1="SSCSD") | ([Unit]OccupRentedVal=-999))
+aTotal{1}:=aTotal{1}+1//[Activity]OtherUnitNo
+aTotal{2}:=aTotal{2}+[Unit]UnitAreaSize//[Activity]OtherArea
+aTotal{3}:=aTotal{3}+CalculateBaseRate (0;0)//[Activity]OtherValue
+: ([Unit]OccupRentedVal#-999)
+aTotal{4}:=aTotal{4}+1//[Activity]OccupUnitNo
+aTotal{5}:=aTotal{5}+[Unit]UnitAreaSize//[Activity]OccupArea
+aTotal{6}:=aTotal{6}+CalculateBaseRate (0;0)//[Activity]OccupValue
+aTotal{7}:=aTotal{7}+[Unit]OccupRentedVal//[Activity]OccupValActual
+If ([Unit]OccupRentedVal<[UnitType]MonthlyRate)
+aTotal{8}:=aTotal{8}+1//[Activity]DiscUnitNo
+aTotal{9}:=aTotal{9}+[Unit]UnitAreaSize//[Activity]DiscArea
+End if 
+Else 
+aTotal{10}:=aTotal{10}+1//[Activity]VacantUnitNo
+aTotal{11}:=aTotal{11}+[Unit]UnitAreaSize//[Activity]VacantArea
+aTotal{12}:=aTotal{12}+CalculateBaseRate (0;0)//[Activity]VacantValue
+End case 
+End if 
+
+
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+CLOSE WINDOW($window)
+$0:=($Count=0)
+READ ONLY(*)
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([UnitHistory])
+QUERY([UserLogins];[UserLogins]Name=$CurrentUser)

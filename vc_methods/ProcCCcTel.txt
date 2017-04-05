@@ -1,0 +1,298 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($0)//Authorization Code
+C_BOOLEAN($1)//Display Decline / Error Alerts
+C_TEXT($2;$Type)//P, C or V
+C_REAL($3)//Transaction Amount
+C_TEXT($4)//Card Number
+C_TEXT($5)//Expiry Date
+C_TEXT($6)//OrigID
+C_TEXT($7;$8;$9)//AgreeNo, Description, CustomerCode
+C_TEXT($10;$11)//Customer Name, Address
+C_TEXT($12)//City
+C_TEXT($13)//Zip Code
+C_TEXT($14;$15;$16)//Account,Login,Password
+//C_LONGINT($17;$18)  `Logging,Timeout
+C_TEXT($Message;$Header;$Response)
+C_LONGINT($TCPID;$Error;$Pos)
+$cr:=Char(13)+Char(10)
+$TCPID:=0
+$ServerPort:="443"
+$ServerAddress:="txn01.ctel.net.au"
+$Folder:="/cgi-shl/PaymentsDirect_ss_v7.exe"
+$Buffer:=""
+$Status:=0
+$Response:=""
+$Header:=""
+$Message:=""
+Case of 
+: ($2="P")
+$Type:="1"
+: ($2="C")
+$Type:="2"
+: ($2="V")
+$Type:="2"
+Else 
+$Type:=$2
+End case 
+//Build the transaction message
+$Message:="Version=STORMAN_V1_0"
+$Message:=$Message+"&AC="+$Type
+$Message:=$Message+"&P0=&P1=&P2="+$12//State, Suburb, City
+$Message:=$Message+"&P3=&P4="+$11//Email, Street 1
+$Message:=$Message+"&P5=&P6="+$13//Street 2, Postcode
+$Message:=$Message+"&P7="+$10//Name
+$Message:=$Message+"&P8=&P9=&P10=&RS=OCX"
+$Message:=$Message+"&CA="+$14
+$Message:=$Message+"&PA="+$4
+$Message:=$Message+"&ED="+$5
+$Message:=$Message+"&TA="+String($3)
+$Message:=$Message+"&RE="+$9+" "+$8+" "+$7
+$Message:=$Message+"&TAG=AUD&AU="+$6
+$Message:=$Message+"&CVV=&ECM=&SLI=&XID=&CAV=&CAR="
+$Message:=$Message+"&OID="+$15
+$Message:=$Message+"&OPW="+$16
+
+$Header:=$Header+"POST "+$Folder+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+":"+$ServerPort+$cr
+$Header:=$Header+"Accept: "+"*/*"+$cr
+$Header:=$Header+"Pragma: no-cache"+$cr
+$Header:=$Header+"Connection: Keep-Alive"+$cr
+$Header:=$Header+"Content-type: application/x-www-form-urlencoded"+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr
+//$Doc:=Create document("Message.txt")
+//SEND PACKET($Doc;$Header+$cr+$Message+$cr+$cr)
+//CLOSE DOCUMENT($Doc)
+viTick1:=Tickcount
+$Error:=TCP_Open ($ServerAddress;Num($ServerPort);$TCPID;3)
+
+If ($Error=0)
+viTick2:=Tickcount
+MaskCCLog ($Message;"cTel")
+$Error:=TCP_Send ($TCPID;$Header+$cr+$Message+$cr+$cr)
+$Message:=""
+$WaitTime:=Current time+?00:00:15?//Timeout after 15 seconds
+viTick3:=Tickcount
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$Error:=TCP_State ($TCPID;$Status)
+$Message:=$Message+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Message)>10))
+viTick4:=Tickcount
+$Error:=TCP_Close ($TCPID)
+viTick5:=Tickcount
+//$Doc:=Open document("Response.txt")
+//RECEIVE PACKET($Doc;$Message;32000)
+//CLOSE DOCUMENT($Doc)
+Case of 
+: ($Error>1)
+$0:="ERRTCP"
+AlertMessage (Get localized string("TCP Sending Error")+" # "+String($Error))
+: ($Error=1)
+$0:="ERR4TO"
+AlertMessage (Get localized string("TCP Timeout Error"))
+Else 
+Repeat //While a complete transaction request and response is being received
+$HTTPResponse:=Substring($Message;1;Position($cr+$cr;$Message)-1)
+If (Position("HTTP";$HTTPResponse)>0)
+$HTTPResponseCode:=Substring($HTTPResponse;Position(" ";$HTTPResponse)+1;3)//This will be e.g. 100 (Continue), 200 (OK) etc
+$Message:=Substring($Message;Position($cr+$cr;$Message)+Length($cr+$cr))
+Else 
+//If not an HTTPResponse Header then must be the Verisign Payment Response message content
+If (Num($HTTPResponseCode)>=200) & (Num($HTTPResponseCode)<300)
+$Response:=$Message
+End if 
+End if 
+Until ($Response#"")
+End case 
+
+If ($Error=0)
+//Parse the returned HTML response
+ARRAY TEXT(atResultValue;0)
+$Response:=$Response+":"
+Repeat 
+$Pos:=Position(":";$Response)
+$Value:=Substring($Response;1;$Pos-1)
+INSERT IN ARRAY(atResultValue;99;1)
+atResultValue{Size of array(atResultValue)}:=$Value
+$Response:=Substring($Response;$Pos+1)
+Until (Length($Response)=0)
+$Response:=""
+
+If (atResultValue{1}="True")
+$0:=atResultValue{4}
+[Trxs]CCTransID:=atResultValue{7}
+Else 
+$0:="ERR"+atResultValue{2}
+If ($1)
+Case of 
+: (atResultValue{2}="00")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The requested transaction has been approved."))
+: (atResultValue{2}="01")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has declined the payment request."))
+: (atResultValue{2}="02")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has had special conditions applied to the card."))
+: (atResultValue{2}="03")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Merchant ID not found on Bank's System."))
+: (atResultValue{2}="04")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has declined the transaction and requested the card be retained."))
+: (atResultValue{2}="05")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The bank that issued this card to your customer has imposed some special conditions on the card or the use of the card. This could also indicate that the use of the card has been temporarily suspended."))
+: (atResultValue{2}="06")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The message sent by the terminal to the bank's system contained an error."))
+: (atResultValue{2}="07")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has declined the transaction and requested the card be retained."))
+: (atResultValue{2}="08")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("This transaction is approved subject to the usual fraud checks and the operator's satisfactory assessment that the card user is the legal user and that signatures match."))
+: (atResultValue{2}="12")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The bank that issued this card to your customer has declined the transaction as the type of transaction is not valid for the type of card. e.g. Selecting to pay from a credit card account with standard issue EFTPOS card."))
+: (atResultValue{2}="13")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The transaction amount is invalid."))
+: (atResultValue{2}="14")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The Credit Card number presented is Invalid. This could be because the card number or card series has been revoked or the number was simply miskeyed."))
+: (atResultValue{2}="15")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The Credit Card number presented is Invalid. This could be because the card number or card series has been revoked or the number was simply miskeyed."))
+: (atResultValue{2}="19")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The transaction has not been processed. Retry the transaction."))
+: (atResultValue{2}="21")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Reversal Approved"))
+: (atResultValue{2}="30")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Message Format Error."))
+: (atResultValue{2}="31")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The Card Issuer is not supported."))
+: (atResultValue{2}="33")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card has expired"))
+: (atResultValue{2}="36")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Restricted Card"))
+: (atResultValue{2}="38")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has indicated that the card has exceeded the maximum number of PIN tries."))
+: (atResultValue{2}="39")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("There is no credit account linked to the card."))
+: (atResultValue{2}="41")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card has been reported as lost."))
+: (atResultValue{2}="43")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card has been reported as stolen."))
+: (atResultValue{2}="51")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card/account has insufficient funds for this transaction."))
+: (atResultValue{2}="52")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("No cheque account connected to card."))
+: (atResultValue{2}="53")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("No savings account connected to card."))
+: (atResultValue{2}="54")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card has expired"))
+: (atResultValue{2}="55")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Cardholder PIN has failed validation"))
+: (atResultValue{2}="56")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has no record of the card."))
+: (atResultValue{2}="57")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has indicated that the transaction is not permitted to cardholder"))
+: (atResultValue{2}="58")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Transaction not permitted on this terminal."))
+: (atResultValue{2}="59")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has indicated that the card is suspected as being fraudulent"))
+: (atResultValue{2}="60")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("There has been a problem processing the transaction."))
+: (atResultValue{2}="61")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Transaction will exceed card/account withdrawal frequency limit."))
+: (atResultValue{2}="62")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has indicated that there are restrictions placed on the card."))
+: (atResultValue{2}="63")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The terminal's verification code has failed certification."))
+: (atResultValue{2}="65")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Transaction will exceed card/account withdrawal frequency limit."))
+: (atResultValue{2}="67")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card issuer has indicated the card is suspected counterfeit."))
+: (atResultValue{2}="75")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card Issuer has indicated that the card has exceeded the maximum number of PIN tries."))
+: (atResultValue{2}="91")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Link with the Card Issuer is not available."))
+: (atResultValue{2}="96")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("There has been a problem processing the transaction."))
+: (atResultValue{2}="98")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The secure encryption device and the acquiring bank don't agree on the key used in the transaction, therefore the acquiring bank is rejecting the transaction."))
+: (atResultValue{2}="A4")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The acquiring bank is currently unavailable. This could be due to a telecommunications error, or the bank is currently unable to process transactions."))
+: (atResultValue{2}="A5")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The secure hardware encryption device is currently offline."))
+: (atResultValue{2}="AA")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Invalid Credit Card Number"))
+: (atResultValue{2}="AB")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Invalid Credit Card Expiry Date"))
+: (atResultValue{2}="AC")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Card has expired"))
+: (atResultValue{2}="AD")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Invalid Account"))
+: (atResultValue{2}="AE")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Unable to connect to a Transaction Server"))
+: (atResultValue{2}="AG")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The Amount was invalid"))
+: (atResultValue{2}="AZ")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Unable to find any transaction servers."))
+: (atResultValue{2}="BA")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Biller Reference is either missing ('') or contains more than 18 characters."))
+: (atResultValue{2}="BD")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("This occurs when the data being output from PC-Direct missing the Customer Account number"))
+: (atResultValue{2}="BE")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("This occurs when the data being output from PC-Direct missing the Customer BSB number"))
+: (atResultValue{2}="BF")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("This occurs when the data being output from PC-Direct missing the Customer Title"))
+: (atResultValue{2}="BJ")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("No match is found in database"))
+: (atResultValue{2}="BK")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("TraceBSB has to be in the format of 'ddd-ddd' or 'ddd ddd' where d = digit."))
+: (atResultValue{2}="BM")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Occurs when the specified Ctel Account cannot be found in the Merchant Table"))
+: (atResultValue{2}="BO")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Occurs when the MerchantIndex and the specified Tag cannot be found in the Merchant Currency Gateway table"))
+: (atResultValue{2}="BQ")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Operator does not have the required permission to access a particular Merchant"))
+: (atResultValue{2}="BS")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Payment type is either missing or not a 2-digit number"))
+: (atResultValue{2}="BT")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("More than 5 failed attempts"))
+: (atResultValue{2}="BU")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("This occurs when the data being output from PC-Direct missing the Customer Account number"))
+: (atResultValue{2}="BV")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("This occurs when the data being output from PC-Direct missing the Customer BSB number"))
+: (atResultValue{2}="BW")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Unidentified operator access"))
+: (atResultValue{2}="BX")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Missing tag"))
+: (atResultValue{2}="BY")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Unidentified action in the query"))
+: (atResultValue{2}="BZ")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Unidentified front-end application."))
+: (atResultValue{2}="CA")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Payment type not '13' (Debit) or '50' (Credit)"))
+: (atResultValue{2}="CB")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Invalid Ctel account number or account number not found in database"))
+: (atResultValue{2}="MI")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Ctel Merchant Account (CtelAccount) is invalid"))
+: (atResultValue{2}="ML")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("A incorrect string length was passed to OCV Server Emulator"))
+: (atResultValue{2}="T1")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The acquiring bank is rejecting the transaction as it doesn't accept this type of card."))
+: (atResultValue{2}="TQL70")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Carrier is being received from the NAC, however the NAC is not polling. This error is the same as communications error 'X2 NO NET POLL'"))
+: (atResultValue{2}="TQL80")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The system did not receive a response to a message sent to the bank host. The transaction will be reversed if needed."))
+: (atResultValue{2}="TQL90")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("Carrier is not being received from the NAC. This error is the same as communications error 'X3 NO NETWORK DCD'"))
+: (atResultValue{2}="U0")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("A transaction could not be confirmed by both ends of the telecommunications link. As such a Reversal has been presented to the acquiring bank to remove the transaction and try again."))
+: (atResultValue{2}="U9")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The duration allowed for the acquiring bank to respond to a transaction request has been exceeded. The transaction will automatically be reversed and generate a corresponding U0 error."))
+: (atResultValue{2}="X1")
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3}+" "+Get localized string("The connection to the card issuing bank has failed."))
+Else 
+AlertMessage (Get localized string("Result Code")+": "+$0+" - "+atResultValue{3})
+End case 
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("The TCP connection could not be opened. Error")+" #"+String($Error))
+$0:="ERR4IC"
+End if 

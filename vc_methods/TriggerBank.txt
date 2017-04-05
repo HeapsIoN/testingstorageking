@@ -1,0 +1,103 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 11/6/09 - This is now never called.  Not sure at what date the On Load Record trigger was turned off.
+//27/10/11 NLT below commented out as no longer using miscdetls subtable
+
+//Trigger running for Receipts whenever [Transaction]DateBanked is changed
+//C_LONGINT($i)
+//$State:=Read only state([CashBookTrxs])
+//  //If (Database event=_O_On Loading Record Event) & ([Facility]CashAccrual=True)
+//  //ALL SUBRECORDS([Transaction]MiscDetls)
+//  //$i:=Records in subselection([Transaction]MiscDetls)
+//  //ARRAY TEXT(asCharge;$i)
+//  //ARRAY REAL(arTax;$i)
+//  //ARRAY REAL(arTotal;$i)
+//  //For ($i;1;Records in subselection([Transaction]MiscDetls))
+//  //asCharge{$i}:=[Transaction]MiscDetls'AnalysisCode
+//  //arTax{$i}:=[Transaction]MiscDetls'TaxAmt
+//  //arTotal{$i}:=[Transaction]MiscDetls'TotAmt
+//  //NEXT SUBRECORD([Transaction]MiscDetls)
+//  //End for 
+//  //End if 
+//If ($State)
+//READ WRITE([CashBook])
+//READ WRITE([CashBookTrxs])
+//End if 
+//If (Database event=On Saving Existing Record Event) | (Database event=On Deleting Record Event)
+//If (Old([Transaction]DateBanked)>=<>dCashBookStart)
+//GetJournal (Old([Transaction]DateBanked);"REC")
+//GetCashBookRec (Old([Transaction]AnalysisCode);Old([Transaction]DateBanked))
+//GetCashBookTrx ("B1")
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-Old([Transaction]TotAmt);2)
+//SAVE RECORD([CashBookTrxs])
+//If ([Facility]CashAccrual=False)  // Accrual
+//GetCashBookTrx ("D")
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount+Old([Transaction]TotAmt);2)
+//SAVE RECORD([CashBookTrxs])
+//[CashBook]NetAmt:=Round([CashBook]NetAmt-Old([Transaction]TotAmt);2)
+//[CashBook]TotAmt:=Round([CashBook]TotAmt-Old([Transaction]TotAmt);2)
+//SAVE RECORD([CashBook])
+//Else 
+//  //Undo old from arrays  
+//$Tax:=0
+//For ($i;1;Size of array(asCharge))
+//QUERY([Analysis];[Analysis]Code=asCharge{$i})
+//GetCashBookTrx ("";[Analysis]GLCode)
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount+arTotal{$i}-arTax{$i};2)
+//SAVE RECORD([CashBookTrxs])
+//[CashBook]NetAmt:=Round([CashBook]NetAmt-arTotal{$i}+arTax{$i};2)
+//[CashBook]TaxAmt:=Round([CashBook]TaxAmt-arTax{$i};2)
+//$Tax:=$Tax+arTax{$i}
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End for 
+//[CashBook]TotAmt:=Round([CashBook]TotAmt-Old([Transaction]TotAmt);2)
+//SAVE RECORD([CashBook])
+//GetCashBookTrx ("T")
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-$Tax;2)
+//SAVE RECORD([CashBookTrxs])
+//End if 
+//End if 
+//End if 
+//If (Database event=On Saving Existing Record Event) | (Database event=On Saving New Record Event)
+//If ([Transaction]DateBanked>=<>dCashBookStart)
+//GetJournal ([Transaction]DateBanked;"REC")
+//GetCashBookRec ([Transaction]AnalysisCode;[Transaction]DateBanked)
+//QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+//GetCashBookTrx ("B1")
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount+[Transaction]TotAmt;2)
+//SAVE RECORD([CashBookTrxs])
+//If ([Facility]CashAccrual=False)  // Accrual
+//GetCashBookTrx ("D")
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-[Transaction]TotAmt;2)
+//SAVE RECORD([CashBookTrxs])
+//[CashBook]NetAmt:=Round([CashBook]NetAmt+[Transaction]TotAmt;2)
+//[CashBook]TotAmt:=Round([CashBook]TotAmt+[Transaction]TotAmt;2)
+//SAVE RECORD([CashBook])
+//Else 
+//  //Cash basis
+//  //ALL SUBRECORDS([Transaction]MiscDetls)
+//  //$Tax:=0
+//  //For ($i;1;Records in subselection([Transaction]MiscDetls))
+//  //QUERY([Analysis];[Analysis]Code=[Transaction]MiscDetls'AnalysisCode)
+//  //GetCashBookTrx ("";[Analysis]GLCode)
+//  //[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount-[Transaction]MiscDetls'TotAmt+[Transaction]MiscDetls'TaxAmt;2)
+//  //SAVE RECORD([CashBookTrxs])
+//  //[CashBook]NetAmt:=Round([CashBook]NetAmt+[Transaction]MiscDetls'TotAmt-[Transaction]MiscDetls'TaxAmt;2)
+//  //[CashBook]TaxAmt:=Round([CashBook]TaxAmt+[Transaction]MiscDetls'TaxAmt;2)
+//  //$Tax:=$Tax+[Transaction]MiscDetls'TaxAmt
+//  //NEXT SUBRECORD([Transaction]MiscDetls)
+//  //End for 
+//[CashBook]TotAmt:=Round([CashBook]TotAmt+[Transaction]TotAmt;2)
+//SAVE RECORD([CashBook])
+//QUERY([CashBookTrxs];[CashBookTrxs]JournalNo=[Journal]JournalNo)
+//GetCashBookTrx ("T")
+//[CashBookTrxs]Amount:=Round([CashBookTrxs]Amount+$Tax;2)
+//SAVE RECORD([CashBookTrxs])
+//End if 
+//End if 
+//End if 
+//If ($State)
+//READ ONLY([CashBook])
+//READ ONLY([CashBookTrxs])
+//UNLOAD RECORD([CashBook])
+//UNLOAD RECORD([CashBookTrxs])
+//End if 

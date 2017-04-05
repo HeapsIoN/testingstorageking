@@ -1,0 +1,71 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+OBJECT SET TITLE(*;"Text2";Get localized string("Date")+":")
+OBJECT SET TITLE(*;"Text3";Get localized string("Details")+":")
+OBJECT SET TITLE(*;"Text8";Get localized string("Amount")+":")
+OBJECT SET TITLE(*;"Text40";Get localized string("Date Banked")+":")
+OBJECT SET TITLE(*;"Text16";Get localized string("User Login")+":")
+OBJECT SET TITLE(*;"Text14";Get localized string("Date Banked")+":")
+vTitle:=Get localized string("Add Other Transactions")+"..."
+vCharge:=0
+$NoAnlys:=False
+ARRAY TEXT(aWithdrwl;2)
+aWithdrwl{1}:=Get localized string("Withdrawal")
+aWithdrwl{2}:=Get localized string("Deposit")
+OBJECT SET ENTERABLE(*;"OTrx@";True)
+OBJECT SET ENTERABLE(*;"WAmt";True)
+If ([Trxs]TaxAmt<=0)
+aWithdrwl:=1
+Else 
+aWithdrwl:=2
+End if 
+QUERY([Analysis];[Analysis]SortOrder>=96;*)
+QUERY([Analysis]; & ;[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+If (<>sCurrentUser#"Adminsupport") & (<>sCurrentUser#"Daily") & (<>sCurrentUser#"Sync")
+QUERY SELECTION([Analysis];[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+For ($m;1;Records in selection([UserGroup]))
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="@"+[UserGroup]GroupID+",@";*)
+NEXT RECORD([UserGroup])
+End for 
+QUERY SELECTION([Analysis]; | ;[Analysis]Groups="ALL")
+End if 
+ORDER BY([Analysis]SortOrder;>)
+SELECTION TO ARRAY([Analysis]Description;aBankAnlys;[Analysis]Code;aAnlysCode)
+If (Size of array(aBankAnlys)=0)
+AlertMessage (Get localized string("There are no analysis codes set up for bank transactions.");Get localized string("OK");"http://my.storman.com/support/knowledgebase/errors/noanalysiscodesforbanktransactions.php")
+$NoAnlys:=True
+CANCEL
+End if 
+If ([Trxs]Match=-1000)//if the transaction already exists
+RELATE ONE([Trxs]AnalysisCode)
+$c:=Find in array(aAnlysCode;[Analysis]Code)
+aBankAnlys:=$c
+vMod:=True
+vOTBankd:=[Trxs]DateBanked
+vOTAmt:=[Trxs]TotAmt
+vOTDesc:=[Trxs]Description
+Else 
+vMod:=False
+aBankAnlys:=1
+[Trxs]Match:=-1000
+[Trxs]TrxDate:=vBSDate
+[Trxs]DateBanked:=vBSDate
+[Trxs]DateReconciled:=vBSDate
+vDatePick:=vBSDate
+vDatePick1:=vBSDate
+[Trxs]Reconciled:=True
+[Trxs]Charge:=False
+[Trxs]CustomerCode:=<>sFacility
+[Trxs]AgreeNo:=<>sFacility
+If ($NoAnlys=True)
+[Trxs]AnalysisCode:=<>sFacility
+Else 
+[Trxs]AnalysisCode:=aAnlysCode{aBankAnlys}
+End if 
+[Trxs]UserLogin:=<>sCurrentUser
+[Trxs]Confirmed:=True
+End if 
+End if 

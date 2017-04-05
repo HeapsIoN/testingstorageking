@@ -1,0 +1,147 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Receive EventLog records from Remote Server - SyncToSite
+C_BOOLEAN($0)//Only true if 0 records returned successfully - used for creating of Checksum record
+C_TEXT($HeaderCode;$ErrorCode;$ErrorDescription)
+C_LONGINT($Error;$EventCount;$TickCount;$Pos;$SeqNo;$NextSeqNo;$Version)
+$0:=False
+$vliOffset:=0
+If (vMax>2)
+vMax:=vMax+1
+If (vMax>180) | ((Shift down) & ((Windows Alt down) | (Macintosh option down)))//180 x 10 secs = 30 mins
+vMax:=0
+End if 
+Else 
+SET BLOB SIZE(vbResponse;0)
+SET BLOB SIZE(vbEventContent;0)
+SET BLOB SIZE(vbField;0)
+$NextSeqNo:=0
+$Pos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+If ($Pos>0)
+$NextSeqNo:=<>aiEventSeqNo{$Pos}+1
+End if 
+TEXT TO BLOB("<SiteHeader>"+[Facility]FacilityCode+"</SiteHeader><SeqNo>"+String($NextSeqNo)+"</SeqNo><VersionDate>"+GetDateString (<>dCompileDate;7)+"</VersionDate>"+Char(13)+Char(10);vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT("<SiteHeader>"+[Facility]FacilityCode+"</SiteHeader><SeqNo>"+String($NextSeqNo)+"</SeqNo><VersionDate>"+GetDateString (<>dCompileDate;7)+"</VersionDate>"+Char(13)+Char(10);"UTF-8";vbEventContent)
+$Tickcount:=Tickcount
+$Error:=SyncPrepare ("/4DCGI/SyncFromMaster")//SyncToSite
+If ($Error=0)
+
+$HeaderCode:=SyncGetHTTPHeaderCode (->vbResponse)
+SyncGetHTTPBody (->vbResponse;->vbEventContent)
+$ErrorCode:=Substring(SyncBlobtoText (SyncTagsToBlob ("<ErrorCode>";->vbEventContent;->vbField;0));1;3)
+$ErrorDescription:=SyncBlobtoText (SyncTagsToBlob ("<ErrorDescription>";->vbEventContent;->vbField;0))
+$EventCount:=Num(SyncBlobtoText (SyncTagsToBlob ("<EventCount>";->vbEventContent;->vbField;0)))
+$FacilityCode:=SyncBlobtoText (SyncTagsToBlob ("<SiteHeader>";->vbEventContent;->vbField;0))//Added 3.5.4
+$VersionString:=SyncBlobtoText (SyncTagsToBlob ("<Version>";->vbEventContent;->vbField;0))//Added 4.0
+$SeqNo:=Num(SyncBlobtoText (SyncTagsToBlob ("<SeqNo>";->vbEventContent;->vbRecord;0)))
+
+Case of 
+: (Substring($ErrorCode;1;3)="405") | (Substring($ErrorCode;1;3)="406")//Instruction to export datafile and upload to FTP, 406 instructs MV to import afterwards
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+Case of 
+: (Read only state([Facility])=True)
+SyncRecordLog (Get localized string("Could not save the Error Code")+" "+$ErrorCode+" "+Get localized string("as the Facility record is Read Only"))
+
+: (Locked([Facility])=True)
+LOCKED BY([Facility];$Process;$User;$Session;$ProccessName)
+SyncRecordLog (Get localized string("Could not save the Error Code")+" "+$ErrorCode+" "+Get localized string("as the Facility record is Locked by Process")+": "+String($Process)+", "+Get localized string("User")+": "+$User+", "+Get localized string("Session User")+": "+$SessionUser+", "+Get localized string("Process Name")+": "+$ProcessName)
+
+: (Records in selection([Facility])=0)
+SyncRecordLog (Get localized string("Facility")+" "+$FacilityCode+" "+Get localized string("record not found, could not save error code")+" "+$ErrorCode)
+
+Else 
+[Facility]SyncError:=$ErrorCode
+SAVE RECORD([Facility])
+End case 
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+
+: ($ErrorCode>="300") & ($ErrorCode<"400")
+If ($ErrorCode<="304")
+SyncRecordLog (Get localized string("Attempted to Request")+" "+<>sFacility+" "+Get localized string("from host - Server Generated Msg")+" #"+$ErrorCode+" - "+$ErrorDescription+" - "+Get localized string("Elapsed time")+"="+String((Tickcount-$Tickcount)/60;"####0"))
+End if 
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]LastSyncDate:=UTCDate (Current time;True;Current date)
+Case of 
+: ($ErrorCode="301")//301 - Change IP Address
+[Facility]CentralAddress:=$ErrorDescription
+: ($ErrorCode="302")//302 - Don't connect for 15 mins
+[Facility]LastSyncTime:=UTCTime (Current time;True)+?00:15:00?
+: ($ErrorCode="303")//303 - Don't connect for 60 mins
+[Facility]LastSyncTime:=UTCTime (Current time;True)+?01:00:00?
+: ($ErrorCode="304")//304 - Don't connect for 240 mins
+[Facility]LastSyncTime:=UTCTime (Current time;True)+?04:00:00?
+: ($ErrorCode="305@")//305 - Server specified time
+[Facility]LastSyncTime:=UTCTime (Current time;True)+Num(Substring($ErrorCode;5))//TEST IF THIS LINE WORKS
+Else 
+//Do Nothing
+End case 
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+: ($ErrorCode>"001")
+SyncRecordLog (Get localized string("Attempted to Request")+" "+<>sFacility+" "+Get localized string("from host - Server Host Error")+" #"+$ErrorCode+" - "+$ErrorDescription+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+vMax:=4//This to stop further syncing
+If ($ErrorCode#"") & ($ErrorDescription#"")
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Syncing Error at")+" "+[EventLog]FacilityCode;Get localized string("Attempted to Send for")+" "+<>sFacility+" - "+String(Records in selection([EventLog]))+" "+Get localized string("Events - Server Host Error")+" #"+$ErrorCode+" - "+$ErrorDescription+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+End if 
+: (SyncBlobtoText (SyncTagsToBlob ("<EOF>";->vbEventContent;->vbField;0))#"EOF")
+$ErrorCode:="100"
+$ErrorDescription:="File Incomplete"
+SyncRecordLog (Get localized string("Attempted to Request")+" "+<>sFacility+" "+Get localized string("from host. - File Incomplete - Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+SyncRecordLog (BLOB to text(vbResponse;Mac text without length;$vliOffset;32000))
+//SyncRecordLog (Convert to text(vbResponse;"UTF-8"))
+: ($SeqNo>0) & ($SeqNo#$NextSeqNo)
+$ErrorCode:="150"
+$ErrorDescription:="Sequence Number Mismatch MV:"+String($SeqNo)+" & Site:"+String($NextSeqNo)
+SyncRecordLog (Get localized string("Attempted to Request from host")+" "+$FacilityCode+". - "+$ErrorDescription)
+: (SyncDecode ($EventCount;$FacilityCode;$ErrorCode;True)="200")
+$ErrorCode:="200"
+$ErrorDescription:="Wrong Record Count or Invalid Facility Code"
+SyncRecordLog (Get localized string("Attempted to Request")+" "+<>sFacility+" "+Get localized string("from host. - Wrong Record Count/Invalid Facility Code - Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+: ($ErrorCode="001")
+If ($EventCount>0)
+If ($Pos>0)
+SyncRecordLog ("Setting Event Seq No to "+String($SeqNo)+" - SyncFromMaster #102")
+<>aiEventSeqNo{$Pos}:=$SeqNo
+End if 
+SyncRecordLog (Get localized string("Received again and Updated")+" "+String($EventCount)+" "+Get localized string("events for")+" "+<>sFacility+" "+Get localized string("from host. - SeqNo")+" "+String($SeqNo)+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+End if 
+vMax:=0
+Else 
+$ErrorCode:="000"
+$ErrorDescription:="OK"
+If ($EventCount>0)
+If ($Pos>0)
+SyncRecordLog ("Setting Event Seq No to "+String($SeqNo)+" - SyncFromMaster #113")
+<>aiEventSeqNo{$Pos}:=$SeqNo
+End if 
+SyncRecordLog (Get localized string("Received")+" "+String($EventCount)+" "+Get localized string("events for")+" "+<>sFacility+" "+Get localized string("from host. - SeqNo")+" "+String($SeqNo)+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+End if 
+vMax:=0
+If ($EventCount=0)
+$0:=True
+End if 
+End case 
+//InitLoopCode
+If (Date(Substring($VersionString;5))><>dCompileDate) & ((vtDownloadUpdate=?00:00:00?) | (Current time>(vtDownloadUpdate+?02:00:00?)))//Get Update
+$Version:=Num(Substring($VersionString;1;4))
+If (($Version-<>iVersion)<10) & ($Version>=<>iVersion)//Only update minor updates
+CheckUpdate ("";"Auto";$Version)
+//DownloadUpdate ("Auto";$Version)
+vtDownloadUpdate:=Current time
+End if 
+End if 
+
+Else 
+vMax:=vMax+1
+SyncRecordLog (Get localized string("Attempted to Request")+" "+<>sFacility+" "+Get localized string("from host. - TCP Error")+" #"+String($Error)+" - "+Get localized string("Elapsed time")+" = "+String((Tickcount-$Tickcount)/60;"####.00"))
+If (vMax>3)
+SyncRecordLog (Get localized string("Unable to connect to host Central server after 4 tries. Most likely internet or network problem. Will try again in 10 minutes."))
+End if 
+End if 
+SET BLOB SIZE(vbResponse;0)
+SET BLOB SIZE(vbEventContent;0)
+SET BLOB SIZE(vbField;0)
+End if 

@@ -1,0 +1,445 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Method: WWW_CustAgreemt_Agreeno
+//Date: 22.3.2000
+C_TEXT($HTML;vtTable;$1;$Rec)
+C_LONGINT($i;$j)
+C_TEXT(vCustomer;vAgreeNo)
+C_POINTER($p)
+C_BOOLEAN(vIsNew;$Abort)
+C_TEXT($q)
+$q:=Char(34)
+$HTML:=Char(1)
+vReCalc:=False
+bHistory:=0
+// Extract the record number from the URL
+$Rec:=$1
+$Abort:=False
+If ($Rec#"New")
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+GOTO RECORD([Agreement];Num($Rec))
+If (Locked([Agreement])=True)
+AlertMessage (Get localized string("This record is currently locked by another process. Please try again soon..."))
+vReturn:="1"
+$Abort:=True
+//WWW_GoBack ("/1")
+End if 
+// Check whether the record is read-only
+If (Read only state([Agreement]))
+AlertMessage (Get localized string("The file is in Read Only Mode!"))//This line should never be called!
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+End if 
+RELATE ONE([Agreement]CustomerCode)
+If ([Agreement]AlertNotesMsg=True)
+AlertMessage ([Customer]Notes)
+End if 
+Else 
+SetFacility 
+vAgreeNo:=String([Facility]NextAgreeNo;"000000000")
+vAgreeNo:=RequestMessage (Get localized string("Please confirm new agreement number:");vAgreeNo)
+If (OK=1)
+vCustomer:=Substring(Uppercase(RequestMessage (Get localized string("Please enter customer code:");vCustomer));1;5)
+If (OK=1)
+QUERY([Customer];[Customer]CustomerCode=vCustomer)
+If (Records in selection([Customer])=0)
+READ WRITE([Customer])
+CREATE RECORD([Customer])
+[Customer]CustomerCode:=Uppercase(vCustomer)
+SAVE RECORD([Customer])
+READ ONLY([Customer])
+End if 
+vNextUser:=[Facility]NextAgreeNo+1
+$p:=->vNextUser
+UpdateSystem (20;$p;Get localized string("The next agreement number could not be incremented. You must increase the next agreement number in System Setup before proceeding!"))
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:=vAgreeNo
+[Agreement]TaxExempt:=[Facility]TaxFreeDefault
+[Agreement]CustomerCode:=[Customer]CustomerCode
+[Agreement]MoveIn:=Current date
+[Agreement]MthsAdv:=1
+[Agreement]DaytoBill:=Day of(Current date)
+[Agreement]NextBillDate:=Current date
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveIn=True;*)
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+[Agreement]DepositAmt:=[Analysis]DfltSellAmt
+[Agreement]ActiveAgreemt:=True
+[Agreement]BillUtilities:=<>tUtilities
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@";*)
+QUERY([BillPlan]; & ;[BillPlan]SortOrder=1)
+[Agreement]BillingPlanCode:=[BillPlan]Code
+[Agreement]MthsAdv:=[BillPlan]PeriodstoPay
+[Agreement]NoticePlanNo:=[BillPlan]DefltNoticePlan
+SAVE RECORD([Agreement])
+RELATE ONE([Agreement]CustomerCode)
+vIsNew:=True
+$Rec:=String(Record number([Agreement]))
+Else 
+WWW_GoBack ("/2/23")
+End if 
+Else 
+WWW_GoBack ("/2/23")
+End if 
+End if 
+If ($Abort=False)
+$HTML:=$HTML+"<form method="+$q+"post"+$q+" action="+$q+"/4DMethod/WWW_CustAgreemt_Update"+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"recnum"+$q+" value="+$q+$Rec+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"from"+$q+" value="+$q+"agreeno"+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"to"+$q+" value="+$q+"null"+$q+">"+Char(13)
+$HTML:=$HTML+"<table width=640 cellspacing=0 cellpadding=0 border=0>"+Char(13)
+$HTML:=$HTML+"<tr><td valign=top height="+$q+"36"+$q+"width="+$q+"207"+$q+">"+Char(13)
+$HTML:=$HTML+"<table width=180 border= 0 cellpadding= 0 cellspacing= 0 bgcolor="+$q+"#000000"+$q+" height=15>"+Char(13)
+$HTML:=$HTML+"<tr><td width=218><div align=left><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+"><b><font color="+$q+"#00FF00"+$q+">Agreement Information ...</FONT></b></FONT></div>"+Char(13)
+$HTML:=$HTML+"</td></tr></Table></td>"+Char(13)
+$HTML:=$HTML+"<td valign=top height=36 width=427>"+Char(13)
+$HTML:=$HTML+"<img src="+$q+"button_agreeinfo.jpg"+$q+" border=0 width=73 height=22>"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"image"+$q+" src="+$q+"button_custinfo.jpg"+$q+" onClick="+$q+"form.to.value='custinfo'"+$q+" border=0 width=62 height=22>"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"image"+$q+" src="+$q+"button_tranx.jpg"+$q+" onClick="+$q+"form.to.value='tranx'"+$q+" border=0 width=44 height=22>"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"image"+$q+" src="+$q+"button_moveout.jpg"+$q+" onClick="+$q+"form.to.value='moveout'"+$q+" border=0 width=67 height=22>"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"image"+$q+" src="+$q+"button_noteshist.jpg"+$q+" onClick="+$q+"form.to.value='notes'"+$q+" border=0 width=111 height=22>"+Char(13)
+$HTML:=$HTML+"</td></tr></Table>"+Char(13)
+
+$HTML:=$HTML+"<table cellspacing=2 cellpadding=0 border=0 width=713>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=108 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+">Agree Number</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=75 ><input readonly type="+$q+"text"+$q+" value="+$q+[Agreement]AgreeNo+$q+" size=10="+$q+" name="+$q+"agreeno"+$q+"></td>"+Char(13)
+If ([Agreement]ActiveAgreemt)
+$HTML:=$HTML+"<td width=211><div align=right><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+" color="+$q+"#000000"+$q+"><b>Active Agreement</b></FONT></div></td>"+Char(13)
+Else 
+$HTML:=$HTML+"<td width=211><div align=right><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+" color="+$q+"#000000"+$q+"><b>Non-Active</b></FONT></div></td>"+Char(13)
+End if 
+$HTML:=$HTML+"<td width=126 bgcolor="+$q+"#99FF99"+$q+"><div align=left><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+">Current Balance Due</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=169 ><input readonly type="+$q+"text"+$q+" size="+$q+"9"+$q+" value="+$q+String([Customer]Balance;"#####0.00")+$q+" name="+$q+"currentbaldue"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr><td width=108 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Customer Code</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=75 ><input type="+$q+"text"+$q+" size="+$q+"10"+$q+" value="+$q+([Customer]CustomerCode)+$q+" name="+$q+"custcode"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=211 ><input readonly type="+$q+"text"+$q+" size="+$q+"30"+$q+" value="+$q+([Customer]CustomerName)+$q+" name="+$q+"custname"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=126 bgcolor="+$q+"#99FF99"+$q+"><div align=left><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Next Bill Date</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=169 ><input type="+$q+"text"+$q+" size="+$q+"9"+$q+" value="+$q+String([Agreement]NextBillDate)+$q+" name="+$q+"nextbilldate"+$q+"></a></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr><td colspan=3>&nbsp</td><td width=136 bgcolor="+$q+"#99FF99"+$q+">"+Char(13)
+$HTML:=$HTML+"<div align=left><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+">Paid Up To Date</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=169 ><input readonly type="+$q+"text"+$q+" size="+$q+"9"+$q+" value="+$q+String([Agreement]PaidToDate)+$q+" name="+$q+"paidtodate"+$q+">"
+$HTML:=$HTML+"<font face="+$q+"Arial"+$q+" SIZE="+$q+"-1"+$q+" color="+$q+"#FF0000"+$q+"><input type="+$q+"checkbox"+$q+" name="+$q+"alertnotesmsg"+$q
+
+If ([Agreement]AlertNotesMsg=True)
+$HTML:=$HTML+" CHECKED "
+End if 
+//+" value="+$q+"checkbox"+$q   <- This was in the line below
+$HTML:=$HTML+">"+Char(13)
+$HTML:=$HTML+"Alert Msg</FONT>"
+$HTML:=$HTML+"</td></tr></Table>"+Char(13)
+
+$HTML:=$HTML+"<table cellpadding=0 cellspacing=3 border=0 width=713><tr>"+Char(13)
+$HTML:=$HTML+"<td valign=top width=380>"+Char(13)
+
+$HTML:=$HTML+"<table cellpadding=0 cellspacing=0 border=1 bgcolor="+$q+"#FF0000"+$q+" bordercolordark="+$q+"#FFFFFF"+$q+"  bordercolor="+$q+"#FF0000"+$q+" width=100%>"+Char(13)
+$HTML:=$HTML+"<tr><td width=56 bgcolor="+$q+"#99FF99"+$q+" height=15>"+Char(13)
+$HTML:=$HTML+"<div align=center><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+"><b>Unit No</b></FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=34 bgcolor="+$q+"#99FF99"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+"><b>Type</b></FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=132 bgcolor="+$q+"#99FF99"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+"><b>Unit Size</b></FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=64 bgcolor="+$q+"#99FF99"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+"><b>Move In</b></FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=82 bgcolor="+$q+"#99FF99"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+"><b>Monthly Rate</b></FONT></div></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+
+ALL RECORDS([Unit])
+QUERY([Unit];[Unit]AgreeNo=[Agreement]AgreeNo)
+
+$j:=Records in selection([Unit])
+
+vTotal:=0
+For ($i;1;$j)
+RELATE ONE([Unit]UnitTypeCode)
+If ($i<4)
+$HTML:=$HTML+"<tr>"
+$HTML:=$HTML+"<td width=56 bgcolor="+$q+"#FFCCCC"+$q+" height=15><div align=center><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">"+([Unit]UnitNo)+"</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=34 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+([Unit]UnitTypeCode)+"</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=132 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+([Unit]UnitSize)+"</div></td>"+Char(13)
+$HTML:=$HTML+"<td width=64 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+String([Unit]MoveIn)+"<div></td>"+Char(13)
+$HTML:=$HTML+"<td width=82 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">$"+String(CalculateBaseRate (2;0);"#####0.00")+"</div></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+End if 
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([Unit])
+End for 
+
+//Fill the rows with blanks if there are no more entries to show
+For ($i;$j;3)
+$HTML:=$HTML+"<tr><td width=56 bgcolor="+$q+"#FFCCCC"+$q+" height=15><div align=center><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">&nbsp</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=34 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">&nbsp</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=132 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">&nbsp</div></td>"+Char(13)
+$HTML:=$HTML+"<td width=64 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">&nbsp<div></td>"+Char(13)
+$HTML:=$HTML+"<td width=82 bgcolor="+$q+"#FFCCCC"+$q+"><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">&nbsp</div></td></tr>"+Char(13)
+End for 
+
+$HTML:=$HTML+"</Table></td>"+Char(13)
+$HTML:=$HTML+"<td width=322><textarea cols=36 name="+$q+"comments"+$q+" rows=4>"+[Customer]Notes+"</textarea></td>"
+
+$HTML:=$HTML+"</tr></Table>"+Char(13)
+
+$HTML:=$HTML+"<table width=700 cellspacing=0 cellpadding=0 border=0>"+Char(13)
+$HTML:=$HTML+"<tr><td width=240><input  type="+$q+"text"+$q+" size="+$q+"4"+$q+"  name="+$q+"unitno"+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"submit"+$q+" name="+$q+"selectunit"+$q+" onClick="+$q+"form.from.value='unit'"+$q+" value="+$q+"Select Unit"+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"submit"+$q+" name="+$q+"removeunit"+$q+" onClick="+$q+"form.from.value='remunit'"+$q+" value="+$q+"Remove"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=71 bgcolor="+$q+"#99FF99"+$q+" ><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+">Units Total</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=80><input readonly type="+$q+"text"+$q+" size="+$q+"8"+$q+" value="+$q+String(vTotal;"#####0.00")+$q+" name="+$q+"vTotal"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td BGCOLOR="+$q+"99FF99"+$q+"><font face="+$q+"Arial"+$q+"size="+$q+"-1"+$q+">New Reg Rent</font></td>"+Char(13)
+$HTML:=$HTML+"<td width=10><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+"></FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=96 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Letter History<b>&nbsp</b></FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=113>&nbsp;</td></tr></Table>"+Char(13)
+
+$HTML:=$HTML+"<table width=700 cellspacing=2 cellpadding=0 border=0>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=113 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Move In Date</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=70 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Bill Day</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=8>&nbsp;</td>"
+$HTML:=$HTML+"<td width=80 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Agreed Disc</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=67 align=right bgcolor="+$q+"#FFCCCC"+$q+"><input readonly type="+$q+"text"+$q+" size="+$q+"8"+$q+" value="+$q+String([Agreement]AgreedDisc;"#####0.00")+$q+" name="+$q+"agreeddisc"+$q+"></FONT></td>"
+$HTML:=$HTML+"<td width=5 bgcolor="+$q+"#FFFFFF"+$q+">&nbsp</td>"
+$HTML:=$HTML+"<td colspan=2 align=center bgcolor="+$q+"#FFCCCC"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+"><input type="+$q+"text"+$q+" size="+$q+"10"+$q+" value="+$q+String([Agreement]NewRentFrom)+$q+" name="+$q+"newrentfrom"+$q+"></FONT></td>"+Char(13)
+$HTML:=$HTML+"<td rowspan=3  colspan=2 valign=top>"+Char(13)
+
+$HTML:=$HTML+"<table cellspacing=0 cellpadding=0 border=1 width=100%>"+Char(13)
+$HTML:=$HTML+"<tr><td align=center width=75 bgcolor="+$q+"#CCCCCC"+$q+"><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">Date Sent</font></td>"+Char(13)
+$HTML:=$HTML+"<td align=center bgcolor="+$q+"#CCCCCC"+$q+"><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">Description</font></td></tr>"+Char(13)
+ALL RECORDS([Letters])
+QUERY([Letters];[Letters]AgreeNo=[Agreement]AgreeNo)
+
+// Prevent from displaying more than 3 records
+$j:=Records in selection([Letters])
+If ($j>3)
+$j:=3
+End if 
+
+For ($i;1;$j)
+$HTML:=$HTML+"<tr><td align=center><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">"+String([Letters]DateSent)+"</font></td>"+Char(13)
+$HTML:=$HTML+"<td align=center><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">"+([Letters]LetterDesc)+"</font></td></tr>"
+NEXT RECORD([Letters])
+End for 
+
+// Display blank lines if there are no other entries to show
+For ($i;$j;3)
+$HTML:=$HTML+"<tr><td align=center><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td align=center><font face="+$q+"Arial"+$q+"size="+$q+"-2"+$q+">&nbsp</font></td></tr>"
+End for 
+UNLOAD RECORD([Letters])
+$HTML:=$HTML+"</Table>"+Char(13)
+$HTML:=$HTML+"</td></tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=113 bgcolor="+$q+"#FFFFFF"+$q+"><input type="+$q+"text"+$q+" size="+$q+"10"+$q+" value="+$q+String([Agreement]MoveIn)+$q+" name="+$q+"movein"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td width=70"+$q+"#FFFFFF"+$q+"><input type="+$q+"text"+$q+" size="+$q+"3"+$q+" value="+$q+String([Agreement]DaytoBill)+$q+" name="+$q+"daytobill"+$q+">"+Char(13)
+$HTML:=$HTML+"</td>"+Char(13)
+$HTML:=$HTML+"<td width=8>&nbsp;</td>"
+$HTML:=$HTML+"<td width=80 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Regular Rent</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=67 align=center bgcolor="+$q+"#FFCCCC"+$q+"><input type="+$q+"text"+$q+" size="+$q+"8"+$q+" value="+$q+String([Agreement]RegularRent;"#####0.00")+$q+" OnChange="+$q+"calculatedisc(this.form, this.form.regularrent.value)"+$q+" name="+$q+"regularrent"+$q+"></td>"
+$HTML:=$HTML+"<td width=5 bgcolor="+$q+"#FFFFFF"+$q+">&nbsp</td>"
+$HTML:=$HTML+"<td colspan=2 align=center bgcolor="+$q+"#FFCCCC"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+"><input type="+$q+"text"+$q+" size="+$q+"10"+$q+" value="+$q+String([Agreement]NewRentAmt;"#####0.00")+$q+" name="+$q+"newrentamt"+$q+"></FONT></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=113 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Deposit</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=70"+$q+"#FFFFFF"+$q+"><input type="+$q+"text"+$q+" size="+$q+"6"+$q+" value="+$q+String([Agreement]DepositAmt;"#####0.00")+$q+" name="+$q+"depositamt"+$q+">"+Char(13)
+$HTML:=$HTML+"</td>"+Char(13)
+$HTML:=$HTML+"<td width=8>&nbsp;</td>"
+$HTML:=$HTML+"<td width=80 bgcolor="+$q+"#FFCCCC"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">"
+$HTML:=$HTML+"<select name="+$q+"billplan"+$q+" OnChange="+$q+"calculate(this.form, this.form.billplan.value)"+$q+">"+Char(13)
+
+QUERY([BillPlan];[BillPlan]Code=<>sFacility+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+For ($i;1;(Records in selection([BillPlan])))
+$HTML:=$HTML+"<option  value="+$q+([BillPlan]Code)+$q
+If ([Agreement]BillingPlanCode=[BillPlan]Code)
+$HTML:=$HTML+" SELECTED"
+End if 
+$HTML:=$HTML+">"+([BillPlan]Description)+"</option>"+Char(13)
+NEXT RECORD([BillPlan])
+End for 
+
+$HTML:=$HTML+"</select>"
+
+
+// Copy all possible values to hidden fields for client side processing
+FIRST RECORD([BillPlan])
+$HTML:=$HTML+"<input  type="+$q+"hidden"+$q+" name="+$q+"codenums"+$q+" value="+$q+String(Records in selection([BillPlan]))+$q+">"+Char(13)
+
+For ($i;1;(Records in selection([BillPlan])))
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"codes"+$q+" value="+$q+([BillPlan]Code)+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"desc"+$q+" value="+$q+([BillPlan]Description)+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"mths"+$q+"value="+$q+String([BillPlan]PeriodstoPay)+$q+">"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"hidden"+$q+" name="+$q+"disc"+$q+" value="+$q+String([BillPlan]DiscPercentage)+$q+">"+Char(13)
+NEXT RECORD([BillPlan])
+End for 
+
+
+
+
+$HTML:=$HTML+"</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=67 bgcolor="+$q+"#FFCCCC"+$q+"><input readonly type="+$q+"text"+$q+" size="+$q+"8"+$q+" value="+$q+String([Agreement]DiscountAmt;"#####0.00")+$q+" name="+$q+"discountamt"+$q+"></td>"
+$HTML:=$HTML+"<td width=5 bgcolor="+$q+"#FFFFFF"+$q+">&nbsp</td>"
+$HTML:=$HTML+"<td colspan=2 align=center bgcolor="+$q+"#FFCCCC"+$q+"><input readonly type="+$q+"text"+$q+" size="+$q+"10"+$q+" value="+$q+String([Agreement]MthsAdv)+$q+" name="+$q+"mthsadv"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td width=113 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Late Fee</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=70"+$q+"#FFFFFF"+$q+"><input type="+$q+"text"+$q+" size="+$q+"6"+$q+" value="+$q+String([Agreement]LateFeeAmt;"#####0.00")+$q+" name="+$q+"latefeeamt"+$q+">"+Char(13)
+$HTML:=$HTML+"</td>"+Char(13)
+$HTML:=$HTML+"<td width=8>&nbsp;</td>"
+$HTML:=$HTML+"<td width=80 bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Rental Amt</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=67 bgcolor="+$q+"#FFCCCC"+$q+"><input readonly type="+$q+"text"+$q+" size="+$q+"8"+$q+" value="+$q+String([Agreement]RentAmt;"#####0.00")+$q+" name="+$q+"rentamt"+$q+"></td>"+Char(13)
+
+$HTML:=$HTML+"<td width=5 bgcolor="+$q+"#FFFFFF"+$q+">&nbsp</td>"
+$HTML:=$HTML+"<td width=45 align=center bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">Notice Plan</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=45 align=center bgcolor="+$q+"#FFCCCC"+$q+"><input type="+$q+"text"+$q+" size="+$q+"3"+$q+" value="+$q+String([Agreement]NoticePlanNo)+$q+" name="+$q+"noticeplanno"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#99FF99"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">Late Cycle Start Date</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td><input type="+$q+"text"+$q+" size="+$q+"8"+$q+" value="+$q+String([Agreement]LateCycleStDate)+$q+" name="+$q+"latecyclestdate"+$q+"></td>"+Char(13)
+
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"<tr height=20><td colspan=8 height=9><hr></td>"+Char(13)
+$HTML:=$HTML+"<td height=9 bgcolor="+$q+"#99FF99"+$q+" width=107><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">LastNotice</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td height=9 width=99><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+"></FONT><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+"><input type="+$q+"text"+$q+" size="+$q+"8"+$q+" value="+$q+String([Agreement]LastNotice)+$q+" name="+$q+"lastnotice"+$q+"></FONT></td>"+Char(13)
+$HTML:=$HTML+"</Table>"+Char(13)
+
+$HTML:=$HTML+"<table cellspacing=2 cellpadding=0 border=0 width=714>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#99FF99"+$q+" width=110><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Gate PIN No</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td  width=60><input type="+$q+"text"+$q+"size="+$q+"10"+$q+" value="+$q+([Customer]GatePIN)+$q+" name="+$q+"gatepin"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td  width=59><input type="+$q+"text"+$q+"size="+$q+"3"+$q+" value="+$q+String([Customer]GateTimeZone)+$q+" name="+$q+"gatetimezone"+$q+">&nbsp&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#99FF99"+$q+" width=92><div align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">Other Reg Chgs</FONT></div></td>"+Char(13)
+$HTML:=$HTML+"<td width=150>"+Char(13)
+$HTML:=$HTML+"<select name="+$q+"chargecode"+$q+">"+Char(13)
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@")
+
+FIRST RECORD([Analysis])
+For ($i;1;(Records in selection([Analysis])))
+$HTML:=$HTML+"<option  value="+$q+([Analysis]Code)+$q+">"+([Analysis]Code)+"</option>"+Char(13)
+NEXT RECORD([Analysis])
+End for 
+
+$HTML:=$HTML+"</select>"+Char(13)
+$HTML:=$HTML+"<input type="+$q+"text"+$q+" size=4 name="+$q+"amt"+$q+">"
+$HTML:=$HTML+"<input type="+$q+"submit"+$q+" name="+$q+"addcharge"+$q+" onClick="+$q+"form.from.value='addcharge'"+$q+" value="+$q+"Add"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#99FF99"+$q+" width=34><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Cards&nbsp&nbsp&nbsp&nbsp</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=120>&nbsp</td>"+Char(13)
+$HTML:=$HTML+"<td width=89>&nbsp</td></tr>"+Char(13)
+$HTML:=$HTML+"<tr><td bgcolor="+$q+"#FFCCCC"+$q+" width=110><input type="+$q+"checkbox"+$q+" name="+$q+"overdue"+$q+" "
+If ([Customer]Overdue=1) | ([Customer]Overdue=3) | ([Customer]Overdue=5)
+$HTML:=$HTML+" CHECKED "
+End if 
+$HTML:=$HTML+" value="+$q+"checkbox"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">OVERDUE</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td colspan=2 bgcolor="+$q+"#FFCCCC"+$q+"><input type="+$q+"checkbox"+$q
+
+If ([Customer]AllowAccessArrs=True)
+$HTML:=$HTML+" CHECKED "
+End if 
+
+$HTML:=$HTML+" name="+$q+"allowaccessarrs"+$q+" value="+$q+"checkbox"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Allow Entry</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td colspan=2 rowspan=3 valign=top align=center>"+Char(13)
+$HTML:=$HTML+"<table cellspacing=0 cellpadding=0 width=100% border=1>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#CCCCCC"+$q+" align=center><b><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">Analysis</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#CCCCCC"+$q+" align=center><b><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">Description</font></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#CCCCCC"+$q+" align=center><b><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">Amount</font></b></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+$j:=Records in selection([OtherChgs])
+If ($j>4)
+$j:=4
+End if 
+
+For ($i;1;$j)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+[OtherChgs]AnalysisCode+"</font></td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+[OtherChgs]Description+"</font></td>"+Char(13)
+$HTML:=$HTML+"<td align=center><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+String([OtherChgs]Amount;"#####0.00")+"</font></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+NEXT RECORD([OtherChgs])
+End for 
+For ($i;1;4-$j)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td><font face="+$q+"Arial"+$q+" size=-2>&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+$q+"Arial"+$q+" size=-2>&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td align=center><font face="+$q+"Arial"+$q+" size=-2>&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+End for 
+$HTML:=$HTML+"</table>"+Char(13)
+$HTML:=$HTML+"</td>"+Char(13)
+$HTML:=$HTML+"<td colspan=2 rowspan=3 valign=top align=center>"+Char(13)
+$HTML:=$HTML+"<table cellspacing=0 cellpadding=0 width=100% border=1>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#CCCCCC"+$q+" align=center><b><font face="+$q+"Arial"+$q+" size=-2>Card No</FONT></b></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#CCCCCC"+$q+" align=center><b><font face="+$q+"Arial"+$q+" size=-2>Desposit</font></b></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode)
+FIRST RECORD([PhotosCards])
+$j:=Records in selection([PhotosCards])
+If ($j>4)
+$j:=4
+End if 
+
+For ($i;1;$j)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td align=center><b><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+[PhotosCards]PINCardNo+"</FONT></b></td>"+Char(13)
+$HTML:=$HTML+"<td align=center><b><font face="+$q+"Arial"+$q+" size="+$q+"-2"+$q+">"+String([PhotosCards]Deposit)+"</font></b></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+NEXT RECORD([PhotosCards])
+End for 
+
+For ($i;1;4-$j)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td><font face="+$q+"Arial"+$q+" size=-2>&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"<td><font face="+$q+"Arial"+$q+" size=-2>&nbsp</font></td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+End for 
+
+$HTML:=$HTML+"</table>"+Char(13)
+$HTML:=$HTML+"</td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#FFCCCC"+$q+" width=110><input type="+$q+"checkbox"+$q+" "
+
+If ([Agreement]SendNotices=True)
+$HTML:=$HTML+" CHECKED "
+End if 
+
+$HTML:=$HTML+" name="+$q+"sendnotices"+$q+" value="+$q+"checkbox"+$q+"><font face="+$q+"Arial"+$q+" size="+$q+"-1"+$q+">Send Notices</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#99FF99"+$q+" width=60><FONT SIZE="+$q+"-2"+$q+" face="+$q+"Arial"+$q+">Days Prior</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td  width=45><input type="+$q+"text"+$q+" size="+$q+"7"+$q+" value="+$q+String([Agreement]NoticeDaysPrior)+$q+" name="+$q+"noticedaysprior"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td  align=center width=89>"
+If (vIsNew=True)
+$HTML:=$HTML+"<input type="+$q+"submit"+$q+" onClick="+$q+"form.from.value='delagreemt'"+$q+" value="+$q+"Cancel"+$q+">"
+Else 
+$HTML:=$HTML+"<input type="+$q+"submit"+$q+" onClick="+$q+"form.from.value='agreemtcancel'"+$q+" value="+$q+"Cancel"+$q+">"
+End if 
+
+$HTML:=$HTML+"</td>"+Char(13)
+$HTML:=$HTML+"</tr>"+Char(13)
+$HTML:=$HTML+"<tr>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#FFCCCC"+$q+" width=110><input type="+$q+"checkbox"+$q+" name="+$q+"autopay"+$q+" "
+
+If ([Agreement]AutoPay=True)
+$HTML:=$HTML+" CHECKED "
+End if 
+//+" value="+$q+"checkbox"+$q
+$HTML:=$HTML+"><font face="+$q+"Arial"+$q+"  size=-1>Auto Pmt</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td bgcolor="+$q+"#99FF99"+$q+" width=60><FONT SIZE=-2 face="+$q+"Arial"+$q+">Amount</FONT></td>"+Char(13)
+$HTML:=$HTML+"<td width=45><input type="+$q+"text"+$q+" size="+$q+"7"+$q+" value="+$q+String([Agreement]AutoPayAmt;"#####0.00")+$q+" name="+$q+"autopayamt"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"<td align=center width=89><input type="+$q+"Submit"+$q+" name="+$q+"OK"+$q+" value="+$q+"OK"+$q+"></td>"+Char(13)
+$HTML:=$HTML+"</tr></Table>"+Char(13)
+$HTML:=$HTML+"</form>"+Char(13)
+
+//Assign the HTML code to vtTable to be inserted in the "CustAgreemt.htm" page
+vtTable:=$HTML+Char(13)
+//  SET HTTP HEADER("pragma: no-cache")
+WEB SEND FILE("CustAgreemt.shtm")
+End if 

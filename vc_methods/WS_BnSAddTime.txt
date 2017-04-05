@@ -1,0 +1,296 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+SOAP DECLARATION(WS_AgreeNo2;Is string var;SOAP input)
+SOAP DECLARATION(WS_LengthStay;Is longint;SOAP input)
+SOAP DECLARATION(WS_ORUnitRateSelected;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+
+$String:="Start WS_BnSAddTime"+Char(13)
+$String:=$String+"WS_AgreeNo2: "+WS_AgreeNo2+Char(13)
+$String:=$String+"WS_LengthStay: "+String(WS_LengthStay)+Char(13)
+$String:=$String+"WS_ORUnitRateSelected: "+WS_ORUnitRateSelected+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+
+WSRecordLog ($String)
+
+SOAP DECLARATION(WS_ORTotal;Is real;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+SOAP DECLARATION(WS_Code;Is text;SOAP output)
+SOAP DECLARATION(WS_Reference;Is text;SOAP output)
+
+WS_ORSuccess:=False
+tRentTrx:=False
+bAdd:=0
+bAll:=0
+asShowHistory:=0
+viMatch:=0
+WS_ORTotal:=0
+C_DATE($Date;$ReceiptDate)
+C_LONGINT($PreviousStay)
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Customer])
+READ WRITE([Unit])
+QUERY([Agreement];[Agreement]RAgreeNo=WS_AgreeNo2)
+If (Records in selection([Agreement])=1) & (Locked([Agreement])#True) & (Read only state([Agreement])#True)
+
+<>iRound:=[Facility]RoundDefault
+<>iRoundMethod:=[Facility]RoundMethod
+vFacility:=[Facility]FacilityCode
+
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+vTotal:=0
+
+QUERY([Authenticate];[Authenticate]RAgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress="BnS")
+If (Records in selection([Authenticate])=1)
+READ WRITE([Authenticate])
+DELETE SELECTION([Authenticate])
+READ ONLY([Authenticate])
+End if 
+
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+vTotal:=vTotal+CalculateBaseRate (2;0)
+NEXT RECORD([Unit])
+End for 
+vOthInsurance:=[Agreement]InsureValue-Sum([Unit]InsureValue)
+vOldOthInsurance:=vOthInsurance
+
+If ([Agreement]LastBillDate>Current date) & ([Agreement]TotRentUnpaid>0)
+
+//Undo
+BillNextCharges (8)
+SAVE RECORD([Agreement])
+RELATE ONE([Agreement]CustomerCode)
+RELATE MANY([Agreement]RAgreeNo)
+//Chaing Billing Plan
+If ([BillPlan]PlanPeriod#"Week") & (WS_ORUnitRateSelected="W")
+ARRAY TEXT(asBillingPlan;0)
+ARRAY TEXT(asBillingDesc;0)
+QUERY([BillPlan];[BillPlan]PlanPeriod="Week";*)
+QUERY([BillPlan]; & ;[BillPlan]Code=Substring(WS_AgreeNo2;1;5)+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+SELECTION TO ARRAY([BillPlan]Code;asBillingPlan)
+SELECTION TO ARRAY([BillPlan]Description;asBillingDesc)
+asBillingDesc:=1
+viMthsAdv:=1
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+MoveInChangeBillPlan (True)
+SAVE RECORD([Agreement])
+End if 
+
+//Chaing Billing Plan
+If ([BillPlan]PlanPeriod#"Month") & (WS_ORUnitRateSelected="M")
+ARRAY TEXT(asBillingPlan;0)
+ARRAY TEXT(asBillingDesc;0)
+QUERY([BillPlan];[BillPlan]PlanPeriod="Month";*)
+QUERY([BillPlan]; & ;[BillPlan]Code=Substring(WS_AgreeNo2;1;5)+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+SELECTION TO ARRAY([BillPlan]Code;asBillingPlan)
+SELECTION TO ARRAY([BillPlan]Description;asBillingDesc)
+asBillingDesc:=1
+viMthsAdv:=1
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+MoveInChangeBillPlan (True)
+SAVE RECORD([Agreement])
+End if 
+
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+viMthsAdv:=[Agreement]MthsAdv
+[Agreement]MthsAdv:=WS_LengthStay
+MoveInChangeMthsAdv (False;False;True)
+BillNextCharges (6;0)
+[Agreement]MoveOut:=Add to date([Agreement]NextBillDate;0;0;-1)
+[Agreement]OutNoticeDate:=[Agreement]MoveOut-[Facility]NoticeDaysReqd
+
+viMatch:=0
+bPrtRec:=0
+bEmailReceipt:=0
+bAll:=1
+asShowHistory:=1
+ReCalc 
+
+SAVE RECORD([Agreement])
+WS_ORSuccess:=True
+WS_ORTotal:=[Agreement]BalanceOwing
+
+Else 
+//Changing Billing Plan
+If ([BillPlan]PlanPeriod#"Week") & (WS_ORUnitRateSelected="W")
+ARRAY TEXT(asBillingPlan;0)
+ARRAY TEXT(asBillingDesc;0)
+QUERY([BillPlan];[BillPlan]PlanPeriod="Week";*)
+QUERY([BillPlan]; & ;[BillPlan]Code=Substring(WS_AgreeNo2;1;5)+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+SELECTION TO ARRAY([BillPlan]Code;asBillingPlan)
+SELECTION TO ARRAY([BillPlan]Description;asBillingDesc)
+asBillingDesc:=1
+viMthsAdv:=1
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+MoveInChangeBillPlan (True)
+SAVE RECORD([Agreement])
+End if 
+
+//Changing Billing Plan
+If ([BillPlan]PlanPeriod#"Month") & (WS_ORUnitRateSelected="M")
+ARRAY TEXT(asBillingPlan;0)
+ARRAY TEXT(asBillingDesc;0)
+QUERY([BillPlan];[BillPlan]PlanPeriod="Month";*)
+QUERY([BillPlan]; & ;[BillPlan]Code=Substring(WS_AgreeNo2;1;5)+"@")
+ORDER BY([BillPlan];[BillPlan]SortOrder;>)
+SELECTION TO ARRAY([BillPlan]Code;asBillingPlan)
+SELECTION TO ARRAY([BillPlan]Description;asBillingDesc)
+asBillingDesc:=1
+viMthsAdv:=1
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+MoveInChangeBillPlan (True)
+SAVE RECORD([Agreement])
+End if 
+RELATE ONE([Agreement]BillingPlanCode)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+vrPlan:=365.25
+: ([BillPlan]PlanPeriod="Week")
+vrPlan:=52.18
+Else 
+vrPlan:=12
+End case 
+viMthsAdv:=[Agreement]MthsAdv
+[Agreement]MthsAdv:=WS_LengthStay
+MoveInChangeMthsAdv (False;False;True)
+BillNextCharges (6;0)
+[Agreement]MoveOut:=Add to date([Agreement]NextBillDate;0;0;-1)
+[Agreement]OutNoticeDate:=[Agreement]MoveOut-[Facility]NoticeDaysReqd
+SAVE RECORD([Agreement])
+WS_ORSuccess:=True
+WS_ORTotal:=[Agreement]BalanceOwing
+
+End if 
+
+//[Agreement]BnS:=String(WS_LengthStay)+","+WS_ORUnitRateSelected+","+String(Current date)
+//SAVE RECORD([Agreement])
+//End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=9909
+WS_ORErrorDescription:=WS_AgreeNo2+" - Agreement not found or Locked "+String(Locked([Agreement]))+" or Read Only "+String(Read only state([Agreement]))
+End if 
+
+$MonthEarlier:=Add to date(Current date;0;-1;0)
+QUERY([Facility];[Facility]SortOrder>=0;*)//Find all Facility records except the Head Office one
+QUERY([Facility]; & ;[Facility]OnlineReserveIncl=True;*)
+QUERY([Facility]; & ;[Facility]UseOnlineReservations=True;*)
+QUERY([Facility]; & ;[Facility]UpgradesPaidTo>$MonthEarlier;*)
+QUERY([Facility]; & ;[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+vtFacilityCodeSelect:=Substring(WS_AgreeNo2;1;5)
+CREATE SET([Facility];"OnlineReservationsEntitled")
+
+vtLoginPassword:=[Customer]Password
+vtLoginUsername:=[Agreement]AgreeNo
+vKinitekRef:=Generate UUID
+WS_Reference:=vKinitekRef
+
+$Date:=UTCDate (?00:00:00?;True;[Agreement]MoveOut)
+
+If (Day of($Date)<10)
+$DateString:="0"+String($Date)
+Else 
+$DateString:=String($Date)
+End if 
+
+vKinitekRef:="Extra"+$DateString+vKinitekRef
+KinitekStorpay 
+WS_Code:=vtOnlineReservationContent
+
+//Please check the payment is made
+//QUERY([Facility];[Facility]FacilityCode=Substring(WS_AgreeNo2;1;5))
+//If ([Facility]OResFacNotifEmail#"")
+//$MessageBody:="Customer: "+[Customer]CustomerName+Char(Carriage return)+Char(Carriage return)
+//$MessageBody:=$MessageBody+"Added more storage time: "+String(WS_LengthStay)+" to Agreement: "+[Agreement]AgreeNo+Char(Carriage return)
+//$MessageBody:=$MessageBody+"Please check"+Char(Carriage return)
+//
+//$OK:=OR_NewMailMessage ("";[Facility]OResFacNotifEmail;"";"";[Facility]BusinessName+AddDelimitedTextIfNotBlank ([Facility]FacilityName;",";" ")+" - New Online Reservation";$MessageBody;False;->Attachments;"";"";"";"";"";"";"")  //Notification Email to Facility
+//If ($OK=False)  //Email Failed
+//WS_ORErrorCode:=9  //Email Failed
+//WS_ORErrorDescription:="Facility Notification Email failed!"
+//End if 
+//End if 
+
+SAVE RECORD([Agreement])
+SAVE RECORD([Customer])
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Customer])
+READ ONLY([Unit])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([Unit])
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=99
+WS_ORErrorDescription:="Incorrect password or Facility Record is not found"
+End if 
+
+
+$String:="End WS_BnSAddTime"+Char(13)
+$String:=$String+"WS_ORTotal: "+String(WS_ORTotal)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+$String:=$String+"WS_Code: "+WS_Code+Char(13)
+$String:=$String+"WS_Reference: "+WS_Reference+Char(13)
+
+ReadOnlyAll 
+UnloadAll 
+
+WSRecordLog ($String)

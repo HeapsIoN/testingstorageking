@@ -1,0 +1,557 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//RWFR 20-30 Improved renaming and removal of items for Rental Manager 17/11/05
+
+C_LONGINT($i;$x;bGate;$Width)
+C_LONGINT(viGateRecs;viMessRecs;viGateRecs2;viMessRecs2)
+C_TEXT($Temp)
+C_TEXT(vKBSearch)
+C_BOOLEAN($Refresh)
+C_TEXT(vLastNote;vLastFind;vtUnitText)
+C_PICTURE(vpIcon;vpCalcIcon;vpBackground;vpColours;vpButton1;vpButton2;vpButton3;vpButton4;vpButton5;vpButton6;$Blank)
+C_PICTURE(vpConBackgroundNew;vpConLogo)
+
+If (Form event=On Load)
+LoadListBoxColour 
+Case of 
+: (<>sProduct="@B")
+GET PICTURE FROM LIBRARY(27624;vpConBackgroundNew)
+GET PICTURE FROM LIBRARY(27630;vpConLogo)
+: (<>sProduct="@R")
+GET PICTURE FROM LIBRARY(27625;vpConBackgroundNew)
+If (<>sFacility="RR@")
+GET PICTURE FROM LIBRARY(27634;vpConLogo)
+Else 
+GET PICTURE FROM LIBRARY(27631;vpConLogo)
+End if 
+: (<>sProduct="@T")
+GET PICTURE FROM LIBRARY(27627;vpConBackgroundNew)
+GET PICTURE FROM LIBRARY(27633;vpConLogo)
+: (<>sFacility="ST@")
+GET PICTURE FROM LIBRARY(27623;vpConBackgroundNew)
+//GET PICTURE FROM LIBRARY(27693;vpConLogo) christmas hat logo
+GET PICTURE FROM LIBRARY(27699;vpConLogo)
+Else 
+GET PICTURE FROM LIBRARY(27626;vpConBackgroundNew)
+//GET PICTURE FROM LIBRARY(27632;vpConLogo)
+GET PICTURE FROM LIBRARY(27689;vpConLogo)//v10logo
+End case 
+If ([Facility]TutorialData=True)
+//GET PICTURE FROM LIBRARY(27629;vpConLogo)
+GET PICTURE FROM LIBRARY(27688;vpConLogo)//v10logo
+End if 
+If (<>bEnglishSpelling=False)
+vSalesEnq:=Get localized string("SALES INQ.")
+vSalesEnqShort:=Get localized string("INQ")
+Else 
+vSalesEnq:="SALES ENQ."
+vSalesEnqShort:="ENQ"
+End if 
+ButtonsArray 
+QUERY([UserGroup];[UserGroup]UserID=[UserLogins]UserID)
+QUERY([Groups];[Groups]GroupID=[UserGroup]GroupID;*)
+QUERY([Groups]; & ;[Groups]Buttons>"")
+LoadButtons 
+LoadGradients 
+
+bUnitSort:=True
+bNameSort:=False
+bAgreeSort:=False
+bPaidToSort:=False
+bStatusSort:=False
+GET PICTURE FROM LIBRARY(24145;vpIcon)
+GET PICTURE FROM LIBRARY(24158;vpCalcIcon)
+vpBackground:=$Blank
+OBJECT SET VISIBLE(*;"@Storman@";True)
+OBJECT SET VISIBLE(*;"@Rental@";False)
+GET PICTURE FROM LIBRARY(24147;vpBackground)
+If (<>sProduct="M@") | ([Facility]CentralAddress>"")
+OBJECT SET VISIBLE(*;"@CentralLogo";True)
+Else 
+OBJECT SET VISIBLE(*;"@CentralLogo";False)
+End if 
+If (<>bEnglishSpelling=False)
+SET MENU ITEM(3;4;Get localized string("Sales Inquiries & Contacts"))
+End if 
+If ([Facility]InvStatement>0)
+SET MENU ITEM(4;12;"Print Invoices and Statements")
+End if 
+
+//11/02/16 DAM Added for SM Cloud FB - 10325
+//cound domain "@cloud.storman.com"
+If ([Facility]CentralAddress="@hub.storman.com@")
+SET MENU BAR(6)// DAM Added to fix Login as + Alt
+DELETE MENU ITEM(7;20)
+DELETE MENU ITEM(7;19)
+DELETE MENU ITEM(7;18)
+DELETE MENU ITEM(7;17)
+DELETE MENU ITEM(7;16)
+DELETE MENU ITEM(7;15)
+DELETE MENU ITEM(7;14)
+DELETE MENU ITEM(7;13)
+DELETE MENU ITEM(7;12)
+DELETE MENU ITEM(7;11)
+DELETE MENU ITEM(7;10)
+DELETE MENU ITEM(7;9)
+DELETE MENU ITEM(7;8)
+DELETE MENU ITEM(7;7)
+DELETE MENU ITEM(7;6)
+DELETE MENU ITEM(7;5)
+DELETE MENU ITEM(7;4)
+End if 
+
+ReportMenu 
+
+//18/01/17 DM Disabled "Central" menu item for HUB users, expect adminsupport
+If (<>sHOFacility="@HUB") & (<>sCurrentUser#"Adminsupport")
+DISABLE MENU ITEM(7;0)
+End if 
+
+Case of 
+: (<>sProduct="@R")//Rental Manager
+vMoveInText:=Get localized string("RENTAL")
+vReserve:=Get localized string("RESERVE")
+SET MENU ITEM(6;1;Get localized string("MaintenanceAppliances"))
+SET MENU ITEM(6;3;Get localized string("Appliance Types and Rates"))
+//SET MENU ITEM(5;16;Get localized string("Depreciation Schedule"))
+//SET MENU ITEM(5;6;Get localized string("Appliance Activity Report"))
+//SET MENU ITEM(5;25;Get localized string("Repossession Report"))
+//SET MENU ITEM(5;26;Get localized string("Anticipated Returns"))
+//SET MENU ITEM(5;27;Get localized string("Avg Length of Rental"))
+//SET MENU ITEM(5;7;Get localized string("Appliance Status Report"))
+//SET MENU ITEM(5;28;Get localized string("Vacant Appliance Report"))
+//SET MENU ITEM(5;17;Get localized string("Notice to Return"))
+SET MENU ITEM(4;11;Get localized string("Daily Reprint Arrears List"))
+OBJECT SET VISIBLE(*;"@Storman@";False)
+OBJECT SET VISIBLE(*;"@Rental@";True)
+DELETE MENU ITEM(3;21)
+DELETE MENU ITEM(3;20)
+DELETE MENU ITEM(3;19)
+DELETE MENU ITEM(3;18)
+DELETE MENU ITEM(3;17)
+DELETE MENU ITEM(3;16)
+DELETE MENU ITEM(6;32)
+DELETE MENU ITEM(6;31)
+DELETE MENU ITEM(6;30)
+DELETE MENU ITEM(6;29)
+OBJECT MOVE(*;"Variable1";32;0;0;0)
+vtUnitText:=Get localized string("Item")
+If (<>sFacility="RR@")
+vWelcome:=Get localized string("Welcome to Rental Manager")+", "+<>sCurrentUser
+Else 
+vWelcome:=Get localized string("Welcome to Storman - Rentals Edition")+", "+<>sCurrentUser
+End if 
+: (<>sProduct="@B")//Boats
+vMoveInText:=Get localized string("ARRIVAL")
+vReserve:=Get localized string("RESERVE")
+//SET MENU ITEM(5;16;"Dock Walk Report")
+SET MENU ITEM(6;1;Get localized string("MaintenanceBerths"))
+SET MENU ITEM(6;3;Get localized string("Berth Types and Rates"))
+//SET MENU ITEM(5;6;Get localized string("Berth Activity Report"))
+//SET MENU ITEM(5;7;Get localized string("Berth Status Report"))
+//SET MENU ITEM(5;28;Get localized string("Vacant Berth Report"))
+//SET MENU ITEM(5;17;Get localized string("Notice to Depart"))
+vtUnitText:=Get localized string("Berth")
+vWelcome:=Get localized string("Welcome to Storman - Marina Edition")+", "+<>sCurrentUser
+$MenuName:=Get menu item(6;-1)
+If ($MenuName#Get localized string("Boats"))
+APPEND MENU ITEM(6;Get localized string("Boats"))
+SET MENU ITEM METHOD(6;-1;"Boats")
+End if 
+: (<>sProduct="@T")
+vtUnitText:=Get localized string("Box")
+vWelcome:=Get localized string("Welcome to Storman - Vault Edition")+", "+<>sCurrentUser
+vMoveInText:=Uppercase(Get localized string("Move In"))
+vReserve:=Get localized string("RESERVE")
+: (<>sProduct="MV")
+vtUnitText:=Get localized string("Unit")
+vWelcome:=Get localized string("Welcome to Storman")+", "+<>sCurrentUser
+If (<>sFacility="ST@")
+vMoveInText:=Get localized string("NEW CLNT")
+vReserve:=Get localized string("TRIAL")
+Else 
+vMoveInText:=Uppercase(Get localized string("Move In"))
+vReserve:=Get localized string("RESERVE")
+End if 
+: (<>sProduct="@C")
+vtUnitText:=Get localized string("Space")
+vWelcome:=Get localized string("Welcome to Storman")+", "+<>sCurrentUser
+If (<>sFacility="ST@")
+vMoveInText:=Get localized string("NEW CLNT")
+vReserve:=Get localized string("TRIAL")
+Else 
+vMoveInText:=Uppercase(Get localized string("Move In"))
+vReserve:=Get localized string("RESERVE")
+End if 
+Else 
+vtUnitText:=Get localized string("Unit")
+vWelcome:=Get localized string("Welcome to Storman")+", "+<>sCurrentUser
+If (<>sFacility="ST@")
+vMoveInText:=Get localized string("NEW CLNT")
+vReserve:=Get localized string("TRIAL")
+Else 
+vMoveInText:=Uppercase(Get localized string("Move In"))
+vReserve:=Get localized string("RESERVE")
+End if 
+End case 
+
+GET PICTURE FROM LIBRARY(24150;vpColours)
+//GET PICTURE FROM LIBRARY(24151;vpButton1)
+//GET PICTURE FROM LIBRARY(24152;vpButton2)
+//GET PICTURE FROM LIBRARY(24153;vpButton3)
+//GET PICTURE FROM LIBRARY(24154;vpButton4)
+//GET PICTURE FROM LIBRARY(24155;vpButton5)
+//GET PICTURE FROM LIBRARY(24156;vpButton6)
+
+OBJECT SET VISIBLE(*;"vpIcon";Not([Facility]HideGraphics))
+OBJECT SET VISIBLE(bDate;Not([Facility]HideGraphics))
+If (<>sProduct="@R")
+OBJECT SET VISIBLE(*;"vpIcon";False)
+OBJECT SET VISIBLE(bDate;False)
+End if 
+OBJECT SET VISIBLE(bSingle2;Not([Facility]HideKeyRent))
+OBJECT SET VISIBLE(bButton6;Not([Facility]HideKeyRent))
+OBJECT SET VISIBLE([Activity]RentChg;Not([Facility]HideKeyRent))
+OBJECT SET VISIBLE(*;"Text21";Not([Facility]HideKeyRent))
+If ([Facility]HideKeyRent=True)
+OBJECT MOVE(*;"Line3";0;0;0;-20)
+End if 
+//vCopyright:=<>sOEMName+" Software - Windows Version "+String(Trunc(<>iVersion/10;0)/10)+" - Copyright Stellar Concepts Ltd 1992-"+String(Year of(Current date))+" All rights reserved"
+vCopyright:=<>sOEMName+" Software - Windows Version "+String(Trunc(<>iVersion/10;0)/10)+" - Copyright © "+String(Year of(Current date))+" Storman Software Limited"
+If (<>iPlatform#3)
+vCopyright:=Replace string(vCopyright;"Windows";"Macintosh")
+End if 
+If (<>t4DWrite=False)
+DISABLE MENU ITEM(3;8)
+End if 
+If (PermissionsControl (137;False)) & ([Facility]CentralAddress="") & (<>sProduct#"MV")
+//Leave menus showing
+Else 
+For ($i;1;4)
+DELETE MENU ITEM(3;18)
+End for 
+End if 
+If (<>sProduct#"M@") & ([Facility]MaxSites<2) & ([Facility]CentralAddress>"")
+For ($i;1;9)
+DELETE MENU ITEM(7;7)
+End for 
+If ([Facility]SyncingOn)
+SET MENU ITEM(7;1;Get localized string("Turn Syncing Off"))
+Else 
+SET MENU ITEM(7;1;Get localized string("Turn Syncing On"))
+End if 
+End if 
+SET TIMER(60)//Normally 60 using 600 for testing
+OBJECT SET TITLE(*;"PL_header3";vtUnitText)
+CalendarSet 
+bCont:=0
+
+QUERY([GateLog];[GateLog]CustCode=<>sFacility+"@";*)
+QUERY([GateLog]; & ;[GateLog]GateDate>(Current date-3);*)
+QUERY([GateLog]; & ;[GateLog]GateKeyed#"GateOutput")
+ORDER BY([GateLog];[GateLog]GateDate;<;[GateLog]GateTime;<)
+QUERY([Message];[Message]MsgDate>(Current date-3))
+If (<>sFacility=<>SHOFACILITY)// to display all emails without facilitycode set
+QUERY([Message];[Message]MsgDate>(Current date-3))
+Else 
+QUERY([Message];[Message]MsgDate>(Current date-3);*)
+QUERY([Message]; & ;[Message]Facility=<>sFacility)
+End if 
+ORDER BY([Message];[Message]MsgDate;<;[Message]MsgTime;<)
+viGateRecs2:=Records in selection([GateLog])
+viMessRecs2:=Records in selection([Message])
+If ([Facility]UseGateSys=True)// & (Records in selection([GateLog])>0)
+If ([Facility]GateSysType#3) & ([Facility]GateSysType#5)
+OBJECT SET VISIBLE(bGate1;False)
+OBJECT SET VISIBLE(bGate2;False)
+OBJECT SET VISIBLE(bGate3;False)
+End if 
+If (Length([Facility]GateNoNames)>3)
+If (GetTextNo ([Facility]GateNoNames;1;",")="")
+OBJECT SET VISIBLE(bGate1;False)
+Else 
+OBJECT SET TITLE(bGate1;GetTextNo ([Facility]GateNoNames;1;","))
+End if 
+If (GetTextNo ([Facility]GateNoNames;2;",")="")
+OBJECT SET VISIBLE(bGate2;False)
+Else 
+OBJECT SET TITLE(bGate2;GetTextNo ([Facility]GateNoNames;2;","))
+End if 
+If (GetTextNo ([Facility]GateNoNames;3;",")="")
+OBJECT SET VISIBLE(bGate3;False)
+Else 
+OBJECT SET TITLE(bGate3;GetTextNo ([Facility]GateNoNames;3;","))
+End if 
+End if 
+Case of 
+: (<>sProduct="@B")
+GET PICTURE FROM LIBRARY(2066;vpConBackground)
+: (<>sProduct="@R")
+If (<>sFacility="RR@")
+GET PICTURE FROM LIBRARY(2119;vpConBackground)
+Else 
+GET PICTURE FROM LIBRARY(2077;vpConBackground)
+End if 
+: (<>sProduct="@T")
+GET PICTURE FROM LIBRARY(2082;vpConBackground)
+: (<>sFacility="ST@")
+GET PICTURE FROM LIBRARY(27695;vpConBackground)
+Else 
+//GET PICTURE FROM LIBRARY(55;vpConBackground)
+GET PICTURE FROM LIBRARY(27685;vpConBackground)//v10logo
+End case 
+
+
+Else 
+OBJECT SET VISIBLE(*;"@Gate";False)
+Case of 
+: (<>sProduct="@B")
+GET PICTURE FROM LIBRARY(2067;vpConBackground)
+: (<>sProduct="@R")
+If (<>sFacility="RR@")
+GET PICTURE FROM LIBRARY(2119;vpConBackground)
+Else 
+GET PICTURE FROM LIBRARY(2077;vpConBackground)
+End if 
+: (<>sProduct="@T")
+GET PICTURE FROM LIBRARY(2083;vpConBackground)
+: (<>sFacility="ST@")
+GET PICTURE FROM LIBRARY(27695;vpConBackground)
+Else 
+//GET PICTURE FROM LIBRARY(63;vpConBackground)
+GET PICTURE FROM LIBRARY(27686;vpConBackground)//v10logo
+End case 
+OBJECT MOVE(*;"Rectangle1";0;0;0;189)
+//OBJECT MOVE(*;"Line10";0;0;0;189)
+//OBJECT MOVE(*;"Line11";0;0;0;189)
+//OBJECT MOVE(*;"Line12";0;0;0;189)
+//OBJECT MOVE(*;"Line13";0;0;0;189)
+//OBJECT MOVE(asUnit;0;0;0;189)
+//OBJECT MOVE(asCust;0;0;0;189)
+//OBJECT MOVE(asAgreemtNo;0;0;0;189)
+//OBJECT MOVE(adDate;0;0;0;189)
+//OBJECT MOVE(asStat;0;0;0;189)
+//OBJECT MOVE(*;"RectangleBG1";0;0;0;189)
+OBJECT MOVE(*;"List Box1";0;0;0;189)
+End if 
+vLastNote:=""
+vLastFind:=""
+viGateRecs:=Records in table([GateLog])
+viMessRecs:=Records in table([Message])
+GOTO OBJECT(vFind)
+OBJECT SET FORMAT(arBal;<>sFormatNeg)
+End if 
+$Refresh:=False
+If (Form event=On Resize)
+OBJECT GET COORDINATES(*;"List Box1";$Left;$Top;$Right;$Bottom)
+$TotWidth:=$Right-$Left
+$Width:=LISTBOX Get column width(*;"Column1")+100+LISTBOX Get column width(*;"Column3")+LISTBOX Get column width(*;"Column4")+LISTBOX Get column width(*;"Column5")+80
+If ($TotWidth>$Width)
+LISTBOX SET COLUMN WIDTH(*;"Column2";100+$TotWidth-$Width)
+Else 
+LISTBOX SET COLUMN WIDTH(*;"Column2";100)
+End if 
+LISTBOX SET COLUMN WIDTH(*;"Column6";80)
+//$Width:=LISTBOX Get column width(*;"Column6")
+//If ($Width>120)
+//$Width:=LISTBOX Get column width(*;"Column2")+$Width-80
+//LISTBOX SET COLUMN WIDTH(*;"Column2";$Width)
+//End if 
+End if 
+If (Form event=On Activate)
+If (bCont<0)
+GOTO OBJECT(vNote)
+Else 
+GOTO OBJECT(vFind)
+End if 
+End if 
+If (Form event=On Deactivate)
+If (bCont<0)
+POST KEY(9;0;Current process)
+bCont:=0
+End if 
+End if 
+If (Form event=On Timer)
+If (bCont<0)
+If (vNote=vLastNote)
+bCont:=bCont-1
+If (bCont<-10)//After 30 seconds tab out of field
+POST KEY(9;0;Current process)
+bCont:=0//This line added 17/5/04 to stop continual tabs being posted
+End if 
+Else 
+bCont:=-1
+vLastNote:=vNote
+End if 
+Else 
+//Do nothing
+bCont:=bCont+1
+If (bCont>=5)
+If (<>sProduct#"MV") & ((Records in table([GateLog])#viGateRecs) | (Records in selection([GateLog])#viGateRecs2))
+QUERY([GateLog];[GateLog]GateDate>(Current date-3))
+ORDER BY([GateLog];[GateLog]GateDate;<;[GateLog]GateTime;<)
+viGateRecs:=Records in table([GateLog])
+viGateRecs2:=Records in selection([GateLog])
+End if 
+If (Records in table([Message])#viMessRecs) | (Records in selection([Message])#viMessRecs2)
+QUERY([Message];[Message]MsgDate>(Current date-3))
+ORDER BY([Message];[Message]MsgDate;<;[Message]MsgTime;<)
+viMessRecs:=Records in table([Message])
+viMessRecs2:=Records in selection([Message])
+End if 
+While (Size of array(<>asUnitChange)>0)
+If (<>asUnitChange{1}>"")//It may still be being written
+$Temp:=<>asUnitChange{1}
+DELETE FROM ARRAY(<>asUnitChange;1)
+If ($Temp=(<>sFacility+"@")) | (Records in table([Facility])=1)
+$Refresh:=True
+If ($Temp="$@")
+vError:=False
+ON ERR CALL("ErrorGotoRec")
+GOTO RECORD([Contacts];Num(Substring($Temp;2)))
+ON ERR CALL("ErrorLog")
+If (vError=False)
+$Pos:=Find in array(asAgreeNo;Substring([Contacts]ContactNo;6))
+If ($Pos>0)
+$Size:=$Pos
+Else 
+$Size:=Size of array(asUnits)+1
+INSERT IN ARRAY(asUnits;$Size)
+INSERT IN ARRAY(asStatus;$Size)
+INSERT IN ARRAY(adPaidTo;$Size)
+INSERT IN ARRAY(asAgreeNo;$Size)
+INSERT IN ARRAY(asCustName;$Size)
+INSERT IN ARRAY(asUserName;$Size)
+INSERT IN ARRAY(arBalOwing;$Size)
+INSERT IN ARRAY(asSortNo;$Size)
+INSERT IN ARRAY(asSUFacID;$Size)//11206
+End if 
+asAgreeNo{$Size}:=Substring([Contacts]ContactNo;6)
+asCustName{$Size}:=[Contacts]ContactName
+asUserName{$Size}:=[Contacts]UserName
+asUnits{$Size}:=""
+asSUFacID{$Size}:=0//11206
+If (<>bEnglishSpelling=False)
+asStatus{$Size}:="SalesInq"
+Else 
+asStatus{$Size}:="SalesEnq"
+End if 
+adPaidTo{$Size}:=[Contacts]CallDate
+arBalOwing{$Size}:=0
+//Changed to lowercase char 122 (z) as higher no longer works for sorting in v11
+//asSortNo{$Size}:="}"  `ascii 125
+asSortNo{$Size}:="zzzzzzzzzzzzzzz"
+End if 
+Else 
+QUERY([Unit];[Unit]RUnitNo=$Temp)
+$x:=Find in array(asUnits;Substring($Temp;6))
+If (Records in selection([Unit])=1)
+If ($x<1)
+INSERT IN ARRAY(asUnits;0)
+INSERT IN ARRAY(asStatus;0)
+INSERT IN ARRAY(adPaidTo;0)
+INSERT IN ARRAY(asAgreeNo;0)
+INSERT IN ARRAY(asCustName;0)
+INSERT IN ARRAY(asUserName;0)
+INSERT IN ARRAY(arBalOwing;0)
+INSERT IN ARRAY(asSortNo;0)
+INSERT IN ARRAY(asSUFacID;0)//11206
+$x:=1
+End if 
+asUnits{$x}:=[Unit]UnitNo
+asStatus{$x}:=[Unit]Status
+asSortNo{$x}:=[Unit]UnitNo
+asSUFacID{$x}:=[Unit]SUFacilityID//11206
+Case of 
+: ([Unit]Vacant=False)
+RELATE ONE([Unit]AgreeNo)
+RELATE ONE([Agreement]CustomerCode)
+asAgreeNo{$x}:=[Agreement]AgreeNo
+asCustName{$x}:=[Customer]CustomerName
+asUserName{$x}:=[Customer]UserName
+arBalOwing{$x}:=[Agreement]BalanceOwing
+adPaidTo{$x}:=[Agreement]PaidToDate
+: ([Unit]Status="Reserved")
+RELATE ONE([Unit]ReservedTo)
+RELATE ONE([Reservation]CustomerCode)
+asAgreeNo{$x}:=[Reservation]ReserveNo
+asCustName{$x}:=[Customer]CustomerName
+asUserName{$x}:=[Customer]UserName
+adPaidTo{$x}:=[Reservation]ExpMoveIn
+arBalOwing{$x}:=[Reservation]Balance
+Else 
+asAgreeNo{$x}:=""
+asCustName{$x}:=""
+asUserName{$x}:=""
+adPaidTo{$x}:=!00-00-00!
+arBalOwing{$x}:=0
+End case 
+Else 
+If ($x>0)
+DELETE FROM ARRAY(asUnits;$x)
+DELETE FROM ARRAY(asStatus;$x)
+DELETE FROM ARRAY(adPaidTo;$x)
+DELETE FROM ARRAY(asAgreeNo;$x)
+DELETE FROM ARRAY(asCustName;$x)
+DELETE FROM ARRAY(asUserName;$x)
+DELETE FROM ARRAY(arBalOwing;$x)
+DELETE FROM ARRAY(asSortNo;$x)
+DELETE FROM ARRAY(asSUFacID;$x)//11206
+End if 
+End if 
+End if 
+End if 
+End if 
+End while 
+CalendarLoad 
+bCont:=0
+End if 
+End if 
+End if 
+If (vLastFind#vFind) | ($Refresh)
+LoadButtons 
+vLastFind:=vFind
+$Start:=Tickcount
+ARRAY TEXT(asAgreemtNo;0)
+ARRAY TEXT(asCust;0)
+ARRAY TEXT(asUnit;0)
+ARRAY TEXT(asStat;0)
+ARRAY DATE(adDate;0)
+ARRAY REAL(arBal;0)
+ARRAY TEXT(asSort;0)
+ARRAY LONGINT(asSUFac;0)//11206
+For ($i;1;Size of array(asAgreeNo))
+$Found:=True
+Case of 
+: (asUnits{$i}=("@"+vLastFind+"@"))
+: (asAgreeNo{$i}=("@"+vLastFind+"@"))
+: (asCustName{$i}=("@"+vLastFind+"@"))
+: (asUserName{$i}=("@"+vLastFind+"@"))
+: (asStatus{$i}=("@"+vLastFind+"@"))
+: (Position(vLastFind;String(asSUFacID{$i}))>0)//11206
+Else 
+$Found:=False
+End case 
+If ($Found)
+INSERT IN ARRAY(asAgreemtNo;0)
+INSERT IN ARRAY(asCust;0)
+INSERT IN ARRAY(asUnit;0)
+INSERT IN ARRAY(asStat;0)
+INSERT IN ARRAY(adDate;0)
+INSERT IN ARRAY(arBal;0)
+INSERT IN ARRAY(asSort;0)
+INSERT IN ARRAY(asSUFac;0)//11206
+asAgreemtNo{1}:=asAgreeNo{$i}
+asCust{1}:=asCustName{$i}
+asUnit{1}:=asUnits{$i}
+asStat{1}:=asStatus{$i}
+adDate{1}:=adPaidTo{$i}
+arBal{1}:=arBalOwing{$i}
+asSort{1}:=asSortNo{$i}
+asSUFac{1}:=asSUFacID{$i}//11206
+End if 
+End for 
+SORT ARRAY(asSort;asAgreemtNo;asCust;asUnit;asStat;adDate;arBal;>)
+End if 
+If (Form event=On Outside Call)
+ACCEPT
+End if 

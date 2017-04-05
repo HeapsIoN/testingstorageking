@@ -1,0 +1,89 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+C_BOOLEAN($AllGood)
+<>tLoggingOn:=False
+$StopTime:=Current time+?00:00:05?//Wait 5 secs for Webserver to quit
+
+If (<>tWebServer=True)
+WEB STOP SERVER
+End if 
+
+//If ([Facility]TAPIKey>"")
+//$err:=hmTAPI_DeInit 
+//End if 
+If (<>iLogMonitor>0)
+RESUME PROCESS(<>iLogMonitor)
+End if 
+If (Application type#4D Remote mode)//Don't do this for 4D Client
+If (<>iServerMonitor>0)
+RESUME PROCESS(<>iServerMonitor)
+End if 
+READ WRITE([Facility])
+$AllGood:=True
+For ($i;1;Size of array(<>asSiteCodes))
+QUERY([Facility];[Facility]FacilityCode=<>asSiteCodes{$i})
+If (Locked([Facility])=True)
+$AllGood:=False
+SyncRecordLog ([Facility]FacilityCode+" Facility record locked on exit - unable to update SeqNo's - Set to ShutdownProperly=False")
+End if 
+//10/12/12 DAM Added code for NextAgreeNo, NextReservNo, NextContactNo, NextInvNo
+[Facility]TrxSeqNo:=<>aiTrxSeqNo{$i}
+[Facility]EventSeqNo:=<>aiEventSeqNo{$i}
+[Facility]QuoteSeqNo:=<>aiQuoteSeqNo{$i}
+[Facility]UnitStatusTrxSeqNo:=<>aiUnitStatusTrxSeqNo{$i}
+[Facility]NextCashSaleNo:=<>aiNextCashSaleNo{$i}
+[Facility]NextAgreeNo:=<>aiNextAgreeNo{$i}
+[Facility]NextReserveNo:=<>aiNextResNo{$i}
+[Facility]NextContactNo:=<>aiNextSalesInqNo{$i}
+[Facility]NextInvNo:=<>aiNextInvNo{$i}
+SAVE RECORD([Facility])
+//[Facility]TrxSeqNo;<>aiTrxSeqNo;[Facility]EventSeqNo;<>aiEventSeqNo;[Facility]QuoteSeqNo;<>aiQuoteSeqNo;[Facility]UnitStatusTrxSeqNo;<>aiUnitStatusTrxSeqNo
+//SDD Not sure why these second lot are not included
+//[Facility]ReCalcActivity;<>adReCalc;[Facility]NextAgreeNo;<>aiNextAgreeNo;[Facility]NextReserveNo;<>aiNextResNo;[Facility]NextContactNo;<>aiNextSalesInqNo;[Facility]NextInvNo;<>aiNextInvNo;[Facility]LastLogSent;<>adLastLogSent;[Facility]LastLogTime;<>aiLastLogTime)
+End for 
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+[Facility]ShutdownProperly:=$AllGood
+SAVE RECORD([Facility])
+End if 
+Open window(20;50;300;150;0;Get localized string("Progress"))
+If (Process state(<>iLogMonitor)>=0)
+RESUME PROCESS(<>iLogMonitor)
+If (<>iLogMonitor#0)
+$i:=Tickcount
+$j:=0
+RESUME PROCESS(<>iLogMonitor)
+If (Application type#4D Remote mode)//Don't do this for 4D Client
+If (<>iServerMonitor>0)
+RESUME PROCESS(<>iServerMonitor)
+End if 
+End if 
+Repeat 
+GOTO XY(2;2)
+MESSAGE(Get localized string("Waiting for Log Monitor to Quit...")+String(60-$j)+"   ")
+IDLE
+RESUME PROCESS(<>iLogMonitor)
+$j:=Round((Tickcount-$i)/60;0)
+If (Shift down)
+<>iLogMonitor:=0
+End if 
+Until (<>iLogMonitor=0) | (Tickcount>($i+3600))//Wait 60 seconds
+End if 
+End if 
+If (<>iFloating>0)
+CALL PROCESS(<>iFloating)//Floating  to Cancel Dialog in event On Outside Call
+Repeat 
+IDLE
+Until (<>iFloating=0)
+End if 
+If (<>tWebServer)//StartWebServer
+GOTO XY(2;2)
+MESSAGE(Get localized string("Waiting for Webserver to Quit")+"...      ")
+While (Current time<$Stoptime)
+IDLE
+End while 
+End if 
+CLOSE WINDOW
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+<>sFacility:=[Facility]FacilityCode

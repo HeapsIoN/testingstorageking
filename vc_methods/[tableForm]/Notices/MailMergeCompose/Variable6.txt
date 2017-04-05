@@ -1,0 +1,68 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+C_TEXT($Text;$Text2;PreviousV)
+$i:=0
+$Text:=""
+$Text2:=""
+$j:=0
+If (asFiles>0)
+//QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)  // Commented by Hamid - 29/4/2015 - 8469
+//QUERY([Notices]; & ;[Notices]NoticePlanNo=0;*)
+//QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+//QUERY([Notices]; & ;[Notices]Description=asFiles{asFiles})
+
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]EmailBlank=False;*)
+QUERY([Notices]; & ;[Notices]HideNotice=False;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]Description=asFiles{asFiles})
+
+//04/11/15 DAM Added in a case have multiple notices with the same description
+If (Records in selection([Notices])>=1)
+ORDER BY([Notices];[Notices]NoticePlanNo;>)
+End if 
+
+ConfirmTwo (Get localized string("Replace existing message with template")+" : "+[Notices]Description+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1) & (Records in selection([Notices])>=1)
+vtEmailSubject:=[Notices]EmailSubject
+If ([Notices]LetterBlank=False) & ([Notices]EmailBlank=False)
+If (bEmail=1)
+[Notices]LetterBlank:=True
+Else 
+[Notices]EmailBlank:=True
+End if 
+End if 
+If ([Notices]EmailBlank=False)
+vLeg:=""
+SET AUTOMATIC RELATIONS(True;True)
+
+If (BLOB size([Notices]Email)>0)
+DecompressBlob (->[Notices]Email)
+End if 
+//WR BLOB TO AREA (veEmail;[Notices]Email)
+//WR GET COMMAND INFO (veEmail;wr cmd view references;$i;$Text;$Text2;$j)
+//If ($i=1)
+//WR EXECUTE COMMAND (veEmail;wr cmd view references)
+//End if 
+EmailTextBlob:=Convert to text([Notices]Email;"UTF-8")
+EmailTextBlob:=Replace string(EmailTextBlob;"<!--#";"[[")
+EmailTextBlob:=Replace string(EmailTextBlob;"-->";"]]")
+//EmailTextBlob:=ProcessStormanHTMLTags(EmailTextBlob)
+EmailMailpath:=""
+EmailID:=Milliseconds
+If (EmailID#0)
+If (EmailMailpath#"")
+EMail_Edit_Prepare ("HTMLEdit";"";EmailID;EmailMailpath)
+Else 
+EMail_Edit_Prepare ("HTMLEdit";EmailTextBlob;EmailID;"")
+EmailTextBlob:=""
+End if 
+Else 
+$id:=Milliseconds
+EMail_Edit_Prepare ("HTMLEdit";"";$id)
+End if 
+
+SET AUTOMATIC RELATIONS(False;False)
+End if 
+End if 
+End if 

@@ -1,0 +1,194 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//$Number:=Size of array(WS_BoxIds)
+C_BOOLEAN($1;$3;$Web)
+C_TEXT($2;$Message;$Month;$DigiKey)
+$Web:=False
+$utctime:=Current time
+$utcdate:=Current date
+
+$Month:=String(Month of($utcdate))
+If (Length($Month)=1)
+$Month:="0"+$Month
+End if 
+
+$Day:=String(Day of($utcdate))
+If (Length($Day)=1)
+$Day:="0"+$Day
+End if 
+
+$PickupDateTime:=String(Year of($utcdate))+"-"+$Month+"-"+$Day+"T"+String($utctime)
+
+//Kg
+If ($2="Deposit")
+$Kg:=Records in selection([BarCode])*1
+Else 
+$Kg:=Records in selection([BarCode])*25
+End if 
+
+
+If (Count parameters>2)
+$Web:=$3
+End if 
+
+
+$namespace:=""
+$root:=DOM Create XML Ref("DM_EDI";$namespace)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/ServiceRequested")
+Case of 
+: ($Kg<=25)
+DOM SET XML ELEMENT VALUE($subelem;"STC")
+: ($Kg>25) & ($Kg<=125)
+DOM SET XML ELEMENT VALUE($subelem;"STW")
+: ($Kg>126) & ($Kg<=500)
+DOM SET XML ELEMENT VALUE($subelem;"STH")
+: ($Kg>501) & ($Kg<=1000)
+DOM SET XML ELEMENT VALUE($subelem;"STV")
+End case 
+
+If ($1=True)
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/Quantity")
+If ($Web)
+DOM SET XML ELEMENT VALUE($subelem;String(Records in selection([BarCode])))
+Else 
+DOM SET XML ELEMENT VALUE($subelem;"1")
+End if 
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/TotalWeight")
+If ($Web)
+DOM SET XML ELEMENT VALUE($subelem;String($Kg))
+Else 
+DOM SET XML ELEMENT VALUE($subelem;"1")
+End if 
+
+Else 
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/Quantity")
+DOM SET XML ELEMENT VALUE($subelem;String(Records in selection([BarCode])))
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/TotalWeight")
+DOM SET XML ELEMENT VALUE($subelem;String($Kg))
+End if 
+
+
+For ($i;1;Records in selection([BarCode]))
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PackageBarcodes")
+DOM SET XML ELEMENT VALUE($subelem;[BarCode]Code)
+NEXT RECORD([BarCode])
+End for 
+
+If ($1=True)// From Facility to Customer
+//Pickup Address
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupCompany")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]FacilityName)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupAddressLine1")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]Address)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupSuburb")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]City)
+
+//$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupCity")
+//DOM SET XML ELEMENT VALUE($subelem;[Facility]City)
+
+//Delivery Address
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliveryCompany")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]CustomerName)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliveryAddressLine1")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]StreetAddress)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliverySuburb")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]StreetSuburb)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupDateTime")
+DOM SET XML ELEMENT VALUE($subelem;$PickupDateTime)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliveryPhone")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]PhonePrivate)
+
+Else //From Customer to Facility
+//Pickup Address
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupCompany")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]CustomerName)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupAddressLine1")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]StreetAddress)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupSuburb")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]StreetSuburb)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupCity")
+DOM SET XML ELEMENT VALUE($subelem;[Customer]StreetCity)
+
+//Delivery Address
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliveryCompany")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]FacilityName)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliveryAddressLine1")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]Address)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliverySuburb")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]City)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/PickupDateTime")
+DOM SET XML ELEMENT VALUE($subelem;$PickupDateTime)
+
+$subelem:=DOM Create XML element($root;"/DM_EDI/Job/DeliveryPhone")
+DOM SET XML ELEMENT VALUE($subelem;[Facility]Phone)
+End if 
+
+DOM EXPORT TO VAR($root;$Message)
+//SET TEXT TO PASTEBOARD($Message)
+
+USE CHARACTER SET("windows-1252";0)//Change to ANSI
+$File:="BOXS_4_"+String(Year of($utcdate))+String(Month of($utcdate))+String(Day of($utcdate))+String($utctime)+".xml"
+$File:=Replace string($File;":";"")
+SyncRecordLog ("CallAUPost File name: "+$File;"AUPostLog")
+If (Test path name(<>sLogsPath+$File)=Is a document)
+DELETE DOCUMENT(<>sLogsPath+$File)
+End if 
+
+SyncRecordLog ("CallAUPost File Content: "+$Message;"AUPostLog")
+
+$Doc:=Create document(<>sLogsPath+$File)
+SEND PACKET($Doc;$Message)
+CLOSE DOCUMENT($Doc)
+//$LocalFile:=Document
+
+$ErrFile:="4DCurl.txt"
+
+If (Test path name($ErrFile)=Is a document)
+DELETE DOCUMENT($ErrFile)
+End if 
+
+$ErrDoc:=Create document($ErrFile)
+CLOSE DOCUMENT($ErrDoc)
+$ErrorPath:=Document
+
+USE CHARACTER SET(*;0)//Reset to UTF-8
+
+$Username:="MPC-BOXS-TFRS"
+$Password:="B0x#And#5t0re#"
+
+SyncRecordLog ("curl.exe --fail --silent --show-error --stderr "+String(Char(34))+$ErrorPath+String(Char(34))+" -vk -T "+String(Char(34))+<>sLogsPath+$File+String(Char(34))+" -u "+$Username+":"+$Password+" sftp://st.auspost.com.au/BoxAndStore/Inbox/";"AUPostLog")
+
+$DigiKey:=""
+$DigiKey:=GetTextNo ([Facility]MerchantDetails;2;",")+"-"+GetTextNo ([Facility]MerchantDetails;3;",")+"-"+GetTextNo ([Facility]MerchantDetails;4;",")+"-"+GetTextNo ([Facility]MerchantDetails;5;",")+"-"+GetTextNo ([Facility]MerchantDetails;6;",")
+If ($DigiKey#"7D71C831-5069-466B-7E20-7534958F97CD")//Test for Ezidebit BnS
+LAUNCH EXTERNAL PROCESS("curl.exe --fail --silent --show-error --stderr "+String(Char(34))+$ErrorPath+String(Char(34))+" -vk -T "+String(Char(34))+<>sLogsPath+$File+String(Char(34))+" -u "+$Username+":"+$Password+" sftp://st.auspost.com.au/BoxAndStore/Inbox/")
+Else 
+SyncRecordLog ("File wasn't uploaded due to test account")
+End if 
+
+DOCUMENT TO BLOB(Document;$ErrorBlob)
+
+$ErrorText:=BLOB to text($ErrorBlob;Mac text without length)
+
+$Pos:=Position("curl";$ErrorText)
+
+$ErrorText:=Substring($ErrorText;$Pos)
+
+If ($ErrorText>"")
+//AlertMessage ($ErrorText)
+SyncRecordLog ("CallAUPost Error: "+$ErrorText;"AUPostLog")
+End if 

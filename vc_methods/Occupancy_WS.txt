@@ -1,0 +1,608 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): denis.mikheev
+// Date and time: 07/08/14, 09:52:42
+// ----------------------------------------------------
+// Method: Occupancy_WS
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+Case of 
+: (vReportSettings[[3]]="1")
+sAll:=1
+sCust:=0
+sUnit:=0
+: (vReportSettings[[3]]="2")
+sAll:=0
+sCust:=1
+sUnit:=0
+: (vReportSettings[[3]]="3")
+sAll:=0
+sCust:=0
+sUnit:=1
+End case 
+
+Case of 
+: (vReportSettings[[5]]="1")
+rRefund1:=1
+rRefund2:=0
+: (vReportSettings[[5]]="2")
+rRefund1:=0
+rRefund2:=1
+End case 
+
+If (vReportSettings[[4]]="1")
+bAdd:=1
+bMod:=0
+Else 
+bAdd:=0
+bMod:=1
+End if 
+
+If (bNext=1)
+vReportSettings[[6]]:="Y"
+Else 
+vReportSettings[[6]]:="N"
+End if 
+If (bPrev=1)
+vReportSettings[[11]]:="Y"
+Else 
+vReportSettings[[11]]:="N"
+End if 
+
+
+SET AUTOMATIC RELATIONS(False;False)
+QUERY([Analysis];[Analysis]Code=WS_FacilityCode+"@";*)
+QUERY([Analysis]; & ;[Analysis]SortOrder=1)
+$Date:=vMthDate
+If (vMthDate=!00-00-00!)
+$Date:=Current date
+End if 
+If ([Analysis]Taxable) & ((([Facility]TaxAddtoAmt=False) & (vReportSettings[[5]]="1")) | (([Facility]TaxAddtoAmt) & (vReportSettings[[5]]="2")))
+vTax:=GetTaxRate ($Date)
+Else 
+vTax:=0
+End if 
+tBoolean:=False
+If (vMthDate#!00-00-00!) & (vReportSettings[[11]]="Y")
+tBoolean:=True//Prior Date procedure
+$Abort:=Not(CheckUnitHistSeq )
+If ($Abort=False)
+$Check:=CalcRentedValues (WS_FacilityCode;vMthDate;False;False;True)
+End if 
+Else 
+$Check:=CalcRentedValues (WS_FacilityCode;!00-00-00!;False;False;True)
+$Abort:=False
+End if 
+
+If ($Abort=False) & ($Check)
+DEFAULT TABLE([UnitType])
+QUERY([UnitType];[UnitType]RUnitType=WS_FacilityCode+"@")
+
+$Total1:=0
+$Total2:=0
+$Total3:=0
+$Total4:=0
+$Total5:=0
+$Total6:=0
+$Total7:=0
+$Total8:=0
+$Total9:=0
+$Total10:=0
+$Total11:=0
+$Total12:=0
+$Total13:=0
+$Total14:=0
+$Total15:=0
+
+//SubTotal Values
+$SubTotal1:=0
+$SubTotal2:=0
+$SubTotal3:=0
+$SubTotal4:=0
+$SubTotal5:=0
+$SubTotal6:=0
+$SubTotal7:=0
+$SubTotal8:=0
+$SubTotal9:=0
+$SubTotal10:=0
+$SubTotal11:=0
+$SubTotal12:=0
+$SubTotal13:=0
+$SubTotal14:=0
+$SubTotal15:=0
+
+If (vReportSettings[[6]]="Y")
+If (vMthDate#!00-00-00!) & (vReportSettings[[11]]="Y")
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail@";*)
+QUERY([Unit]; & ;[Unit]StartDate<=vMthDate)
+Else 
+QUERY([Unit];[Unit]RUnitNo=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status#"Unavail@")
+End if 
+SET AUTOMATIC RELATIONS(True;False)
+ORDER BY([Unit];[Unit]BldgLocation;>;[UnitType]SortOrder;>;[Unit]UnitTypeCode;>)
+SET AUTOMATIC RELATIONS(False;False)
+DEFAULT TABLE([Unit])
+
+FIRST RECORD([Unit])
+$BuildLoc:=[Unit]BldgLocation
+$UnitType:=[Unit]UnitTypeCode
+
+
+//Title Columns
+APPEND TO ARRAY(aCustName;"Unit Type")
+APPEND TO ARRAY(asData1;"Description")
+APPEND TO ARRAY(asData2;"Category")
+APPEND TO ARRAY(asData3;"Monthly Rate")
+
+If (vReportSettings[[3]]="1")
+
+APPEND TO ARRAY(asData4;"Total - Units")
+APPEND TO ARRAY(asData5;"Occupancy - Units,%,Value,%")
+APPEND TO ARRAY(asData6;"Vacancy - Units,%,Value,%")
+
+//APPEND TO ARRAY(asData4;"Total")
+//APPEND TO ARRAY(asData5;",Occupancy,,")
+//APPEND TO ARRAY(asData6;",Vacancy,,")
+
+//APPEND TO ARRAY(aCustName;"")
+//APPEND TO ARRAY(asData1;"")
+//APPEND TO ARRAY(asData2;"")
+//APPEND TO ARRAY(asData3;"")
+//APPEND TO ARRAY(asData4;"Units")
+//APPEND TO ARRAY(asData5;"Units,%,Value,%")
+//APPEND TO ARRAY(asData6;"Units,%,Value,%")
+
+//Building
+APPEND TO ARRAY(aCustName;"Bldg / Location : "+[Unit]BldgLocation)
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"")
+
+Else 
+
+APPEND TO ARRAY(asData4;"Total Units")
+APPEND TO ARRAY(asData5;"Total Area")
+APPEND TO ARRAY(asData6;"Occupied Units,Occup. Units %,Occup. Value,Occup. Value %,Occup. Area,Occup. Area %")
+APPEND TO ARRAY(asData7;"Vacant Units,Vac. Units %, Vac. Value, Vac. Value %,Vac. Area,Vac. Area %")
+
+//APPEND TO ARRAY(asData4;"Total")
+//APPEND TO ARRAY(asData5;"")
+//APPEND TO ARRAY(asData6;",,Occupancy,,,")
+//APPEND TO ARRAY(asData7;",,Vacancy,,,")
+
+//APPEND TO ARRAY(aCustName;"")
+//APPEND TO ARRAY(asData1;"")
+//APPEND TO ARRAY(asData2;"")
+//APPEND TO ARRAY(asData3;"")
+//APPEND TO ARRAY(asData4;"Units")
+//APPEND TO ARRAY(asData5;"Area")
+//APPEND TO ARRAY(asData6;"Units,%,Value,%,Area,%")
+//APPEND TO ARRAY(asData7;"Units,%,Value,%,Area,%")
+
+//Building
+APPEND TO ARRAY(aCustName;"Bldg / Location : "+[Unit]BldgLocation)
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;"")
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"")
+APPEND TO ARRAY(asData7;"")
+End if 
+
+vNoTotal:=0
+vTotal:=0
+vNoOccup:=0
+vNoVacant:=0
+vOccVal:=0
+vRate:=0
+vVacVal:=0
+vTotArea:=0
+vOccArea:=0
+vVacArea:=0
+
+For ($i;1;Records in selection([Unit]))
+// For a building
+vNoTotal:=vNoTotal+1
+If ((tBoolean) & ([Unit]OccupRentedVal#-999)) | ((tBoolean=False) & ([Unit]Vacant=False))
+vNoOccup:=vNoOccup+1
+vOccUnit:=1
+vVacUnit:=0
+Else 
+vNoVacant:=vNoVacant+1
+vVacUnit:=1
+vOccUnit:=0
+End if 
+
+If (tBoolean)
+[Unit]UnitValue:=[Unit]OccupRentedVal
+End if 
+
+RELATE ONE([Unit]UnitTypeCode)
+
+If ([Facility]TaxAddtoAmt)
+vRate:=Round(CalculateBaseRate (0;0)*(1+(vTax/100));2)
+If (bAdd=1)
+vOccVal:=vOccVal+Round([Unit]UnitValue*vOccUnit*(1+(vTax/100));2)
+End if 
+Else 
+vRate:=Round(CalculateBaseRate (0;0)/(1+(vTax/100));2)
+If (bAdd=1)
+vOccVal:=vOccVal+Round([Unit]UnitValue*vOccUnit/(1+(vTax/100));2)
+End if 
+End if 
+
+If (bAdd#1)
+vOccVal:=vOccVal+(vRate*vOccUnit)//Use Notional Rate instead of Actual above
+End if 
+
+vTotal:=vTotal+vRate
+
+vVacVal:=vVacVal+(vRate*vVacUnit)
+vTotArea:=vTotArea+[Unit]UnitAreaSize
+vOccArea:=vOccArea+([Unit]UnitAreaSize*vOccUnit)
+vVacArea:=vVacArea+([Unit]UnitAreaSize*vVacUnit)
+
+NEXT RECORD([Unit])
+
+//UnitType
+//Data
+If ($UnitType#[Unit]UnitTypeCode)
+$UnitType:=[Unit]UnitTypeCode
+
+If (vNoTotal=0)
+vPCUOcc:=0
+vPCUVac:=0
+Else 
+vPCUOcc:=Round(vNoOccup*100/vNoTotal;0)
+vPCUVac:=Round(vNoVacant*100/vNoTotal;0)
+End if 
+If (vTotal=0)
+vPCVOcc:=0
+vPCVVac:=0
+Else 
+vPCVOcc:=Round(vOccVal*100/vTotal;0)
+vPCVVac:=Round(vVacVal*100/vTotal;0)
+End if 
+If (vTotArea=0)
+vPCAOcc:=0
+vPCAVac:=0
+Else 
+vPCAOcc:=Round(vOccArea*100/vTotArea;0)
+vPCAVac:=Round(vVacArea*100/vTotArea;0)
+End if 
+
+If (vReportSettings[[3]]="1")
+APPEND TO ARRAY(aCustName;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData1;[UnitType]Description)
+APPEND TO ARRAY(asData2;[UnitType]UnitCategory)
+APPEND TO ARRAY(asData3;String(Round(vTotal/vNoTotal;2)))
+APPEND TO ARRAY(asData4;String(vNoTotal))
+APPEND TO ARRAY(asData5;String(vNoOccup)+","+String(vPCUOcc)+","+String(vOccVal)+","+String(vPCVOcc)+"")
+APPEND TO ARRAY(asData6;String(vNoVacant)+","+String(vPCUVac)+","+String(vVacVal)+","+String(vPCVVac)+"")
+Else 
+APPEND TO ARRAY(aCustName;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData1;[UnitType]Description)
+APPEND TO ARRAY(asData2;[UnitType]UnitCategory)
+APPEND TO ARRAY(asData3;String(Round(vTotal/vNoTotal;2)))
+APPEND TO ARRAY(asData4;String(vNoTotal))
+APPEND TO ARRAY(asData5;String(vTotArea))
+APPEND TO ARRAY(asData6;String(vNoOccup)+","+String(vPCUOcc)+","+String(vOccVal)+","+String(vPCVOcc)+","+String(vOccArea)+","+String(vPCAOcc)+"")
+APPEND TO ARRAY(asData7;String(vNoVacant)+","+String(vPCUVac)+","+String(vVacVal)+","+String(vPCVVac)+","+String(vVacArea)+","+String(vPCAVac)+"")
+
+
+$Total11:=$Total11+vOccArea
+$Total12:=$Total12+vPCAOcc
+$Total13:=$Total13+vVacArea
+$Total14:=$Total14+vPCAVac
+$Total15:=$Total15+vTotArea
+
+$SubTotal11:=$SubTotal11+vOccArea
+$SubTotal12:=$SubTotal12+vPCAOcc
+$SubTotal13:=$SubTotal13+vVacArea
+$SubTotal14:=$SubTotal14+vPCAVac
+$SubTotal15:=$SubTotal15+vTotArea
+End if 
+
+$Total1:=$Total1+Round(vTotal;2)
+$Total2:=$Total2+vNoTotal
+$Total3:=$Total3+vNoOccup
+$Total4:=$Total4+vPCUOcc
+$Total5:=$Total5+vOccVal
+$Total6:=$Total6+vPCVOcc
+$Total7:=$Total7+vNoVacant
+$Total8:=$Total8+vPCUVac
+$Total9:=$Total9+vVacVal
+$Total10:=$Total10+vPCVVac
+
+$SubTotal1:=$SubTotal1+Round(vTotal;2)
+$SubTotal2:=$SubTotal2+vNoTotal
+$SubTotal3:=$SubTotal3+vNoOccup
+$SubTotal4:=$SubTotal4+vPCUOcc
+$SubTotal5:=$SubTotal5+vOccVal
+$SubTotal6:=$SubTotal6+vPCVOcc
+$SubTotal7:=$SubTotal7+vNoVacant
+$SubTotal8:=$SubTotal8+vPCUVac
+$SubTotal9:=$SubTotal9+vVacVal
+$SubTotal10:=$SubTotal10+vPCVVac
+
+vNoTotal:=0
+vNoOccup:=0
+vNoVacant:=0
+vOccVal:=0
+vRate:=0
+vVacVal:=0
+vTotArea:=0
+vOccArea:=0
+vVacArea:=0
+vTotal:=0
+End if 
+
+//SubTotals per building
+If ($BuildLoc#[Unit]BldgLocation) | (End selection([Unit]))
+
+$BuildLoc:=[Unit]BldgLocation
+If (vReportSettings[[3]]="1")
+APPEND TO ARRAY(aCustName;"SubTotals:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String(Round($SubTotal1/$SubTotal2;2)))
+APPEND TO ARRAY(asData4;String($SubTotal2))
+APPEND TO ARRAY(asData5;String($SubTotal3)+","+String(Round($SubTotal3/$SubTotal2;2)*100)+","+String($SubTotal5)+","+String(Round($SubTotal5/$SubTotal1;2)*100)+"")
+APPEND TO ARRAY(asData6;String($SubTotal7)+","+String(Round($SubTotal7/$SubTotal2;2)*100)+","+String($SubTotal9)+","+String(Round($SubTotal9/($SubTotal1);2)*100)+"")
+Else 
+APPEND TO ARRAY(aCustName;"SubTotals:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String(Round($SubTotal1/$SubTotal2;2)))
+APPEND TO ARRAY(asData4;String($SubTotal2))
+APPEND TO ARRAY(asData5;String($SubTotal15))
+APPEND TO ARRAY(asData6;String($SubTotal3)+","+String(Round($SubTotal3/$SubTotal2;2)*100)+","+String($SubTotal5)+","+String(Round($SubTotal5/$SubTotal1;2)*100)+","+String($SubTotal11)+","+String(Round($SubTotal11/$SubTotal15;2)*100)+"")
+APPEND TO ARRAY(asData7;String($SubTotal7)+","+String(Round($SubTotal7/$SubTotal2;2)*100)+","+String($SubTotal9)+","+String(Round($SubTotal9/($SubTotal1);2)*100)+","+String($SubTotal13)+","+String(Round($SubTotal13/$SubTotal15;2)*100)+"")
+End if 
+
+$SubTotal1:=0
+$SubTotal2:=0
+$SubTotal3:=0
+$SubTotal4:=0
+$SubTotal5:=0
+$SubTotal6:=0
+$SubTotal7:=0
+$SubTotal8:=0
+$SubTotal9:=0
+$SubTotal10:=0
+$SubTotal11:=0
+$SubTotal12:=0
+$SubTotal13:=0
+$SubTotal14:=0
+$SubTotal15:=0
+
+End if 
+End for 
+//Totals
+If (vReportSettings[[3]]="1")
+APPEND TO ARRAY(aCustName;"Totals:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String(Round($Total1/$Total2;2)))
+APPEND TO ARRAY(asData4;String($Total2))
+APPEND TO ARRAY(asData5;String($Total3)+","+String(Round($Total3/$Total2;2)*100)+","+String($Total5)+","+String(Round($Total5/$Total1;2)*100)+"")
+APPEND TO ARRAY(asData6;String($Total7)+","+String(Round($Total7/$Total2;2)*100)+","+String($Total9)+","+String(Round($Total9/($Total1);2)*100)+"")
+Else 
+APPEND TO ARRAY(aCustName;"Totals:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String(Round($Total1/$Total2;2)))
+APPEND TO ARRAY(asData4;String($Total2))
+APPEND TO ARRAY(asData5;String($Total15))
+APPEND TO ARRAY(asData6;String($Total3)+","+String(Round($Total3/$Total2;2)*100)+","+String($Total5)+","+String(Round($Total5/$Total1;2)*100)+","+String($Total11)+","+String(Round($Total11/$Total15;2)*100)+"")
+APPEND TO ARRAY(asData7;String($Total7)+","+String(Round($Total7/$Total2;2)*100)+","+String($Total9)+","+String(Round($Total9/$Total1;2)*100)+","+String($Total13)+","+String(Round($Total13/$Total15;2)*100)+"")
+End if 
+
+Else 
+ORDER BY([UnitType];[UnitType]SortOrder;>;[UnitType]UnitTypeCode;>)
+
+
+//Title Columns
+APPEND TO ARRAY(aCustName;"Unit Type")
+APPEND TO ARRAY(asData1;"Description")
+APPEND TO ARRAY(asData2;"Category")
+APPEND TO ARRAY(asData3;"Monthly Rate")
+
+If (vReportSettings[[3]]="1")
+APPEND TO ARRAY(asData4;"Units")
+APPEND TO ARRAY(asData5;"Occupancy - Units,%,Value,%")
+APPEND TO ARRAY(asData6;"Vacancy - Units,%,Value,%")
+
+//APPEND TO ARRAY(asData4;"Units")
+//APPEND TO ARRAY(asData5;",Occupancy,,")
+//APPEND TO ARRAY(asData6;",Vacancy,,")
+
+//APPEND TO ARRAY(aCustName;"")
+//APPEND TO ARRAY(asData1;"")
+//APPEND TO ARRAY(asData2;"")
+//APPEND TO ARRAY(asData3;"")
+//APPEND TO ARRAY(asData4;"Units")
+//APPEND TO ARRAY(asData5;"Units,%,Value,%")
+//APPEND TO ARRAY(asData6;"Units,%,Value,%")
+
+Else 
+
+APPEND TO ARRAY(asData4;"")
+APPEND TO ARRAY(asData5;"")
+APPEND TO ARRAY(asData6;"Occupancy - Units,%,Value,%,Area,%")
+APPEND TO ARRAY(asData7;"Vacancy - Units,%,Value,%,Area,%")
+
+//APPEND TO ARRAY(asData4;"")
+//APPEND TO ARRAY(asData5;"")
+//APPEND TO ARRAY(asData6;",,Occupancy,,,")
+//APPEND TO ARRAY(asData7;",,Vacancy,,,")
+
+//APPEND TO ARRAY(aCustName;"")
+//APPEND TO ARRAY(asData1;"")
+//APPEND TO ARRAY(asData2;"")
+//APPEND TO ARRAY(asData3;"")
+//APPEND TO ARRAY(asData4;"Units")
+//APPEND TO ARRAY(asData5;"Area")
+//APPEND TO ARRAY(asData6;"Units,%,Value,%,Area,%")
+//APPEND TO ARRAY(asData7;"Units,%,Value,%,Area,%")
+
+End if 
+
+For ($i;1;Records in selection([UnitType]))
+
+If (vMthDate#!00-00-00!) & (vReportSettings[[11]]="Y")
+QUERY([Unit];[Unit]UnitTypeCode=[UnitType]RUnitType;*)
+QUERY([Unit]; & ;[Unit]StartDate<=vMthDate)
+Else 
+QUERY([Unit];[Unit]UnitTypeCode=[UnitType]RUnitType)
+End if 
+//QUERY([Unit]; & ;[Unit]Status#"Unavail@")
+CREATE EMPTY SET([Unit];"toprint")
+For ($z;1;Records in selection([Unit]))
+If ([Unit]Status="Unavail@")
+QUERY([UnitHistory];[UnitHistory]MoveOut>vMthDate;*)
+QUERY([UnitHistory]; | ;[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveIn<=vMthDate;*)
+QUERY([UnitHistory]; & ;[UnitHistory]UnitNo=[Unit]RUnitNo)
+If (Records in selection([UnitHistory])>0)
+ADD TO SET([Unit];"toprint")
+End if 
+Else 
+ADD TO SET([Unit];"toprint")
+End if 
+NEXT RECORD([Unit])
+End for 
+USE SET("toprint")
+CLEAR SET("toprint")
+[UnitType]NoTotal:=Records in selection([Unit])
+[UnitType]AreaSizeTotal:=0
+vOccUnit:=0
+[UnitType]AreaSizeOccup:=0
+[UnitType]RentedValue:=0
+For ($z;1;Records in selection([Unit]))
+[UnitType]AreaSizeTotal:=Round([UnitType]AreaSizeTotal+[Unit]UnitAreaSize;2)
+If ((tBoolean) & ([Unit]OccupRentedVal#-999)) | ((tBoolean=False) & ([Unit]Vacant=False))
+vOccUnit:=vOccUnit+1
+[UnitType]AreaSizeOccup:=Round([UnitType]AreaSizeOccup+[Unit]UnitAreaSize;2)
+If (tBoolean)
+[UnitType]RentedValue:=[UnitType]RentedValue+[Unit]OccupRentedVal
+Else 
+[UnitType]RentedValue:=[UnitType]RentedValue+[Unit]UnitValue
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+[UnitType]NoVacant:=[UnitType]NoTotal-vOccUnit
+If ([UnitType]VariableLength)
+vUnitBaseRate:=[UnitType]UnitTypeLength*[UnitType]MonthlyRate
+Else 
+vUnitBaseRate:=[UnitType]MonthlyRate
+End if 
+If ([Facility]TaxAddtoAmt)
+[UnitType]RentedValue:=Round([UnitType]RentedValue*(1+(vTax/100));2)
+vRate:=Round(vUnitBaseRate*(1+(vTax/100));2)
+Else //Documentation
+[UnitType]RentedValue:=Round([UnitType]RentedValue/(1+(vTax/100));2)
+vRate:=Round(vUnitBaseRate/(1+(vTax/100));2)
+End if 
+vTotal:=vRate*[UnitType]NoTotal
+If (vReportSettings[[4]]="2")
+[UnitType]RentedValue:=Round(vOccUnit*vRate;2)
+End if 
+vVacVal:=Round([UnitType]NoVacant*vRate;2)
+vVacArea:=Round([UnitType]AreaSizeTotal-[UnitType]AreaSizeOccup;2)
+If ([UnitType]NoTotal=0)
+vPCUOcc:=0
+vPCUVac:=0
+Else 
+vPCUOcc:=Round(vOccUnit*100/[UnitType]NoTotal;1)
+vPCUVac:=Round([UnitType]NoVacant*100/[UnitType]NoTotal;1)
+End if 
+If (vTotal=0)
+vPCVOcc:=0
+vPCVVac:=0
+Else 
+vPCVOcc:=Round([UnitType]RentedValue*100/vTotal;1)
+vPCVVac:=Round(vVacVal*100/vTotal;1)
+End if 
+If ([UnitType]AreaSizeTotal=0)
+vPCAOcc:=0
+vPCAVac:=0
+Else 
+vPCAOcc:=Round([UnitType]AreaSizeOccup*100/[UnitType]AreaSizeTotal;1)
+vPCAVac:=Round(100-vPCAOcc;1)
+End if 
+
+
+If (vReportSettings[[3]]="1")
+APPEND TO ARRAY(aCustName;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData1;[UnitType]Description)
+APPEND TO ARRAY(asData2;[UnitType]UnitCategory)
+APPEND TO ARRAY(asData3;String(vRate))
+APPEND TO ARRAY(asData4;String([UnitType]NoTotal))
+APPEND TO ARRAY(asData5;String(vNoOccup)+","+String(vPCUOcc)+","+String(vOccVal)+","+String(vPCVOcc)+"")
+APPEND TO ARRAY(asData6;String(vNoVacant)+","+String(vPCUVac)+","+String(vVacVal)+","+String(vPCVVac)+"")
+Else 
+APPEND TO ARRAY(aCustName;[UnitType]UnitTypeCode)
+APPEND TO ARRAY(asData1;[UnitType]Description)
+APPEND TO ARRAY(asData2;[UnitType]UnitCategory)
+APPEND TO ARRAY(asData3;String(vRate))
+APPEND TO ARRAY(asData4;String([UnitType]NoTotal))
+APPEND TO ARRAY(asData5;String([UnitType]AreaSizeTotal))
+APPEND TO ARRAY(asData6;String(vOccUnit)+","+String(vPCUOcc)+","+String([UnitType]RentedValue)+","+String(vPCVOcc)+","+String([UnitType]AreaSizeOccup)+","+String(vPCAOcc)+"")
+APPEND TO ARRAY(asData7;String([UnitType]NoVacant)+","+String(vPCUVac)+","+String(vVacVal)+","+String(vPCVVac)+","+String(vVacArea)+","+String(vPCAVac)+"")
+End if 
+
+
+$Total1:=$Total1+vTotal
+$Total2:=$Total2+[UnitType]NoTotal
+$Total3:=$Total3+vOccUnit
+$Total4:=$Total4+vPCUOcc
+$Total5:=$Total5+[UnitType]RentedValue
+$Total6:=$Total6+vPCVOcc
+$Total7:=$Total7+[UnitType]NoVacant
+$Total8:=$Total8+vPCUVac
+$Total9:=$Total9+vVacVal
+$Total10:=$Total10+vPCVVac
+
+$Total11:=$Total11+[UnitType]AreaSizeOccup
+$Total12:=$Total12+vPCAOcc
+$Total13:=$Total13+vVacArea
+$Total14:=$Total14+vPCAVac
+$Total15:=$Total15+[UnitType]AreaSizeTotal
+
+NEXT RECORD([UnitType])
+End for 
+
+If (vReportSettings[[3]]="1")
+APPEND TO ARRAY(aCustName;"Totals:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String(Round($Total1/$Total2;2)))
+APPEND TO ARRAY(asData4;String($Total2))
+APPEND TO ARRAY(asData5;String($Total3)+","+String(Round($Total3/$Total2;3)*100)+","+String($Total5)+","+String(Round($Total5/$Total1;3)*100)+"")
+APPEND TO ARRAY(asData6;String($Total7)+","+String(Round($Total7/$Total2;3)*100)+","+String($Total9)+","+String(Round($Total9/($Total1*$Total2);3)*100)+"")
+Else 
+APPEND TO ARRAY(aCustName;"Totals:")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;"")
+APPEND TO ARRAY(asData3;String(Round($Total1/$Total2;2)))
+APPEND TO ARRAY(asData4;String($Total2))
+APPEND TO ARRAY(asData5;String($Total15))
+APPEND TO ARRAY(asData6;String($Total3)+","+String(Round($Total3/$Total2;3)*100)+","+String($Total5)+","+String(Round($Total5/$Total1;3)*100)+","+String($Total11)+","+String(Round($Total11/$Total15;3)*100)+"")
+APPEND TO ARRAY(asData7;String($Total7)+","+String(Round($Total7/$Total2;3)*100)+","+String($Total9)+","+String(Round($Total9/$Total1;3)*100)+","+String($Total13)+","+String(Round($Total13/$Total15;3)*100)+"")
+End if 
+End if 
+End if 

@@ -1,0 +1,103 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$x;$SortOrder)
+vTitle:=Get localized string("Import Data")+"..."
+vtFormula:=Get localized string("Maintenance - Unit3")
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Units"))
+vImportDialog:=True
+vShowCancel:=True
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+vtFormula:=""
+If (OK=1)
+LogAction (False;Get localized string("Import Units commenced"))
+If (<>tLogging=False)
+QUERY([Unit];[Unit]Vacant=True)
+If (Records in selection([Unit])>0)
+BEEP
+ConfirmTwo (Get localized string("Delete the")+" "+String(Records in selection([Unit]))+" "+Get localized string("existing vacant units before importing?"))
+If (OK=1)
+BEEP
+BEEP
+BEEP
+ConfirmTwo (Get localized string("WARNING - Delete")+" "+String(Records in selection([Unit]))+" "+Get localized string("vacant units.  Are you absolutely certain?"))
+If (OK=1)
+DELETE SELECTION([Unit])
+End if 
+End if 
+End if 
+FORM SET INPUT([Unit];"Import")
+ON ERR CALL("ErrorImport")
+If (rRefund1=1)
+IMPORT TEXT("")
+Else 
+IMPORT SYLK("")
+End if 
+ON ERR CALL("ErrorLog")
+QUERY([Unit];[Unit]UnitNo="";*)
+QUERY([Unit]; | ;[Unit]UnitTypeCode="")
+DELETE SELECTION([Unit])
+QUERY([Unit];[Unit]RUnitNo=<>sFacility+"@")
+If (Records in selection([Unit])><>iMaxUnits)
+CREATE SET([Unit];"All")
+ORDER BY([Unit];[Unit]Vacant;>;[Unit]UnitNo;>)//this ensures that Occupied units are retained first
+REDUCE SELECTION([Unit];<>iMaxUnits)
+CREATE SET([Unit];"Max")
+DIFFERENCE("All";"Max";"All")
+USE SET("All")
+$i:=Records in selection([Unit])
+DELETE SELECTION([Unit])
+FLUSH BUFFERS
+AlertMessage (String($i)+" "+Get localized string("units were deleted as the import exceeded the licence!"))
+ALL RECORDS([Unit])
+End if 
+$SortOrder:=1
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If (Records in selection([UnitType])=0)
+CREATE RECORD([UnitType])
+[UnitType]RUnitType:=[Unit]UnitTypeCode
+[UnitType]UnitTypeCode:=Replace string([Unit]UnitTypeCode;<>sFacility;"")
+End if 
+If ([UnitType]MonthlyRate=0) & ([Unit]RentedValue>0)
+[UnitType]MonthlyRate:=[Unit]RentedValue
+[UnitType]WeeklyRate:=[Unit]ExtraDisc
+[UnitType]Description:=[Unit]UnitSize
+[UnitType]RentAnalysis:="RF"
+[UnitType]OrgAnalysis:="RF"
+[UnitType]SortOrder:=$SortOrder
+$SortOrder:=$SortOrder+1
+UpdateUnitTypeSpecial 
+End if 
+SAVE RECORD([UnitType])
+If ([Unit]UnitAreaSize=0)
+$x:=Position("x";[Unit]UnitSize)
+If ($x>1)
+[Unit]UnitAreaSize:=Round(Num(Substring([Unit]UnitSize;1;$x-1))*Num(Substring([Unit]UnitSize;$x+1));2)
+End if 
+[Unit]ExtraDisc:=0
+SAVE RECORD([Unit])
+End if 
+NEXT RECORD([Unit])
+End for 
+FORM SET INPUT([Unit];"UnitIn")
+vtFormula:=Get localized string("There are")+" "+String(Records in selection([Unit]))+" "+Get localized string("Maintenance - Unit5")
+Open window((Screen width/2)-275;(Screen height/2)-326;(Screen width/2)+275;(Screen height/2)+326;5;Get localized string("Import Units"))
+vImportDialog:=False
+vShowCancel:=False
+DIALOG([Facility];"ImportDialog")
+CLOSE WINDOW
+LogAction (True;Get localized string("Import Units finished"))
+Else 
+LogAction (True;Get localized string("Import Units finished"))
+End if 
+End if 
+Case of 
+: (<>sProduct="@R")
+vTitle:=Get localized string("Modify Appliances...")
+: (<>sProduct="@B")
+vTitle:=Get localized string("Modify Berths...")
+: (<>sProduct="@C")
+vTitle:=Get localized string("Modify Spaces...")
+Else 
+vTitle:=Get localized string("Modify Units...")
+End case 

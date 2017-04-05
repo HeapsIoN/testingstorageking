@@ -1,0 +1,40 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($1)//True for Send; False for Receive
+
+C_TEXT($0;$2;$Buffer)//Returned/Send string
+
+C_LONGINT($i;$Tickcount)
+C_TIME($Doc)
+ON ERR CALL("ErrorNone")//Try to avoid Error -28 Communication interupted
+
+If ($1)
+$Buffer:=$2
+For ($i;1;Length($Buffer))
+SEND PACKET($Buffer[[$i]])
+DELAY PROCESS(Current process;1)
+End for 
+$File:=<>sBackupPath+"FalconLog.txt"
+If (Test path name($File)=Is a document)
+$Doc:=Append document(<>sBackupPath+"FalconLog.txt")
+Else 
+$Doc:=Create document(<>sBackupPath+"FalconLog.txt")
+End if 
+SEND PACKET($Doc;String(Current date;1)+" - "+String(Current time;1)+" - "+$Buffer+Char(13))
+CLOSE DOCUMENT($Doc)
+$Size:=Round(Get document size($File)/1024;0)//KB
+
+$File2:=Replace string($File;".txt";GetDateString (Current date;7)+".txt")
+If ($Size>255) & (Test path name($File2)#Is a document)
+MOVE DOCUMENT($File;$File2)
+End if 
+Else 
+$0:=""
+$Tickcount:=Tickcount+60//read for at least a second
+
+Repeat 
+RECEIVE BUFFER($Buffer)
+$0:=$0+$Buffer
+IDLE
+Until ($Buffer="") & ($Tickcount<Tickcount)
+End if 
+ON ERR CALL("ErrorLog")

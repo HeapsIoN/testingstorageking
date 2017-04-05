@@ -1,0 +1,265 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($Header;$Detail;$Suffix;$Hash;$StrHash1;$StrHash2;$StrHash3;$Trailer;$Record;$Contra)
+C_LONGINT($i;$Hash1;$Hash2;$Hash3;$Total)
+C_REAL($Surcharge;$BalanceOwing)
+
+//SetFacility   //For testing only
+
+USE CHARACTER SET("windows-1252";0)//Change to ANSI
+
+$DateString:=String([Facility]LastDaily;Internal date short)
+$DateString:=Delete string($DateString;6;1)//Remove slashes
+$DateString:=Delete string($DateString;3;1)
+
+$File:=Substring($DateString;5;4)+Substring($DateString;3;2)+Substring($DateString;1;2)+"ASB"+[Facility]FacilityCode+".txt"
+
+If (Test path name($File)=Is a document)
+DELETE DOCUMENT($File)
+End if 
+
+$Doc:=Create document($File)
+$LocalFile:=Document
+
+//First create header
+
+$FacilitySuffix:=Substring([Facility]BankAcNo;15)
+
+If (Substring($FacilitySuffix;1;1)="0")
+$FacilitySuffix:=Substring($FacilitySuffix;2)+" "
+End if 
+
+//[Facility]LastDaily
+
+$Header:="20"+Substring([Facility]BankAcNo;1;6)+Substring([Facility]BankAcNo;8;7)+$FacilitySuffix+Replace string(String([Facility]LastDaily;Internal date short special);"/";"")+"       "+PadString (Substring([Facility]CompanyName;1;20);20)+PadString ("";80)+PadString ("";29)+Char(Carriage return)+Char(Line feed)
+
+SEND PACKET($Doc;$Header)
+
+//Create detail
+
+//SET AUTOMATIC RELATIONS(True;False)
+
+//QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)  //For testing only
+//QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+//QUERY([Agreement]; & ;[Customer]BankAcct>"")
+
+//SET AUTOMATIC RELATIONS(False;False)
+
+$Detail:=""
+$Hash1:=0
+$Hash2:=0
+$Hash3:=0
+$Total:=0
+
+For ($i;1;Records in selection([Agreement]))
+If ([Agreement]AutoPay=True)
+RELATE ONE([Agreement]CustomerCode)
+[Agreement]NoticeAmtToBill:=Round([Agreement]BalanceOwing;2)
+If ([Agreement]AutoPayAmt<[Agreement]NoticeAmtToBill)
+[Agreement]NoticeAmtToBill:=Round([Agreement]AutoPayAmt;2)
+End if 
+
+//10/06/15 DAM Added for CC Surcharge
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+
+$BalanceOwing:=[Agreement]BalanceOwing
+$Surcharge:=0
+If (([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0)))
+$BalanceOwing:=Round(($BalanceOwing*(1+([Analysis]ReceiptFeePerc/100)))+[Analysis]ReceiptFeeFixed;2)
+$Surcharge:=$BalanceOwing-[Agreement]BalanceOwing
+End if 
+
+If ([Agreement]NoticeAmtToBill#Round($BalanceOwing;2))
+If ($Surcharge>0)// New for CC Surcharge processing
+[Agreement]NoticeAmtToBill:=Round(Num(RequestMessage (Get localized string("Customer")+": "+\
+[Customer]CustomerName+" "+"has a balance of"+": "+String([Agreement]BalanceOwing;"###,###.00")+\
+", the surcharge on this would be: "+String($Surcharge;"###,###.00")+", for a total of "+String([Agreement]BalanceOwing+$Surcharge;"###,###.00")+\
+" However their authorised amount is set to: "+String([Agreement]AutoPayAmt;"###,###.00")+". "+\
+" How much would you like to charge to this customer including surcharge?";String([Agreement]AutoPayAmt;"###,###.00");"OK";"Skip"));2)
+Else // If surcharge is 0
+[Agreement]NoticeAmtToBill:=Round(Num(RequestMessage (Get localized string("Customer")+": "+[Customer]CustomerName+" "+Get localized string("currently has a balance of")+": "+String($BalanceOwing;"###,###.00")+", "+Get localized string("but their Authorised Amount is set to")+": "+String([Agreement]AutoPayAmt;"###,###.00")+". "+"How much would you like to charge to this customer?";String($BalanceOwing;"###,###.00");"OK";"Skip"));2)
+End if 
+
+If (OK=0)
+[Agreement]NoticeAmtToBill:=0
+[Agreement]NoticeBilled:="Skipped"
+End if 
+End if 
+
+If ([Agreement]NoticeAmtToBill>0)
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=57)
+If (Records in selection([Analysis])=1)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=Current date
+[Trxs]Charge:=False
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=Substring("AutoPay - "+[Analysis]Description;1;80)
+[Trxs]TotAmt:=Round([Agreement]NoticeAmtToBill;2)
+[Trxs]Confirmed:=True
+If ([Analysis]SetBankedDate)
+[Trxs]DateBanked:=Current date
+End if 
+[Agreement]LastPmtDate:=[Trxs]TrxDate
+
+
+$Suffix:=Substring([Customer]BankAcct;15)
+
+If (Substring($Suffix;1;1)="0")
+$Suffix:=Substring($Suffix;2)+" "
+End if 
+
+$Detail:=$Detail+"13"+Substring([Customer]BankAcct;1;6)+Substring([Customer]BankAcct;8;7)+$Suffix+"000"+PadStringLeft (String(Int([Agreement]NoticeAmtToBill*100));10;"0")+PadString (Substring([Customer]BankAccountName;1;20);20)+PadStringLeft ("";12;"0")+PadString ("";12)+PadString ([Agreement]AgreeNo;12)+PadString ("";12)+" "+PadString (Substring([Facility]CompanyName;1;20);20)+PadString ("";39)+Char(Carriage return)+Char(Line feed)
+
+$Hash1:=$Hash1+Num(Substring([Customer]BankAcct;3;4))
+
+$Hash2:=$Hash2+Num(Substring([Customer]BankAcct;8;4))
+
+$Hash3:=$Hash3+Num(Substring([Customer]BankAcct;12;3))
+
+$Total:=$Total+Int([Agreement]NoticeAmtToBill*100)
+
+[Trxs]CCAuthNo:="ASB"
+SAVE RECORD([Trxs])
+//[Agreement]NoticeBilled:="Approved"
+[Agreement]BalanceOwing:=Round([Agreement]BalanceOwing-[Trxs]TotAmt;2)
+[Customer]Balance:=Round([Customer]Balance-[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+//QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+//If ([Analysis]ReceiptFeeAnalysis>"") & (([Analysis]ReceiptFeeFixed#0) | ([Analysis]ReceiptFeePerc#0))
+//$ReceiptAmount:=[Trxs]TotAmt
+//$Date:=[Trxs]TrxDate
+//$Facility:=Substring([Trxs]CustomerCode;1;5)
+//$Agree:=[Trxs]AgreeNo
+//$Cust:=[Trxs]CustomerCode
+//$Fixed:=[Analysis]ReceiptFeeFixed
+//$Percent:=[Analysis]ReceiptFeePerc
+//QUERY([Analysis];[Analysis]Code=$Facility+[Analysis]ReceiptFeeAnalysis)
+//If (Records in selection([Analysis])>=1)
+//CREATE RECORD([Trxs])
+//[Trxs]AnalysisCode:=[Analysis]Code
+//[Trxs]Description:=[Analysis]Description
+//[Trxs]TrxDate:=GetValidDate ($Date)
+//[Trxs]DateFrom:=$Date
+//[Trxs]DateTo:=$Date
+//[Trxs]AgreeNo:=$Agree
+//[Trxs]CustomerCode:=$Cust
+//[Trxs]Charge:=True
+
+//$PercCalc:=$ReceiptAmount-$Fixed
+//$PercCalc:=$PercCalc-($PercCalc/(1+($Percent/100)))  //$PercCalc-($PercCalc*($Percent/100)) -- Commented by Hamid - 21/4/2015 - 8569
+
+//[Trxs]TotAmt:=Round($Fixed+$PercCalc;2)
+//[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+
+//SAVE RECORD([Trxs])
+
+//If ([Reservation]RReserveNo>"")
+//[Reservation]Balance:=[Reservation]Balance+[Trxs]TotAmt
+//Else 
+//[Agreement]BalanceOwing:=[Agreement]BalanceOwing+[Trxs]TotAmt
+//End if 
+//[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+
+//End if 
+
+//End if 
+
+If ([Agreement]BalanceOwing=0)
+[Agreement]TotRentUnpaid:=0
+[Agreement]TotLateUnpaid:=0
+[Agreement]TotOthrUnpaid:=0
+[Agreement]PaidToDate:=[Agreement]NextBillDate-1
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+ReCalcUnpaid 
+End if 
+SyncRecordLog (Get localized string("Daily AutoPay Customer Read Only:")+" "+String(Num(Read only state([Customer]))))
+SAVE RECORD([Customer])
+MatchTrx ([Agreement]RAgreeNo;0;True)//new line added 28/6/06
+//End if 
+End if 
+SyncRecordLog (Get localized string("Daily AutoPay Agreement Read Only:")+" "+String(Num(Read only state([Agreement]))))
+SAVE RECORD([Agreement])
+
+End if 
+End if 
+NEXT RECORD([Agreement])
+End for 
+
+SEND PACKET($Doc;$Detail)
+
+If ($Hash3>999)
+$StrHash3:=String($Hash3)
+$Hash3:=Num(Substring($StrHash3;Length($StrHash3)-2))
+$Hash2:=$Hash2+Num(Substring($StrHash3;1;Length($StrHash3)-3))
+End if 
+
+If ($Hash2>9999)
+$StrHash2:=String($Hash2)
+$Hash2:=Num(Substring($StrHash2;Length($StrHash2)-3))
+$Hash1:=$Hash1+Num(Substring($StrHash2;1;Length($StrHash2)-4))
+End if 
+
+If ($Hash1>9999)
+
+$StrHash1:=String($Hash1)
+$Hash1:=Num(Substring($StrHash1;Length($StrHash1)-3))
+
+End if 
+
+$Hash:=PadStringLeft (String($Hash1);4;"0")+PadStringLeft (String($Hash2);4;"0")+PadStringLeft (String($Hash3);3;"0")
+
+//02/07/13 DAM Added Create Contra Record
+//$Detail:=$Detail+"13"+Substring([Customer]BankAcct;1;6)+Substring([Customer]BankAcct;8;7)+$Suffix+"000"+PadStringLeft (String(Int([Agreement]NoticeAmtToBill*100));10;"0")+PadString (Substring([Customer]BankAccountName;1;20);20)+PadStringLeft ("";12;"0")+PadString ("";12)+PadString ([Agreement]AgreeNo;12)+PadString ("";12)+" "+PadString (Substring([Facility]CompanyName;1;20);20)+PadString ("";39)+Char(Carriage return)+Char(Line feed)
+
+$Contra:="13"+Substring([Facility]BankAcNo;1;6)+Substring([Facility]BankAcNo;8;7)+$FacilitySuffix+"051"+PadStringLeft (String($Total);10;"0")+PadString (Substring([Facility]BankAcName;1;20);20)+PadStringLeft (String([Facility]LastDaily;Internal date short special);12;"0")+PadString ("";12)+PadString ("";12)+PadString ("DIRECT DEBIT";12)+" "+PadString (Substring([Facility]CompanyName;1;20);20)+PadString ("";39)+Char(Carriage return)+Char(Line feed)
+
+SEND PACKET($Doc;$Contra)
+
+//Last create trailer
+
+$Trailer:="1399"+$Hash+"      "+PadStringLeft (String($Total*2);10;"0")+PadString ("";80)+PadString ("";49)+Char(Carriage return)+Char(Line feed)
+
+SEND PACKET($Doc;$Trailer)
+
+CLOSE DOCUMENT($Doc)
+
+$ErrFile:="4DCurl.txt"
+
+If (Test path name($ErrFile)=Is a document)
+DELETE DOCUMENT($ErrFile)
+End if 
+
+$ErrDoc:=Create document($ErrFile)
+
+CLOSE DOCUMENT($ErrDoc)
+
+$ErrorPath:=Document
+
+USE CHARACTER SET(*;0)//Reset to UTF-8
+
+$Username:=GetTextNo ([Facility]DDAccountDetails;2;",")//"STORMANAPI"
+$Password:=GetTextNo ([Facility]DDAccountDetails;3;",")//"stormanapi"
+
+LAUNCH EXTERNAL PROCESS("curl.exe --fail --silent --show-error --stderr "+$ErrorPath+" -vk --ftp-ssl -u "+$Username+":"+$Password+" ftps://amslftp.asb.co.nz/"+$File+" -T "+$LocalFile+" --ftp-pasv")
+
+DOCUMENT TO BLOB(Document;$ErrorBlob)
+
+$ErrorText:=BLOB to text($ErrorBlob;Mac text without length)
+
+$Pos:=Position("curl";$ErrorText)
+
+$ErrorText:=Substring($ErrorText;$Pos)
+
+If ($ErrorText>"")
+AlertMessage ($ErrorText)
+SyncRecordLog ($ErrorText)
+End if 

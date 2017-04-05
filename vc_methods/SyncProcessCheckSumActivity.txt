@@ -1,0 +1,70 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//  //SDD 25/3/11 Method to process the Activity CheckSums
+//C_TEXT($1;$Site;$Result;$SiteCustToSend)  //Error reports Host, Site
+//C_TIME($Doc)
+//C_TEXT($cr)
+//C_DATE($Date)
+//C_LONGINT($i;$j)
+//$cr:=Char(13)
+//If (<>iPlatform=3)
+//$cr:=$cr+Char(10)
+//End if 
+//$i:=1
+//$File:=<>sBackupPath+<>sSeparator+"CheckSumActivity"+[EventLog]FacilityCode+String(Day of(Current date);"00")+Substring(String(Current time);1;2)+".txt"
+//While (Test path name($File)=Is a document)
+//DELETE DOCUMENT($File)
+//If (Test path name($File)=Is a document)
+//$File:="1"+$File
+//End if 
+//End while 
+//$Site:=$1  //Site
+//$Result:="CheckSumActivity Result for Facility:"+[EventLog]FacilityCode+" - HOF then Site for each column"+$cr
+//$Result:=$Result+"ActivityDate"+Char(9)+"CheckSum"+$cr
+//$SiteCustToSend:=[EventLog]FacilityCode+","
+//$SiteNoToFix:=0
+//$Facility:=[EventLog]FacilityCode
+//$Tickcount:=Tickcount+1800  //Allow 30 secs but don't get stuck in endless loop
+//Repeat 
+//$j:=Position(Char(13);$Site;0;*)
+//$SiteData:=Substring($Site;1;$j-1)
+//$Site:=Substring($Site;$j+1)
+//$j:=Position(Char(9);$SiteData;0;*)
+//$SiteCode:=Substring($SiteData;1;$j-1)
+//$Date:=Date(Substring($SiteCode;9;2)+"/"+Substring($SiteCode;6;2)+"/"+Substring($SiteCode;1;4))
+//$SiteData:=Substring($SiteData;$j+1)
+//QUERY([Activity];[Activity]FacilityCode=$Facility;*)
+//QUERY([Activity]; & ;[Activity]ActivityDate=$Date)
+//Case of 
+//: (Records in selection([Activity])=0)
+//$Result:=$Result+String($Date)+Char(9)+"Missing at HOF"+$cr
+//$SiteCustToSend:=$SiteCustToSend+String([Activity]ActivityDate)+","
+//$SiteNoToFix:=$SiteNoToFix+1
+//: (Records in selection([Activity])>1)
+//$Result:=$Result+String($Date)+Char(9)+"Duplicate at HOF"+$cr
+//: ([Activity]MD5CheckSum#$SiteData)
+//$Result:=$Result+String([Activity]ActivityDate)+Char(9)+[Activity]MD5CheckSum+Char(9)+$SiteData+$cr
+//$SiteCustToSend:=$SiteCustToSend+String([Activity]ActivityDate)+","
+//$SiteNoToFix:=$SiteNoToFix+1
+//End case 
+//Until ($Site="") | (Tickcount>$Tickcount)
+//
+//If ($SiteNoToFix>0)
+//If ($SiteNoToFix<=10)
+//INSERT IN ARRAY(<>asActivityFix;0;1)  //Need new variable name
+//<>asActivityFix{1}:=$SiteCustToSend
+//$Result:=$Result+$SiteCustToSend+" - These agreements automatically resynced from site to HOF so no further action required!"+$cr
+//Else 
+//$Result:=$Result+$SiteCustToSend+" - Too many agreements, so these need to be resynced from Site to HOF.  Please take appropriate action!"+$cr
+//SendEmail ("urgent@storman.com";Get localized string("URGENT - CheckSumActivity File Requires Action at")+" "+[EventLog]FacilityCode;$Result)
+//If ([Facility]FacilityCode="KE@")
+//SendEmail ("smalerts@kss.com.au";"URGENT - CheckSumActivity File Requires Action at"+" "+[EventLog]FacilityCode;$Result)
+//End if 
+//End if 
+//$Doc:=Create document($File)
+//SEND PACKET($Doc;$Result)
+//CLOSE DOCUMENT($Doc)
+//If (<>iPlatform<3)
+//SET DOCUMENT CREATOR(Document;"ttxt")
+//SET DOCUMENT TYPE(Document;"TEXT")
+//End if 
+//End if 

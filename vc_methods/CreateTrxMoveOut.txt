@@ -1,0 +1,680 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 11/09/13 Modified Calculation of Tax amounts to always cal inclusive of tax even when TaxAddtoAmt=true as LastBillAmt is always tax inclusive
+C_LONGINT($i;$j)
+C_LONGINT($xDays;$yDays)
+C_DATE($TrxDate)
+C_TEXT($User;$Machine;$ProcName)
+C_BOOLEAN($1;$Web)// DAM Added for calling from WS_DoMoveOut
+$Web:=False
+If (Count parameters=1)
+$Web:=$1
+End if 
+READ WRITE([UnitType])
+READ WRITE([RCHistory])
+READ WRITE([Unit])
+RELATE MANY([Agreement]RAgreeNo)
+$Locked:=False
+vMoveOut:=False
+For ($i;1;Records in selection([Unit]))
+If ($Locked=False)
+$Locked:=Locked([Unit])
+If ($Locked)
+LOCKED BY([Unit];$j;$User;$Machine;$ProcName)
+If ($Web)
+WS_ORErrorCode:=2
+WS_ORErrorDescription:=Get localized string("The")+" "+Get localized string("Unit")+":"+[Unit]UnitNo+" "+Get localized string("is locked by process")+" "+$ProcName+":"+String($j)+":"+$User+":"+$Machine+".  "+Get localized string("Unable to move-out.")
+WS_ORSuccess:=False
+Else 
+AlertMessage (Get localized string("The")+" "+Get localized string("Unit")+":"+[Unit]UnitNo+" "+Get localized string("is locked by process")+" "+$ProcName+":"+String($j)+":"+$User+":"+$Machine+".  "+Get localized string("Unable to move-out."))
+End if 
+End if 
+End if 
+RELATE ONE([Unit]UnitTypeCode)
+If ($Locked=False)
+$Locked:=Locked([UnitType])
+If ($Locked)
+LOCKED BY([UnitType];$j;$User;$Machine;$ProcName)
+If ($Web)
+WS_ORErrorCode:=3
+WS_ORErrorDescription:=Get localized string("The")+" "+Get localized string("Unit Type")+":"+[UnitType]UnitTypeCode+" "+Get localized string("is locked by process")+" "+$ProcName+":"+String($j)+":"+$User+":"+$Machine+".  "+Get localized string("Unable to move-out.")
+WS_ORSuccess:=False
+Else 
+AlertMessage (Get localized string("The")+" "+Get localized string("Unit Type")+":"+[UnitType]UnitTypeCode+" "+Get localized string("is locked by process")+" "+$ProcName+":"+String($j)+":"+$User+":"+$Machine+".  "+Get localized string("Unable to move-out."))
+End if 
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+If ($Locked=False)
+If ($Web)
+OK:=1
+Else 
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("Are you sure you want to move this customer out of all berths attached to this agreement?");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("Are you sure you want to return all appliances attached to this agreement?");Get localized string("Yes");Get localized string("No"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("Are you sure you want to move this customer out of all spaces attached to this agreement?");Get localized string("Yes");Get localized string("No"))
+Else 
+ConfirmTwo (Get localized string("Are you sure you want to move this customer out of all units attached to this agreement?");Get localized string("Yes");Get localized string("No"))
+End case 
+End if 
+If (OK=1)
+$i:=1
+If (<>sFacility="PL@")
+[Agreement]MoveOut:=Current date
+Else 
+If ([Agreement]MoveOut#Current date)
+
+If ($Web)
+OK:=1
+Else 
+Case of 
+: (<>sProduct="@B")
+ConfirmTwo (Get localized string("Depart customer as of")+" "+String([Agreement]MoveOut)+"?";Get localized string("Confirm");Get localized string("Cancel"))
+: (<>sProduct="@R")
+ConfirmTwo (Get localized string("Return this item as of")+" "+String([Agreement]MoveOut)+"?";Get localized string("Confirm");Get localized string("Cancel"))
+: (<>sProduct="@C")
+ConfirmTwo (Get localized string("Move out customer as of")+" "+String([Agreement]MoveOut)+"?";Get localized string("Confirm");Get localized string("Cancel"))
+Else 
+ConfirmTwo (Get localized string("Move out customer as of")+" "+String([Agreement]MoveOut)+"?";Get localized string("Confirm");Get localized string("Cancel"))
+End case 
+End if 
+
+If (OK=1)
+Case of 
+: ([Agreement]MoveOut<[Facility]CantModPrior)
+
+If ($Web)
+WS_ORErrorCode:=4
+WS_ORErrorDescription:=Get localized string("The move out date cannot be earlier than")+" "+String([Facility]CantModPrior)+". "+Get localized string("Please check the Expected Move Out date.")
+WS_ORSuccess:=False
+Else 
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("The departure date cannot be earlier than")+" "+String([Facility]CantModPrior)+". "+Get localized string("Please check the Expected Departure date."))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("The return date cannot be earlier than")+" "+String([Facility]CantModPrior)+". "+Get localized string("Please check the Expected Return date."))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("The move out date cannot be earlier than")+" "+String([Facility]CantModPrior)+". "+Get localized string("Please check the Expected Move Out date."))
+Else 
+AlertMessage (Get localized string("The move out date cannot be earlier than")+" "+String([Facility]CantModPrior)+". "+Get localized string("Please check the Expected Move Out date."))
+End case 
+End if 
+
+OK:=0
+: (Abs([Agreement]MoveOut-Current date)>[Facility]MoveOutDays)
+//AlertMessage (Get localized string("The move out date must be within 28 days of today. Please check the Expected Move Out date."))
+
+If ($Web)
+WS_ORErrorCode:=5
+WS_ORErrorDescription:=Get localized string("The move out date must be within")+" "+String([Facility]MoveOutDays)+" "+Get localized string("days of today. Please check the Expected Move Out date.")
+WS_ORSuccess:=False
+Else 
+Case of 
+: (<>sProduct="@B")
+AlertMessage (Get localized string("The departure date must be within")+" "+String([Facility]MoveOutDays)+" "+Get localized string("days of today. Please check the Expected Departure date."))
+: (<>sProduct="@R")
+AlertMessage (Get localized string("The return date must be within")+" "+String([Facility]MoveOutDays)+" "+Get localized string("days of today. Please check the Expected Return date."))
+: (<>sProduct="@C")
+AlertMessage (Get localized string("The move out date must be within")+" "+String([Facility]MoveOutDays)+" "+Get localized string("days of today. Please check the Expected Move Out date."))
+Else 
+AlertMessage (Get localized string("The move out date must be within")+" "+String([Facility]MoveOutDays)+" "+Get localized string("days of today. Please check the Expected Move Out date."))
+End case 
+End if 
+
+OK:=0
+Else 
+OK:=1
+End case 
+End if 
+
+End if 
+//While ([Agreement]MoveOut#Current date) & ($i=1)
+//$TrxDate:=Date(RequestMessage ("Please confirm move out date:";String([Agreement]MoveOut)))
+//If (OK=1)
+//Case of 
+//: ($TrxDate<[Facility]CantModPrior)
+//AlertMessage ("The move out date cannot be earlier than "+String([Facility]CantModPrior)+".")
+//: (Abs($TrxDate-Current date)>28)
+//AlertMessage ("The move out date must be within 28 days of today.")
+//Else 
+//$i:=0
+//[Agreement]MoveOut:=$TrxDate  //These 2 lines added in 4.1.0 to recalc vAmts b4 doing the code below
+//  //MoveOutCalc  - Removed because prevents change of Move Out variables
+//End case 
+//Else 
+//$i:=2
+//End if 
+//End while 
+End if 
+
+If ([Agreement]MoveOut<[Agreement]MoveIn)
+If ($Web)
+WS_ORErrorCode:=6
+WS_ORErrorDescription:=Get localized string("The move out date cannot be less than")+" "+String([Agreement]MoveIn;6)
+WS_ORSuccess:=False
+Else 
+AlertMessage (Get localized string("The move out date cannot be less than")+" "+String([Agreement]MoveIn;6))
+End if 
+OK:=0
+End if 
+
+If (OK=1)
+If ($i<2)
+$TrxDate:=vMoveOutDate//This date is calculated in the MoveOutCalc method and adjusts for NoticeDaysReqd
+OK:=1
+While ($TrxDate<[Facility]CantModPrior) & (OK=1)
+Case of 
+: (<>sProduct="@B")
+$TrxDate:=RequestDate (Get localized string("Date for Departure Transactions")+":";[Facility]CantModPrior)
+: (<>sProduct="@R")
+$TrxDate:=RequestDate (Get localized string("Date for Return Transactions")+":";[Facility]CantModPrior)
+: (<>sProduct="@C")
+$TrxDate:=RequestDate (Get localized string("Date for Move-out Transactions")+":";[Facility]CantModPrior)
+Else 
+$TrxDate:=RequestDate (Get localized string("Date for Move-out Transactions")+":";[Facility]CantModPrior)
+End case 
+End while 
+If (OK=1)
+If (vBillOther=1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveOut=True;*)
+//21/08/13 DAM Added to create shipping transaction
+//original code QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If ([Agreement]BnS#"")
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=6)
+Else 
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+End if 
+Else 
+REDUCE SELECTION([Analysis];0)
+End if 
+READ WRITE([Trxs])
+If ([Facility]PriorRefndPol>=1) & ([Facility]PriorRefndPol<=3) & ([Agreement]AgreeNo<[Facility]RefndAgrChange)
+[Facility]RefundPolicy:=[Facility]PriorRefndPol
+End if 
+$i:=Round(([Agreement]NextBillDate-[Agreement]LastBillDate)/30;0)
+If ([Facility]RefundPolicy=2) & ($i>[Facility]RefndWklyMths)
+[Facility]RefundPolicy:=1
+End if 
+If ([Facility]RefundOtherRegChgs=True)// Refund Other Regular Charges
+$NextBill:=[Agreement]NextBillDate
+If ([BillPlan]ShowIncentonInv=False)//Added 3.1.7
+$NextBill:=CalcNxtBillDate ([Agreement]NextBillDate;[BillPlan]FreePeriods*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)//Take out free months
+End if 
+$xDays:=$NextBill-$TrxDate-1
+$PriorBill:=CalcNxtBillDate ([Agreement]LastBillDate;[Agreement]MthsAdv*(-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+If ($TrxDate<[Agreement]LastBillDate)
+//This line to adjust denominator where rent has been billed on past MoveOut date 
+$yDays:=[Agreement]LastBillDate-$PriorBill
+Else 
+$yDays:=$NextBill-[Agreement]LastBillDate
+End if 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode#<>sFacility+"IN")
+ARRAY TEXT(aOtherChgsAnalysisCode;0)
+DISTINCT VALUES([OtherChgs]AnalysisCode;aOtherChgsAnalysisCode)
+CREATE SET([Trxs];"Hold")
+For ($i;1;Size of array(aOtherChgsAnalysisCode))
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=aOtherChgsAnalysisCode{$i};*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Agreement]LastBillDate)
+If ([Facility]TaxAddtoAmt=True)
+$OtherTot:=Sum([Trxs]TotAmt)-Sum([Trxs]TaxAmt)
+Else 
+$OtherTot:=Sum([Trxs]TotAmt)
+End if 
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+Case of 
+: ([Facility]RefundPolicy=1)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Agreement]MoveOut)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+" "+Get localized string("Credit")
+[Trxs]TotAmt:=Round(($OtherTot*$xDays/$yDays)*(-1);2)
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+[Trxs]Confirmed:=True
+[Trxs]Narration:=vORCText
+[Trxs]Narration:=[Trxs]Narration+"M = "+Get localized string("Rate for")+" "+[Analysis]Description+" = "+String($OtherTot;<>sFormat)+Char(13)
+[Trxs]Narration:=[Trxs]Narration+"M x X / Y = "+String(Round(($OtherTot*$xDays/$yDays)*(-1);2);<>sFormat)+Char(13)
+
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Agreement]LastBillDate)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End if 
+Else 
+//Do Nothing
+End case 
+End for 
+USE SET("Hold")
+CLEAR SET("Hold")
+End if 
+For ($i;1;5+Records in selection([Analysis]))
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Agreement]MoveOut)
+[Trxs]Charge:=True
+//vMoveOutDate:=[Agreement]OutNoticeDate+[Facility]NoticeDaysReqd
+//If ([Agreement]MoveOut>vMoveOutDate)
+//vMoveOutDate:=[Agreement]MoveOut
+//End if 
+GetAnalysis 
+Case of 
+: ($i=1)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=Get localized string("Remove Discount")
+[Trxs]TotAmt:=vAmt1
+[Trxs]CheckTotAmt:=vNew1
+[Trxs]DateFrom:=vMoveOutDate+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+: ($i=2)
+[Trxs]AnalysisCode:=[Analysis]Code
+Case of 
+: (<>sProduct="@B")
+[Trxs]Description:=Substring(Get localized string("Rent Credit Berth")+" "+[Agreement]UnitsOccup;1;80)
+: (<>sProduct="@R")
+[Trxs]Description:=Substring(Get localized string("Rent Credit Appliance")+" "+[Agreement]UnitsOccup;1;80)
+: (<>sProduct="@C")
+[Trxs]Description:=Substring(Get localized string("Rent Credit Space")+" "+[Agreement]UnitsOccup;1;80)
+Else 
+[Trxs]Description:=Substring(Get localized string("Rent Credit Unit")+" "+[Agreement]UnitsOccup;1;80)
+End case 
+[Trxs]TotAmt:=vAmt2
+[Trxs]CheckTotAmt:=vNew2
+[Trxs]DateFrom:=vMoveOutDate+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+If ([Facility]RefundPolicy>0) & ([Facility]RefundPolicy<3) & (vtFormula>"")
+[Trxs]Narration:=vtFormula
+End if 
+: ($i=3)
+[Trxs]AnalysisCode:=[Analysis]Code
+If ([Facility]RefundPolicy=2)
+[Trxs]Description:=Get localized string("Rent at Weekly Rate")
+Else 
+[Trxs]Description:=Get localized string("Cancellation Fee")
+End if 
+[Trxs]TotAmt:=vAmt3
+[Trxs]CheckTotAmt:=vNew3
+[Trxs]DateFrom:=vMoveOutDate+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+If ([Facility]RefundPolicy=2) & (vtFormula>"")
+[Trxs]Narration:=vtFormula
+End if 
+: ($i=4)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]KeyStatsCategory="Insurance")
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Insurance Credit"
+[Trxs]TotAmt:=vAmt4
+[Trxs]CheckTotAmt:=vNew4
+[Trxs]DateFrom:=vMoveOutDate+1
+[Trxs]DateTo:=[Agreement]NextBillDate
+If ([Facility]RefundPolicy=1) & (vWords>"")
+[Trxs]Narration:=vWords
+End if 
+: ($i=5)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP")
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:="Reverse "+[Analysis]Description
+[Trxs]TotAmt:=vAmt5
+[Trxs]CheckTotAmt:=vNew5
+APPLY TO SELECTION([PhotosCards];[PhotosCards]Deposit:=0)
+Else 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]BillMoveOut=True;*)
+//21/08/13 DAM Added to create shipping transaction
+//original code QUERY([Analysis]; & ;[Analysis]Inactive=False)
+If ([Agreement]BnS#"")
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]SpecialOptions=6)
+Else 
+QUERY([Analysis]; & ;[Analysis]Inactive=False)
+End if 
+GOTO SELECTED RECORD([Analysis];$i-4)
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description
+[Trxs]TotAmt:=[Analysis]DfltSellAmt
+//21/08/13 DAM Added for creating shipping transaction when moving out
+If ([Agreement]BnS#"")
+$Kg:=Records in selection([Unit])*25
+$PostCode:=GetTextNo ([Agreement]BnS;1;",")
+$Suburb:=GetTextNo ([Agreement]BnS;2;",")
+QUERY([Shipping];[Shipping]FacilityCode=<>sFacility;*)
+QUERY([Shipping]; & ;[Shipping]PostCode=Num($PostCode);*)
+QUERY([Shipping]; & ;[Shipping]Suburb=$Suburb;*)
+QUERY([Shipping]; & ;[Shipping]MaxKg>=$Kg;*)
+QUERY([Shipping]; & ;[Shipping]MinKg<$Kg)
+[Trxs]TotAmt:=[Trxs]TotAmt+[Shipping]Price
+End if 
+End case 
+
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt;[Trxs]AnalysisCode;[Trxs]TrxDate;[Agreement]NextBillDate;2)//SDD Changed to option 2 so that it always uses TaxInclusive since LastBillAmt is always tax inclusive even for TaxAddtoAmt=True
+[Trxs]Confirmed:=True
+If ([Trxs]TotAmt#0)
+SAVE RECORD([Trxs])
+[Customer]Balance:=[Customer]Balance+[Trxs]TotAmt
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ([Agreement]LastBillDate)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Confirmed:=True
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+SAVE RECORD([Trxs])
+End if 
+End if 
+End if 
+End for 
+READ ONLY([Trxs])
+$i:=Position([Agreement]AgreeNo;[Customer]AgreemtsOperating)
+If ($i>0)
+[Customer]AgreemtsOperating:=Delete string([Customer]AgreemtsOperating;$i;10)
+End if 
+SET QUERY DESTINATION(3;$i)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+SET QUERY DESTINATION(0)
+[Customer]NoActiveAgreemts:=$i-1//This one has not yet been set inactive
+If ($i=0)
+[Customer]Overdue:=0
+End if 
+SAVE RECORD([Customer])
+RELATE MANY([Agreement]RAgreeNo)
+FIRST RECORD([Unit])
+
+If (Records in selection([Unit])>0)////////fb8964 by eugene 30.04.15 
+
+
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+[UnitType]NoVacant:=[UnitType]NoVacant+1
+If ([Unit]MoveOut#!00-00-00!)
+[UnitType]NoExpMoveOut:=[UnitType]NoExpMoveOut-1
+End if 
+SAVE RECORD([UnitType])
+[Unit]MoveOut:=[Agreement]MoveOut
+READ WRITE([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Unit]AgreeNo)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+[UnitHistory]MoveOut:=[Unit]MoveOut
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+End if 
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+[Unit]AgreeNo:=""
+[Unit]InsureValue:=0
+[Unit]InsureCertNo:=""
+[Unit]Deposit:=0
+[Unit]Vacant:=True
+If ([Facility]FacilityCode="ST@")
+// SU to Billing - If removing the Unit
+$Index:=FindSeparatedTextLine ([Agreement]SUFacilityInfo;Char(Line feed);";";1;String(Num(Old([Unit]SUFacilityID))))//Search [Agreement]SUFacilityInfo for lines (separated by $lf) where the first parameter(delimited by ';' = $vtSUFacilityIDShort
+If ($Index#-1)
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;GetSeparatedText ([Agreement]SUFacilityInfo;Char(Line feed);$Index)+Char(Line feed);"")
+[Agreement]SUFacilityInfo:=Replace string([Agreement]SUFacilityInfo;Char(Line feed)+Char(Line feed);Char(Line feed))
+[Unit]SUFacilityID:=0
+Else 
+AlertMessage (Get localized string("The SU Facility details were not able to be removed from Agreement")+" "+[Agreement]AgreeNo)
+End if 
+End if 
+
+
+[Unit]Status:=<>asUnitStatus{2}//Vacant
+If ([Facility]MoveOutUnitStatus)
+[Unit]Status:=<>asUnitStatus{6}//ToClean  ChangeSite
+End if 
+If ([Unit]ReservedTo>"")
+[Unit]Status:=<>asUnitStatus{3}//Reserved
+End if 
+[Unit]UpdateGate:=[Facility]UseGateSys
+[Unit]UpdatePULS:=<>tUtilities
+If ([Unit]Status#Old([Unit]Status))
+[Unit]LastStatusDate:=Current date
+End if 
+[Unit]IncreaseFrom:=!00-00-00!
+SAVE RECORD([Unit])
+NEXT RECORD([Unit])
+End for 
+
+Else //////////// fb8964  for sublets
+READ WRITE([UnitHistory])
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Unit]AgreeNo)
+If (Records in selection([UnitHistory])>0)
+ORDER BY([UnitHistory];[UnitHistory]MoveIn;<)
+[UnitHistory]MoveOut:=[Unit]MoveOut
+[UnitHistory]RentedValue:=[Unit]RentedValue
+SAVE RECORD([UnitHistory])
+Else 
+QUERY([UnitAgree];[UnitAgree]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([UnitAgree])>0)
+READ WRITE([UnitHistory])
+For ($k;1;Records in selection([UnitAgree]))
+CREATE RECORD([UnitHistory])
+[UnitHistory]AgreeNo:=[UnitAgree]AgreeNo
+[UnitHistory]UnitNo:=[UnitAgree]UnitNo
+[UnitHistory]MoveIn:=[UnitAgree]MoveIn
+[UnitHistory]MoveOut:=[Agreement]MoveOut
+[UnitHistory]DaysStayed:=[UnitHistory]MoveOut-[UnitHistory]MoveIn
+[UnitHistory]RentedValue:=[UnitAgree]RentedValue
+SAVE RECORD([UnitHistory])
+NEXT RECORD([UnitHistory])
+End for 
+End if 
+End if 
+READ ONLY([UnitHistory])
+UNLOAD RECORD([UnitHistory])
+End if 
+[Agreement]DepositAmt:=0
+[Agreement]ActiveAgreemt:=False
+vMoveOut:=True
+vUnits:=[Agreement]UnitsOccup
+// [Agreement]NextBillDate:=!00/00/00!  Don't know why to do this? DELETED
+vRecalc:=True
+SAVE RECORD([Agreement])
+vbFrom:=True
+End if 
+End if 
+If ([Customer]NoActiveAgreemts<1)
+//ConfirmTwo ("Clear this customer's PIN's?";"Yes";"No")
+//If (OK=1)
+$CustNameGate:=[Customer]CustomerName
+$GatePin:=[Customer]GatePIN
+If (Application type=4D Remote mode)
+$Q:=Execute on server("Insight";400000;"Insight";$CustNameGate;$GatePin)
+Else 
+<>sInsightMO:=$CustNameGate+"&;&"+$GatePin
+End if 
+
+[Customer]GatePIN:=""
+QUERY([PhotosCards];[PhotosCards]Code=[Customer]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size=0)
+For ($i;1;Records in selection([PhotosCards]))
+If ([PhotosCards]Deposit>0)
+If ($Web)
+WSRecordLog (Get localized string("The card for")+" "+[PhotosCards]Name+" "+Get localized string("still has a deposit, please remove this manually"))
+Else 
+AlertMessage (Get localized string("The card for")+" "+[PhotosCards]Name+" "+Get localized string("still has a deposit, please remove this manually"))
+End if 
+Else 
+DELETE RECORD([PhotosCards])
+End if 
+NEXT RECORD([PhotosCards])
+End for 
+//Else 
+//AlertMessage ("You will need to clear this customer's PIN's manually")
+//End if 
+End if 
+
+QUERY([Notices];[Notices]RefDateField=48;*)
+QUERY([Notices]; | ;[Notices]RefDateField=44;*)
+QUERY([Notices]; & ;[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]LateCycleIgnore=False;*)
+QUERY([Notices]; & ;[Notices]DaysAfter>0;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo)
+ORDER BY([Notices];[Notices]DaysAfter;<)
+FIRST RECORD([Notices])
+NEXT RECORD([Notices])
+
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+If ([Facility]LateFeeReset)
+QUERY([Trxs]; & ;[Analysis]KeyStatsCategory="Rent";*)
+$BalanceCalc:=[Agreement]TotRentUnpaid
+Else 
+$BalanceCalc:=[Agreement]BalanceOwing
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date)
+$BalanceCalc:=$BalanceCalc-Sum([Trxs]TotAmt)
+
+If ([Facility]DelinquentSystem=True) & ([Agreement]LastNotice>=[Notices]DaysAfter) & ($BalanceCalc>[Facility]MinBalArrears)
+If ($Web)
+OK:=0
+Else 
+ConfirmTwo (Get localized string("Do you want to mark this customer as delinquent? This will mean if they come back in the future you will be alerted");Get localized string("No");Get localized string("Yes"))
+End if 
+If (OK=0)
+[Customer]Delinquent:=True
+vDelinquent:="Delinquent"
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Agreement]CustomerCode
+[NotesHistory]Note:=Get localized string("Customer was set to Delinquent")
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:=<>sCurrentUser
+SAVE RECORD([NotesHistory])
+If ([Customer]Notes#"")//Create alert note
+[Customer]Notes:=Get localized string("Customer is delinquent")+Char(13)+Char(13)+[Customer]Notes
+Else 
+[Customer]Notes:=Get localized string("Customer is delinquent")
+End if 
+[Agreement]AlertNotesMsg:=True
+End if 
+End if 
+QUERY([Notices];[Notices]FacilityCode=Substring([Agreement]RAgreeNo;1;5);*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=[Agreement]NoticePlanNo;*)
+QUERY([Notices]; & ;[Notices]PrintOnMoveout=True)
+If (Records in selection([Notices])>0)
+If ($Web)
+OK:=0
+Else 
+ConfirmTwo (Get localized string("Print")+" "+String(Records in selection([Notices]))+" "+Get localized string("notices for move out?");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+For ($i;1;Records in selection([Notices]))
+CREATE RECORD([Letters])
+[Letters]AgreeNo:=[Agreement]RAgreeNo
+[Letters]LetterDesc:=[Notices]Description
+[Letters]DateSent:=Current date
+$p:=->[Notices]Letter
+[Letters]SentViaEmail:=False
+Case of 
+: ([Notices]AttachInvoice=2)
+[Letters]SentwithInv:=[Agreement]SendInvoices
+: ([Notices]AttachInvoice=1)
+[Letters]SentwithInv:=True
+Else 
+[Letters]SentwithInv:=False
+End case 
+Case of 
+: ([Notices]AttachStatement=2)
+[Letters]SentWithStatement:=[Agreement]SendStatements
+: ([Notices]AttachStatement=1)
+[Letters]SentWithStatement:=True
+Else 
+[Letters]SentWithStatement:=False
+End case 
+BLOB PROPERTIES($p->;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB($p->)
+End if 
+[Letters]LetterBLOB:=FreezeLetter ($p)
+COMPRESS BLOB([Letters]LetterBLOB)
+SAVE RECORD([Letters])
+BLOB PROPERTIES([Letters]LetterBLOB;$Compressed)
+If ($Compressed#Is not compressed)
+EXPAND BLOB([Letters]LetterBLOB)
+End if 
+$Letter:=WR New offscreen area 
+WR BLOB TO AREA ($Letter;[Letters]LetterBLOB)
+WR SET PRINT OPTION ($Letter;wr number of copies option;1)
+WR EXECUTE COMMAND ($Letter;wr cmd print)
+WR DELETE OFFSCREEN AREA ($Letter)
+NEXT RECORD([Notices])
+End for 
+End if 
+End if 
+End if 
+End if 
+End if 
+READ ONLY([UnitType])
+READ ONLY([RCHistory])
+READ ONLY([Unit])
+LOAD RECORD([UnitType])
+LOAD RECORD([RCHistory])
+LOAD RECORD([Unit])
+
+/////////////fb8964 by eugene 30.04.2015////////////////////
+If ([Agreement]ActiveAgreemt=False)
+vActive:=Get localized string("Non-Active")
+QUERY([UnitHistory];[UnitHistory]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False)
+ORDER BY([UnitHistory];[UnitHistory]MoveOut;>;[UnitHistory]MoveIn;>)
+OBJECT SET VISIBLE(*;"Subform1";False)
+OBJECT SET VISIBLE(*;"Subform9";False)
+OBJECT SET VISIBLE(*;"@Old";False)
+OBJECT SET VISIBLE(*;"RectangleBG";False)
+OBJECT SET VISIBLE(*;"Subform8";True)
+
+OBJECT SET ENABLED(*;"btnSublet";False)
+
+End if 
+/////////////////////////
+

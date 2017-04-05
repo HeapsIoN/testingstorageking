@@ -1,0 +1,139 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$k;$l)
+LogAction (False;"EventLog Exceptions Report started.")// records the report being started in the eventlog
+C_BOOLEAN(forCompleted)
+forCompleted:=False
+If (PermissionsControl (146))
+QUERY([EventLog];[EventLog]DatePrinted>(Current date-40))
+DISTINCT VALUES([EventLog]DatePrinted;aDates)
+SORT ARRAY(aDates;<)
+vOrigin:="RptsMenu"
+Open window((Screen width/2)-194;(Screen height/2)-275;(Screen width/2)+194;(Screen height/2)+275;5;Get localized string("MenuMoreReportseventlogExceptionsReport"))
+DIALOG([EventLog];"PrintLogDialog")
+CLOSE WINDOW
+If (OK=1)
+//vSRptDate:=Date(Request("Enter report start date:";String(Current date-1)))
+//vRptDate:=Date(Request("Enter report end date:";String(Current date)))
+If (vSRptDate>vRptDate)
+vSRptDate:=vRptDate
+End if 
+For ($i;1;Size of array(asSiteCodes))
+vString:=""
+QUERY([Facility];[Facility]FacilityCode=asSiteCodes{$i})
+//the following just in case one event falls into more than 1 category
+For ($k;1;Size of array(<>asPrintSettingsDesc))
+If (<>asPrintSettingsPrint{$k}=True)
+Case of 
+: ($k=1)
+vString:="0"
+: ($k=2)
+vString:="F"//changes to the Facility table
+: ($k=3)
+vString:=vString+"P"//Mod of Userlogins table 
+: ($k=4)
+vString:=vString+"H"//Mod of Analysis table
+: ($k=5)
+vString:=vString+"B"//Mod of Billing Plans
+: ($k=6)
+vString:=vString+"S"//Mod of Notices table
+: ($k=7)
+vString:=vString+"M"//Mod of Marketing Types
+: ($k=8)
+vString:=vString+"U"//Mod of Units table
+: ($k=9)
+vString:=vString+"A"//Non-Active agreements reactivated
+: ($k=10)
+vString:=vString+"D"//Mod of NextBillDate / PaidToDate/LateCycleStDate
+: ($k=11)
+vString:=vString+"+"//Mod of Rent Increase
+: ($k=12)
+vString:=vString+"I"//Mod of Insurance
+: ($k=13)
+vString:=vString+"N"//Mod of Notice Plan
+: ($k=14)
+vString:=vString+"C"//Mod of customer details
+: ($k=15)
+vString:=vString+"T"//deletion of a trx
+: ($k=16)
+vString:=vString+"-"// trx negative amount
+: ($k=17)
+vString:=vString+"!"//mod of TrxDate
+: ($k=18)
+vString:=vString+"$"//mod of Amount
+: ($k=19)
+vString:=vString+"%"//DiscAmt > 0
+: ($k=20)
+vString:=vString+"*"//mod of datebanked
+: ($k=21)
+vString:=vString+"~"// mod of DateFrom / To
+: ($k=22)
+vString:=vString+"L"//add a new letter
+: ($k=23)
+vString:=vString+"R"//mod [Reservation]ExpMoveIn
+: ($k=24)
+vString:=vString+"E"//e-mails sent / received: not currently logged
+: ($k=25)
+vString:=vString+"Q"// Mod of NotesHistory
+Else 
+//Do nothing
+End case 
+End if 
+End for 
+vChar:="@"+Substring(vString;1;1)+"@"
+vString:=Substring(vString;2)
+REDUCE SELECTION([EventLog];0)
+CREATE EMPTY SET([EventLog];"PrintELogs")
+QUERY([EventLog];[EventLog]EventDate>=UTCDate (?00:00:00?;False;vSRptDate);*)
+QUERY([EventLog]; & ;[EventLog]EventDate<=UTCDate (?23:59:59?;False;vRptDate);*)
+QUERY([EventLog]; & ;[EventLog]FacilityCode=[Facility]FacilityCode)
+
+CREATE SET([EventLog];"ToQuery")
+//If (vChar#"")
+USE SET("ToQuery")
+If (vChar="0")
+QUERY SELECTION([EventLog];[EventLog]EventTable=0)
+Else 
+QUERY SELECTION([EventLog];[EventLog]Code=vChar)//@ in case there is more than one char in the code -eg for trxs or agreements
+End if 
+If (Records in selection([EventLog])>0)
+CREATE SET([EventLog];"Temp")
+UNION("PrintELogs";"Temp";"PrintELogs")
+End if 
+$Length:=Length(vString)
+For ($l;1;$Length)
+vChar:="@"+Substring(vString;1;1)+"@"
+vString:=Substring(vString;2)
+USE SET("ToQuery")
+If (vChar="0")
+QUERY SELECTION([EventLog];[EventLog]EventTable=0)
+Else 
+QUERY SELECTION([EventLog];[EventLog]Code=vChar)//@ in case there is more than one char in the code -eg for trxs or agreements
+End if 
+If (Records in selection([EventLog])>0)
+CREATE SET([EventLog];"Temp")
+UNION("PrintELogs";"Temp";"PrintELogs")
+End if 
+End for 
+USE SET("PrintELogs")
+QUERY SELECTION([EventLog];[EventLog]UserLogin#"None";*)
+If (bSupport=False)
+QUERY SELECTION([EventLog]; & ;[EventLog]UserLogin#"AdminSupport";*)
+QUERY SELECTION([EventLog]; & ;[EventLog]UserLogin#"Designer";*)
+End if 
+If (sAll=1)
+QUERY SELECTION([EventLog]; & ;[EventLog]DatePrinted=!00-00-00!)
+End if 
+QUERY SELECTION([EventLog]; & ;[EventLog]UserLogin#"Sync")
+ORDER BY([EventLog];[EventLog]Code;>;[EventLog]EventDate;>;[EventLog]EventTime;>;[EventLog]TrxAmount;>)
+//End if 
+ACCUMULATE([EventLog]TrxAmount)
+BREAK LEVEL(1)
+FORM SET OUTPUT([EventLog];"PrintEvents")
+READ WRITE([EventLog])
+APPLY TO SELECTION([EventLog];[EventLog]DatePrinted:=vRptDate)
+READ ONLY([EventLog])
+PrintSelection ("L";->[EventLog])
+End for 
+End if 
+End if 
+LogAction (True;"EventLog Exceptions Report ended.")

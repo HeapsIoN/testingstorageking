@@ -1,0 +1,29 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Calls a Server-side method to return the Platform Properties of the server
+C_LONGINT($Offset;$PlatPropProcessID)
+C_TEXT($PlatformProperties;$0)
+
+$Offset:=0
+
+READ WRITE([Authenticate])
+CREATE RECORD([Authenticate])
+[Authenticate]RAgreeNo:=String(Sequence number([Authenticate]))
+SAVE RECORD([Authenticate])
+$RecordID:=[Authenticate]RAgreeNo
+READ ONLY([Authenticate])
+UNLOAD RECORD([Authenticate])
+
+$PlatPropProcessID:=Execute on server("S_RemotePlatformProperties";400000;"S_RemotePlatformProperties";$RecordID)
+
+Repeat 
+QUERY([Authenticate];[Authenticate]RAgreeNo=$RecordID;*)
+QUERY([Authenticate]; & ;[Authenticate]IPAddress="1")
+Until (Records in selection([Authenticate])=1)
+
+READ WRITE([Authenticate])
+LOAD RECORD([Authenticate])
+BLOB TO VARIABLE([Authenticate]Prefs;$PlatformProperties;$Offset)
+DELETE RECORD([Authenticate])
+READ ONLY([Authenticate])
+
+$0:=$PlatformProperties

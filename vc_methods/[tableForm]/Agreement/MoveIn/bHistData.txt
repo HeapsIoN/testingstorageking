@@ -1,0 +1,129 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+/////////
+C_TEXT(vLoc;$OldLoc;$Ext;$t;$Type;$TaxCode;$NominalAc;$tempor)
+C_LONGINT($i;$j;$k;$Mult)
+$Ext:="csv"
+$t:=","
+$cr:=Char(13)
+
+$tempor:="AgreeNo,Customer Code,Customer Name, Charge,Confirmed,Analysis Code,Description,Total Amt,Transaction Date"
+
+C_BOOLEAN($HistCust;$HistAgr)
+
+QUERY([TrxsHistorical];[TrxsHistorical]CustomerCode=[Agreement]CustomerCode)
+If (Records in selection([TrxsHistorical])>0)
+$HistCust:=True
+End if 
+QUERY([TrxsHistorical];[TrxsHistorical]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([TrxsHistorical])>0)
+$HistAgr:=True
+End if 
+
+If (($HistCust=True) & ($HistAgr=True))
+$Note:=ConfirmThree ("This will export historical Sitelink data to a CSV file. Would you like to export based on Agreement Number or Customer Code?";"Agreement Number";"Customer Code";"Cancel")
+
+Case of 
+: ($Note=1)
+QUERY([TrxsHistorical];[TrxsHistorical]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([TrxsHistorical];[TrxsHistorical]TrxDate;>)
+If (Records in selection([TrxsHistorical])>0)
+//FORM SET OUTPUT([TrxsHistorical];"Form1")
+//EXPORT SYLK([TrxsHistorical];"")
+vLoc:=Select folder("Please select where you would like to save this export")
+//$DocRef:=Create document(vLoc+"AgreementHist"+String(Current date);$Ext)
+$DocRef:=Create document(vLoc+"AgreementHist";$Ext)
+SEND PACKET($DocRef;$tempor+$cr)
+
+//$tempor:="AgreeNo,Customer Code,Customer Name, Charge,Confirmed,Analysis Code,Description,Total Amt,Transaction Date"
+For ($i;1;Records in selection([TrxsHistorical]))
+$tempor:=String([TrxsHistorical]AgreeNo)+$t+String([TrxsHistorical]CustomerCode)+$t+Replace string([TrxsHistorical]CustomerName;",";"")+$t+String([TrxsHistorical]Charge)+$t+String([TrxsHistorical]Confirmed)+$t+[TrxsHistorical]AnalysisCode+$t+[TrxsHistorical]Description+$t+String([TrxsHistorical]TotAmt)+$t+String([TrxsHistorical]TrxDate)//+$cr
+$tempor:=Replace string($tempor;$cr;" ")+$cr
+SEND PACKET($DocRef;$tempor)
+NEXT RECORD([TrxsHistorical])
+End for 
+CLOSE DOCUMENT($DocRef)
+
+AlertMessage ("Export complete!")
+Else 
+AlertMessage ("Agreement number not found!")
+End if 
+: ($Note=2)
+QUERY([TrxsHistorical];[TrxsHistorical]CustomerCode=[Agreement]CustomerCode)
+ORDER BY([TrxsHistorical];[TrxsHistorical]TrxDate;>)
+If (Records in selection([TrxsHistorical])>0)
+//FORM SET OUTPUT([TrxsHistorical];"Output")
+//EXPORT SYLK([TrxsHistorical];"")
+vLoc:=Select folder("Please select where you would like to save this export")
+$DocRef:=Create document(vLoc+"CustomerHist";$Ext)
+SEND PACKET($DocRef;$tempor+$cr)
+For ($i;1;Records in selection([TrxsHistorical]))
+$tempor:=String([TrxsHistorical]AgreeNo)+$t+String([TrxsHistorical]CustomerCode)+$t+Replace string([TrxsHistorical]CustomerName;",";"")+$t+String([TrxsHistorical]Charge)+$t+String([TrxsHistorical]Confirmed)+$t+[TrxsHistorical]AnalysisCode+$t+[TrxsHistorical]Description+$t+String([TrxsHistorical]TotAmt)+$t+String([TrxsHistorical]TrxDate)//+$cr
+$tempor:=Replace string($tempor;$cr;" ")+$cr
+SEND PACKET($DocRef;$tempor)
+NEXT RECORD([TrxsHistorical])
+End for 
+CLOSE DOCUMENT($DocRef)
+AlertMessage ("Export complete!")
+Else 
+AlertMessage ("Customer Code not found!")
+End if 
+: ($Note=3)
+$a:=3
+ABORT
+Else 
+//Do Nothing
+End case 
+
+Else 
+If (($HistCust=True) & ($HistAgr=False))
+ConfirmTwo ("This will export historical Sitelink data to a CSV file, based on the Customer Code.";"Export";"Cancel")
+If (OK=1)
+QUERY([TrxsHistorical];[TrxsHistorical]CustomerCode=[Agreement]CustomerCode)
+ORDER BY([TrxsHistorical];[TrxsHistorical]TrxDate;>)
+If (Records in selection([TrxsHistorical])>0)
+//FORM SET OUTPUT([TrxsHistorical];"Output")
+//EXPORT SYLK([TrxsHistorical];"")
+vLoc:=Select folder("Please select where you would like to save this export")
+$DocRef:=Create document(vLoc+"CustomerHist";$Ext)
+SEND PACKET($DocRef;$tempor+$cr)
+For ($i;1;Records in selection([TrxsHistorical]))
+$tempor:=String([TrxsHistorical]AgreeNo)+$t+String([TrxsHistorical]CustomerCode)+$t+Replace string([TrxsHistorical]CustomerName;",";"")+$t+String([TrxsHistorical]Charge)+$t+String([TrxsHistorical]Confirmed)+$t+[TrxsHistorical]AnalysisCode+$t+[TrxsHistorical]Description+$t+String([TrxsHistorical]TotAmt)+$t+String([TrxsHistorical]TrxDate)//+$cr
+$tempor:=Replace string($tempor;$cr;" ")+$cr
+SEND PACKET($DocRef;$tempor)
+NEXT RECORD([TrxsHistorical])
+End for 
+CLOSE DOCUMENT($DocRef)
+AlertMessage ("Export complete!")
+Else 
+AlertMessage ("Customer Code not found!")
+End if 
+End if 
+Else 
+ConfirmTwo ("This will export historical Sitelink data to a CSV file, based on the Agreement number";"Export";"Cancel")
+If (OK=1)
+QUERY([TrxsHistorical];[TrxsHistorical]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([TrxsHistorical];[TrxsHistorical]TrxDate;>)
+If (Records in selection([TrxsHistorical])>0)
+//FORM SET OUTPUT([TrxsHistorical];"Output")
+//EXPORT SYLK([TrxsHistorical];"")
+vLoc:=Select folder("Please select where you would like to save this export")
+$DocRef:=Create document(vLoc+"AgreementHist";$Ext)
+SEND PACKET($DocRef;$tempor+$cr)
+For ($i;1;Records in selection([TrxsHistorical]))
+$tempor:=String([TrxsHistorical]AgreeNo)+$t+String([TrxsHistorical]CustomerCode)+$t+Replace string([TrxsHistorical]CustomerName;",";"")+$t+String([TrxsHistorical]Charge)+$t+String([TrxsHistorical]Confirmed)+$t+[TrxsHistorical]AnalysisCode+$t+[TrxsHistorical]Description+$t+String([TrxsHistorical]TotAmt)+$t+String([TrxsHistorical]TrxDate)//+$cr
+$tempor:=Replace string($tempor;$cr;" ")+$cr
+SEND PACKET($DocRef;$tempor)
+NEXT RECORD([TrxsHistorical])
+End for 
+CLOSE DOCUMENT($DocRef)
+AlertMessage ("Export complete!")
+Else 
+AlertMessage ("Agreement number not found!")
+End if 
+
+End if 
+End if 
+
+End if 
+
+

@@ -1,0 +1,166 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//merchantid
+C_TEXT($2)//account  -- The account through which to process this transaction
+C_TEXT($3)//refundhash  -- This is the hash of the refund password (realex payments will give this to you). The SHA1 algorithm must be used to generate this hash.
+C_TEXT($4)//Currency Code   -- The currency and amount of this transaction. See the realauth Developer’s Guide for details of the currency codes
+C_TEXT($5)// amount -- The amount should be in thesmallest unit of the required currency (i.e. 2000 = £20, $20 or €20)
+C_TEXT($6)// payerref  -- The payer reference of the custome
+C_TEXT($7)//paymentmethod   -- The payment reference
+C_TEXT($8)// Shared Secret
+
+C_TEXT($ErrorCodeResult)
+//Currency Codes :
+//EUR Euro
+//GBP Pound Sterling
+//USD US Dollar
+//SEK Swedish Krona
+//CHF Swiss Franc
+//HKD Hong Kong Dollar
+//JPY Japanese Yen
+
+$ErrorCodeResult:=""
+
+C_TEXT($valRootRef;$valElemRef;$response;$Content;$valueElmRes;$vsMonth;$vsDay;$vsYear;$type;$timestamp;$time;$sha1hash;$orderid;$amount;$refundhash)
+C_DATE($vdDate)
+
+$amount:=String(Num($5)*100)
+
+$vdDate:=Current date
+$vsMonth:=String(Month of($vdDate))
+If (Length($vsMonth)<2)
+$vsMonth:="0"+$vsMonth
+End if 
+$vsDay:=String(Day of($vdDate))
+If (Length($vsDay)<2)
+$vsDay:="0"+$vsDay
+End if 
+$vsYear:=String(Year of($vdDate))
+If ($vsYear="0")
+$vsYear:="0000"
+End if 
+
+$time:=Replace string(String(Current time);":";"")
+$timestamp:=$vsYear+$vsMonth+$vsDay+$time
+$orderid:=Generate UUID
+
+$sha1hash:=""
+$sha1hash:=$timestamp+"."
+$sha1hash:=$sha1hash+$1+"."
+$sha1hash:=$sha1hash+$orderid+"."
+$sha1hash:=$sha1hash+$amount+"."
+$sha1hash:=$sha1hash+$4+"."
+$sha1hash:=$sha1hash+$6
+
+$valRootRef:=DOM Create XML Ref("request";"";"type";"payment-out";"timestamp";$timestamp)
+$valxmlPath:="/request/merchantid"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$1)
+
+$valxmlPath:="/request/account"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$2)
+
+$valxmlPath:="/request/orderid"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$orderid)
+
+$valxmlPath:="/request/amount"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath;"currency";$4)
+DOM SET XML ELEMENT VALUE($valElemRef;$amount)
+
+$valxmlPath:="/request/autosettle"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath;"flag";"1")
+
+$valxmlPath:="/request/payerref"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$6)
+
+$valxmlPath:="/request/paymentmethod"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+DOM SET XML ELEMENT VALUE($valElemRef;$7)
+
+$valxmlPath:="/request/sha1hash"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+
+$sha1hash:=Generate digest($sha1hash;SHA1 digest)
+$sha1hash:=$sha1hash+"."+$8
+$sha1hash:=Generate digest($sha1hash;SHA1 digest)
+DOM SET XML ELEMENT VALUE($valElemRef;$sha1hash)
+
+$valxmlPath:="/request/refundhash"
+$valElemRef:=DOM Create XML element($valRootRef;$valxmlPath)
+$refundhash:=$3
+$refundhash:=Generate digest($refundhash;SHA1 digest)
+DOM SET XML ELEMENT VALUE($valElemRef;$refundhash)
+
+
+DOM EXPORT TO VAR($valRootRef;$Content)
+//MaskCCLog ($Content;"Realex")
+SyncRecordLog ($Content)
+
+$httpStatus_l:=HTTP Request(HTTP POST method;"https://epage.payandshop.com/epage-remote.cgi";$Content;$response)
+
+
+
+
+If ($httpStatus_l=200)
+SyncRecordLog ($response)
+$xml_Struct_Ref:=DOM Parse XML variable($response)
+$documentRef:=DOM Get XML document ref($xml_Struct_Ref)
+$valFound:=DOM Find XML element($documentRef;"response/result")
+
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+
+$Content:=""
+$Content:="RealexRefund response for Ref#:"+$2
+
+
+If ($valueElmRes="00")
+$0:="Ok"
+
+//*****    Need to check in the response XML file
+[Trxs]OriginalReceipt:=$orderid
+
+$valFound:=DOM Find XML element($documentRef;"response/authcode")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+[Trxs]CCAuthNo:=$valueElmRes
+
+$valFound:=DOM Find XML element($documentRef;"response/pasref")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+
+[Trxs]CCTransID:=$valueElmRes
+Else 
+$ErrorCodeResult:=$valueElmRes
+$0:="ERR"+$valueElmRes
+End if 
+
+$Content:=$Content+" (Code: "+$valueElmRes
+$Content:=$Content+")  ["
+
+$valFound:=DOM Find XML element($documentRef;"response/message")
+DOM GET XML ELEMENT VALUE($valFound;$valueElmRes)
+If ($0#"Ok")
+
+If ($ErrorCodeResult="503") & ($valueElmRes="Request type [CREDIT] not allowed for this merchant")
+$0:="ERR"+Get localized string("Refund request is not allowed by default, and Realex Payments may require written confirmation to allow you to use this facility.")
+Else 
+$0:="ERR"+$valueElmRes
+End if 
+End if 
+
+$Content:=$Content+$valueElmRes
+$Content:=$Content+"]"
+
+SyncRecordLog ($Content)
+
+//If (Application type=4D Server)
+//EXECUTE ON CLIENT("@";"AlertMessage";$Content)
+//End if 
+
+DOM CLOSE XML($valRootRef)//Close Request XML
+DOM CLOSE XML($xml_Struct_Ref)//Close Response XML
+Else 
+$0:="http"+String($httpStatus_l)
+End if 

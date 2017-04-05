@@ -1,0 +1,374 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($StartDate)
+C_LONGINT($window;$i;$j;$t)
+C_REAL($OthInsurance;$Premium)
+C_TEXT($Insurance)
+
+QUERY([Analysis];[Analysis]Code=<>sFacility+"IN")
+
+If (bNewInsureRate=False) & (Records in selection([InsuranceRates])>0)
+ConfirmTwo (Get localized string("Do you want to recalculate insurance charges for all active agreements?");Get localized string("Yes");Get localized string("No"))
+Else 
+OK:=1
+End if 
+
+If (OK=1) & (Records in selection([InsuranceRates])>0)
+If (bNewInsureRate=False)
+ConfirmTwo ("Do you want to set an insurance increase? If you choose yes it will schedule an insurance increase using the new insurance rate settings";Get localized string("Yes");Get localized string("No"))
+Else 
+OK:=0
+End if 
+If (OK=1)
+$StartDate:=RequestDate (Get localized string("Enter date insurance will be increased from")+":";Current date;Get localized string("OK");Get localized string("Cancel"))
+Else 
+$StartDate:=!00-00-00!
+OK:=1
+End if 
+
+
+If (OK=1)
+
+ARRAY TEXT(asFields;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSiteCodes;Size of array(<>asSiteCodes))
+ARRAY TEXT(asSigns;Size of array(<>asSiteCodes))
+For ($i;1;Size of array(<>asSiteCodes))
+asFields{$i}:=<>asFacilities{$i}
+asSiteCodes{$i}:=<>asSiteCodes{$i}
+asSigns{$i}:=""
+End for 
+If (Size of array(asSiteCodes)>1)
+vTitle:="Select Sites..."
+Open window((Screen width/2)-146;(Screen height/2)-150;(Screen width/2)+146;(Screen height/2)+150;5;Get localized string("Select Sites"))
+DIALOG([Facility];"SelectSites")
+CLOSE WINDOW
+For ($i;Size of array(asSiteCodes);1;-1)
+If (asSigns{$i}#"•")
+DELETE FROM ARRAY(asSiteCodes;$i;1)
+End if 
+End for 
+End if 
+
+If (OK=1)
+For ($f;1;Size of array(asSiteCodes))
+$window:=Open window(20;50;400;150;0;Get localized string("Progress"))
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Unit])
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]RAgreeNo=asSiteCodes{$f}+"@";*)
+QUERY([Agreement]; & ;[Agreement]InsureValue>0)
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+MESSAGE(Get localized string("Processing Agreement:")+" "+[Agreement]AgreeNo+" - "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+"    ")
+RELATE MANY([Agreement]RAgreeNo)
+RELATE ONE([Agreement]BillingPlanCode)
+$Insurance:=asSiteCodes{$f}+"IN"
+
+If ($StartDate=!00-00-00!)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]AnalysisCode=$Insurance)
+
+DELETE SELECTION([OtherChgs])
+
+End if 
+
+FIRST RECORD([Unit])
+$OthInsurance:=[Agreement]InsureValue-Sum([Unit]InsureValue)
+If ($OthInsurance>0)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=$OthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=$OthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=False)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+
+If (Records in selection([InsuranceRates])>0)
+
+If ($StartDate=!00-00-00!)
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=asSiteCodes{$f}+"IN"
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]Amount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods)*0.2308/7;[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods)*0.2308/7;[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]Amount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods)*0.2308;[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods)*0.2308;[InsuranceRates]Rounding)
+Else 
+[OtherChgs]Amount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+[OtherChgs]Description:=[Analysis]Description
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+Else 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description=[Analysis]Description)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods)*0.2308/7;[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods)*0.2308;[InsuranceRates]Rounding)
+Else 
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+If ([OtherChgs]NewAmount#[OtherChgs]Amount)
+
+$t:=1
+Repeat 
+Case of 
+: ($t=1)
+[OtherChgs]IncreaseFrom:=[Agreement]NextBillDate
+: ($t>2)
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods*($t-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End case 
+$t:=$t+1
+Until ([OtherChgs]IncreaseFrom>=$StartDate) | ($t>100)
+
+End if 
+SAVE RECORD([OtherChgs])
+End if 
+
+Else 
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=$OthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=$OthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+If (Records in selection([InsuranceRates])>0)
+//$Premium:=Trunc(($OthInsurance/[InsuranceRates]StartValue)*-1;0)*-1
+
+$Insure:=$OthInsurance
+$Premium:=0
+
+Repeat 
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+$Insure:=Round($Insure-[InsuranceRates]StartValue;0)
+
+$Premium:=$Premium+(($Insure/[InsuranceRates]RepeatValue)*[InsuranceRates]Premium)
+
+$Insure:=Round([InsuranceRates]StartValue;0)
+
+Until ($Insure<=0)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=$OthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=$OthInsurance;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+If ($StartDate=!00-00-00!)
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=asSiteCodes{$f}+"IN"
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]Amount:=RoundAmt (0.2308*$Premium/7*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium/7*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]Amount:=RoundAmt (0.2308*$Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+Else 
+[OtherChgs]Amount:=RoundAmt ($Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt ($Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+[OtherChgs]Description:=[Analysis]Description
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+Else 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description=[Analysis]Description)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium/7*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+Else 
+[OtherChgs]NewAmount:=RoundAmt ($Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+If ([OtherChgs]NewAmount#[OtherChgs]Amount)
+
+$t:=1
+Repeat 
+Case of 
+: ($t=1)
+[OtherChgs]IncreaseFrom:=[Agreement]NextBillDate
+: ($t>2)
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods*($t-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End case 
+$t:=$t+1
+Until ([OtherChgs]IncreaseFrom>=$StartDate) | ($t>100)
+
+End if 
+SAVE RECORD([OtherChgs])
+End if 
+
+End if 
+End if 
+
+End if 
+
+For ($j;1;Records in selection([Unit]))
+If ([Unit]InsureValue>0)
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=False)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+If (Records in selection([InsuranceRates])>0)
+
+If ($StartDate=!00-00-00!)
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=asSiteCodes{$f}+"IN"
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]Amount:=RoundAmt (([InsuranceRates]Premium*0.2308/7)*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt (([InsuranceRates]Premium*0.2308/7)*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]Amount:=RoundAmt (([InsuranceRates]Premium*0.2308)*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt (([InsuranceRates]Premium*0.2308)*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+Else 
+[OtherChgs]Amount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+[OtherChgs]Description:=[Analysis]Description+" "+[Unit]UnitNo
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+Else 
+$Description:=[Analysis]Description+" "+[Unit]UnitNo
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description=$Description)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]NewAmount:=RoundAmt (([InsuranceRates]Premium*0.2308/7)*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]NewAmount:=RoundAmt (([InsuranceRates]Premium*0.2308)*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+Else 
+[OtherChgs]NewAmount:=RoundAmt ([InsuranceRates]Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+If ([OtherChgs]NewAmount#[OtherChgs]Amount)
+
+$t:=1
+Repeat 
+Case of 
+: ($t=1)
+[OtherChgs]IncreaseFrom:=[Agreement]NextBillDate
+: ($t>2)
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods*($t-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End case 
+$t:=$t+1
+Until ([OtherChgs]IncreaseFrom>=$StartDate) | ($t>100)
+
+End if 
+SAVE RECORD([OtherChgs])
+End if 
+
+Else 
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+If (Records in selection([InsuranceRates])>0)
+//$Premium:=Trunc(([Unit]InsureValue/[InsuranceRates]StartValue)*-1;0)*-1
+
+$Insure:=[Unit]InsureValue
+$Premium:=0
+
+Repeat 
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=$Insure;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+$Insure:=Round($Insure-[InsuranceRates]StartValue;0)
+
+$Premium:=$Premium+(($Insure/[InsuranceRates]RepeatValue)*[InsuranceRates]Premium)
+
+$Insure:=Round([InsuranceRates]StartValue;0)
+
+Until ($Insure<=0)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=asSiteCodes{$f};*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]StartValue<=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]EndValue>=[Unit]InsureValue;*)
+QUERY([InsuranceRates]; & ;[InsuranceRates]RepeatOn=True)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+If ($StartDate=!00-00-00!)
+CREATE RECORD([OtherChgs])
+[OtherChgs]AnalysisCode:=asSiteCodes{$f}+"IN"
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]Amount:=RoundAmt (0.2308*$Premium/7*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium/7*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]Amount:=RoundAmt (0.2308*$Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+Else 
+[OtherChgs]Amount:=RoundAmt ($Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+[OtherChgs]NewAmount:=RoundAmt ($Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+[OtherChgs]Description:=[Analysis]Description+" "+[Unit]UnitNo
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+Else 
+$Description:=[Analysis]Description+" "+[Unit]UnitNo
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([OtherChgs]; & ;[OtherChgs]Description=$Description)
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium/7*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]NewAmount:=RoundAmt (0.2308*$Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+Else 
+[OtherChgs]NewAmount:=RoundAmt ($Premium*([Agreement]MthsAdv+[BillPlan]FreePeriods);[InsuranceRates]Rounding)
+End case 
+If ([OtherChgs]NewAmount#[OtherChgs]Amount)
+
+$t:=1
+Repeat 
+Case of 
+: ($t=1)
+[OtherChgs]IncreaseFrom:=[Agreement]NextBillDate
+: ($t>2)
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods*($t-1);[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+Else 
+[OtherChgs]IncreaseFrom:=CalcNxtBillDate ([Agreement]NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+End case 
+$t:=$t+1
+Until ([OtherChgs]IncreaseFrom>=$StartDate) | ($t>100)
+
+End if 
+SAVE RECORD([OtherChgs])
+End if 
+
+End if 
+End if 
+
+SAVE RECORD([Unit])
+End if 
+NEXT RECORD([Unit])
+End for 
+
+SAVE RECORD([Agreement])
+NEXT RECORD([Agreement])
+End for 
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility)
+ORDER BY([InsuranceRates];[InsuranceRates]StartValue;>)
+CLOSE WINDOW($window)
+bNewInsureRate:=False
+End for 
+End if 
+End if 
+SetFacility 
+End if 

@@ -1,0 +1,38 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1)//Agreement Number of Move Out
+
+READ ONLY(*)
+DELAY PROCESS(Current process;60)//Wait a second to give time for record to be accepted
+
+QUERY([Agreement];[Agreement]RAgreeNo=$1)
+ConfirmTwo (Get localized string("Print Out Trxs & Notes for Agreement")+":"+[Agreement]AgreeNo+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo)
+ORDER BY([Trxs];[Trxs]AgreeNo;>;[Trxs]TrxDate;>;[Trxs]Charge;<;[Trxs]TotAmt;<)
+FORM SET OUTPUT([Trxs];"PrintoutOld")
+SetFacility 
+vTitle:="MoveOut Agreement Listing"
+vBalance:=0
+vPage:=0
+vDate:=Current date
+vLastNo:=""
+tClear:=True
+BREAK LEVEL(1;1)
+ACCUMULATE([Trxs]TotAmt)
+PrintSelection ("P";->[Trxs])
+FORM SET OUTPUT([Trxs];"Output")
+QUERY([Agreement];[Agreement]RAgreeNo=$1)
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Agreement]CustomerCode)
+SetFacility 
+If (Records in selection([NotesHistory])>0)
+ConfirmTwo (Get localized string("PrintNotesSMS"))
+If (OK#1)
+QUERY SELECTION([NotesHistory];[NotesHistory]Category#"Storman SMS")
+End if 
+FORM SET OUTPUT([NotesHistory];"PrintNotes")
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;>;[NotesHistory]NoteTime;>)
+BREAK LEVEL(1)
+PrintSelection ("L";->[NotesHistory])
+FORM SET OUTPUT([NotesHistory];"Output")
+End if 
+End if 

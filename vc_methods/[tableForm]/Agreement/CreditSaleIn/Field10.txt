@@ -1,0 +1,107 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Old([Agreement]DaytoBill)#[Agreement]DaytoBill)
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+If ([Agreement]DaytoBill<1) | ([Agreement]DaytoBill>31)
+AlertMessage (Get localized string("Day to Bill must be between 1 and 31. Please re-enter..."))
+REJECT([Agreement]DaytoBill)
+Else 
+$ProRata:=True
+If ([Agreement]MoveIn=[Agreement]NextBillDate) | (Old([Agreement]NextBillDate)=!00-00-00!)
+$ProRata:=False
+End if 
+If ([Agreement]DaytoBill>=Day of([Agreement]NextBillDate))
+[Agreement]NextBillDate:=GetDate ([Agreement]DaytoBill;Month of([Agreement]NextBillDate);Year of([Agreement]NextBillDate))
+Else 
+[Agreement]NextBillDate:=GetDate ([Agreement]DaytoBill;Month of([Agreement]NextBillDate)+1;Year of([Agreement]NextBillDate))
+End if 
+If ($ProRata)//BillNextCharges
+For ($i;1;Records in selection([OtherChgs]))
+$yDays:=[Agreement]NextBillDate-Old([Agreement]NextBillDate)
+$NBDold:=Old([Agreement]NextBillDate)
+If ($yDays<2)
+AlertMessage (Get localized string("This agreement appears to have not been billed. Last Bill Date is")+" "+String(Old([Agreement]NextBillDate);6)+", "+Get localized string("Next Bill Date")+" "+Get localized string("is")+" "+String([Agreement]NextBillDate;6)+". "+Get localized string("Unable to calculate pro-rata!"))
+Else 
+$xDays:=[Agreement]NextBillDate-Current date
+If ($xDays>0)
+If ([BillPlan]PlanPeriod="Week")
+$Month:=7
+Else 
+$Month:=Month of($NBDold)
+If ($Month>=1) & ($Month<=12)
+If ($Month=2)
+$TestDate:=Add to date(Date(String(<>aLastDay{$Month})+"/"+String($Month)+"/"+String(Year of($NBDold)));0;0;1)
+$LeapYear:=Month of($TestDate)
+If ($Month=$LeapYear)
+$Month:=<>aLastDay{$Month}+1
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+Else 
+$Month:=<>aLastDay{$Month}
+End if 
+Else 
+$Month:=30
+End if 
+End if 
+$Rate:=[OtherChgs]Amount/([Agreement]MthsAdv+[BillPlan]FreePeriods)
+$Amt:=Round(([OtherChgs]Amount*([Agreement]NextBillDate-$NBDold)/$Month)/([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+QUERY([Analysis];[Analysis]Code=[OtherChgs]AnalysisCode)//- 10243
+ConfirmTwo (Get localized string("Next Bill Date")+" = "+String([Agreement]NextBillDate)+Char(13)+Get localized string("Start Date for this")+" "+[Analysis]Description+" "+String(Old([Agreement]NextBillDate))+Char(13)+Get localized string("Create Pro-rata charge for this")+" "+<>sCurrency+String($Rate;<>sFormat)+" "+[Analysis]Description+" "+Get localized string("to")+" "+Get localized string("Next Bill Date")+" = "+<>sCurrency+String($Amt;<>sFormat)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Trxs])
+CREATE RECORD([Trxs])
+
+[Trxs]CustomerCode:=[Agreement]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate (Old([Agreement]NextBillDate))
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+//$Desc:=[Analysis]Description
+//$i:=Position(" ";$Desc)-1
+//If ($i<2)
+//$i:=Length($Desc)
+//End if 
+[Trxs]Description:="Prorata "+[Analysis]Description//+Substring($Desc;1;$i)+" "+[Analysis]Description
+[Trxs]TotAmt:=RoundAmt ($Amt)
+[Trxs]DateFrom:=[Trxs]TrxDate
+[Trxs]DateTo:=[Agreement]NextBillDate
+[Trxs]TaxAmt:=CalcTaxAmt ([Trxs]TotAmt)
+SAVE RECORD([Trxs])
+//***WHT
+If ([Facility]Country="TH") & ([Customer]AccountType>0) & ([Trxs]AnalysisCode="@RF")
+$TrxTot:=[Trxs]TotAmt-[Trxs]TaxAmt//need to check if record is still in selection at this point
+$TrxDesc:=[Trxs]Description
+$TrxDate:=[Trxs]TrxDate
+QUERY([Analysis];[Analysis]Code=[Facility]FacilityCode+"WHT")
+If (Records in selection([Analysis])>0)
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=[Customer]CustomerCode
+[Trxs]AgreeNo:=[Agreement]RAgreeNo
+[Trxs]TrxDate:=GetValidDate ($TrxDate)
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=[Analysis]Code
+[Trxs]Description:=[Analysis]Description+"-"+$TrxDesc
+[Trxs]TotAmt:=($TrxTot*([Customer]AccountType/100))*(-1)
+SAVE RECORD([Trxs])
+End if 
+End if 
+READ ONLY([Trxs])
+[Customer]Balance:=Round([Customer]Balance+[Trxs]TotAmt;2)
+If ([Trxs]TrxDate>[Customer]LatestTrxDate)
+[Customer]LatestTrxDate:=[Trxs]TrxDate
+End if 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("You will need to manually adjust the")+" "+[Analysis]Description+".")
+End if 
+End if 
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+End if 
+End if 
+
+SAVE RECORD([Agreement])
+End if 

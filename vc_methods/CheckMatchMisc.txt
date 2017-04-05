@@ -1,0 +1,291 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Check Read Write Status of where it is called and also displaying of result at the end.
+C_DATE($1)
+C_BOOLEAN($2;$Silent)//silent = no alerts
+C_LONGINT($i;$Last)
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"MISCL";*)
+
+$WinRef:=Open window(20;50;450;150;0;"Please wait...")
+
+If ($1>!00-00-00!)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$1;*)
+End if 
+$Silent:=False
+If (Count parameters>1)
+$Silent:=$2
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+CREATE SET([Trxs];"MiscCheck")
+ORDER BY([Trxs];[Trxs]Match;>;[Trxs]TrxDate;>)
+ARRAY LONGINT($aMatchNos;0)
+DISTINCT VALUES([Trxs]Match;$aMatchNos)
+$Last:=-1
+$NextMatch:=0
+CREATE EMPTY SET([Trxs];"ToFix")
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE("Searching for Cash Sales "+String($i)+" of "+String(Records in selection([Trxs])))
+If ([Trxs]Match=$Last)
+ADD TO SET([Trxs];"ToFix")
+End if 
+$Last:=[Trxs]Match
+NEXT RECORD([Trxs])
+End for 
+USE SET("ToFix")
+
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE("Searching for Cash Sales "+String($i)+" of "+String(Records in selection([Trxs])))
+USE SET("ToFix")
+GOTO SELECTED RECORD([Trxs];$i)
+$Amount:=[Trxs]TotAmt
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]TrxDate=[Trxs]TrxDate;*)
+QUERY([Trxs]; & ;[Trxs]Match=[Trxs]Match)
+$Sum:=Sum([Trxs]TotAmt)
+ORDER BY([Trxs];[Trxs]Charge;>)
+If ([Trxs]TotAmt=($Sum/2))
+Repeat 
+$NextMatch:=$NextMatch+1
+Until (Find in array($aMatchNos;$NextMatch)<1)
+APPLY TO SELECTION([Trxs];[Trxs]Match:=$NextMatch)
+Else 
+$Found:=False
+CREATE EMPTY SET([Trxs];"ToSet")
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+For ($j;1;Records in selection([Trxs]))
+If ([Trxs]TotAmt=$Amount)
+ADD TO SET([Trxs];"ToSet")
+$Found:=True
+End if 
+NEXT RECORD([Trxs])
+End for 
+If ($Found=False)
+FIRST RECORD([Trxs])
+$LastAmt:=0
+For ($j;1;Records in selection([Trxs]))
+If (([Trxs]TotAmt+$LastAmt)=$Amount)
+ADD TO SET([Trxs];"ToSet")
+PREVIOUS RECORD([Trxs])
+ADD TO SET([Trxs];"ToSet")
+$Found:=True
+End if 
+$LastAmt:=[Trxs]TotAmt
+NEXT RECORD([Trxs])
+End for 
+End if 
+If ($Found)
+USE SET("ToFix")
+GOTO SELECTED RECORD([Trxs];$i)
+ADD TO SET([Trxs];"ToSet")
+USE SET("ToSet")
+Repeat 
+$NextMatch:=$NextMatch+1
+Until (Find in array($aMatchNos;$NextMatch)<1)
+APPLY TO SELECTION([Trxs];[Trxs]Match:=$NextMatch)
+End if 
+End if 
+End for 
+CLEAR SET("ToFix")
+CLEAR SET("ToSet")
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"MISCL")
+If ($NextMatch>=[Customer]NextMatch)
+READ WRITE([Customer])
+LOAD RECORD([Customer])
+[Customer]NextMatch:=$NextMatch+1
+SAVE RECORD([Customer])
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+End if 
+USE SET("MiscCheck")
+CREATE EMPTY SET([Trxs];"Correct")
+//For ($i;1;Records in selection([Transaction]))
+//USE SET("MiscCheck")
+//GOTO SELECTED RECORD([Transaction];$i)
+//$Amount:=[Transaction]TotAmt
+//$RecNo:=Record number([Transaction])
+//QUERY([Transaction];[Transaction]CustomerCode=<>sFacility+"MISCL";*)
+//QUERY([Transaction]; & ;[Transaction]Charge=True;*)
+//QUERY([Transaction]; & ;[Transaction]Match=[Transaction]Match)
+//If (Round(Sum([Transaction]TotAmt);2)=Round($Amount;2))
+//SELECTION TO ARRAY([Transaction]AnalysisCode;$asAnalysis;[Transaction]Qty;$aiQty;[Transaction]TotAmt;$arTotAmt;[Transaction]SeqNo;$aiSeqNo)
+//CREATE SET([Transaction];"Temp")
+//UNION("Correct";"Temp";"Correct")
+//GOTO RECORD([Transaction];$RecNo)
+//ADD TO SET([Transaction];"Correct")
+//ALL SUBRECORDS([Transaction]MiscDetls)
+//For ($j;1;Records in subselection([Transaction]MiscDetls))
+//$x:=0
+//$Save:=False
+//For ($k;1;Size of array($asAnalysis))
+//If ($asAnalysis{$k}=[Transaction]MiscDetls'AnalysisCode) & ($arTotAmt{$k}=[Transaction]MiscDetls'TotAmt)
+//$x:=$k
+//End if 
+//End for 
+//If ($x>0)
+//If ([Transaction]MiscDetls'Qty#$aiQty{$x}) | ([Transaction]MiscDetls'SeqNo#$aiSeqNo{$x})
+//[Transaction]MiscDetls'Qty:=$aiQty{$x}
+//[Transaction]MiscDetls'SeqNo:=$aiSeqNo{$x}
+//$Save:=True
+//End if 
+//DELETE FROM ARRAY($asAnalysis;$x;1)
+//DELETE FROM ARRAY($aiQty;$x;1)
+//DELETE FROM ARRAY($arTotAmt;$x;1)
+//DELETE FROM ARRAY($aiSeqNo;$x;1)
+//End if 
+//NEXT SUBRECORD([Transaction]MiscDetls)
+//End for 
+//If ($Save)
+//SAVE RECORD([Transaction])
+//End if 
+//End if 
+//End for 
+If ($1=!00-00-00!)
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"MISCL")
+CREATE SET([Trxs];"MiscCheck")
+DIFFERENCE("MiscCheck";"Correct";"MiscCheck")
+USE SET("MiscCheck")
+If (Records in selection([Trxs])>0) & (Application type#4D Server)
+QUERY SELECTION([Trxs];[Trxs]Charge=False)//this block of code added 22/6/06 NLT
+CREATE SET([Trxs];"MiscFix")
+USE SET("MiscFix")
+$Count:=Records in set("MiscFix")
+ORDER BY([Trxs];[Trxs]Match;<)
+
+For ($m;1;$Count)
+GOTO XY(2;2)
+MESSAGE("Searching for Cash Sales "+String($m)+" of "+String($count))
+$Date:=[Trxs]TrxDate
+$Amt:=[Trxs]TotAmt
+$Match:=[Trxs]Match
+$TrxRec:=Record number([Trxs])
+$SeqNo:=[Trxs]SeqNo
+REMOVE FROM SET([Trxs];"MiscFix")
+USE SET("MiscCheck")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$Date)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+CREATE SET([Trxs];"Temp")
+QUERY SELECTION([Trxs];[Trxs]Match=$Match)
+$c:=0
+If (Sum([Trxs]TotAmt)#$Amt)
+Repeat 
+USE SET("Temp")
+$c:=$c+1
+QUERY SELECTION([Trxs];[Trxs]SeqNo<$SeqNo)
+QUERY SELECTION([Trxs];[Trxs]SeqNo>=($SeqNo-$c))//loop thru seq nums until it gets the right sum
+Case of 
+: (Records in selection([Trxs])=0) | (Sum([Trxs]TotAmt)#$Amt)
+USE SET("Temp")
+QUERY SELECTION([Trxs];[Trxs]SeqNo>$SeqNo)//on the odd occasion the charge seqno's are higher than the payment
+QUERY SELECTION([Trxs];[Trxs]SeqNo<=($SeqNo+$c))//loop thru seq nums until it gets the right sum
+: (Sum([Trxs]TotAmt)#$Amt)
+USE SET("Temp")
+QUERY SELECTION([Trxs];[Trxs]SeqNo>=$SeqNo-$c)
+QUERY SELECTION([Trxs];[Trxs]SeqNo<=$SeqNo+$c)
+Else 
+//Do Nothing
+End case 
+Until (Sum([Trxs]TotAmt)=$Amt) | ($c=Records in set("Temp")) | (Records in set("Temp")=0)
+End if 
+If (Sum([Trxs]TotAmt)=$Amt)
+CREATE SET([Trxs];"SeqNo")
+APPLY TO SELECTION([Trxs];[Trxs]Match:=$Match)
+GOTO RECORD([Trxs];$TrxRec)
+ADD TO SET([Trxs];"SeqNo")
+DIFFERENCE("MiscCheck";"SeqNo";"MiscCheck")
+End if 
+USE SET("MiscFix")
+End for 
+USE SET("MiscCheck")
+QUERY SELECTION([Trxs];[Trxs]Charge=False)
+CREATE SET([Trxs];"MiscFix")
+USE SET("MiscFix")
+$m:=0
+$Count:=Records in set("MiscFix")
+For ($m;1;$Count)//second matching
+GOTO XY(2;2)
+MESSAGE("Searching for Cash Sales "+String($m)+" of "+String($count))
+$Date:=[Trxs]TrxDate
+$Amt:=[Trxs]TotAmt
+$Match:=[Trxs]Match
+$TrxRec:=Record number([Trxs])
+$SeqNo:=[Trxs]SeqNo
+REMOVE FROM SET([Trxs];"MiscFix")
+USE SET("MiscCheck")
+QUERY SELECTION([Trxs];[Trxs]TrxDate=$Date)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+If (Sum([Trxs]TotAmt)=$Amt)
+CREATE SET([Trxs];"SeqNo")
+APPLY TO SELECTION([Trxs];[Trxs]Match:=$Match)
+GOTO RECORD([Trxs];$TrxRec)
+ADD TO SET([Trxs];"SeqNo")
+DIFFERENCE("MiscCheck";"SeqNo";"MiscCheck")
+End if 
+USE SET("MiscFix")
+End for //this block above added 22/6/06 NLT
+CLEAR SET("MiscFix")
+bDelete:=1
+USE SET("MiscCheck")
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]Match;>;[Trxs]Charge;>;[Trxs]TotAmt;>)
+CREATE EMPTY SET([Trxs];"Orphans")
+$LastMatch:=-1
+For ($i;1;Records in selection([Trxs]))
+GOTO XY(2;2)
+MESSAGE("Searching for Cash Sales "+String($i)+" of "+String(Records in selection([Trxs])))
+If ([Trxs]Match#$Lastmatch)
+$Delete:=[Trxs]Charge
+$LastMatch:=[Trxs]Match
+End if 
+If ([Trxs]Match=$LastMatch) & ($Delete)
+ADD TO SET([Trxs];"Orphans")
+End if 
+NEXT RECORD([Trxs])
+End for 
+If (Records in set("Orphans")>0)
+If ($Silent)
+OK:=1
+Else 
+ConfirmTwo (Get localized string("There are")+" "+String(Records in set("Orphans"))+" "+Get localized string("orphaned records.  Do you wish to delete?");Get localized string("Delete");Get localized string("Cancel"))
+End if 
+If (OK=1)
+USE SET("Orphans")
+If ($Silent)
+OK:=1
+Else 
+ConfirmTwo (Get localized string("Replicate deletions to remote site?");Get localized string("No");Get localized string("Yes"))
+End if 
+If (OK=1)
+$Name:=SetSyncUser ("Daily";2)
+DELETE SELECTION([Trxs])
+SetSyncUser ("Daily";0)
+SetSyncUser ($Name;0)
+Else 
+DELETE SELECTION([Trxs])
+End if 
+End if 
+End if 
+USE SET("MiscCheck")
+If (Records in selection([Trxs])>0) & ($Silent=False)
+//AlertMessage (Get localized string("Income Received Report2"))
+ORDER BY([Trxs];[Trxs]Match;>;[Trxs]Charge;>;[Trxs]TotAmt;>)
+$Nos:=""
+$j:=0
+Repeat 
+Repeat 
+$NextMatch:=$NextMatch+1
+Until (Find in array($aMatchNos;$NextMatch)<1)
+$Nos:=$Nos+String($NextMatch)+","
+$j:=$j+1
+Until ($j>10)
+CLOSE WINDOW($WinRef)
+AlertMessage (Get localized string("Some of the next available match numbers are:")+$Nos)
+End if 
+End if 
+Else 
+CLEAR SET("MiscCheck")
+End if 
+Else 
+CLEAR SET("MiscCheck")
+End if 
+CLEAR SET("Correct")

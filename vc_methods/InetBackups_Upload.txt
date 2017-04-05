@@ -1,0 +1,302 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//InetBackups_Upload
+
+C_TEXT($0)//Status / Error response to method
+C_LONGINT($1)//FacilityID
+C_TEXT($2;$3)//FacilityCode; $BusinessName
+C_TEXT($4)//Backup Server Host
+C_LONGINT($5)//Backup Server Port
+C_POINTER($6)//Backup Files Pathname
+
+C_TEXT($BackupFilePath;$BackupFileName;$SegmentFileName;$BackupFileMD5Hash;$SegmentMD5Hash;$TestConnectionSpeedResponse;$FacilityCode;$BusinessName;$ResponseDescription;$FileNameMD5Hash)
+C_TEXT($BackupServerHost;$SegmentFilePath;$BackupSessionToken;$SegmentResponse;$StatusResponse;$ForceExtractResponse;$TestServerResponse;$GetTokenResponse;$ReceiveResponse;$FacilityInformationResponse)
+C_LONGINT($OS;$HTTPTimeout;$ElapsedTimeTicks;$Counter;$SegmentCount;$SegmentUploadRetryCountLimit;$SegmentUploadRetryCountPeak;$WinRef;$SegmentNumber)
+C_LONGINT($StatusWindowLeft;$StatusWindowTop;$StatusWindowRight;$StatusWindowBottom;$ConnectionFailureCounter)
+C_LONGINT($FacilityID;$BackupFileSize;$MB;$BackupFileSegmentSize;$TimerStartMarkTicks;$BackupServerPort)
+C_REAL($ElapsedTimeSeconds)
+C_BLOB($SegmentBody;$EmptySegmentBody;$vbConnectionSpeedData)
+C_BOOLEAN($AbortBackupFileUpload;$BackupFileUploadFinished)
+
+$FacilityID:=$1//Which Facility is Backing Up
+$FacilityCode:=$2//Which Facility is Backing Up
+$BusinessName:=$3//Which Facility is Backing Up
+$BackupServerHost:=$4//Which Server to connect to to upload Backup
+$BackupServerPort:=$5//Which Server to connect to to upload Backup
+$BackupFilePath:=GetPath ($6->{1})//Path pointing to location of File to backup
+$BackupFileSize:=0
+$BackupFileName:=""
+
+For ($Counter;1;Size of array($6->))
+$BackupFileSize:=$BackupFileSize+Get document size($6->{$Counter})
+$BackupFileName:=$BackupFileName+GetFile ($6->{$Counter})+";"
+$FileNameMD5Hash:=GetMD5 ($6->{$Counter})
+$BackupFileMD5Hash:=$BackupFileMD5Hash+$FileNameMD5Hash+";"//MD5 Hash of the file to backup
+End for 
+
+$SegmentFileName:="Backup"+$FacilityCode+String(Year of(Current date);"0000")+String(Month of(Current date);"00")+String(Day of(Current date);"00")//Name of the Segment files ot Create / Backup
+
+
+//Create a Backup Segment Folder
+If (Test path name($BackupFilePath+"InetBKSegment")#Is a folder)
+CREATE FOLDER($BackupFilePath+"InetBKSegment")
+End if 
+$SegmentFilePath:=$BackupFilePath+"InetBKSegment"+GetFolderDelimiter //The path that the Segments are to be created in 
+
+
+PLATFORM PROPERTIES($OS)//Operating System that Storman is running on - 3 = Windows, <3 = Macintosh
+$MB:=1024*1024//1*MB
+$HTTPTimeout:=20//seconds
+SET BLOB SIZE($SegmentBody;0)
+SET BLOB SIZE($EmptySegmentBody;0)
+$SegmentUploadRetryCountLimit:=20//The maximum number of Segment Upload Retries before aborting
+$SegmentUploadRetryCountPeak:=0//The highest Segment Upload retries so far
+$AbortBackupFileUpload:=False//Set to true if Backup File upload needs to be aborted
+$BackupFileUploadFinished:=False//Set to true when Backup File upload is finished normally 
+$WinRef:=0
+$SegmentNumber:=0//The number of the Segment currently being worked with
+$SegmentMD5Hash:=""//The MD5 of an individual Upload Segment
+$BackupSessionToken:=""
+$StatusResponse:=""
+$ForceExtractResponse:=""
+$SegmentResponse:=""
+$TestServerResponse:=""
+$GetTokenResponse:=""
+$ReceiveResponse:=""
+$FacilityInformationResponse:=""
+$ResponseDescription:=""
+$ConnectionFailureCounter:=0
+
+
+
+//Set the dimensions / location of the Upload Status window
+$StatusWindowLeft:=10
+$StatusWindowTop:=200
+$StatusWindowRight:=400
+$StatusWindowBottom:=300
+
+
+
+
+//Determine the Segment size to use with a minimum size of 5MB and maximum of 10MB allowing maximum of 10GB
+$BackupFileSegmentSize:=$BackupFileSize/999//Bytes
+If ($BackupFileSegmentSize<(5*$MB))//5 MB
+$BackupFileSegmentSize:=5*$MB
+End if 
+If ($BackupFileSegmentSize>(10*$MB))
+$BackupFileSegmentSize:=10*$MB
+End if 
+
+
+ON ERR CALL("InetBackups_Error")//Set Error Handling Method
+WEB SERVICE SET OPTION(Web Service HTTP timeout;$HTTPTimeout)//Set Initial Timeout
+
+
+$FacilityInformationResponse:=WSC_InetBackups (GetDNS ("SUV1");443;"FacilityInformation";$FacilityID;0;0;0;$FacilityCode;$BusinessName;"";Current date;Current time;True;$EmptySegmentBody;"";$OS;"")
+If (GetSeparatedText ($FacilityInformationResponse;";";1)="000")//All Good"
+$BackupServerHost:=GetSeparatedText ($FacilityInformationResponse;";";3)//Host
+$BackupServerPort:=Num(GetSeparatedText ($FacilityInformationResponse;";";4))//Port
+
+//Determine Network Connection Speed by sending 1MB of data to server and recording time elapsed.   Repeat 2 more times and average Elapsed Time
+$TimerStartMarkTicks:=0//Timer Starting Mark (Ticks)
+$ElapsedTimeSeconds:=0//Elapsed Time (Seconds)
+$ElapsedTimeTicks:=0//Elapsed Time (Ticks)
+$Counter:=0
+$TestConnectionSpeedResponse:=""
+SET BLOB SIZE($vbConnectionSpeedData;(1*$MB);61)//Create Blob of 1 MB filled with '='
+For ($Counter;1;3)
+$TimerStartMarkTicks:=Tickcount//Record the Ticks at the start
+$TestConnectionSpeedResponse:=WSC_InetBackups ($BackupServerHost;$BackupServerPort;"TestConnectionSpeed";$FacilityID;BLOB size($vbConnectionSpeedData);1;1;$FacilityCode;$BusinessName;"";Current date;Current time;True;$vbConnectionSpeedData;"";$OS;"")
+$ElapsedTimeTicks:=Tickcount-$TimerStartMarkTicks//Calculate the Elapsed time in Ticks
+$ElapsedTimeSeconds:=$ElapsedTimeSeconds+($ElapsedTimeTicks/60)//Convert elaplsed time to Seconds
+End for 
+$ElapsedTimeSeconds:=$ElapsedTimeSeconds/3//Find the average Elapsed Time
+SET BLOB SIZE($vbConnectionSpeedData;0)//Cleanup
+
+
+//Calculate and set HTTP timeout determined by BackupFileSegmentSize and Network speed
+$HTTPTimeout:=(($BackupFileSegmentSize/$MB)*$ElapsedTimeSeconds)*2//seconds
+WEB SERVICE SET OPTION(Web Service HTTP timeout;$HTTPTimeout)//Set Initial Timeout
+
+//If no errors from the Segmentation process, continue with the Uploading
+$TestServerResponse:=WSC_InetBackups ($BackupServerHost;$BackupServerPort;"TestServer";$FacilityID;0;0;0;$FacilityCode;$BusinessName;"";Current date;Current time;True;$EmptySegmentBody;$BackupSessionToken;$OS;$BackupFileMD5Hash)
+If (GetSeparatedText ($TestServerResponse;";";1)="000")//Server responding
+
+//Break BackupFile into segments, size as per calculated above
+$SegmentResponse:=InetBackups_Segment ($BackupFilePath;$BackupFileSegmentSize;$6;$SegmentFilePath;$SegmentFileName)
+If (GetSeparatedText ($SegmentResponse;";";1)="000")//No Errors
+
+
+//Find only the Segment Filenames to upload
+DOCUMENT LIST($SegmentFilePath;$SegmentFileNamesList)
+For ($PartCounter;Size of array($SegmentFileNamesList);1;-1)
+If ($OS=3)//Windows
+If (Position($SegmentFileName;$SegmentFileNamesList{$PartCounter})=0) | ($SegmentFileName=$SegmentFileNamesList{$PartCounter})
+DELETE FROM ARRAY($SegmentFileNamesList;$PartCounter;1)
+End if 
+Else //Macintosh
+If (Position($SegmentFileName;$SegmentFileNamesList{$PartCounter})=0) | ($SegmentFileName=$SegmentFileNamesList{$PartCounter})
+DELETE FROM ARRAY($SegmentFileNamesList;$PartCounter;1)
+End if 
+End if 
+End for 
+$SegmentCount:=Size of array($SegmentFileNamesList)
+
+
+//Request a 'Token' from the Server to uniquely identify this backup session - this is used in all future comms with the server for this backup session
+$GetTokenResponse:=WSC_InetBackups ($BackupServerHost;$BackupServerPort;"GetToken";$FacilityID;0;0;$SegmentCount;$FacilityCode;$BusinessName;$BackupFileName;Current date;Current time;True;$EmptySegmentBody;$BackupSessionToken;$OS;$BackupFileMD5Hash)
+If (GetSeparatedText ($GetTokenResponse;";";1)="000")//Token received
+SyncRecordLog (Get localized string("Internet Backup Token Received"))
+$BackupSessionToken:=GetSeparatedText ($GetTokenResponse;";";3)//Get the Token
+
+
+//Upload the Segments to SU
+ARRAY LONGINT($SegmentUploadStatus;$SegmentCount)//Create an array that records the status of the Segments and their Upload Status.   A value of 1000 indicates successful upload, < 1000 is the number of failed upload attempts so far
+$WinRef:=Open window($StatusWindowLeft;$StatusWindowTop;$StatusWindowRight;$StatusWindowBottom)//Open Status window
+
+While ($AbortBackupFileUpload=False) & ($BackupFileUploadFinished=False)//Repeat while BackupFile upload not Finished or Aborted
+WEB SERVICE SET OPTION(Web Service HTTP timeout;$HTTPTimeout)
+
+//Display the status message
+GOTO XY(2;2)
+MESSAGE(String($SegmentUploadRetryCountPeak)+", "+String($SegmentNumber)+", "+String($HttpTimeout)+"    ")
+
+SORT ARRAY($SegmentUploadStatus;$SegmentFileNamesList;>)//Sort the Segment Filename List array based on number of Retries (Ascending) so Segment with lowest retries is selected
+$SegmentNumber:=Num(Substring($SegmentFileNamesList{1};Length($SegmentFileNamesList{1})-2))//Find the Segment number based on the Segment filename
+//$SegmentMD5Hash:=GetMD5 ($SegmentFilePath+$SegmentFileNamesList{1};"file")  //Calculate the MD5Hash of the Segment to be uploaded
+SET BLOB SIZE($SegmentBody;0)//Initialise the BLOB to receive the contents of the Segment
+DOCUMENT TO BLOB($SegmentFilePath+$SegmentFileNamesList{1};$SegmentBody)//Store the contents of the Segment file to upload
+
+
+//Check on what the server is doing.   Responses: Server ready to receive next Segment = 400, Server busy - 401 (Delay), Upload is complete = 500, Server cannot process backup = 600
+$StatusResponse:=WSC_InetBackups ($BackupServerHost;$BackupServerPort;"Status";$FacilityID;Get document size($SegmentFilePath+$SegmentFileNamesList{1});$SegmentNumber;$SegmentCount;$FacilityCode;$BusinessName;$SegmentFileNamesList{1};Current date;Current time;True;$EmptySegmentBody;$BackupSessionToken;$OS;$SegmentMD5Hash)
+$ResponseCode:=GetSeparatedText ($StatusResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($StatusResponse;";";2)
+Case of 
+: ($ResponseCode="400") & (Count in array($SegmentUploadStatus;1000)=$SegmentCount)
+$ForceExtractResponse:=WSC_InetBackups ($BackupServerHost;$BackupServerPort;"ForceExtract";$FacilityID;Get document size($SegmentFilePath+$SegmentFileNamesList{1});$SegmentNumber;$SegmentCount;$FacilityCode;$BusinessName;$SegmentFileNamesList{1};Current date;Current time;True;$EmptySegmentBody;$BackupSessionToken;$OS;$SegmentMD5Hash)
+$ResponseCode:=GetSeparatedText ($ForceExtractResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($ForceExtractResponse;";";2)
+SyncRecordLog (Get localized string("Internet Backup Segments Extracting"))
+
+: ($ResponseCode="400")//No Delay, continue with upload
+$SegmentStatusResponse:=WSC_InetBackups ($BackupServerHost;$BackupServerPort;"SegmentStatus";$FacilityID;Get document size($SegmentFilePath+$SegmentFileNamesList{1});$SegmentNumber;$SegmentCount;$FacilityCode;$BusinessName;$SegmentFileNamesList{1};Current date;Current time;True;$EmptySegmentBody;$BackupSessionToken;$OS;$SegmentMD5Hash)
+$ResponseCode:=GetSeparatedText ($SegmentStatusResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($SegmentStatusResponse;";";2)
+
+Case of 
+: ($ResponseCode="000")//Present on server
+$ResponseCode:=GetSeparatedText ($SegmentStatusResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($SegmentStatusResponse;";";2)
+
+: ($ResponseCode="001")//Not yet Uploaded to Server
+$ReceiveResponse:=WSC_InetBackups ($BackupServerHost;$BackupServerPort;"Receive";$FacilityID;Get document size($SegmentFilePath+$SegmentFileNamesList{1});$SegmentNumber;$SegmentCount;$FacilityCode;$BusinessName;$SegmentFileNamesList{1};Current date;Current time;True;$SegmentBody;$BackupSessionToken;$OS;$SegmentMD5Hash)
+$ResponseCode:=GetSeparatedText ($ReceiveResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($ReceiveResponse;";";2)
+Else 
+//Unknown Error
+End case 
+
+If ($ResponseCode#"000")//UnSuccessful Upload
+$SegmentUploadStatus{1}:=$SegmentUploadStatus{1}+1//Increment the Failed Upload Count
+If ($SegmentUploadStatus{1}>$SegmentUploadRetryCountPeak)
+$SegmentUploadRetryCountPeak:=$SegmentUploadStatus{1}//If SegmentUploadRetryCount is the highest of all Segment's UploadRetryCounts, then update the Peak count
+End if 
+If ($SegmentUploadRetryCountPeak>$SegmentUploadRetryCountLimit)//If the SegmentUploadRetryCountPeak value is greater than the predefined limit, then abort the Backup
+$AbortBackupFileUpload:=True
+End if 
+SyncRecordLog (Get localized string("Internet Backup Segment Upload - Segment")+" "+String($SegmentNumber)+" "+Get localized string("of")+" "+String($SegmentCount)+" - "+Get localized string("Failed")+"!")
+Else 
+$SegmentUploadStatus{1}:=1000//Mark this Segment as having uploaded successfully
+SyncRecordLog (Get localized string("Internet Backup Segment Upload - Segment")+" "+String($SegmentNumber)+" "+Get localized string("of")+" "+String($SegmentCount)+" - "+Get localized string("Successful"))
+End if 
+
+: ($ResponseCode="500")//Upload Complete
+$BackupFileUploadFinished:=True
+
+: ($ResponseCode="600")//Terminate Immediately
+$AbortBackupFileUpload:=True
+End case 
+
+
+Case of 
+: ($ResponseCode="000")
+//Loop around, don't do anything
+
+: ($ResponseCode="910")//SOAP Fault
+$AbortBackupFileUpload:=True
+SyncRecordLog (Get localized string("Internet Backup Aborted - Error Code:")+" "+$ResponseCode+", "+Get localized string("Error Description:")+" "+$ResponseDescription)
+
+: ($ResponseCode="911")//Parser Fault
+$AbortBackupFileUpload:=True
+SyncRecordLog (Get localized string("Internet Backup Aborted - Error Code:")+" "+$ResponseCode+", "+Get localized string("Error Description:")+" "+$ResponseDescription)
+
+: ($ResponseCode="912")//HTTP Fault
+$AbortBackupFileUpload:=True
+SyncRecordLog (Get localized string("Internet Backup Aborted - Error Code:")+" "+$ResponseCode+", "+Get localized string("Error Description:")+" "+$ResponseDescription)
+
+: ($ResponseCode="913")//Network Fault
+SyncRecordLog (Get localized string("Internet Backup Aborted - Error Code:")+" "+$ResponseCode+", "+Get localized string("Error Description:")+" "+$ResponseDescription)
+$ConnectionFailureCounter:=$ConnectionFailureCounter+1
+If ($ConnectionFailureCounter>5)
+$AbortBackupFileUpload:=True
+Else 
+$HTTPTimeout:=$HTTPTimeout*2
+$TimeoutEndTime:=Tickcount+(60*60)//1 Minute delay before retry
+While (Tickcount<$TimeoutEndTime)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Connection Failure")+" "+String($ConnectionFailureCounter)+" - "+Get localized string("Delay")+":"+String(Int(($TimeoutEndTime-Tickcount)/60))+Get localized string("seconds")+"..."+"    ")
+SyncRecordLog (Get localized string("Internet Backup Connection Failure")+" "+String($ConnectionFailureCounter)+" - "+Get localized string("Delay")+":"+String(Int(($TimeoutEndTime-Tickcount)/60))+Get localized string("seconds")+"...")
+IDLE
+End while 
+End if 
+
+: ($ResponseCode="914")//Internal Fault
+$AbortBackupFileUpload:=True
+SyncRecordLog (Get localized string("Internet Backup Aborted - Error Code:")+" "+$ResponseCode+", "+Get localized string("Error Description:")+" "+$ResponseDescription)
+
+: ($ResponseCode="401")//Delay for returned value number of seconds
+$DelayTimeMinutes:=Substring(GetSeparatedText ($StatusResponse;";";2);7)//Delay:12
+$TimeoutEndTime:=Tickcount+(Num($DelayTimeMinutes)*(60*60))
+While (Tickcount<$TimeoutEndTime)
+GOTO XY(2;2)
+MESSAGE(Get localized string("Server Reqested Delay:")+" "+String(Int(($TimeoutEndTime-Tickcount)/60))+" "+Get localized string("seconds")+"..."+"    ")
+SyncRecordLog (Get localized string("Internet Backup Server Requested Delay:")+" "+String(Int(($TimeoutEndTime-Tickcount)/60))+" "+Get localized string("seconds")+"...")
+IDLE
+End while 
+
+Else 
+//Do nothing
+End case 
+End while 
+CLOSE WINDOW($WinRef)
+
+
+//Cleanup everything Locally
+For ($FilenameCounter;1;Size of array($SegmentFileNamesList))
+If (Test path name($SegmentFilePath+$SegmentFileNamesList{$FilenameCounter})=Is a document)
+DELETE DOCUMENT($SegmentFilePath+$SegmentFileNamesList{$FilenameCounter})
+End if 
+End for 
+
+
+
+Else //Token Generated and Received
+$ResponseCode:=GetSeparatedText ($GetTokenResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($GetTokenResponse;";";2)
+End if 
+Else //Split Failed
+$ResponseCode:=GetSeparatedText ($SegmentResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($SegmentResponse;";";2)
+End if 
+Else //Server Test Passed 
+$ResponseCode:=GetSeparatedText ($TestServerResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($TestServerResponse;";";2)
+End if 
+
+Else //Backup Server Information Not Available
+$ResponseCode:=GetSeparatedText ($FacilityInformationResponse;";";1)
+$ResponseDescription:=GetSeparatedText ($FacilityInformationResponse;";";2)
+End if 
+
+$0:=$ResponseCode+";"+$ResponseDescription
+ON ERR CALL("ErrorLog")

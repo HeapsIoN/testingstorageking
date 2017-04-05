@@ -1,0 +1,233 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 20/04/16, 16:10:23
+// ----------------------------------------------------
+// Method: [Trxs].StockOut
+// Description
+// 
+// Form method Inventory Item Purchase, Adjustment and Transfers
+//
+// Parameters
+// ----------------------------------------------------
+
+bLastButton:=bLast
+READ WRITE([Trxs])
+
+
+If (Form event=On Double Clicked)
+Case of 
+: ([Trxs]OriginalReceipt="TRANSFER") & ([Trxs]Qty<0)
+FORM SET INPUT([Trxs];"StockTransfer")
+: ([Trxs]OriginalReceipt="TRANSFER") & ([Trxs]Qty>0)
+FORM SET INPUT([Trxs];"StockTransferReceive")
+: ([Trxs]OriginalReceipt="ADJUSTMENT")
+FORM SET INPUT([Trxs];"StockAdjustment")
+Else 
+//Do Nothing
+End case 
+If ([Trxs]TrxDate#!00-00-00!) & (bDontClick=False)
+Case of 
+: ([Trxs]OriginalReceipt="TRANSFER") & ([Trxs]Qty<0)
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-267;(Screen width/2)+225;(Screen height/2)+267;5;"Transfer Inventory")
+: ([Trxs]OriginalReceipt="TRANSFER") & ([Trxs]Qty>0)
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-276;(Screen width/2)+225;(Screen height/2)+276;5;"Receive Inventory")
+: ([Trxs]OriginalReceipt="ADJUSTMENT")
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-206;(Screen width/2)+225;(Screen height/2)+206;5;"Inventory Adjustment")
+Else 
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-276;(Screen width/2)+225;(Screen height/2)+276;5;"Inventory Purchase")
+End case 
+MODIFY RECORD(*)
+CLOSE WINDOW($WinRef)
+End if 
+bDontClick:=False
+FORM SET INPUT([Trxs];"StockIn")
+FILTER EVENT
+End if 
+
+
+If (Form event=On Load)
+bDontClick:=False
+Case of 
+: (<>sProduct="@B")
+GET PICTURE FROM LIBRARY(2111;vpGradiant)
+OBJECT SET RGB COLORS(*;"RectangleBG";0x0000;0x00E7F2F8)
+: (<>sProduct="@R")
+GET PICTURE FROM LIBRARY(2109;vpGradiant)
+OBJECT SET RGB COLORS(*;"RectangleBG";0x0000;0x00FDF5F3)
+: (<>sProduct="@T")
+GET PICTURE FROM LIBRARY(2110;vpGradiant)
+OBJECT SET RGB COLORS(*;"RectangleBG";0x0000;0x00F9F7FC)
+Else 
+GET PICTURE FROM LIBRARY(2108;vpGradiant)
+OBJECT SET RGB COLORS(*;"RectangleBG";0x0000;0x00E8F6F9)
+End case 
+ARRAY TEXT(asStockDisplay;4)
+asStockDisplay{1}:=Get localized string("All")
+asStockDisplay{2}:=Get localized string("Purchases")
+asStockDisplay{3}:=Get localized string("Adjustments")
+asStockDisplay{4}:=Get localized string("Transfers")
+asStockDisplay:=1
+FILTER EVENT
+End if 
+
+
+If (Form event=On Display Detail)
+RELATE ONE([Trxs]AnalysisCode)
+[Trxs]AnalysisCode:=Substring([Trxs]AnalysisCode;6)
+If ([Trxs]Qty#0)
+[Trxs]Balance:=Round([Trxs]TotAmt/[Trxs]Qty;2)
+Else 
+[Trxs]Balance:=0
+End if 
+FILTER EVENT
+End if 
+
+
+If (Form event=On Clicked)//10337
+FILTER EVENT
+If (bAdjustment=1)
+If (PermissionsControl (187))
+REDUCE SELECTION([Trxs];0)
+vCol1:=""
+bAdjustment:=0
+vLastDate:=!00-00-00!
+FORM SET INPUT([Trxs];"StockAdjustment")
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-206;(Screen width/2)+225;(Screen height/2)+206;5;Get localized string("Inventory Adjustment"))
+Repeat 
+ADD RECORD(*)
+Until (bCancel=1)
+CLOSE WINDOW($WinRef)
+FORM SET INPUT([Trxs];"StockIn")
+QUERY([Trxs];[Trxs]Match=-999;*)
+If (bLastButton=1)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date-31;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+Case of 
+: (asStockDisplay=2)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="PURCHASE";*)
+: (asStockDisplay=3)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="ADJUSTMENT";*)
+: (asStockDisplay=4)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="TRANSFER";*)
+End case 
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility)
+ORDER BY([Trxs]TrxDate;<;[Trxs]AnalysisCode;>;[Trxs]TotAmt;>)
+End if 
+FILTER EVENT
+End if 
+
+If (bTransfer=1)
+If (PermissionsControl (179))
+REDUCE SELECTION([Trxs];0)
+vCol1:=""
+vLastDate:=!00-00-00!
+bTransfer:=0
+FORM SET INPUT([Trxs];"StockTransfer")
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-267;(Screen width/2)+225;(Screen height/2)+267;5;Get localized string("Transfer Inventory"))
+Repeat 
+ADD RECORD(*)
+Until (bCancel=1)
+CLOSE WINDOW($WinRef)
+FORM SET INPUT([Trxs];"StockIn")
+QUERY([Trxs];[Trxs]Match=-999;*)
+If (bLastButton=1)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date-31;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+Case of 
+: (asStockDisplay=2)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="PURCHASE";*)
+: (asStockDisplay=3)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="ADJUSTMENT";*)
+: (asStockDisplay=4)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="TRANSFER";*)
+End case 
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility)
+ORDER BY([Trxs]TrxDate;<;[Trxs]AnalysisCode;>;[Trxs]TotAmt;>)
+End if 
+FILTER EVENT
+End if 
+
+If (bAdd=1)
+REDUCE SELECTION([Trxs];0)
+vCol1:=""
+vLastDate:=!00-00-00!
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-276;(Screen width/2)+225;(Screen height/2)+276;5;Get localized string(Get localized string("Inventory Purchase")))
+Repeat 
+ADD RECORD(*)
+Until (bCancel=1)
+CLOSE WINDOW($WinRef)
+
+bAdd:=0
+QUERY([Trxs];[Trxs]Match=-999;*)
+If (bLastButton=1)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date-31;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+Case of 
+: (asStockDisplay=2)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="PURCHASE";*)
+: (asStockDisplay=3)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="ADJUSTMENT";*)
+: (asStockDisplay=4)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="TRANSFER";*)
+End case 
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility)
+ORDER BY([Trxs]TrxDate;<;[Trxs]AnalysisCode;>;[Trxs]TotAmt;>)
+FILTER EVENT
+End if 
+If (bReceive=1)
+If (PermissionsControl (180))
+REDUCE SELECTION([Trxs];0)
+vCol1:=""
+bReceive:=0
+vLastDate:=!00-00-00!
+FORM SET INPUT([Trxs];"StockTransferReceive")
+$WinRef:=Open window((Screen width/2)-225;(Screen height/2)-276;(Screen width/2)+225;(Screen height/2)+276;5;Get localized string("Receive Inventory"))
+Repeat 
+ADD RECORD(*)
+Until (bCancel=1)
+CLOSE WINDOW($WinRef)
+FORM SET INPUT([Trxs];"StockIn")
+QUERY([Trxs];[Trxs]Match=-999;*)
+If (bLastButton=1)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date-31;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+Case of 
+: (asStockDisplay=2)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="PURCHASE";*)
+: (asStockDisplay=3)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="ADJUSTMENT";*)
+: (asStockDisplay=4)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="TRANSFER";*)
+End case 
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility)
+ORDER BY([Trxs]TrxDate;<;[Trxs]AnalysisCode;>;[Trxs]TotAmt;>)
+End if 
+FILTER EVENT
+End if 
+End if 
+
+
+If (Form event=On Outside Call)//| (bAdd=1)
+QUERY([Trxs];[Trxs]Match=-999;*)
+If (bLastButton=1)
+QUERY([Trxs]; & ;[Trxs]TrxDate>Current date-31;*)
+End if 
+QUERY([Trxs]; & ;[Trxs]Charge=True;*)
+Case of 
+: (asStockDisplay=2)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="PURCHASE";*)
+: (asStockDisplay=3)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="ADJUSTMENT";*)
+: (asStockDisplay=4)
+QUERY([Trxs]; & ;[Trxs]OriginalReceipt="TRANSFER";*)
+End case 
+QUERY([Trxs]; & ;[Trxs]AgreeNo=<>sFacility)
+ORDER BY([Trxs]TrxDate;<;[Trxs]AnalysisCode;>;[Trxs]TotAmt;>)
+FILTER EVENT
+End if 

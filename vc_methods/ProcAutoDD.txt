@@ -1,0 +1,94 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Calling Method to obtain selection of Agreements to pay for
+C_TEXT($Response;$t)
+C_TEXT($1;$2;$3;$4)//BankAccount; Customer Name; Agreement Number; Transaction Type
+C_REAL($5)// Transaction Amount
+
+$Account:=GetTextNo ([Facility]DDAccountDetails;1;",")//"test100284"
+$Username:=GetTextNo ([Facility]DDAccountDetails;2;",")//"STORMANAPI"
+$Password:=GetTextNo ([Facility]DDAccountDetails;3;",")//"stormanapi"
+
+$Action:="I"
+$Batch:=""
+$Content:=""
+$Hash:=""
+$lf:=Char(10)
+$cr:=Char(13)
+$t:=Char(9)
+
+//Get Charge Transaction 
+$TransactionType:=$4
+$BSB:=Substring($1;1;3)+"-"+Substring($1;4;3)
+$BankAccountNumber:=Substring(String(Num($1));7;9)
+$TransactionAmount:=String($5;"######0.00")
+$AccountTitle:=$2//Customer Name
+$LodgementReference:=$3
+
+
+//GetXMLResults
+$Response:=AdvamDD ($Account;$Username;$Password;"I")
+$Success:=GetSeparatedText ($Response;$t;1)
+If ($Success#"Y")
+$ResponseCode:=GetSeparatedText ($Response;$t;2)
+$ResponseText:=GetSeparatedText ($Response;$t;3)
+Else 
+$Batch:=GetSeparatedText ($Response;$t;2)
+$Content:=$Content+"AdvamAccount:"+Replace string($Account;"test";"")+$cr
+$Content:=$Content+"FileDate:"+String(Year of(Current date);"0000")+String(Month of(Current date);"00")+String(Day of(Current date);"00")+$cr
+$Content:=$Content+"RecordCount:"+String(Size of array($TransactionType))+$cr
+
+$Content:=$Content+$TransactionType+","+$BSB+","+$BankAccountNumber+","+$TransactionAmount+","+$AccountTitle+","+$LodgementReference+$cr
+
+$Response:=AdvamDD ($Account;$Username;$Password;"S";$Batch;$Content)
+$Success:=GetSeparatedText ($Response;$t;1)
+If ($Success#"Y")
+$ResponseCode:=GetSeparatedText ($Response;$t;2)
+$ResponseText:=GetSeparatedText ($Response;$t;3)
+Else 
+$Content:=Replace string($Content;$lf;$cr)
+$Response:=GetMD5 ($Content)
+$Success:=GetSeparatedText ($Response;$t;1)
+If ($Success#"Y")
+$ResponseCode:=GetSeparatedText ($Response;$t;2)
+$ResponseText:=GetSeparatedText ($Response;$t;3)
+Else 
+$Hash:=GetSeparatedText ($Response;$t;2)
+$Response:=AdvamDD ($Account;$Username;$Password;"C";$Batch;$Hash)
+$Success:=GetSeparatedText ($Response;$t;1)
+If ($Success#"Y")
+$ResponseCode:=GetSeparatedText ($Response;$t;2)
+$ResponseText:=GetSeparatedText ($Response;$t;3)
+Else 
+$Batch:=GetSeparatedText ($Response;$t;2)
+$Status:=GetSeparatedText ($Response;$t;3)
+
+Repeat 
+$Response:=AdvamDD ($Account;$Username;$Password;"Q";$Batch)
+$Success:=GetSeparatedText ($Response;$t;1)
+If ($Success#"Y")
+$ResponseCode:=GetSeparatedText ($Response;$t;2)
+$ResponseText:=GetSeparatedText ($Response;$t;3)
+Else 
+$Batch:=GetSeparatedText ($Response;$t;2)
+$Status:=GetSeparatedText ($Response;$t;3)
+$InvalidContent:=GetSeparatedText ($Response;$t;4)
+End if 
+
+If ($Status="Upload Failed") | ($Status="Upload Duplicate") | ($Status="Import Complete") | ($Status="Import Failed") | ($Status="Processing Complete") | ($Status="Processing Failed") | ($Status="Cancelled") | ($Success="N")
+Else 
+$EndCycleTime:=Current time+10
+DELAY PROCESS(Current process;600)
+While (Current time<$EndCycleTime)
+IDLE
+End while 
+End if 
+Until ($Status="Upload Failed") | ($Status="Upload Duplicate") | ($Status="Import Complete") | ($Status="Import Failed") | ($Status="Processing Complete") | ($Status="Processing Failed") | ($Status="Cancelled") | (Shift down) | ($Success="N")
+End if 
+End if 
+End if 
+End if 
+If ($Success="Y") & ($InvalidContent#"")
+$0:="DEC - "+$InvalidContent
+Else 
+$0:="ERR - "+$ResponseCode+" - "+$ResponseText
+End if 

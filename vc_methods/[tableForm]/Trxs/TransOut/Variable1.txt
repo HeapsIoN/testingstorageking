@@ -1,0 +1,134 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_DATE($Date;$EDate)
+If (Form event=On Load)
+ARRAY TEXT(asAgreemt;6)
+asAgreemt{1}:=Get localized string("This Week")
+asAgreemt{2}:=Get localized string("This Month")
+asAgreemt{3}:=Get localized string("Last Month")
+asAgreemt{4}:=Get localized string("All Transactions")
+asAgreemt{5}:=Get localized string("Date Range:")
+asAgreemt{6}:=Get localized string("Specific Date")+"..."
+asAgreemt:=1
+
+tmp_asAgreemt:=asAgreemt
+tmp_flag:=0
+Else 
+bLast:=bLastButton
+QUERY([Trxs];[Trxs]CustomerCode=<>sFacility+"@";*)
+QUERY([Trxs]; & ;[Trxs]Charge=tBoolean;*)
+
+//$tmp_asAgreemt:=asAgreemt
+
+Case of 
+: (asAgreemt=1)
+//$WeekEndDay:=<>iWeekEndDay
+//If ($WeekEndDay<1)
+//$WeekEndDay:=7  //This should pick up a variable at startup
+//End if 
+//If ($WeekEndDay<1)
+//$WeekEndDay:=1
+//End if 
+//If ($WeekEndDay>7)
+//$WeekEndDay:=7
+//End if 
+//If ($WeekEndDay>4)
+//$WeekEndDay:=$WeekEndDay-6
+//Else 
+//$WeekEndDay:=$WeekEndDay+1
+//End if 
+//$Week:=Trunc(((Current date-!01/01/2000!)-$WeekEndDay)/7;0)
+//$WeekDate:=Add to date(!01/01/2000!;0;0;$Week*7)
+//QUERY([Transaction]; & ;[Transaction]TrxDate>$WeekDate;*)
+//QUERY([Transaction]; & ;[Transaction]TrxDate<=$WeekDate+7;*)
+
+$WeekEndDay:=<>iWeekEndDay
+If ($WeekEndDay<1)
+$WeekEndDay:=1
+End if 
+If ($WeekEndDay>7)
+$WeekEndDay:=7
+End if 
+$check:=$WeekEndDay-Day number(Current date)
+If ($check=0)
+$check:=-7
+End if 
+If ($check>0)
+$check:=-7+$check
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>(Current date+$check);*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=(Current date+(7+$check));*)
+
+: (asAgreemt=2)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=GetDate (1;Month of(Current date);Year of(Current date));*)
+: (asAgreemt=3)
+$Date:=GetDate (1;Month of(Current date);Year of(Current date))
+QUERY([Trxs]; & ;[Trxs]TrxDate>=Add to date($Date;0;-1;0);*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<$Date;*)
+: (asAgreemt=5)
+
+vTRDate:=RequestDate (Get localized string("Enter Start Date to Display from")+":";Current date)
+If (OK=1)
+vTREDate:=RequestDate (Get localized string("Enter End Date to Display to")+":";Current date)
+If (OK=1)
+If (vTRDate>Current date) | (vTRDate<!1970-01-01!)
+vTRDate:=Current date
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate>=vTRDate;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=vTREDate;*)
+Else 
+asAgreemt:=tmp_asAgreemt
+tmp_flag:=1
+End if 
+Else 
+asAgreemt:=tmp_asAgreemt
+tmp_flag:=1
+End if 
+
+//vTREDate:=RequestDate (Get localized string("Enter End Date to Display to")+":";Current date)
+//If (vTRDate>Current date) | (vTRDate<!01/01/1970!)
+//vTRDate:=Current date
+//End if 
+//QUERY([Trxs]; & ;[Trxs]TrxDate>=vTRDate;*)
+//QUERY([Trxs]; & ;[Trxs]TrxDate<=vTREDate;*)
+
+
+: (asAgreemt=6)
+vTRDate:=RequestDate (Get localized string("Enter Date to Display")+":";Current date)
+
+If (OK=1)
+If (vTRDate>Current date) | (vTRDate<!1970-01-01!)
+vTRDate:=Current date
+End if 
+QUERY([Trxs]; & ;[Trxs]TrxDate=vTRDate;*)
+Else 
+asAgreemt:=tmp_asAgreemt
+tmp_flag:=1
+End if 
+//If (vTRDate>Current date) | (vTRDate<!01/01/1970!)
+//vTRDate:=Current date
+//End if 
+//QUERY([Trxs]; & ;[Trxs]TrxDate=vTRDate;*)
+Else 
+//do nothing
+End case 
+
+tmp_asAgreemt:=asAgreemt
+
+If (tmp_flag#1)
+If (bLast=1)
+End if 
+QUERY([Trxs]; & ;[Trxs]Match#-999;*)
+If (vMisc=True)
+QUERY([Trxs]; & ;[Trxs]CustomerCode=(<>sFacility+"MISCL"))
+ORDER BY([Trxs];[Trxs]TrxDate;<;[Trxs]TrxTime;<)
+Else 
+QUERY([Trxs]; & ;[Trxs]CustomerCode#(<>sFacility+"MISCL");*)
+QUERY([Trxs]; & ;[Trxs]CustomerCode#(<>sFacility+"PETTY"))
+ORDER BY([Trxs];[Trxs]TrxDate;<;[Trxs]Charge;>;[Trxs]TotAmt;>)
+End if 
+Else 
+tmp_flag:=0
+End if 
+
+
+End if 

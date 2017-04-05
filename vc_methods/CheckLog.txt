@@ -1,0 +1,170 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT($i;$j)
+C_TEXT($Temp)
+//Currently this method is not called by Central from 27/6/05 due to slow down in Central and it seems no need to refresh the client windows.
+//In the future we may need to use this to process checks on the log
+READ WRITE([EventLog])
+QUERY([EventLog];[EventLog]Processed=False)
+ORDER BY([EventLog];[EventLog]EventTable;>;[EventLog]EventTime;>)
+
+For ($i;1;Records in selection([EventLog]))
+If (Locked([EventLog])=True)
+If (Is in set("LockedRecs")=False)
+AlertServer (Get localized string("EventLog item")+" "+[EventLog]EventType+" "+String([EventLog]EventTable)+":"+[EventLog]KeyValue+" "+Get localized string("recorded at")+" "+String([EventLog]EventDate)+" "+String([EventLog]EventTime)+" "+Get localized string("is locked & cannot be processed! Please clear this item."))
+ADD TO SET([EventLog];"LockedRecs")
+End if 
+$Wait:=True
+Else 
+$Wait:=False
+Case of 
+: ([EventLog]EventTable=3)//Unit Table
+
+If ([EventLog]LogDetail="@Status@") | ([EventLog]LogDetail="@UnitNo@")
+INSERT IN ARRAY(<>asUnitChange;0)
+<>asUnitChange{1}:=[EventLog]AgreeNo
+$x:=Position("RUnitNo";[EventLog]LogDetail)
+If ([EventLog]EventType="MOD") & ($x>0)//Only required if changed Unit Number
+$Temp:=Substring([EventLog]LogDetail;$x+7)
+$x:=Position(Char(19);$Temp;0;*)
+$Temp:=Substring($Temp;$x+1)
+$x:=Position(Char(20);$Temp;0;*)
+If ($x>1)
+INSERT IN ARRAY(<>asUnitChange;0)
+<>asUnitChange{1}:=Substring($Temp;1;$x-1)
+End if 
+End if 
+If (<>tClient)//Send to all the clients            
+If (Size of array(<>asUnitChange)>1)//Not possible to have more than 2 items in array for Server
+EXECUTE ON CLIENT("@";"SetUnitArray";<>asUnitChange{1};<>asUnitChange{2})
+Else 
+EXECUTE ON CLIENT("@";"SetUnitArray";<>asUnitChange{1})
+End if 
+ARRAY TEXT(<>asUnitChange;0)
+End if 
+End if 
+: ([EventLog]EventTable=12)//Contacts Table
+If ([EventLog]EventType="ADD")
+INSERT IN ARRAY(<>asUnitChange;0)
+<>asUnitChange{1}:="$"+String([EventLog]EventRecNo)
+If (<>tClient)//Send to all the clients            
+If (Size of array(<>asUnitChange)>1)//Not possible to have more than 2 items in array for Server
+EXECUTE ON CLIENT("@";"SetUnitArray";<>asUnitChange{1};<>asUnitChange{2})
+Else 
+EXECUTE ON CLIENT("@";"SetUnitArray";<>asUnitChange{1})
+End if 
+ARRAY TEXT(<>asUnitChange;0)
+End if 
+End if 
+: ([EventLog]EventTable=4) & (False)//Agreement File
+DEFAULT TABLE([Agreement])
+vError:=False
+ON ERR CALL("ErrorGotoRec")
+GOTO RECORD([Agreement];[EventLog]EventRecNo)
+ON ERR CALL("ErrorLog")
+If (vError)
+[EventLog]EventAlert:=True
+[EventLog]LogDetail:="WARNING - This Agreement did not exist when CheckLog came to locate the record!"
+Else 
+//Check what rent should be
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo)
+$Total:=0
+For ($j;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+$Total:=$Total+CalculateBaseRate (2;0)
+NEXT RECORD([Unit])
+End for 
+RELATE ONE([Agreement]BillingPlanCode)
+$Total:=Round($Total*[Agreement]MthsAdv*(100-[BillPlan]DiscPercentage)/100;1)
+[EventLog]BillPAnlys:=[Agreement]BillingPlanCode
+[EventLog]TrxDate:=[Agreement]MoveIn
+[EventLog]TrxAmount:=[Agreement]RentAmt
+[EventLog]LogDetail:=[EventLog]LogDetail+Char(13)+"Agreement:"+[Agreement]AgreeNo+", RentAmt:"+String([Agreement]RentAmt;<>sFormat)+", CorrectRent:"+String($Total;<>sFormat)
+If (Abs([Agreement]RentAmt-$Total)>=1)
+[EventLog]EventAlert:=True
+Else 
+[EventLog]EventAlert:=False
+End if 
+End if 
+: ([EventLog]EventTable=6) & (False)//Transaction File
+DEFAULT TABLE([Trxs])
+vError:=False
+ON ERR CALL("ErrorGotoRec")
+GOTO RECORD([Trxs];[EventLog]EventRecNo)
+ON ERR CALL("ErrorLog")
+If (vError)
+[EventLog]EventAlert:=True
+[EventLog]LogDetail:="WARNING - This Trx did not exist when CheckLog tried to locate the record!"
+Else 
+If ([Trxs]Charge=True)
+QUERY([Agreement];[Agreement]RAgreeNo=[Trxs]AgreeNo)
+If (Records in selection([Agreement])=1) | ([Trxs]CustomerCode=<>sFacility+"MISCL")
+RELATE ONE([Trxs]AnalysisCode)
+[EventLog]BillPAnlys:=[Trxs]AnalysisCode
+[EventLog]TrxDate:=[Trxs]TrxDate
+[EventLog]TrxAmount:=[Trxs]TotAmt
+If ([Trxs]CheckTotAmt=0)
+Case of 
+: ([Analysis]SortOrder=1)
+[EventLog]LogDetail:=[EventLog]LogDetail+Char(13)+"Agreement:"+[Agreement]AgreeNo+", ChargeAmt:"+String([Trxs]TotAmt;<>sFormat)+", AgreemtRent:"+String([Agreement]RentAmt;<>sFormat)
+If (Abs([Agreement]RentAmt-[Trxs]TotAmt)>=1)
+[EventLog]EventAlert:=True
+Else 
+[EventLog]EventAlert:=False
+End if 
+: ([Analysis]SortOrder=2)
+[EventLog]LogDetail:=[EventLog]LogDetail+Char(13)+"Agreement:"+[Agreement]AgreeNo+", ChargeAmt:"+String([Trxs]TotAmt;<>sFormat)+", AgreemtDep:"+String([Agreement]DepositAmt;<>sFormat)
+If (Abs([Agreement]DepositAmt-[Trxs]TotAmt)>=1)
+[EventLog]EventAlert:=True
+Else 
+[EventLog]EventAlert:=False
+End if 
+Else 
+[EventLog]LogDetail:=[EventLog]LogDetail+Char(13)+"Agreement:"+[Agreement]AgreeNo+", ChargeAmt:"+String([Trxs]TotAmt;<>sFormat)+", Default:"+String([Analysis]DfltSellAmt*[Trxs]Qty;<>sFormat)
+If (Abs(([Trxs]Qty*[Analysis]DfltSellAmt)-[Trxs]TotAmt)>=1)
+[EventLog]EventAlert:=True
+Else 
+[EventLog]EventAlert:=False
+End if 
+If ([Analysis]DfltSellAmt=0)//Don't alert if default amount is zero
+[EventLog]EventAlert:=False
+End if 
+End case 
+Else 
+[EventLog]LogDetail:=[EventLog]LogDetail+Char(13)+"Agreement:"+[Agreement]AgreeNo+", ChargeAmt:"+String([Trxs]TotAmt;<>sFormat)+", Correct:"+String([Trxs]CheckTotAmt;<>sFormat)
+If (Abs([Trxs]CheckTotAmt-[Trxs]TotAmt)>=1)
+[EventLog]EventAlert:=True
+Else 
+[EventLog]EventAlert:=False
+End if 
+End if 
+Else 
+If ([Trxs]Match#-999)//Dont check for Stock Purchases
+$Wait:=True//There should be a message if too many transactions are accumulating in the Check
+End if 
+End if 
+Else 
+[EventLog]BillPAnlys:=[Trxs]AnalysisCode
+[EventLog]TrxDate:=[Trxs]TrxDate
+[EventLog]TrxAmount:=[Trxs]TotAmt
+If ([Trxs]TotAmt>0)
+[EventLog]EventAlert:=False
+Else 
+[EventLog]EventAlert:=True
+End if 
+End if 
+If (Abs([EventLog]EventDate-[Trxs]TrxDate)>7)//Always alert if date is outside of 7 days range
+[EventLog]EventAlert:=True
+End if 
+End if 
+Else 
+//Do Nothing
+End case 
+End if 
+If ($Wait#True)
+[EventLog]Processed:=True
+SAVE RECORD([EventLog])
+End if 
+NEXT RECORD([EventLog])
+End for 
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])

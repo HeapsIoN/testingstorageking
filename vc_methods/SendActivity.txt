@@ -1,0 +1,28 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_BOOLEAN($0)//True if sent okay
+C_TEXT($Message;$Address)
+C_LONGINT($i)
+$i:=0
+$Message:="Storman Activity - "+[Facility]FacilityCode+":"+[Facility]FacilityName
+QUERY([Activity];[Activity]Updated=True;*)
+QUERY([Activity]; | ;[Activity]ActivityDate>=([Facility]LastDaily-40);*)//Changed in v3.0.2 to repeatedly send recent days
+QUERY([Activity]; & ;[Activity]ActivityDate<=[Facility]LastDaily)//Don't send into the future so data won't be displayed
+ORDER BY([Activity];[Activity]ActivityDate;>)
+FORM SET OUTPUT([Activity];"Export")
+EXPORT TEXT([Activity];<>sTutPath+[Facility]FacilityCode+"Data.txt")
+FORM SET OUTPUT([Activity];"Output")
+SetFacility 
+$Address:=GetEmailSendTo ("A@")
+ARRAY TEXT(aText;1)
+aText{1}:=<>sTutPath+[Facility]FacilityCode+"Data.txt"
+If (SendEmail ($Address;"Storman Activity - "+[Facility]FacilityCode+":"+[Facility]FacilityName;$Message;True))
+$0:=True
+READ WRITE([Activity])
+APPLY TO SELECTION([Activity];[Activity]Updated:=False)
+//◊dReCalc:=[System]LastDaily
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+Else 
+$0:=False
+AlertMessage (Get localized string("An error occurred with Internet Mail")+" #"+String($i)+" - "+IT_ErrorText ($i))
+End if 

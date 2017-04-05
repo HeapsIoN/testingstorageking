@@ -1,0 +1,149 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//This method will export the customer and agreement details currently in the selection to an INI file for Blue Moon
+//Agreement printer to print the customer's Agreement. - NGBW
+C_LONGINT($Err)
+C_TEXT($regProg;$regImp)
+C_LONGINT($comma)
+
+
+//Get the registry key pointing to the Blue Moon application
+$Err:=sys_GetRegText (GR_HKEY_LOCAL_MACHINE;"SOFTWARE\\Blue Moon\\TMSA";"Main Path";$regProg)
+
+//Get the registry key pointing to the Blue Moon import folder
+$Err:=sys_GetRegText (GR_HKEY_LOCAL_MACHINE;"SOFTWARE\\Blue Moon\\TMSA";"Import Path";$regImp)
+
+If ($regProg="") | ($regImp="")
+
+Else 
+
+//Create the INI file in the Blue Moon directory
+$docID:=Create document($regImp+"\\TMSA.TXT")
+
+//Write to the file
+SEND PACKET($docID;"[LEASE]\n")
+
+//Unit Number
+SEND PACKET($docID;"UNITNUM="+[Unit]UnitNo+"\n")
+
+//Additional Units
+
+//Agree No
+SEND PACKET($docID;"CONTRACTNUMBER="+[Agreement]AgreeNo+"\n")
+
+//Whether Business or Individual
+If ([Customer]Organization=True)
+SEND PACKET($docID;"CBBUSINESS=1\n")
+SEND PACKET($docID;"TENANTLASTNAME="+[Customer]CustomerName+"\n")
+Else 
+SEND PACKET($docID;"CBINDIVIDUAL=1\n")
+$comma:=Position(",";[Customer]CustomerName+"\n")
+//Customer's Last Name (assuming in "Last Name,  First Name" format
+SEND PACKET($docID;"TENANTLASTNAME="+Substring([Customer]CustomerName;1;$comma-1)+"\n")
+End if 
+
+//First Name
+SEND PACKET($docID;"TENANTFIRSTNAME="+[Customer]FirstName+"\n")
+
+//Initials
+SEND PACKET($docID;"TENANTINITIALS="+[Customer]Title+"\n")
+
+//DOB
+SEND PACKET($docID;"DATEOFBIRTH="+String([Customer]DateofBirth)+"\n")
+
+//Address
+SEND PACKET($docID;"ADDRESS="+[Customer]StreetAddress+"\n")
+
+//City
+SEND PACKET($docID;"CITY="+[Customer]StreetCity+"\n")
+
+//State
+SEND PACKET($docID;"STATE="+[Customer]StreetState+"\n")
+
+//ZIP
+SEND PACKET($docID;"ZIP="+[Customer]StreetZIPCode+"\n")
+
+//Employer
+SEND PACKET($docID;"EMPLOYER="+[Customer]Employer+"\n")
+
+//SSN or EIN
+SEND PACKET($docID;"SSNEIN="+[Customer]ABNNo+"\n")
+
+//Home Phone NEEDS FORMATTING
+SEND PACKET($docID;"HOMEPHONE="+[Customer]PhonePrivate+"\n")
+
+//Work Phone NEEDS FORMATTING
+SEND PACKET($docID;"WORKPHONE="+[Customer]PhoneBus+"\n")
+
+//Military Checkbox
+If ([Customer]Military)
+SEND PACKET($docID;"CBMILITARYYES=1\n")
+SEND PACKET($docID;"CBMILITARYNO=0\n")
+Else 
+SEND PACKET($docID;"CBMILITARYYES=1\n")
+SEND PACKET($docID;"CBMILITARYYES=0\n")
+End if 
+
+//Drivers License
+SEND PACKET($docID;"DRIVERSLICENSE="+[Customer]LicenceNo+"\n")
+
+//Drivers License State
+SEND PACKET($docID;"DRLICSTATE="+[Customer]LicenseState+"\n")
+
+//Vehicle Registration
+SEND PACKET($docID;"VEHLICENSE="+[Customer]CarRego+"\n")
+
+//Email
+SEND PACKET($docID;"EMAIL="+[Customer]EmailAddress+"\n")
+
+//Other Persons
+SEND PACKET($docID;"OTHERPERSONS="+Substring([Customer]AccessList;1;100)+"\n")
+
+//Emergency Contact
+SEND PACKET($docID;"EMERGENCYCONTACT="+[Customer]AltContact+"\n")
+
+//Access Code
+SEND PACKET($docID;"ACCESSCODE="+[Customer]GatePIN+"\n")
+
+//Security Deposit
+SEND PACKET($docID;"SECURITYDEPOSIT="+String([Agreement]DepositAmt)+"\n")
+
+//Move In Date
+SEND PACKET($docID;"BEGINLEASEDATE="+String([Agreement]MoveIn)+"\n")
+
+//Monthly/Weekly Rent
+SEND PACKET($docID;"RENT="+String([Agreement]RentAmt)+"\n")
+
+//Rent owing
+SEND PACKET($docID;"CURRENTRENT="+String([Agreement]TotRentUnpaid)+"\n")
+
+//Other Charges inc Ins
+SEND PACKET($docID;"OTHER="+String([Agreement]TotOthrUnpaid+[Agreement]TotInsUnpaid)+"\n")
+
+//Sales Tax
+If ([Agreement]TaxExempt)
+SEND PACKET($docID;"SALESTAX=0\n")
+Else 
+SEND PACKET($docID;"SALESTAX="+String(CalcTaxAmt ([Agreement]BalanceOwing))+"\n")
+End if 
+
+//Next Bill Date
+SEND PACKET($docID;"NEXTRENTDUE="+String([Agreement]NextBillDate)+"\n")
+
+//Unit Size
+SEND PACKET($docID;"SIZE="+String([Unit]UnitAreaSize)+"\n")
+
+//Mobile Phone
+SEND PACKET($docID;"CELLPHONE="+[Customer]MobilePhone+"\n")
+
+//Bill Date
+SEND PACKET($docID;"MONTHLYRENTALDUEDATE="+String([Agreement]DaytoBill)+"\n")
+
+//Vehicle Type
+SEND PACKET($docID;"VEHICLEMAKE="+[Customer]Vehicle+"\n")
+
+//Close the file
+CLOSE DOCUMENT($docID)
+
+//Run Bluemoon with the file we created
+LAUNCH EXTERNAL PROCESS($regProg+"\\Bluemoon.exe + /imp TMSA.TXT")
+End if 

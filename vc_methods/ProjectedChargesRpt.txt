@@ -1,0 +1,466 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): unknown
+// Date and time: 00/00/00, 00:00:00
+// ----------------------------------------------------
+// Method: ProjectedChargesRpt
+// Description
+// This method is used to produce the Projected Charges Report.
+//
+// Notes
+// ----------------------------------------------------
+// SDD 22/02/13  Modified report so that it will be exTax where [Facility]TaxAddtoAmt is true and inclTax where false
+// ----------------------------------------------------
+// Options/Questions
+// ----------------------------------------------------
+// 1. If the users wants to include Bill Plan discounts in the report.
+// 2. Date From to run the report.
+// ----------------------------------------------------
+
+LogAction (False;"Projected Charges Report started.")// records the report being started in the eventlog
+C_BOOLEAN(forCompleted)
+C_BOOLEAN($1;$Web)
+$Web:=False
+forCompleted:=False
+
+If (Count parameters=1)
+$Web:=$1
+End if 
+C_LONGINT($i;$j;$StartMth;$Mth)
+C_DATE($NextBillDate)
+If (PermissionsControl (152)) | ($Web)
+
+
+If ($Web=False)
+OK:=1
+$BillingPlan:=0
+If (<>tBatch=True)
+$BillingPlan:=1//Set to include Billing plans discount when run in batch
+Else 
+ConfirmTwo (Get localized string("Do you wish to include billing plan discounts?");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK=1)
+$BillingPlan:=1
+End if 
+SetFacility 
+If (<>tBatch=False)
+vStartDte:=RequestDate (Get localized string("Enter report start date:");Date(String(1)+"/"+String(Month of([Facility]LastDaily))+"/"+String(Year of([Facility]LastDaily))))
+Else 
+vStartDte:=vMthDate+1
+End if 
+Else 
+OK:=1
+$BillingPlan:=Num(WS_ReportSettings)
+End if 
+
+If (OK=1)
+$StartMth:=((Year of(vStartDte)-2000)*100)+Month of(vStartDte)
+//$BeginMth:=Date(String(1)+"/"+String(Month of([Facility]LastDaily))+"/"+String(Year of([Facility]LastDaily)))
+
+If ($Web)
+QUERY([Agreement];[Agreement]RAgreeNo=WS_FacilityCode+"@";*)
+Else 
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"@";*)
+End if 
+QUERY([Agreement]; & ;[Agreement]NextBillDate>!00-00-00!)
+//QUERY([Agreement]; & ;[Agreement]NextBillDate>=vStartDte)`can't do this in case they run the report into the future
+//QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+ARRAY TEXT(asAnalysis;0)
+ARRAY REAL(arAmounts;80;13)//Sized at 20 as that is likely max number of recurring analysis codes - changed to 40 after limit exceeded by KSS (SMG) - changed to 80 after limit exceeded
+For ($i;1;40)
+For ($j;1;13)
+arAmounts{$i}{$j}:=0
+End for 
+End for 
+For ($j;1;14)
+$p:=Get pointer("vCol"+String($j))
+$p->:=""
+End for 
+$WinRef:=Open window(20;50;450;150;0)
+For ($i;1;Records in selection([Agreement]))
+GOTO XY(2;2)
+//MESSAGE(Get localized string("Processing")+" : "+String($i)+" "+Get localized string("of")+" "+String(Records in selection([Agreement]))+" - "+[Agreement]AgreeNo+"    ")
+MESSAGE("Calculating Projected Charges for Agreement "+String($i)+" of "+String(Records in selection([Agreement])))
+RELATE ONE([BillPlan])
+$NextBillDate:=[Agreement]NextBillDate
+$NextBillDateMth:=(((Year of($NextBillDate)-2000)*100)+Month of($NextBillDate))-$StartMth+1
+If ($NextBillDateMth<1) & ([Agreement]ActiveAgreemt=True)
+Repeat 
+$NextBillDate:=CalcNxtBillDate ($NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+$NextBillDateMth:=(((Year of($NextBillDate)-2000)*100)+Month of($NextBillDate))-$StartMth+1
+Until ($NextBillDateMth>=1)
+End if 
+$Mth:=(((Year of(vStartDte)-2000)*100)+Month of(vStartDte))-$StartMth+1
+While ($Mth>88)
+$Mth:=$Mth-88
+End while 
+While ($NextBillDateMth>88)
+$NextBillDateMth:=$NextBillDateMth-88
+End while 
+
+$EndBillDate:=CalcNxtBillDate ($NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+
+$SMthDte:=vStartDte
+$MthDate:=GetDate (31;Month of(vStartDte);Year of(vStartDte))
+While ($Mth>0) & ($Mth<13)
+If ($Mth<$NextBillDateMth)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$SMthDte;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$MthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+For ($x;1;Records in selection([Trxs]))
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+If (Records in selection([Analysis])=1)
+$Find:=Find in array(asAnalysis;[Analysis]Code)
+If ($Find<1)
+APPEND TO ARRAY(asAnalysis;[Analysis]Code)
+$Find:=Size of array(asAnalysis)
+End if 
+If ([Facility]TaxAddtoAmt)//To exclude tax where tax is not included in prices
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[Trxs]TotAmt-[Trxs]TaxAmt
+Else 
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[Trxs]TotAmt
+End if 
+$p:=Get pointer("vCol"+String($Mth))
+$p->:="•"
+End if 
+NEXT RECORD([Trxs])
+End for 
+$SMthDte:=Add to date($SMthDte;0;1;0)
+$MthDate:=Add to date($MthDate;0;1;0)
+$Mth:=$Mth+1
+//End if 
+Else 
+If ([Agreement]ActiveAgreemt=True) & (([Agreement]MoveOut>$NextBillDate) | ([Agreement]MoveOut=!00-00-00!))
+If ($Mth=$NextBillDateMth)
+QUERY([Trxs];[Trxs]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate>=$SMthDte;*)
+QUERY([Trxs]; & ;[Trxs]TrxDate<=$MthDate;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+For ($x;1;Records in selection([Trxs]))
+QUERY([Analysis];[Analysis]Code=[Trxs]AnalysisCode)
+If (Records in selection([Analysis])=1)
+$Find:=Find in array(asAnalysis;[Analysis]Code)
+If ($Find<1)
+APPEND TO ARRAY(asAnalysis;[Analysis]Code)
+$Find:=Size of array(asAnalysis)
+End if 
+If ([Facility]TaxAddtoAmt)//To exclude tax where tax is not included in prices
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[Trxs]TotAmt-[Trxs]TaxAmt
+Else 
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[Trxs]TotAmt
+End if 
+$p:=Get pointer("vCol"+String($Mth))
+$p->:="•"
+End if 
+NEXT RECORD([Trxs])
+End for 
+End if 
+RELATE MANY([Agreement]RAgreeNo)
+QUERY([BillPlan];[BillPlan]Code=[Agreement]BillingPlanCode)
+For ($j;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([Customer]CustomerCode#[Agreement]CustomerCode)
+RELATE ONE([Agreement]CustomerCode)
+End if 
+If ([Customer]Organization=True)
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+[UnitType]OrgAnalysis)
+Else 
+QUERY([Analysis];[Analysis]Code=Substring([Agreement]RAgreeNo;1;5)+[UnitType]RentAnalysis)
+End if 
+If (Records in selection([Analysis])=1)
+$Find:=Find in array(asAnalysis;[Analysis]Code)
+If ($Find<1)
+APPEND TO ARRAY(asAnalysis;[Analysis]Code)
+$Find:=Size of array(asAnalysis)
+End if 
+If ([Unit]IncreaseFrom<=$NextBillDate) & ([Unit]IncreaseFrom#!00-00-00!)
+If ([Facility]TaxAddtoAmt)
+If ($BillingPlan=1)
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+(([Unit]NewRentAmt*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt))+CalcTaxAmt ([Unit]NewRentAmt*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt);[Analysis]Code;$NextBillDate;$EndBillDate))
+Else 
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+(([Unit]NewRentAmt*[Agreement]MthsAdv)+CalcTaxAmt ([Unit]NewRentAmt*[Agreement]MthsAdv;[Analysis]Code;$NextBillDate;$EndBillDate))
+End if 
+Else 
+If ($BillingPlan=1)
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]NewRentAmt*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt))
+Else 
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]NewRentAmt*[Agreement]MthsAdv)
+End if 
+End if 
+Else 
+If ([Facility]TaxAddtoAmt)
+If ($BillingPlan=1)
+//JohnnoFB9849
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+(([Unit]RentedValue*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt))+CalcTaxAmt ([Unit]RentedValue*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt);[Analysis]Code;$NextBillDate;$EndBillDate))
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]RentedValue*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt))
+Else 
+//JohnnoFB9849
+//arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+(([Unit]RentedValue*[Agreement]MthsAdv)+CalcTaxAmt ([Unit]RentedValue*[Agreement]MthsAdv;[Analysis]Code;$NextBillDate;$EndBillDate))
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]RentedValue*[Agreement]MthsAdv)
+End if 
+Else 
+If ($BillingPlan=1)
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]RentedValue*[Agreement]MthsAdv*(1-([BillPlan]DiscPercentage/100))-([BillPlan]DiscFixedAmt))
+Else 
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+([Unit]RentedValue*[Agreement]MthsAdv)
+End if 
+End if 
+End if 
+Else 
+If ($Web)
+If ([Customer]Organization=True)
+SyncRecordLog (Get localized string("Error - No analysis code for ")+[UnitType]OrgAnalysis+", Agreement:"+[Agreement]RAgreeNo)
+Else 
+SyncRecordLog (Get localized string("Error - No analysis code for ")+[UnitType]RentAnalysis+", Agreement:"+[Agreement]RAgreeNo)
+End if 
+Else 
+If ([Customer]Organization=True)
+AlertMessage (Get localized string("Error - No analysis code for ")+[UnitType]OrgAnalysis+", Agreement:"+[Agreement]RAgreeNo)
+Else 
+AlertMessage (Get localized string("Error - No analysis code for ")+[UnitType]RentAnalysis+", Agreement:"+[Agreement]RAgreeNo)
+End if 
+End if 
+End if 
+NEXT RECORD([Unit])
+End for 
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+For ($j;1;Records in selection([OtherChgs]))
+QUERY([Analysis];[Analysis]Code=[OtherChgs]AnalysisCode)
+If (Records in selection([Analysis])=1)
+$Find:=Find in array(asAnalysis;[Analysis]Code)
+If ($Find<1)
+APPEND TO ARRAY(asAnalysis;[Analysis]Code)
+$Find:=Size of array(asAnalysis)
+End if 
+If (Size of array(asAnalysis)>80)
+If ($Web)
+SyncRecordLog (Get localized string("WARNING - Too many recurring analysis codes - Exceeded"+" 80"))
+Else 
+AlertMessage (Get localized string("WARNING - Too many recurring analysis codes - Exceeded"+" 80"))
+End if 
+ABORT
+End if 
+If ([OtherChgs]IncreaseFrom<=$NextBillDate) & ([OtherChgs]IncreaseFrom#!00-00-00!)
+If ([Facility]TaxAddtoAmt)//This not needed as we have changed report to show excl tax for these sites
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[OtherChgs]NewAmount//+CalcTaxAmt ([OtherChgs]NewAmount;[Analysis]Code;$NextBillDate;$EndBillDate)
+Else 
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[OtherChgs]NewAmount
+End if 
+Else 
+If ([Facility]TaxAddtoAmt)
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[OtherChgs]Amount//+CalcTaxAmt ([OtherChgs]Amount;[Analysis]Code;$NextBillDate;$EndBillDate)
+Else 
+arAmounts{$Find}{$Mth}:=arAmounts{$Find}{$Mth}+[OtherChgs]Amount
+End if 
+End if 
+Else 
+If ($Web)
+SyncRecordLog (Get localized string("Error - No analysis code for ")+[OtherChgs]AnalysisCode+Get localized string(", Agreement:")+[Agreement]RAgreeNo)
+Else 
+AlertMessage (Get localized string("Error - No analysis code for ")+[OtherChgs]AnalysisCode+Get localized string(", Agreement:")+[Agreement]RAgreeNo)
+End if 
+End if 
+NEXT RECORD([OtherChgs])
+End for 
+$NextBillDate:=CalcNxtBillDate ($NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+$EndBillDate:=CalcNxtBillDate ($NextBillDate;[Agreement]MthsAdv+[BillPlan]FreePeriods;[Agreement]DaytoBill;[BillPlan]PlanPeriod)
+$Mth:=(((Year of($NextBillDate)-2000)*100)+Month of($NextBillDate))-$StartMth+1
+$SMthDte:=Add to date($SMthDte;0;1;0)
+$MthDate:=Add to date($MthDate;0;1;0)
+//$Mth:=$Mth+1
+Else 
+$Mth:=14
+End if 
+End if 
+While ($Mth>88)
+$Mth:=$Mth-88
+End while 
+End while 
+NEXT RECORD([Agreement])
+End for 
+CLOSE WINDOW($WinRef)
+If ($BillingPlan=1)
+vPCRNote:=Get localized string("Inclusive of Billing Plan Discounts")
+Else 
+vPCRNote:=Get localized string("Exclusive of Billing Plan Discounts")
+End if 
+If ([Facility]TaxAddtoAmt=True)
+vPCRNote:=vPCRNote+Char(13)+"Amounts are Exclusive of Tax"
+Else 
+vPCRNote:=vPCRNote+Char(13)+"Amounts are Inclusive of Tax"
+End if 
+QUERY WITH ARRAY([Analysis]Code;asAnalysis)
+ORDER BY([Analysis];[Analysis]SortOrder;>)
+
+If ($Web)
+APPEND TO ARRAY(aCustName;"")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;vCol1)
+APPEND TO ARRAY(asData3;vCol2)
+APPEND TO ARRAY(asData4;vCol3)
+APPEND TO ARRAY(asData5;vCol4)
+APPEND TO ARRAY(asData6;vCol5)
+APPEND TO ARRAY(asData7;vCol6)
+APPEND TO ARRAY(asData8;vCol7)
+APPEND TO ARRAY(asData9;vCol8)
+APPEND TO ARRAY(asData10;vCol9)
+APPEND TO ARRAY(asData11;vCol10)
+APPEND TO ARRAY(asData12;vCol11)
+APPEND TO ARRAY(asData13;vCol12)
+APPEND TO ARRAY(asData14;vCol13)
+
+$Date:=vStartDte
+ARRAY TEXT($DateString;12)
+$Subtotal1:=0
+$Subtotal2:=0
+$Subtotal3:=0
+$Subtotal4:=0
+$Subtotal5:=0
+$Subtotal6:=0
+$Subtotal7:=0
+$Subtotal8:=0
+$Subtotal9:=0
+$Subtotal10:=0
+$Subtotal11:=0
+$Subtotal12:=0
+
+For ($j;1;12)
+$Date:=Add to date($Date;0;1;0)
+$DateString{$j}:=String($Date-1;Internal date abbreviated)
+If (<>tDateFormat="US")
+If (Day of($Date-1)<10)
+$DateString{$j}:=Delete string($DateString{$j};4;2)//This takes out the 31sp
+Else 
+$DateString{$j}:=Delete string($DateString{$j};4;3)//This takes out the 31sp
+End if 
+Else 
+$DateString{$j}:=Delete string($DateString{$j};1;3)//This takes out the 31sp
+End if 
+$DateString{$j}:=Delete string($DateString{$j};4;1)//This takes out the comma
+$DateString{$j}:=Delete string($DateString{$j};5;2)//This takes out the first two digits of the year s
+End for 
+
+APPEND TO ARRAY(aCustName;"")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;$DateString{1})
+APPEND TO ARRAY(asData3;$DateString{2})
+APPEND TO ARRAY(asData4;$DateString{3})
+APPEND TO ARRAY(asData5;$DateString{4})
+APPEND TO ARRAY(asData6;$DateString{5})
+APPEND TO ARRAY(asData7;$DateString{6})
+APPEND TO ARRAY(asData8;$DateString{7})
+APPEND TO ARRAY(asData9;$DateString{8})
+APPEND TO ARRAY(asData10;$DateString{9})
+APPEND TO ARRAY(asData11;$DateString{10})
+APPEND TO ARRAY(asData12;$DateString{11})
+APPEND TO ARRAY(asData13;$DateString{12})
+APPEND TO ARRAY(asData14;"Total")
+
+$Total:=0
+For ($i;1;Records in selection([Analysis]))
+$j:=Find in array(asAnalysis;[Analysis]Code)
+If ($j>0)
+
+$SubTotal:=0
+For ($z;1;12)
+$SubTotal:=$SubTotal+arAmounts{$j}{$z}
+End for 
+
+//APPEND TO ARRAY(aCustName;Substring([Analysis]Code;6))
+//APPEND TO ARRAY(asData1;[Analysis]Description)
+//APPEND TO ARRAY(asData2;String(arAmounts{$j}{1}))
+//APPEND TO ARRAY(asData3;String(arAmounts{$j}{2}))
+//APPEND TO ARRAY(asData4;String(arAmounts{$j}{3}))
+//APPEND TO ARRAY(asData5;String(arAmounts{$j}{4}))
+//APPEND TO ARRAY(asData6;String(arAmounts{$j}{5}))
+//APPEND TO ARRAY(asData7;String(arAmounts{$j}{6}))
+//APPEND TO ARRAY(asData8;String(arAmounts{$j}{7}))
+//APPEND TO ARRAY(asData9;String(arAmounts{$j}{8}))
+//APPEND TO ARRAY(asData10;String(arAmounts{$j}{9}))
+//APPEND TO ARRAY(asData11;String(arAmounts{$j}{10}))
+//APPEND TO ARRAY(asData12;String(arAmounts{$j}{11}))
+//APPEND TO ARRAY(asData13;String(arAmounts{$j}{12}))
+//APPEND TO ARRAY(asData14;String($SubTotal))
+
+APPEND TO ARRAY(aCustName;Substring([Analysis]Code;6))
+APPEND TO ARRAY(asData1;[Analysis]Description)
+APPEND TO ARRAY(asData2;String(arAmounts{$j}{1};"#,###,##0"))
+APPEND TO ARRAY(asData3;String(arAmounts{$j}{2};"#,###,##0"))
+APPEND TO ARRAY(asData4;String(arAmounts{$j}{3};"#,###,##0"))
+APPEND TO ARRAY(asData5;String(arAmounts{$j}{4};"#,###,##0"))
+APPEND TO ARRAY(asData6;String(arAmounts{$j}{5};"#,###,##0"))
+APPEND TO ARRAY(asData7;String(arAmounts{$j}{6};"#,###,##0"))
+APPEND TO ARRAY(asData8;String(arAmounts{$j}{7};"#,###,##0"))
+APPEND TO ARRAY(asData9;String(arAmounts{$j}{8};"#,###,##0"))
+APPEND TO ARRAY(asData10;String(arAmounts{$j}{9};"#,###,##0"))
+APPEND TO ARRAY(asData11;String(arAmounts{$j}{10};"#,###,##0"))
+APPEND TO ARRAY(asData12;String(arAmounts{$j}{11};"#,###,##0"))
+APPEND TO ARRAY(asData13;String(arAmounts{$j}{12};"#,###,##0"))
+APPEND TO ARRAY(asData14;String($SubTotal;"#,###,##0"))
+
+
+//APPEND TO ARRAY(aCustName;Substring([Analysis]Code;6))
+//APPEND TO ARRAY(asData1;[Analysis]Description)
+//APPEND TO ARRAY(asData2;String(Trunc(arAmounts{$j}{1};0)))
+//APPEND TO ARRAY(asData3;String(Trunc(arAmounts{$j}{2};0)))
+//APPEND TO ARRAY(asData4;String(Trunc(arAmounts{$j}{3};0)))
+//APPEND TO ARRAY(asData5;String(Trunc(arAmounts{$j}{4};0)))
+//APPEND TO ARRAY(asData6;String(Trunc(arAmounts{$j}{5};0)))
+//APPEND TO ARRAY(asData7;String(Trunc(arAmounts{$j}{6};0)))
+//APPEND TO ARRAY(asData8;String(Trunc(arAmounts{$j}{7};0)))
+//APPEND TO ARRAY(asData9;String(Trunc(arAmounts{$j}{8};0)))
+//APPEND TO ARRAY(asData10;String(Trunc(arAmounts{$j}{9};0)))
+//APPEND TO ARRAY(asData11;String(Trunc(arAmounts{$j}{10};0)))
+//APPEND TO ARRAY(asData12;String(Trunc(arAmounts{$j}{11};0)))
+//APPEND TO ARRAY(asData13;String(Trunc(arAmounts{$j}{12};0)))
+//APPEND TO ARRAY(asData14;String(Trunc($SubTotal;0)))
+
+$Subtotal1:=$Subtotal1+arAmounts{$j}{1}
+$Subtotal2:=$Subtotal2+arAmounts{$j}{2}
+$Subtotal3:=$Subtotal3+arAmounts{$j}{3}
+$Subtotal4:=$Subtotal4+arAmounts{$j}{4}
+$Subtotal5:=$Subtotal5+arAmounts{$j}{5}
+$Subtotal6:=$Subtotal6+arAmounts{$j}{6}
+$Subtotal7:=$Subtotal7+arAmounts{$j}{7}
+$Subtotal8:=$Subtotal8+arAmounts{$j}{8}
+$Subtotal9:=$Subtotal9+arAmounts{$j}{9}
+$Subtotal10:=$Subtotal10+arAmounts{$j}{10}
+$Subtotal11:=$Subtotal11+arAmounts{$j}{11}
+$Subtotal12:=$Subtotal12+arAmounts{$j}{12}
+
+$Total:=$Total+$SubTotal
+
+End if 
+
+NEXT RECORD([Analysis])
+End for 
+
+//Total
+APPEND TO ARRAY(aCustName;"Total")
+APPEND TO ARRAY(asData1;"")
+APPEND TO ARRAY(asData2;String($Subtotal1;"#,###,##0"))
+APPEND TO ARRAY(asData3;String($Subtotal2;"#,###,##0"))
+APPEND TO ARRAY(asData4;String($Subtotal3;"#,###,##0"))
+APPEND TO ARRAY(asData5;String($Subtotal4;"#,###,##0"))
+APPEND TO ARRAY(asData6;String($Subtotal5;"#,###,##0"))
+APPEND TO ARRAY(asData7;String($Subtotal6;"#,###,##0"))
+APPEND TO ARRAY(asData8;String($Subtotal7;"#,###,##0"))
+APPEND TO ARRAY(asData9;String($Subtotal8;"#,###,##0"))
+APPEND TO ARRAY(asData10;String($Subtotal9;"#,###,##0"))
+APPEND TO ARRAY(asData11;String($Subtotal10;"#,###,##0"))
+APPEND TO ARRAY(asData12;String($Subtotal11;"#,###,##0"))
+APPEND TO ARRAY(asData13;String($Subtotal12;"#,###,##0"))
+APPEND TO ARRAY(asData14;String($Total;"#,###,##0"))
+
+Else 
+FORM SET OUTPUT([Analysis];"ProjectedChargesRpt")
+BREAK LEVEL(0)
+ACCUMULATE(vAmt1)
+PrintSelection ("L";->[Analysis])
+FORM SET OUTPUT([Analysis];"Output")
+End if 
+End if 
+End if 
+LogAction (True;"Projected Charges Report ended.")

@@ -1,0 +1,692 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 15/03/17, 20:13:37
+// ----------------------------------------------------
+// Method: WS_GetKeyData
+// Description
+// 
+// This method is called from Storman Reporting, and is used to send back basic 'key' data
+// as an overview of how a facility is running. To be displayed as javascript charts in Storman Online Reporting.
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_FacilityCode;Is string var;SOAP input)
+SOAP DECLARATION(WS_RequestType;Is string var;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is string var;SOAP input)
+
+SOAP DECLARATION(WS_SuccessMsg;Is string var;SOAP output)
+SOAP DECLARATION(aCustName;Text array;SOAP output)
+SOAP DECLARATION(asData1;Text array;SOAP output)
+SOAP DECLARATION(asData2;Text array;SOAP output)
+SOAP DECLARATION(asData3;Text array;SOAP output)
+SOAP DECLARATION(asData4;Text array;SOAP output)
+SOAP DECLARATION(asData5;Text array;SOAP output)
+SOAP DECLARATION(asData6;Text array;SOAP output)
+SOAP DECLARATION(asData7;Text array;SOAP output)
+SOAP DECLARATION(asData8;Text array;SOAP output)
+SOAP DECLARATION(asData8;Text array;SOAP output)
+SOAP DECLARATION(asData9;Text array;SOAP output)
+SOAP DECLARATION(asData10;Text array;SOAP output)
+SOAP DECLARATION(asData11;Text array;SOAP output)
+SOAP DECLARATION(asData12;Text array;SOAP output)
+SOAP DECLARATION(asData13;Text array;SOAP output)
+SOAP DECLARATION(asData14;Text array;SOAP output)
+SOAP DECLARATION(asData15;Text array;SOAP output)
+SOAP DECLARATION(asData16;Text array;SOAP output)
+SOAP DECLARATION(asData17;Text array;SOAP output)
+SOAP DECLARATION(WS_UnitStatus;Is string var;SOAP output)
+SOAP DECLARATION(WS_ActiveAgreements;Is string var;SOAP output)
+SOAP DECLARATION(WS_MoveIns;Is string var;SOAP output)
+SOAP DECLARATION(WS_MoveOuts;Is string var;SOAP output)
+SOAP DECLARATION(WS_Contacts;Is string var;SOAP output)
+SOAP DECLARATION(WS_Reservations;Is string var;SOAP output)
+
+
+
+//Default
+SOAP DECLARATION(WS_ORErrorCode;Is longint;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+
+
+$String:="Start WS_GetKeyData"+Char(13)
+$String:=$String+"WS_FacilityCode: "+WS_FacilityCode+Char(13)
+$String:=$String+"WS_RequestType: "+WS_RequestType+Char(13)
+$String:=$String+"WS_ReportDate: "+String(WS_ReportDate)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+WSRecordLog ($String)
+
+C_LONGINT($i;$Sort)
+C_REAL($Total;$ResTotal;$AccTotal)
+C_DATE($EndDate)
+C_DATE($StartDate)
+
+ARRAY TEXT(aCustName;0)
+ARRAY TEXT(asData;0;0)
+ARRAY TEXT(asData1;0)
+ARRAY TEXT(asData2;0)
+ARRAY TEXT(asData3;0)
+ARRAY TEXT(asData4;0)
+ARRAY TEXT(asData5;0)
+ARRAY TEXT(asData6;0)
+ARRAY TEXT(asData7;0)
+ARRAY TEXT(asData8;0)
+ARRAY TEXT(asData9;0)
+ARRAY TEXT(asData10;0)
+ARRAY TEXT(asData11;0)
+ARRAY TEXT(asData12;0)
+ARRAY TEXT(asData13;0)
+ARRAY TEXT(asData14;0)
+ARRAY TEXT(asData15;0)
+ARRAY TEXT(asData16;0)
+ARRAY TEXT(asData17;0)
+
+
+WS_UnitStatus:=""
+WS_ActiveAgreements:=""
+WS_MoveIns:=""
+WS_MoveOuts:=""
+WS_Contacts:=""
+WS_Reservations:=""
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+
+
+
+If (WS_FacilityCode="SKHOF")
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+
+If (Records in selection([Facility])=1)
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+$EndDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+
+For ($i;1;12)
+QUERY([Activity];[Activity]ActivityDate=$EndDate)
+
+APPEND TO ARRAY(aCustName;String($EndDate))
+APPEND TO ARRAY(asData1;String([Activity]MoveIns))//MI
+APPEND TO ARRAY(asData2;String([Activity]MoveOuts))//MO
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo))//Occupied units
+APPEND TO ARRAY(asData4;String([Activity]InquiriesTaken))//Sales Enq
+APPEND TO ARRAY(asData5;String([Activity]ResvtnsTaken))//Reservations
+APPEND TO ARRAY(asData6;String([Activity]RentChg))//Reservations
+
+$EndDate:=GetDate (1;Month of($EndDate);Year of($EndDate))-1
+
+End for 
+
+WS_UnitStatus:=""
+
+QUERY([Unit];[Unit]Status="Rented")
+$Rented:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Rented "+String($Rented)+" "
+
+
+QUERY([Unit];[Unit]Status="Vacant")
+$Vacant:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Vacant "+String($Vacant)+" "
+
+
+QUERY([Unit];[Unit]Status="Reserved")
+$Reserved:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Reserved "+String($Reserved)+" "
+
+
+QUERY([Unit];[Unit]Status="Company")
+$Company:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Company "+String($Company)+" "
+
+
+QUERY([Unit];[Unit]Status="Repair")
+$Repair:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Repair "+String($Repair)+" "
+
+
+QUERY([Unit];[Unit]Status="ToClean")
+$ToClean:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"ToClean "+String($ToClean)+" "
+
+
+QUERY([Unit];[Unit]Status="Locked")
+$Locked:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Locked "+String($Locked)+" "
+
+
+QUERY([Unit];[Unit]Status="Unavail")
+$Unavail:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Unavail "+String($Unavail)+" "
+
+C_LONGINT($Day0;$Day1;$Day2;$Day3;$Day4;$Day5;$Day6)
+C_TEXT($Date0;$Date1;$Date2;$Date3;$Date4;$Date5;$Date6)
+$Date0:=""
+$Date1:=""
+$Date2:=""
+$Date3:=""
+$Date4:=""
+$Date5:=""
+$Date6:=""
+$Day0:=0
+$Day1:=0
+$Day2:=0
+$Day3:=0
+$Day4:=0
+$Day5:=0
+$Day6:=0
+
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date)
+$Day0:=Records in selection([Agreement])
+$Date0:=GetDateName (Day number(Current date);True)
+
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-1)
+$Day1:=Records in selection([Agreement])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-2)
+$Day2:=Records in selection([Agreement])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-3)
+$Day3:=Records in selection([Agreement])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-4)
+$Day4:=Records in selection([Agreement])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-5)
+$Day5:=Records in selection([Agreement])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-6)
+$Day6:=Records in selection([Agreement])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+WS_MoveIns:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+//WS_MoveIns:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+
+
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date)
+$Day0:=Records in selection([Agreement])
+$Date0:=GetDateName (Day number(Current date);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-1)
+$Day1:=Records in selection([Agreement])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-2)
+$Day2:=Records in selection([Agreement])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-3)
+$Day3:=Records in selection([Agreement])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-4)
+$Day4:=Records in selection([Agreement])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-5)
+$Day5:=Records in selection([Agreement])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+QUERY([Agreement];[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-6)
+$Day6:=Records in selection([Agreement])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+//  WS_MoveOuts:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+WS_MoveOuts:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+
+
+QUERY([Contacts];[Contacts]CallDate=Current date)
+$Day0:=Records in selection([Contacts])
+$Date0:=GetDateName (Day number(Current date);True)
+
+
+QUERY([Contacts];[Contacts]CallDate=Current date-1)
+$Day1:=Records in selection([Contacts])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+
+QUERY([Contacts];[Contacts]CallDate=Current date-2)
+$Day2:=Records in selection([Contacts])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+
+QUERY([Contacts];[Contacts]CallDate=Current date-3)
+$Day3:=Records in selection([Contacts])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+
+QUERY([Contacts];[Contacts]CallDate=Current date-4)
+$Day4:=Records in selection([Contacts])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+
+QUERY([Contacts];[Contacts]CallDate=Current date-5)
+$Day5:=Records in selection([Contacts])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+
+QUERY([Contacts];[Contacts]CallDate=Current date-6)
+$Day6:=Records in selection([Contacts])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+WS_Contacts:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+//WS_Contacts:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+
+
+
+QUERY([Reservation];[Reservation]ReservedDate=Current date)
+$Day0:=Records in selection([Reservation])
+$Date0:=GetDateName (Day number(Current date);True)
+
+
+QUERY([Reservation];[Reservation]ReservedDate=Current date-1)
+$Day1:=Records in selection([Reservation])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+
+QUERY([Reservation];[Reservation]ReservedDate=Current date-2)
+$Day2:=Records in selection([Reservation])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+
+QUERY([Reservation];[Reservation]ReservedDate=Current date-3)
+$Day3:=Records in selection([Reservation])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+
+QUERY([Reservation];[Reservation]ReservedDate=Current date-4)
+$Day4:=Records in selection([Reservation])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+
+QUERY([Reservation];[Reservation]ReservedDate=Current date-5)
+$Day5:=Records in selection([Reservation])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+
+QUERY([Reservation];[Reservation]ReservedDate=Current date-6)
+$Day6:=Records in selection([Reservation])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+WS_Reservations:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+//WS_Reservations:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+
+
+
+
+
+
+C_REAL($PaidUp;$Overdue;$Total)
+
+
+QUERY([Agreement];[Agreement]CustomerCode#"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#"MISCL";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]PaidToDate>=Current date)
+$PaidUp:=Records in selection([Agreement])
+WS_ActiveAgreements:="PaidUp "+String($PaidUp)+" "
+
+
+QUERY([Agreement];[Agreement]CustomerCode#"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#"MISCL";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]PaidToDate<Current date)
+$Overdue:=Records in selection([Agreement])
+WS_ActiveAgreements:=WS_ActiveAgreements+"Overdue "+String($Overdue)+" "
+
+
+
+
+
+
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+Else 
+
+QUERY([Facility];[Facility]FacilityCode=WS_FacilityCode)
+
+If (Records in selection([Facility])=1)
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+TRACE
+$EndDate:=GetDate (1;Month of(Current date);Year of(Current date))-1
+
+For ($i;1;12)
+QUERY([Activity];[Activity]ActivityDate=$EndDate;*)
+QUERY([Activity]; & [Activity]FacilityCode=WS_FacilityCode)
+
+APPEND TO ARRAY(aCustName;String($EndDate))
+APPEND TO ARRAY(asData1;String([Activity]MoveIns))//MI
+APPEND TO ARRAY(asData2;String([Activity]MoveOuts))//MO
+APPEND TO ARRAY(asData3;String([Activity]OccupUnitNo))//Occupied units
+APPEND TO ARRAY(asData4;String([Activity]InquiriesTaken))//Sales Enq
+APPEND TO ARRAY(asData5;String([Activity]ResvtnsTaken))//Reservations
+APPEND TO ARRAY(asData6;String([Activity]RentChg))//Reservations
+
+$EndDate:=GetDate (1;Month of($EndDate);Year of($EndDate))-1
+
+End for 
+
+WS_UnitStatus:=""
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="Rented")
+$Rented:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Rented "+String($Rented)+" "
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="Vacant")
+$Vacant:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Vacant "+String($Vacant)+" "
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="Reserved")
+$Reserved:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Reserved "+String($Reserved)+" "
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="Company")
+$Company:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Company "+String($Company)+" "
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="Repair")
+$Repair:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Repair "+String($Repair)+" "
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="ToClean")
+$ToClean:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"ToClean "+String($ToClean)+" "
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="Locked")
+$Locked:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Locked "+String($Locked)+" "
+
+QUERY([Unit];[Unit]UnitTypeCode=WS_FacilityCode+"@";*)
+QUERY([Unit]; & ;[Unit]Status="Unavail")
+$Unavail:=Records in selection([Unit])
+WS_UnitStatus:=WS_UnitStatus+"Unavail "+String($Unavail)+" "
+
+C_LONGINT($Day0;$Day1;$Day2;$Day3;$Day4;$Day5;$Day6)
+C_TEXT($Date0;$Date1;$Date2;$Date3;$Date4;$Date5;$Date6)
+$Date0:=""
+$Date1:=""
+$Date2:=""
+$Date3:=""
+$Date4:=""
+$Date5:=""
+$Date6:=""
+$Day0:=0
+$Day1:=0
+$Day2:=0
+$Day3:=0
+$Day4:=0
+$Day5:=0
+$Day6:=0
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date)
+$Day0:=Records in selection([Agreement])
+$Date0:=GetDateName (Day number(Current date);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-1)
+$Day1:=Records in selection([Agreement])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-2)
+$Day2:=Records in selection([Agreement])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-3)
+$Day3:=Records in selection([Agreement])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-4)
+$Day4:=Records in selection([Agreement])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-5)
+$Day5:=Records in selection([Agreement])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]MoveIn=Current date-6)
+$Day6:=Records in selection([Agreement])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+WS_MoveIns:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+//WS_MoveIns:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+
+
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date)
+$Day0:=Records in selection([Agreement])
+$Date0:=GetDateName (Day number(Current date);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-1)
+$Day1:=Records in selection([Agreement])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-2)
+$Day2:=Records in selection([Agreement])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-3)
+$Day3:=Records in selection([Agreement])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-4)
+$Day4:=Records in selection([Agreement])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-5)
+$Day5:=Records in selection([Agreement])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]MoveOut=Current date-6)
+$Day6:=Records in selection([Agreement])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+
+//WS_MoveOuts:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+WS_MoveOuts:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+
+
+
+
+QUERY([Contacts];[Contacts]ContactNo=WS_FacilityCode+"@";*)
+QUERY([Contacts]; & ;[Contacts]CallDate=Current date)
+$Day0:=Records in selection([Contacts])
+$Date0:=GetDateName (Day number(Current date);True)
+
+QUERY([Contacts];[Contacts]ContactNo=WS_FacilityCode+"@";*)
+QUERY([Contacts]; & ;[Contacts]CallDate=Current date-1)
+$Day1:=Records in selection([Contacts])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+QUERY([Contacts];[Contacts]ContactNo=WS_FacilityCode+"@";*)
+QUERY([Contacts]; & ;[Contacts]CallDate=Current date-2)
+$Day2:=Records in selection([Contacts])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+QUERY([Contacts];[Contacts]ContactNo=WS_FacilityCode+"@";*)
+QUERY([Contacts]; & ;[Contacts]CallDate=Current date-3)
+$Day3:=Records in selection([Contacts])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+QUERY([Contacts];[Contacts]ContactNo=WS_FacilityCode+"@";*)
+QUERY([Contacts]; & ;[Contacts]CallDate=Current date-4)
+$Day4:=Records in selection([Contacts])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+QUERY([Contacts];[Contacts]ContactNo=WS_FacilityCode+"@";*)
+QUERY([Contacts]; & ;[Contacts]CallDate=Current date-5)
+$Day5:=Records in selection([Contacts])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+QUERY([Contacts];[Contacts]ContactNo=WS_FacilityCode+"@";*)
+QUERY([Contacts]; & ;[Contacts]CallDate=Current date-6)
+$Day6:=Records in selection([Contacts])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+//WS_Contacts:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+WS_Contacts:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+
+
+
+
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=Current date)
+$Day0:=Records in selection([Reservation])
+$Date0:=GetDateName (Day number(Current date);True)
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=Current date-1)
+$Day1:=Records in selection([Reservation])
+$Date1:=GetDateName (Day number(Current date-1);True)
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=Current date-2)
+$Day2:=Records in selection([Reservation])
+$Date2:=GetDateName (Day number(Current date-2);True)
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=Current date-3)
+$Day3:=Records in selection([Reservation])
+$Date3:=GetDateName (Day number(Current date-3);True)
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=Current date-4)
+$Day4:=Records in selection([Reservation])
+$Date4:=GetDateName (Day number(Current date-4);True)
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=Current date-5)
+$Day5:=Records in selection([Reservation])
+$Date5:=GetDateName (Day number(Current date-5);True)
+
+QUERY([Reservation];[Reservation]RReserveNo=WS_FacilityCode+"@";*)
+QUERY([Reservation]; & ;[Reservation]ReservedDate=Current date-6)
+$Day6:=Records in selection([Reservation])
+$Date6:=GetDateName (Day number(Current date-6);True)
+
+//WS_Reservations:="Today "+String($Day0)+" "+$Date1+" "+String($Day1)+" "+$Date2+" "+String($Day2)+" "+$Date3+" "+String($Day3)+" "+$Date4+" "+String($Day4)+" "+$Date5+" "+String($Day5)+" "+$Date6+" "+String($Day6)
+WS_Reservations:=$Date6+" "+String($Day6)+" "+$Date5+" "+String($Day5)+" "+$Date4+" "+String($Day4)+" "+$Date3+" "+String($Day3)+" "+$Date2+" "+String($Day2)+" "+$Date1+" "+String($Day1)+" "+"Today "+String($Day0)
+
+
+
+C_REAL($PaidUp;$Overdue;$Total)
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#WS_FacilityCode+"MISCL";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]PaidToDate>=Current date)
+$PaidUp:=Records in selection([Agreement])
+WS_ActiveAgreements:="PaidUp "+String($PaidUp)+" "
+
+QUERY([Agreement];[Agreement]CustomerCode=WS_FacilityCode+"@";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#WS_FacilityCode+"PETTY";*)
+QUERY([Agreement]; & ;[Agreement]CustomerCode#WS_FacilityCode+"MISCL";*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True;*)
+QUERY([Agreement]; & ;[Agreement]PaidToDate<Current date)
+$Overdue:=Records in selection([Agreement])
+WS_ActiveAgreements:=WS_ActiveAgreements+"Overdue "+String($Overdue)+" "
+
+
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+Else 
+WS_ORSuccess:=False
+WS_ORErrorCode:=1001
+WS_ORErrorDescription:="Facility record not found in database Storman."
+End if 
+
+End if 
+
+
+
+
+$String:="End WS_GetKeyData"+Char(13)
+$String:=$String+"WS_UnitStatus: "+String(WS_UnitStatus)+Char(13)
+$String:=$String+"WS_ActiveAgreements: "+String(WS_ActiveAgreements)+Char(13)
+$String:=$String+"WS_MoveIns: "+String(WS_MoveIns)+Char(13)
+$String:=$String+"WS_MoveOuts: "+String(WS_MoveOuts)+Char(13)
+$String:=$String+"WS_Contacts: "+String(WS_Contacts)+Char(13)
+$String:=$String+"WS_Reservations: "+String(WS_Reservations)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+ReadOnlyAll 
+UnloadAll 

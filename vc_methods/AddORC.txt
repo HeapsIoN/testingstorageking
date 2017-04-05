@@ -1,0 +1,48 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Records in selection([Customer])=1)
+
+QUERY([InsuranceRates];[InsuranceRates]Facility=<>sFacility)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+If ([Facility]InsuranceAgentType#3) | (([Facility]InsuranceAgentType=3) & (Records in selection([InsuranceRates])>0)) & (PermissionsControl (215;False)=False)
+QUERY([Analysis]; & ;[Analysis]Code#<>sFacility+"IN";*)
+End if 
+QUERY([Analysis]; & ;[Analysis]SortOrder>=4;*)
+QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)//johnno
+QUERY([Analysis]; & ;[Analysis]Inactive=False;*)
+QUERY([Analysis]; & ;[Analysis]DontShowBank=True)
+If (Records in selection([Analysis])=0)
+AlertMessage ("There are no Analysis Codes currently enabled to be Other Recurring Charges!")//xliffme
+//QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+//If ([Facility]InsuranceAgentType#3) | (([Facility]InsuranceAgentType=3) & (Records in selection([InsuranceRates])>0))
+//QUERY([Analysis]; & ;[Analysis]Code#<>sFacility+"IN";*)
+//End if 
+//QUERY([Analysis]; & ;[Analysis]SortOrder>=4;*)
+//QUERY([Analysis]; & ;[Analysis]SortOrder<=50;*)  //johnno
+//QUERY([Analysis]; & ;[Analysis]Inactive=False)
+Else 
+CREATE RECORD([OtherChgs])
+ORDER BY([Analysis];[Analysis]SortOrder;<)
+RELATE ONE([Agreement]BillingPlanCode)
+[OtherChgs]AnalysisCode:=[Analysis]Code
+[OtherChgs]Description:=[Analysis]Description
+Case of 
+: ([BillPlan]PlanPeriod="Day")
+[OtherChgs]Amount:=Round([Analysis]DfltSellAmt*12/365.25*([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+: ([BillPlan]PlanPeriod="Week")
+[OtherChgs]Amount:=Round([Analysis]DfltSellAmt*12/52.18*([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+Else 
+[OtherChgs]Amount:=Round([Analysis]DfltSellAmt*([Agreement]MthsAdv+[BillPlan]FreePeriods);2)
+End case 
+[OtherChgs]NewAmount:=[OtherChgs]Amount
+[OtherChgs]AgreeNo:=[Agreement]RAgreeNo
+SAVE RECORD([OtherChgs])
+
+End if 
+
+QUERY([OtherChgs];[OtherChgs]AgreeNo=[Agreement]RAgreeNo)
+bChange:=True
+bNewChange:=True
+Else 
+AlertMessage (Get localized string("Please enter a customer name before continuing..."))
+End if 
+

@@ -1,0 +1,90 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+$FacilityCode:=RequestMessage ("Please enter the facility code. This will delete all shipping records for this facility and then import";<>sFacility)
+
+If (OK=1)
+
+$Doc:=Open document("")
+If (OK=1)
+READ WRITE([Shipping])
+QUERY([Shipping];[Shipping]FacilityCode=$FacilityCode)
+DELETE SELECTION([Shipping])
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+While (Length($Buffer)>=10)
+For ($i;1;6)//Six fields
+$j:=Position(",";$Buffer)
+If ($j>1)
+$Field:=Substring($Buffer;1;$j-1)
+$Buffer:=Substring($Buffer;$j+1)
+Case of 
+: ($i=1)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Suburb:=$Field
+: ($i=2)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Postcode:=Num($Field)
+: ($i=3)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+$Field:=Replace string($Field;"$";"")
+CREATE RECORD([Shipping])
+[Shipping]FacilityCode:=$FacilityCode
+[Shipping]PostCode:=$Postcode
+[Shipping]Price:=Num($Field)
+[Shipping]MinKg:=0
+[Shipping]MaxKg:=25
+[Shipping]Type:="0-25 kg"
+[Shipping]Suburb:=$Suburb
+SAVE RECORD([Shipping])
+: ($i=4)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+CREATE RECORD([Shipping])
+[Shipping]FacilityCode:=$FacilityCode
+[Shipping]PostCode:=$Postcode
+[Shipping]Price:=Num($Field)
+[Shipping]MinKg:=26
+[Shipping]MaxKg:=125
+[Shipping]Type:="26-125 kg"
+[Shipping]Suburb:=$Suburb
+SAVE RECORD([Shipping])
+: ($i=5)
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+CREATE RECORD([Shipping])
+[Shipping]FacilityCode:=$FacilityCode
+[Shipping]PostCode:=$Postcode
+[Shipping]Price:=Num($Field)
+[Shipping]MinKg:=126
+[Shipping]MaxKg:=500
+[Shipping]Type:="126-500 kg"
+[Shipping]Suburb:=$Suburb
+SAVE RECORD([Shipping])
+Else 
+//Do nothing
+End case 
+Else 
+$Field:=$Buffer
+$Field:=Replace string($Field;Char(10);"")
+$Field:=Replace string($Field;Char(13);"")
+If ($i=6)
+CREATE RECORD([Shipping])
+[Shipping]FacilityCode:=$FacilityCode
+[Shipping]PostCode:=$Postcode
+[Shipping]Price:=Num($Field)
+[Shipping]MinKg:=501
+[Shipping]MaxKg:=1000
+[Shipping]Type:="501-1000 kg"
+[Shipping]Suburb:=$Suburb
+SAVE RECORD([Shipping])
+End if 
+End if 
+End for 
+RECEIVE PACKET($Doc;$Buffer;Char(13))
+End while 
+READ ONLY([Shipping])
+UNLOAD RECORD([Shipping])
+End if 
+
+End if 

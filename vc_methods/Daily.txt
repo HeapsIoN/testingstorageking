@@ -1,0 +1,95 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 08/03/13 Modified to work according to following specification
+//Daily Processing is done in a separate process and works differently in various environments as follows:
+//Standalone - Pause LogMonitor then process, then run DailyActivity
+//Client - Pause LogMonServer then process, then run DailyActivity on Server, when finished complete DP on client
+//Central Client - Do not Pause LogMonServer, but run everything incl DailyActivity locally on Client
+
+//C_LONGINT($i;$arraypos)
+
+
+// Daily for server qnd multiple clients fb10996
+C_LONGINT($kk;flag_D1)
+C_TEXT($users_proc;$users_list)
+ARRAY TEXT(aClients;0)
+ARRAY REAL(aMethods;0)
+flag_D1:=0
+
+If (Application type=4D Remote mode)
+ALL RECORDS([Facility])
+If (Records in selection([Facility])=1)
+$users_proc:=UserActiveProcessesCheck 
+GET REGISTERED CLIENTS(aClients;aMethods)
+If ($users_proc#"")
+For ($kk;1;Size of array(aClients))
+If ((aClients{$kk}#<>scurrentuser) & (aClients{$kk}#"Adminsupport"))
+$users_list:=$users_list+aClients{$kk}+"  "
+End if 
+End for 
+//AlertMessage ("Daily Processing cannot be started. Other processes still running."+Char(13)+Char(13)+"Processes: "+$users_proc+Char(13)+Char(13)+"Users: "+$users_list)
+AlertMessage (Get localized string("Daily Processing cannot be started. Please close any Agreements, Reservations or Cash Sales open on any other Storman Clients."))
+
+ABORT
+Else //no processes
+For ($kk;1;Size of array(aClients))
+If ((aClients{$kk}#<>scurrentuser) & (aClients{$kk}#"Adminsupport"))
+$users_list:=$users_list+aClients{$kk}+"  "
+EXECUTE ON CLIENT(aClients{$kk};"UserDailyOpenWindow")
+End if 
+End for 
+If ($users_list#"")
+$flag1:=1//some users logged
+End if 
+End if 
+End if 
+End if 
+
+
+C_LONGINT($i;$arraypos)
+$i:=0
+
+If (Application type=4D Remote mode)
+SetFacility 
+//14/05/15 DAM allowed to run multiple daily at one Server
+$Continue:=False
+If (Not(Semaphore("<>sDaily";1800)))
+$Continue:=True
+Else 
+$i:=68//To stop trying
+End if 
+
+//10285
+
+
+If ($Continue)
+//$arraypos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+GET PROCESS VARIABLE(-1;<>aiDailyProcNo;<>aiDailyProcNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+
+$i:=<>aiDailyProcNo{$arraypos}
+CLEAR SEMAPHORE("<>sDaily")
+End if 
+
+End if 
+If ($i=0)
+
+If (Current user#"Daily")
+<>DailyCurrentUser:=<>sCurrentUser
+QUERY([UserLogins];[UserLogins]Name="Daily")
+Set4DUser ([UserLogins]Name)
+$i:=New process("DailyA";400000;"Daily")
+End if 
+
+//  <>DailyCurrentUser:=<>sCurrentUser
+//  QUERY([UserLogins];[UserLogins]Name="Daily")
+//  Set4DUser ([UserLogins]Name)
+//  $i:=New process("DailyA";400000;"Daily")
+
+Else 
+ALERT("Daily Processing is already running on another Client computer")
+End if 
+
+

@@ -1,0 +1,139 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If ([Trxs]Match=0)//don't do for stock or other bank trx
+QUERY([Trxs];[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Trxs]AgreeNo)
+QUERY SELECTION([Trxs];[Trxs]Charge=True)
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Analysis]SortOrder;<;[Trxs]TotAmt;<)
+ARRAY TEXT(aMatchAnlys;0)
+ARRAY REAL(aMatchTaxs;0)
+ARRAY REAL(aMatchTotal;0)
+SELECTION TO ARRAY([Trxs]AnalysisCode;aMatchAnlys;[Trxs]TaxAmt;aMatchTaxs;[Trxs]TotAmt;aMatchTotal)
+
+For ($j;1;2)
+QUERY([Trxs];[Trxs]AgreeNo=vAgreeNo;*)
+QUERY([Trxs]; & ;[Trxs]Match=0;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False;*)
+If ($j=1)
+QUERY([Trxs]; & ;[Trxs]TotAmt<0)//First pass any refunds
+Else 
+QUERY([Trxs]; & ;[Trxs]TotAmt>=0)//Second pass all the positive payments
+End if 
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]TrxDate;>;[Trxs]TrxTime;>;[Trxs]TotAmt;<)
+$MatchAll:=False
+$k:=1
+Repeat 
+$TotCharges:=0
+For ($t;1;Size of array(aMatchTotal))
+$TotCharges:=Round($TotCharges+aMatchTotal{$t};2)
+End for 
+$ReceiptAmt:=Sum([Trxs]TotAmt)
+If ($ReceiptAmt=$TotCharges)
+$MatchAll:=True
+End if 
+$New:=False
+If (aMatchTotal{$k}#0) & ((($j=1) & (aMatchTotal{$k}<0)) | ($j=2) | ($MatchAll))//First pass negative charges only then any non-zero charges
+If (($j=1) & (aMatchTotal{$k}>$ReceiptAmt)) | (($j=2) & (aMatchTotal{$k}<$ReceiptAmt)) | ($MatchAll)
+QUERY([Analysis];[Analysis]Code=aMatchAnlys{$k})
+If ([Analysis]SortOrder>8)
+$x:=8
+Else 
+$x:=[Analysis]SortOrder
+End if 
+//$x:=Find in array(aAnlys;aMatchAnlys{$k})
+If ($x>0)
+$p:=Get pointer("vTot"+String($x))
+$p->:=$p->+aMatchTotal{$k}-aMatchTaxs{$k}//[Transaction]MiscDetls'TotAmt-[Transaction]MiscDetls'TaxAmt
+Else 
+AlertMessage (Get localized string("WARNING - The analysis report will be incorrect, because the analysis code for charges")+" :"+[Trxs]AnalysisCode+" "+Get localized string("is not on file!"))
+End if 
+If (($j=2) & (aMatchTotal{$k}<$ReceiptAmt))
+QUERY([Analysis];[Analysis]Code=<>sFacility+"RF")
+If ([Analysis]SortOrder>8)
+$x:=8
+Else 
+$x:=[Analysis]SortOrder
+End if 
+//$x:=Find in array(aAnlys;<>sFacility+"RF")
+If ($x>0)
+$p:=Get pointer("vTot"+String($x))
+$p->:=$p->+(($ReceiptAmt-$TotCharges)-(CalcTaxAmt (($ReceiptAmt-$TotCharges);<>sFacility+"RF";[Trxs]TrxDate;[Trxs]TrxDate;2)))//[Transaction]MiscDetls'TotAmt-[Transaction]MiscDetls'TaxAmt
+End if 
+$ReceiptAmt:=0
+End if 
+$k:=$k+1
+Else 
+//if($ReceiptAmt
+QUERY([Analysis];[Analysis]Code=<>sFacility+"RF")
+If ([Analysis]SortOrder>8)
+$x:=8
+Else 
+$x:=[Analysis]SortOrder
+End if 
+//$x:=Find in array(aAnlys;<>sFacility+"RF")
+If ($x>0)
+$p:=Get pointer("vTot"+String($x))
+$p->:=$p->+(($ReceiptAmt)-(CalcTaxAmt (($ReceiptAmt);<>sFacility+"RF";[Trxs]TrxDate;[Trxs]TrxDate;2)))//[Transaction]MiscDetls'TotAmt-[Transaction]MiscDetls'TaxAmt
+End if 
+//`$x:=Find in array(aAnlys;<>sFacility+"RF")
+//If ($x>0)
+//aTaxs{$x}:=aTaxs{$x}+CalcTaxAmt (($ReceiptAmt);<>sFacility+"RF";[Transaction]TrxDate;[Transaction]TrxDate;2)
+//aTotal{$x}:=aTotal{$x}+($ReceiptAmt)
+//aUsed{$x}:=True
+//End if 
+$ReceiptAmt:=0//This line added 2.5.4 29/12/00
+$New:=True
+//end if
+End if 
+Else 
+$k:=$k+1
+End if 
+For ($n;1;Records in selection([Trxs]))
+If (Is in set("Report"))
+REMOVE FROM SET([Trxs];"Report")
+End if 
+NEXT RECORD([Trxs])
+End for 
+Until (End selection([Trxs])) | ($k>Size of array(aMatchTotal))
+While (End selection([Trxs])=False) | ($ReceiptAmt#0)
+If ($New)
+$ReceiptAmt:=Sum([Trxs]TotAmt)
+Else 
+//If ($ReceiptAmt<0)
+//$ReceiptAmt:=$ReceiptAmt+$TotCharges
+//else
+//$ReceiptAmt:=$ReceiptAmt-$TotCharges
+//end if
+End if 
+If (Round($ReceiptAmt;2)#0)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"RF")
+If ([Analysis]SortOrder>8)
+$x:=8
+Else 
+$x:=[Analysis]SortOrder
+End if 
+//$x:=Find in array(aAnlys;<>sFacility+"RF")
+If ($x>0)
+$p:=Get pointer("vTot"+String($x))
+$p->:=$p->+(($ReceiptAmt)-(CalcTaxAmt (($ReceiptAmt);<>sFacility+"RF";[Trxs]TrxDate;[Trxs]TrxDate;2)))//[Transaction]MiscDetls'TotAmt-[Transaction]MiscDetls'TaxAmt
+End if 
+
+//$x:=Find in array(aAnlys;<>sFacility+"RF")
+//If ($x>0)
+//aTaxs{$x}:=aTaxs{$x}+CalcTaxAmt (($ReceiptAmt);<>sFacility+"RF";[Transaction]TrxDate;[Transaction]TrxDate;2)
+//aTotal{$x}:=aTotal{$x}+($ReceiptAmt)
+//aUsed{$x}:=True
+//End if 
+$ReceiptAmt:=0//This line added 2.5.4 29/12/00
+End if 
+NEXT RECORD([Trxs])
+$New:=True
+End while 
+End if 
+End for 
+vNew:=False
+Else 
+GOTO RECORD([Trxs];vRecNo)
+End if 
+End if 

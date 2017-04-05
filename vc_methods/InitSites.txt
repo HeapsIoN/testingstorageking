@@ -1,0 +1,435 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//RWFR 26-29 Added setting that if user is None it will only display HOF 25/11/05
+//SDD 19/10/11 Changes to allow faster startup if EventSeqNo is wildly wrong - also allow Control Down to force recalc of EventSeqNo
+C_BOOLEAN($1;$Display)//If True display progress
+C_LONGINT($i;$Count)
+C_DATE($LastDate)
+$Display:=False
+If (Count parameters>0)
+$Display:=$1
+End if 
+If (Application type=4D Server)
+$Display:=False
+End if 
+ALL RECORDS([Facility])
+If (Records in selection([Facility])>0)
+Case of 
+: (Application type=4D Remote mode) & (<>sProduct="M@") & (Current user#"Designer") & (<>sCurrentUser#"AdminSupport") & ([UserLogins]AccessFacility#"ALL") & (<>sCurrentUser#"None")
+
+//for Client
+QUERY([Facility];[Facility]SortOrder<1000)
+ORDER BY([Facility];[Facility]SortOrder;>)
+ARRAY TEXT(<>asAllSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asAllSiteCodes)
+
+ALL RECORDS([Facility])
+
+//Find Facility Records
+QUERY([Facility];[Facility]FacilityCode=<>sHOFacility;*)
+$string:=[UserLogins]AccessFacility
+Repeat 
+$i:=Position(",";$string;0;*)
+If ($i>1)
+QUERY([Facility]; | ;[Facility]FacilityCode=Substring($string;1;$i-1);*)
+$string:=Substring($string;$i+1)
+Else 
+QUERY([Facility]; | ;[Facility]FacilityCode=$string;*)
+$string:=""
+End if 
+Until ($string="")
+QUERY([Facility]; & ;[Facility]SortOrder<1000)
+: (Application type=4D Remote mode) & (<>sProduct="M@") & (<>sCurrentUser="None")
+QUERY([Facility];[Facility]FacilityCode=<>sHOFacility;*)
+QUERY([Facility]; & ;[Facility]SortOrder<1000)
+Else 
+QUERY([Facility];[Facility]SortOrder<1000)
+ORDER BY([Facility];[Facility]SortOrder;>)
+ARRAY TEXT(<>asAllSiteCodes;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]FacilityCode;<>asAllSiteCodes)
+End case 
+
+ORDER BY([Facility];[Facility]SortOrder;>)
+ARRAY TEXT(<>asFacilities;Records in selection([Facility]))
+ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+ARRAY LONGINT(<>aiTrxSeqNo;Records in selection([Facility]))
+ARRAY LONGINT(<>aiQuoteSeqNo;Records in selection([Facility]))
+ARRAY LONGINT(<>aiUnitStatusTrxSeqNo;Records in selection([Facility]))
+ARRAY LONGINT(<>aiNextAgreeNo;Records in selection([Facility]))
+ARRAY LONGINT(<>aiNextResNo;Records in selection([Facility]))
+ARRAY LONGINT(<>aiNextSalesInqNo;Records in selection([Facility]))
+ARRAY DATE(<>adLastLogSent;Records in selection([Facility]))
+ARRAY LONGINT(<>aiLastLogTime;Records in selection([Facility]))
+ARRAY DATE(<>adReCalc;Records in selection([Facility]))
+ARRAY LONGINT(<>aiNextInvNo;Records in selection([Facility]))
+ARRAY LONGINT(<>aiNextCreditSaleNo;Records in selection([Facility]))
+ARRAY LONGINT(<>aiNextCashSaleNo;Records in selection([Facility]))
+//14/05/15 DAM Added new array for Daily processing
+ARRAY LONGINT(<>aiDailyProcNo;Records in selection([Facility]))
+If (Size of array(<>aiEventSeqNo)>0) & ((Application type=4D Volume desktop) | (Application type=4D Local mode))
+SELECTION TO ARRAY([Facility]ShortName;<>asFacilities;[Facility]FacilityCode;<>asSiteCodes;[Facility]TrxSeqNo;<>aiTrxSeqNo;[Facility]QuoteSeqNo;<>aiQuoteSeqNo;[Facility]UnitStatusTrxSeqNo;<>aiUnitStatusTrxSeqNo;[Facility]ReCalcActivity;<>adReCalc;[Facility]NextAgreeNo;<>aiNextAgreeNo;[Facility]NextReserveNo;<>aiNextResNo;[Facility]NextContactNo;<>aiNextSalesInqNo;[Facility]NextInvNo;<>aiNextInvNo;[Facility]LastSyncDate;<>adLastLogSent;[Facility]LastSyncTime;<>aiLastLogTime;[Facility]NextCreditSaleNo;<>aiNextCreditSaleNo;[Facility]NextCashSaleNo;<>aiNextCashSaleNo)
+
+Else 
+If (Application type=4D Server) | (Application type=4D Volume desktop)
+SyncRecordLog ("Creating Event Seq No array and filling contents on server")
+End if 
+ARRAY LONGINT(<>aiEventSeqNo;Records in selection([Facility]))
+SELECTION TO ARRAY([Facility]ShortName;<>asFacilities;[Facility]FacilityCode;<>asSiteCodes;[Facility]TrxSeqNo;<>aiTrxSeqNo;[Facility]EventSeqNo;<>aiEventSeqNo;[Facility]QuoteSeqNo;<>aiQuoteSeqNo;[Facility]UnitStatusTrxSeqNo;<>aiUnitStatusTrxSeqNo;[Facility]ReCalcActivity;<>adReCalc;[Facility]NextAgreeNo;<>aiNextAgreeNo;[Facility]NextReserveNo;<>aiNextResNo;[Facility]NextContactNo;<>aiNextSalesInqNo;[Facility]NextInvNo;<>aiNextInvNo;[Facility]LastSyncDate;<>adLastLogSent;[Facility]LastSyncTime;<>aiLastLogTime;[Facility]NextCreditSaleNo;<>aiNextCreditSaleNo;[Facility]NextCashSaleNo;<>aiNextCashSaleNo)
+
+
+End if 
+If (Application type#4D Remote mode)
+ORDER BY([Facility];[Facility]SortOrder;>)
+READ WRITE([Facility])
+For ($q;1;Records in selection([Facility]))
+SyncRecordLog ("Checking Next Cash Sale Number - "+[Facility]FacilityCode+" - "+String($q)+"/"+String(Records in selection([Facility])))
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match>=(<>aiNextCashSaleNo{$q}-1))
+If (Records in selection([Trxs])=0)
+QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL")
+ORDER BY([Trxs];[Trxs]Match;<)
+If (Records in selection([Trxs])>0)
+<>aiNextCashSaleNo{$q}:=[Trxs]Match+1
+Else 
+<>aiNextCashSaleNo{$q}:=1
+End if 
+Else 
+ORDER BY([Trxs];[Trxs]Match;<)
+<>aiNextCashSaleNo{$q}:=[Trxs]Match+1
+End if 
+
+SyncRecordLog ("Checking Next Invoice Number - "+[Facility]FacilityCode+" - "+String($q)+"/"+String(Records in selection([Facility])))
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo>=(<>aiNextInvNo{$q}-1);*)
+QUERY([Trxs]; & ;[Trxs]InvNo#0)
+If (Records in selection([Trxs])>0)
+$ReduceSel:=True
+While (Records in selection([Trxs])>2000) & ($ReduceSel)
+LAST RECORD([Trxs])
+If ([Trxs]InvNo><>aiNextInvNo{$q})
+<>aiNextInvNo{$q}:=[Trxs]InvNo
+QUERY SELECTION([Trxs];[Trxs]InvNo>=<>aiNextInvNo{$q})
+Else 
+$ReduceSel:=False
+End if 
+End while 
+Else 
+QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+QUERY([Trxs]; & ;[Trxs]InvNo#0)
+End if 
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]InvNo;<)
+<>aiNextInvNo{$q}:=[Trxs]InvNo+1
+Else 
+<>aiNextInvNo{$q}:=1
+End if 
+If (Abs([Facility]NextInvNo-<>aiNextInvNo{$q})>10)
+SyncRecordLog ("Next Invoice Number - "+[Facility]FacilityCode+" - Changed from "+String([Facility]NextInvNo)+" to "+String(<>aiNextInvNo{$q}))
+End if 
+[Facility]NextInvNo:=<>aiNextInvNo{$q}
+SAVE RECORD([Facility])
+NEXT RECORD([Facility])
+End for 
+End if 
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+<>asFacilities:=1
+<>asSiteCodes:=1
+<>sFacility:=<>asSiteCodes{1}
+KSSArrays ("ALL";"ALL")
+SetFacility 
+If (Application type#4D Remote mode) & (([Facility]ShutdownProperly=False) | (Windows Ctrl down=True) | (Macintosh control down))//SDD 13/6/10 If shutdown correctly then no need to do this, see ShutdownCode
+For ($i;1;Size of array(<>asSiteCodes))
+If ($Display)
+GOTO XY(1;1)
+MESSAGE(Get localized string("Check Trx Seq No site")+" "+<>asSiteCodes{$i}+"        ")
+End if 
+QUERY([Trxs];[Trxs]AgreeNo=<>asSiteCodes{$i}+"@";*)
+//SDD Code following changed 18/5/08 down to line 68
+If (<>sProduct="M@")//In Central next TrxSeqNo are descending
+QUERY([Trxs]; & ;[Trxs]SeqNo<=<>aiTrxSeqNo{$i})
+Else 
+QUERY([Trxs]; & ;[Trxs]SeqNo>=<>aiTrxSeqNo{$i})//Hopefully reduce number of records for sorting
+End if 
+If (Records in selection([Trxs])>0)
+ORDER BY([Trxs];[Trxs]SeqNo;<)
+<>aiTrxSeqNo{$i}:=[Trxs]SeqNo
+End if 
+If ($Display)
+GOTO XY(1;1)
+MESSAGE(Get localized string("Check Unit Status Trx Seq No site")+" "+<>asSiteCodes{$i}+"        ")
+End if 
+QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=<>asSiteCodes{$i}+"@";*)
+QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]SeqNo>=<>aiUnitStatusTrxSeqNo{$i})//Hopefully reduce number of records for sorting
+If (Records in selection([UnitStatusTrx])>0)
+ORDER BY([UnitStatusTrx];[UnitStatusTrx]SeqNo;<)
+<>aiUnitStatusTrxSeqNo{$i}:=[UnitStatusTrx]SeqNo
+End if 
+//If ($Display)
+//GOTO XY(1;1)
+//MESSAGE("Check Next CashSale No site"+" "+<>asSiteCodes{$i}+"        ")
+//End if 
+//QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+//QUERY([Trxs]; & ;[Trxs]Match>=<>aiNextCashSaleNo)
+//If (Records in selection([Trxs])>0)
+//ORDER BY([Trxs];[Trxs]Match;<)
+//<>aiNextCashSaleNo{$i}:=[Trxs]Match+1
+//End if 
+If ($Display)
+GOTO XY(1;1)
+MESSAGE(Get localized string("Check Quote Seq No site")+" "+<>asSiteCodes{$i}+"        ")
+End if 
+QUERY([Quote];[Quote]ContactNo=<>asSiteCodes{$i}+"@";*)
+QUERY([Quote]; & ;[Quote]SeqNo>=<>aiQuoteSeqNo{$i})//Hopefully reduce number of records for sorting
+If (Records in selection([Quote])>0)
+ORDER BY([Quote];[Quote]SeqNo;<)
+<>aiQuoteSeqNo{$i}:=[Quote]SeqNo
+End if 
+If ((<>asSiteCodes{$i}#<>sHOFacility) & (<>aiEventSeqNo{$i}>=1)) | (Size of array(<>asSiteCodes)=1)// Modified by Hamid - 4/09/2015
+If (<>aiEventSeqNo{$i}<1)
+SyncRecordLog ("Setting Event Seq No to 1 - InitSites #99")
+<>aiEventSeqNo{$i}:=1
+End if 
+If ($Display)
+GOTO XY(1;1)
+MESSAGE(Get localized string("Check Event SeqNo site")+" "+<>asSiteCodes{$i}+"        ")
+End if 
+$EventSeqNo:=<>aiEventSeqNo{$i}//This so as to not modify the value in case webserver is running
+$Count:=0
+Repeat 
+QUERY([EventLog];[EventLog]FacilityCode=<>asSiteCodes{$i};*)
+QUERY([EventLog]; & ;[EventLog]SeqNo>=$EventSeqNo)//Hopefully reduce number of records for sorting
+$EventSeqNo:=$EventSeqNo-3
+SyncRecordLog ("Setting Event Seq No to "+String($EventSeqNo)+" - InitSites #110")
+$Count:=$Count+1
+Until (Records in selection([EventLog])>0) | ($EventSeqNo<0) | ($Count>5)
+$LastDate:=Current date
+While ($Count>5) & (Records in selection([EventLog])=0) & ($LastDate>(Current date-14))
+QUERY([EventLog];[EventLog]FacilityCode=<>asSiteCodes{$i};*)
+QUERY([EventLog]; & ;[EventLog]EventDate>=$LastDate)
+$LastDate:=$LastDate-1
+End while 
+If (Records in selection([EventLog])>0)
+ORDER BY([EventLog];[EventLog]SeqNo;<)
+SyncRecordLog ("Setting Event Seq No to "+String([EventLog]SeqNo)+" - InitSites #114")
+$EventSeqNo:=[EventLog]SeqNo
+End if 
+<>aiEventSeqNo{$i}:=$EventSeqNo
+End if 
+If (<>aiEventSeqNo{$i}<1)
+SyncRecordLog ("Setting Event Seq No to 1 - InitSites #119")
+<>aiEventSeqNo{$i}:=1
+End if 
+<>adReCalc{$i}:=<>adReCalc{$i}-2//UpdateRecalc
+If ([Facility]Version<314)//CheckVersion on Server
+<>adReCalc{$i}:=<>adReCalc{$i}-28
+End if 
+End for 
+End if 
+READ WRITE([Facility])
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+[Facility]ShutdownProperly:=False//If Storman / Server crashes this will remain set to false, otherwise on successful Quit when variables have been written back to Facility records it will be True
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+
+//RWFR 26-29 Added setting that if user is None it will only display HOF 25/11/05
+//SDD 19/10/11 Changes to allow faster startup if EventSeqNo is wildly wrong - also allow Control Down to force recalc of EventSeqNo
+//C_BOOLEAN($1;$Display)  //If True display progress
+//C_LONGINT($i;$Count)
+//C_DATE($LastDate)
+//$Display:=False
+//If (Count parameters>0)
+//$Display:=$1
+//End if 
+//ALL RECORDS([Facility])
+//If (Records in selection([Facility])>0)
+//Case of 
+//: (Application type=4D Remote Mode) & (<>sProduct="M@") & (Current user#"Designer") & (<>sCurrentUser#"AdminSupport") & ([UserLogins]AccessFacility#"ALL") & (<>sCurrentUser#"None")
+//  //Find Facility Records
+//QUERY([Facility];[Facility]FacilityCode=<>sHOFacility;*)
+//$string:=[UserLogins]AccessFacility
+//Repeat 
+//$i:=Position(",";$string;0;*)
+//If ($i>1)
+//QUERY([Facility]; | ;[Facility]FacilityCode=Substring($string;1;$i-1);*)
+//$string:=Substring($string;$i+1)
+//Else 
+//QUERY([Facility]; | ;[Facility]FacilityCode=$string;*)
+//$string:=""
+//End if 
+//Until ($string="")
+//QUERY([Facility]; & ;[Facility]SortOrder<1000)
+//: (Application type=4D Remote Mode) & (<>sProduct="M@") & (<>sCurrentUser="None")
+//QUERY([Facility];[Facility]FacilityCode=<>sHOFacility;*)
+//QUERY([Facility]; & ;[Facility]SortOrder<1000)
+//Else 
+//QUERY([Facility];[Facility]SortOrder<1000)
+//End case 
+//ORDER BY([Facility];[Facility]SortOrder;>)
+//ARRAY TEXT(<>asFacilities;Records in selection([Facility]))
+//ARRAY TEXT(<>asSiteCodes;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiTrxSeqNo;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiQuoteSeqNo;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiUnitStatusTrxSeqNo;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiNextAgreeNo;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiNextResNo;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiNextSalesInqNo;Records in selection([Facility]))
+//ARRAY DATE(<>adLastLogSent;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiLastLogTime;Records in selection([Facility]))
+//ARRAY DATE(<>adReCalc;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiNextInvNo;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiNextCreditSaleNo;Records in selection([Facility]))
+//ARRAY LONGINT(<>aiNextCashSaleNo;Records in selection([Facility]))
+//If (Size of array(<>aiEventSeqNo)>0) & ((Application type=4D Volume Desktop) | (Application type=4D Local Mode))
+//SELECTION TO ARRAY([Facility]ShortName;<>asFacilities;[Facility]FacilityCode;<>asSiteCodes;[Facility]TrxSeqNo;<>aiTrxSeqNo;[Facility]QuoteSeqNo;<>aiQuoteSeqNo;[Facility]UnitStatusTrxSeqNo;<>aiUnitStatusTrxSeqNo;[Facility]ReCalcActivity;<>adReCalc;[Facility]NextAgreeNo;<>aiNextAgreeNo;[Facility]NextReserveNo;<>aiNextResNo;[Facility]NextContactNo;<>aiNextSalesInqNo;[Facility]NextInvNo;<>aiNextInvNo;[Facility]LastSyncDate;<>adLastLogSent;[Facility]LastSyncTime;<>aiLastLogTime;[Facility]NextCreditSaleNo;<>aiNextCreditSaleNo;[Facility]NextCashSaleNo;<>aiNextCashSaleNo)
+//Else 
+//If (Application type=4D Server) | (Application type=4D Volume Desktop)
+//SyncRecordLog ("Creating Event Seq No array and filling contents on server")
+//End if 
+//ARRAY LONGINT(<>aiEventSeqNo;Records in selection([Facility]))
+//SELECTION TO ARRAY([Facility]ShortName;<>asFacilities;[Facility]FacilityCode;<>asSiteCodes;[Facility]TrxSeqNo;<>aiTrxSeqNo;[Facility]EventSeqNo;<>aiEventSeqNo;[Facility]QuoteSeqNo;<>aiQuoteSeqNo;[Facility]UnitStatusTrxSeqNo;<>aiUnitStatusTrxSeqNo;[Facility]ReCalcActivity;<>adReCalc;[Facility]NextAgreeNo;<>aiNextAgreeNo;[Facility]NextReserveNo;<>aiNextResNo;[Facility]NextContactNo;<>aiNextSalesInqNo;[Facility]NextInvNo;<>aiNextInvNo;[Facility]LastSyncDate;<>adLastLogSent;[Facility]LastSyncTime;<>aiLastLogTime;[Facility]NextCreditSaleNo;<>aiNextCreditSaleNo;[Facility]NextCashSaleNo;<>aiNextCashSaleNo)
+//End if 
+//If (Application type#4D Remote Mode)
+//FIRST RECORD([Facility])
+//For ($q;1;Records in selection([Facility]))
+//REDUCE SELECTION([Trxs];0)
+//$Number:=<>aiNextCashSaleNo{$q}-1
+//Repeat 
+//QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+//QUERY([Trxs]; & ;[Trxs]Match>=$Number)
+//$Number:=$Number-1
+//Until (Records in selection([Trxs])>0) | ($Number<=0)
+//If ($Number<=0)
+//QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL")
+//ORDER BY([Trxs];[Trxs]Match;<)
+//If (Records in selection([Trxs])>0)
+//<>aiNextCashSaleNo{$q}:=[Trxs]Match+1
+//Else 
+//<>aiNextCashSaleNo{$q}:=1
+//End if 
+//Else 
+//ORDER BY([Trxs];[Trxs]Match;<)
+//<>aiNextCashSaleNo{$q}:=[Trxs]Match+1
+//End if 
+//NEXT RECORD([Facility])
+//End for 
+//READ WRITE([Facility])
+//FIRST RECORD([Facility])
+//For ($q;1;Records in selection([Facility]))
+//REDUCE SELECTION([Trxs];0)
+//
+//QUERY([Trxs];[Trxs]AgreeNo=[Facility]FacilityCode+"@";*)
+//QUERY([Trxs]; & ;[Trxs]InvNo#0)
+//ORDER BY([Trxs];[Trxs]InvNo;<)
+//<>aiNextInvNo{$q}:=[Trxs]InvNo+1
+//[Facility]NextInvNo:=<>aiNextInvNo{$q}
+//SAVE RECORD([Facility])
+//NEXT RECORD([Facility])
+//End for 
+//End if 
+//READ ONLY([Facility])
+//FIRST RECORD([Facility])
+//<>asFacilities:=1
+//<>asSiteCodes:=1
+//<>sFacility:=<>asSiteCodes{1}
+//KSSArrays ("ALL";"ALL")
+//SetFacility 
+//If (Application type#4D Remote Mode) & (([Facility]ShutdownProperly=False) | (Windows Ctrl down=True) | (Macintosh control down))  //SDD 13/6/10 If shutdown correctly then no need to do this, see ShutdownCode
+//For ($i;1;Size of array(<>asSiteCodes))
+//If ($Display)
+//GOTO XY(1;1)
+//MESSAGE(Get localized string("Check Trx Seq No site")+" "+<>asSiteCodes{$i}+"        ")
+//End if 
+//QUERY([Trxs];[Trxs]AgreeNo=<>asSiteCodes{$i}+"@";*)
+//  //SDD Code following changed 18/5/08 down to line 68
+//If (<>sProduct="M@")  //In Central next TrxSeqNo are descending
+//QUERY([Trxs]; & ;[Trxs]SeqNo<=<>aiTrxSeqNo{$i})
+//Else 
+//QUERY([Trxs]; & ;[Trxs]SeqNo>=<>aiTrxSeqNo{$i})  //Hopefully reduce number of records for sorting
+//End if 
+//If (Records in selection([Trxs])>0)
+//ORDER BY([Trxs];[Trxs]SeqNo;<)
+//<>aiTrxSeqNo{$i}:=[Trxs]SeqNo
+//End if 
+//If ($Display)
+//GOTO XY(1;1)
+//MESSAGE(Get localized string("Check Unit Status Trx Seq No site")+" "+<>asSiteCodes{$i}+"        ")
+//End if 
+//QUERY([UnitStatusTrx];[UnitStatusTrx]UnitNo=<>asSiteCodes{$i}+"@";*)
+//QUERY([UnitStatusTrx]; & ;[UnitStatusTrx]SeqNo>=<>aiUnitStatusTrxSeqNo{$i})  //Hopefully reduce number of records for sorting
+//If (Records in selection([UnitStatusTrx])>0)
+//ORDER BY([UnitStatusTrx];[UnitStatusTrx]SeqNo;<)
+//<>aiUnitStatusTrxSeqNo{$i}:=[UnitStatusTrx]SeqNo
+//End if 
+//If ($Display)
+//GOTO XY(1;1)
+//MESSAGE("Check Next CashSale No site"+" "+<>asSiteCodes{$i}+"        ")
+//End if 
+//QUERY([Trxs];[Trxs]CustomerCode=[Facility]FacilityCode+"MISCL";*)
+//QUERY([Trxs]; & ;[Trxs]Match>=<>aiNextCashSaleNo)
+//If (Records in selection([Trxs])>0)
+//ORDER BY([Trxs];[Trxs]Match;<)
+//<>aiNextCashSaleNo{$i}:=[Trxs]Match+1
+//End if 
+//If ($Display)
+//GOTO XY(1;1)
+//MESSAGE(Get localized string("Check Quote Seq No site")+" "+<>asSiteCodes{$i}+"        ")
+//End if 
+//QUERY([Quote];[Quote]ContactNo=<>asSiteCodes{$i}+"@";*)
+//QUERY([Quote]; & ;[Quote]SeqNo>=<>aiQuoteSeqNo{$i})  //Hopefully reduce number of records for sorting
+//If (Records in selection([Quote])>0)
+//ORDER BY([Quote];[Quote]SeqNo;<)
+//<>aiQuoteSeqNo{$i}:=[Quote]SeqNo
+//End if 
+//If ((<>asSiteCodes{$i}#<>sHOFacility) & (<>aiEventSeqNo{$i}>1)) | (Size of array(<>asSiteCodes)=1)
+//If (<>aiEventSeqNo{$i}<1)
+//SyncRecordLog ("Setting Event Seq No to 1 - InitSites #99")
+//<>aiEventSeqNo{$i}:=1
+//End if 
+//If ($Display)
+//GOTO XY(1;1)
+//MESSAGE(Get localized string("Check Event SeqNo site")+" "+<>asSiteCodes{$i}+"        ")
+//End if 
+//$EventSeqNo:=<>aiEventSeqNo{$i}  //This so as to not modify the value in case webserver is running
+//$Count:=0
+//Repeat 
+//QUERY([EventLog];[EventLog]FacilityCode=<>asSiteCodes{$i};*)
+//QUERY([EventLog]; & ;[EventLog]SeqNo>=$EventSeqNo)  //Hopefully reduce number of records for sorting
+//$EventSeqNo:=$EventSeqNo-3
+//SyncRecordLog ("Setting Event Seq No to "+String($EventSeqNo)+" - InitSites #110")
+//$Count:=$Count+1
+//Until (Records in selection([EventLog])>0) | ($EventSeqNo<0) | ($Count>5)
+//$LastDate:=Current date
+//While ($Count>5) & (Records in selection([EventLog])=0) & ($LastDate>(Current date-14))
+//QUERY([EventLog];[EventLog]FacilityCode=<>asSiteCodes{$i};*)
+//QUERY([EventLog]; & ;[EventLog]EventDate>=$LastDate)
+//$LastDate:=$LastDate-1
+//End while 
+//If (Records in selection([EventLog])>0)
+//ORDER BY([EventLog];[EventLog]SeqNo;<)
+//SyncRecordLog ("Setting Event Seq No to "+String([EventLog]SeqNo)+" - InitSites #114")
+//$EventSeqNo:=[EventLog]SeqNo
+//End if 
+//<>aiEventSeqNo{$i}:=$EventSeqNo
+//End if 
+//If (<>aiEventSeqNo{$i}<1)
+//SyncRecordLog ("Setting Event Seq No to 1 - InitSites #119")
+//<>aiEventSeqNo{$i}:=1
+//End if 
+//<>adReCalc{$i}:=<>adReCalc{$i}-2  //UpdateRecalc
+//If ([Facility]Version<314)  //CheckVersion on Server
+//<>adReCalc{$i}:=<>adReCalc{$i}-28
+//End if 
+//End for 
+//End if 
+//READ WRITE([Facility])
+//ALL RECORDS([Facility])
+//ORDER BY([Facility];[Facility]SortOrder;>)
+//[Facility]ShutdownProperly:=False  //If Storman / Server crashes this will remain set to false, otherwise on successful Quit when variables have been written back to Facility records it will be True
+//SAVE RECORD([Facility])
+//READ ONLY([Facility])
+//LOAD RECORD([Facility])
+//End if 

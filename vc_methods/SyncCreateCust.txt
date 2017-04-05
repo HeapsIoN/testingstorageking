@@ -1,0 +1,110 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_TEXT($1;$Customer)//SyncCreateAll
+C_LONGINT($i;$SeqNo)
+QUERY([Agreement];[Agreement]RAgreeNo=$1)
+If (Records in selection([Agreement])>0)
+If (Current user="SyncAdd")
+$CurrentUser:=""
+Else 
+$CurrentUser:=SetSyncUser ("SyncAdd";-3)//To write AD+ events
+End if 
+RELATE ONE([Agreement]CustomerCode)
+$Customer:=[Customer]CustomerCode
+QUERY([Agreement];[Agreement]CustomerCode=$Customer)
+//LogEvent ("CLEAR TRXS "+[Customer]CustomerCode;False;"CLR";6;"002";[Customer]CustomerCode;"";Current date;0)
+$Tickcount:=Tickcount//Wait 1 second to ensure Clear occurs prior to creating new trxs
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+60))
+//DELAY PROCESS(Current process;60)
+RELATE MANY SELECTION([Unit]AgreeNo)
+QUERY([Facility];[Facility]FacilityCode=Substring([Customer]CustomerCode;1;5))
+TriggerLog (5;"114";"";!00-00-00!;0;"";Substring([Customer]CustomerCode;1;5);[Customer]CustomerCode)//TriggerLog (5;"001")
+For ($i;1;Records in selection([Unit]))
+QUERY([Facility];[Facility]FacilityCode=Substring([Unit]RUnitNo;1;5))
+TriggerLog (3;"056";"";!00-00-00!;0;"U";Substring([Unit]RUnitNo;1;5);[Unit]RUnitNo)//TriggerLog (3;"007")
+NEXT RECORD([Unit])
+End for 
+For ($i;1;Records in selection([Agreement]))
+QUERY([Facility];[Facility]FacilityCode=Substring([Agreement]RAgreeNo;1;5))
+TriggerLog (4;"113";[Agreement]BillingPlanCode;[Agreement]MoveIn;[Agreement]RegularRent;"";Substring([Agreement]RAgreeNo;1;5);[Agreement]RAgreeNo)//TriggerLog (4;"010";[Agreement]BillingPlanCode;[Agreement]MoveIn;[Agreement]RegularRent)  `Key AgreeNo
+NEXT RECORD([Agreement])
+End for 
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]CustomerCode=$Customer)
+ORDER BY([Trxs];[Trxs]SeqNo;>;[Trxs]Charge;<)
+$SeqNo:=-1
+For ($i;1;Records in selection([Trxs]))
+QUERY([Facility];[Facility]FacilityCode=Substring([Trxs]CustomerCode;1;5))
+If ([Trxs]SeqNo=$SeqNo)
+SetSyncUser ("SyncAdd";3)
+[Trxs]SeqNo:=[Trxs]SeqNo+1
+SAVE RECORD([Trxs])
+SetSyncUser ("SyncAdd";-3)
+End if 
+TriggerLog (6;"037";"";!00-00-00!;0;"";Substring([Trxs]AgreeNo;1;5);[Trxs]AgreeNo)//TriggerLog (6;"002026")
+$SeqNo:=[Trxs]SeqNo
+NEXT RECORD([Trxs])
+End for 
+READ ONLY([Trxs])
+UNLOAD RECORD([Trxs])
+RELATE MANY SELECTION([Letters]AgreeNo)
+For ($i;1;Records in selection([Letters]))
+QUERY([Facility];[Facility]FacilityCode=Substring([Letters]AgreeNo;1;5))
+If ([Letters]ContactNo#"")//TriggerLog (11;"001004003")
+TriggerLog (11;"019";"";!00-00-00!;0;"";Substring([Letters]ContactNo;1;5);[Letters]ContactNo)
+Else 
+TriggerLog (11;"019";"";!00-00-00!;0;"";Substring([Letters]AgreeNo;1;5);[Letters]AgreeNo)
+End if 
+NEXT RECORD([Letters])
+End for 
+//QUERY([Contacts];[Contacts]Facility=◊sFacility)
+//For ($i;1;Records in selection([Contacts]))
+//QUERY([Facility];[Facility]FacilityCode=[Contacts]Facility)
+//TriggerLog (12;"007001002")
+//NEXT RECORD([Contacts])
+//End for 
+RELATE MANY SELECTION([OtherChgs]AgreeNo)
+For ($i;1;Records in selection([OtherChgs]))
+QUERY([Facility];[Facility]FacilityCode=Substring([OtherChgs]AgreeNo;1;5))
+TriggerLog (42;"009";"";!00-00-00!;0;"B";Substring([OtherChgs]AgreeNo;1;5);[OtherChgs]AgreeNo)
+NEXT RECORD([OtherChgs])
+End for 
+
+QUERY([PhotosCards];[PhotosCards]Code=$Customer)
+For ($i;1;Records in selection([PhotosCards]))
+QUERY([Facility];[Facility]FacilityCode=Substring([PhotosCards]Code;1;5))
+TriggerLog (14;"013";"";!00-00-00!;0;"";Substring([PhotosCards]Code;1;5);[PhotosCards]Code)//TriggerLog (14;"001009")
+NEXT RECORD([PhotosCards])
+End for 
+QUERY([Reservation];[Reservation]CustomerCode=$Customer)
+For ($i;1;Records in selection([Reservation]))
+QUERY([Facility];[Facility]FacilityCode=Substring([Reservation]RReserveNo;1;5))
+TriggerLog (17;"020";"";!00-00-00!;0;"";Substring([Reservation]RReserveNo;1;5);[Reservation]RReserveNo)//TriggerLog (17;"011")
+NEXT RECORD([Reservation])
+End for 
+//QUERY([UnitHistory];[UnitHistory]UnitNo=◊sFacility+"@")
+//For ($i;1;Records in selection([UnitHistory]))
+//QUERY([Facility];[Facility]FacilityCode=Substring([UnitHistory]UnitNo;1;5))
+//TriggerLog (20;"001002003")
+//NEXT RECORD([UnitHistory])
+//End for 
+QUERY([NotesHistory];[NotesHistory]CustomerCode=$Customer)
+For ($i;1;Records in selection([NotesHistory]))
+QUERY([Facility];[Facility]FacilityCode=Substring([NotesHistory]CustomerCode;1;5))
+If ([NotesHistory]ContactNo#"")//TriggerLog (28;"001002003")
+TriggerLog (28;"009";"";!00-00-00!;0;"";Substring([NotesHistory]ContactNo;1;5);[NotesHistory]ContactNo)
+Else 
+TriggerLog (28;"009";"";!00-00-00!;0;"";Substring([NotesHistory]CustomerCode;1;5);[NotesHistory]CustomerCode)
+End if 
+NEXT RECORD([NotesHistory])
+End for 
+If ($CurrentUser>"")
+SetSyncUser ($CurrentUser)
+End if 
+$Tickcount:=Tickcount//Wait 1 second before next record
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+60))
+//DELAY PROCESS(Current process;60)
+End if 

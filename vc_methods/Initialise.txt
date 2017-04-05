@@ -1,0 +1,538 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(<>iCalendar;<>iUnitPlan;<>iCurrentLevel;<>iWeekEndDay;<>iMaxUnits;<>iGateSysType;<>iPrinttoFile;<>TAPI_deviceID;<>CallID;<>iServerMonitor;<>CHARTDRAW)
+C_BOOLEAN(<>tLogging;<>tFrontDesk;<>tWebServer;<>tGateOn;<>tGateUseLetter;<>t4DBackup;<>t4DWrite;<>t4DDraw;<>t4DView;<>t4DODBC;<>t4DInternet;<>t4DPack;<>tEditLetter;<>tSendData;<>tUtilities)
+C_BOOLEAN(<>tGateSys;<>tCashBook;<>tEmulate;<>tPrintPDF;<>tClient;<>tSendWrite;<>tPDFDisplay;<>bLoggedIn;<>GateDownload;<>tKSSFloat;<>bNotified;<>DailyRuns)
+C_TEXT(<>sGatePIN;<>sInsightMO)
+C_TEXT(<>sCurrentUser;<>sLastUser)
+C_TEXT(<>sAgreeNo;<>sFacility;<>sHOFacility;<>sProduct)
+C_TEXT(<>sSeparator)
+C_TEXT(<>sCurrency)
+C_TEXT(<>sFormat)
+C_TEXT(<>sFormatNeg;<>sFormatZero)
+C_TEXT(<>sAccessLevels;$Volume)
+C_TEXT(<>CallerIDName;<>CallerID)
+C_LONGINT($VolumePosition;<>ProgressInd)
+C_TEXT(<>sStormanPath;<>sTutPath;<>sBackupPath;<>sLogsPath;<>sAttachPath;<>sWebPath;<>sGatePath;<>sLetterSignOff;<>sPreferencesPath;<>sHOGoogleAPI;<>FieldSettings;<>sOpenDataFile)
+C_TEXT(<>vtUnits;<>vtUnitsCap;<>vtUnits1;<>vtUnitsCap1;<>vtUnits2;<>vtUnitsCap2)
+C_TEXT(<>DrawerHelpTip;<>FieldSettings)
+C_DATE(<>dYearStart;<>dCashBookStart;<>dToday)
+C_LONGINT(<>iRound;<>iRoundMethod;$i;<>iLoopCodeSecs;<>iWebServerCounter;<>iCompressBlobOption)//Rounding number of places
+C_REAL($Size;$Used;$Free)
+
+C_TEXT(<>vSubletOwnAgreeNo;<>vSubletUnitNo)
+C_REAL(<>vSubletPercentage)
+
+<>iCompressBlobOption:=2//For speed - was previously 1 for more compression but was giving blob errors
+
+LoadFacilityCountries 
+InitProcessVars 
+
+QUERY([Analysis];[Analysis]Code="")//Remove blank analysis codes
+DELETE SELECTION([Analysis])
+
+If (Current user="Designer") & (False)
+<>tBreak:=True
+Else 
+<>tBreak:=False
+End if 
+ARRAY TEXT(<>asFacilities;0)
+ARRAY TEXT(<>asSiteCodes;0)
+ARRAY LONGINT(<>aiTrxSeqNo;0)
+If (Application type=4D Server) | (Application type=4D Volume desktop)
+SyncRecordLog ("Creating Event Seq No array on server")
+End if 
+ARRAY LONGINT(<>aiEventSeqNo;0)
+ARRAY LONGINT(<>aiUnitStatusTrxSeqNo;0)
+ARRAY LONGINT(<>aiQuoteSeqNo;0)
+ARRAY LONGINT(<>aiNextAgreeNo;0)
+ARRAY LONGINT(<>aiNextResNo;0)
+ARRAY LONGINT(<>aiNextSalesInqNo;0)
+ARRAY LONGINT(<>aiNextCreditSaleNo;0)
+ARRAY LONGINT(<>aiNextCashSaleNo;0)
+ARRAY DATE(<>adReCalc;0)
+ARRAY TEXT(<>asRUnitType;0;0)
+<>dToday:=Current date
+ALL RECORDS([Facility])
+ORDER BY([Facility];[Facility]SortOrder;>)
+If (Records in selection([Facility])>0)
+<>sFacility:=[Facility]FacilityCode
+<>sHOFacility:="999SM"
+<>sHOGoogleAPI:=[Facility]GoogleMapsAPI
+If ([Facility]ProductCode="M@")
+<>sHOFacility:=[Facility]FacilityCode
+End if 
+Else 
+If (Current user="Designer")
+ConfirmTwo (Get localized string("Create new Storman.4DD datafile?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+READ WRITE([Facility])
+CREATE RECORD([Facility])
+[Facility]FacilityCode:="SSCTY"
+[Facility]BusinessName:="ControlFile"
+[Facility]ProductCode:="CF"
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+QUIT 4D
+End if 
+End if 
+<>sFacility:="SSCTY"
+End if 
+Case of 
+: ([Facility]ProductCode="@B")
+<>vtUnits:="berth"
+<>vtUnitsCap:="Berth"
+
+: ([Facility]ProductCode="@R")
+<>vtUnits:="appliance"
+<>vtUnitsCap:="Appliance"
+: ([Facility]ProductCode="@C")
+<>vtUnits:="space"
+<>vtUnitsCap:="Space"
+Else 
+<>vtUnits:="unit"
+<>vtUnitsCap:="Unit"
+
+End case 
+<>sProduct:=[Facility]ProductCode
+<>tSendWrite:=True
+<>tClient:=False
+If (Application type>3)
+<>tClient:=True
+If (False)//[System]DenyLogin - new field to be created
+AlertMessage (Get localized string("Unable to accept new logins to")+" "+<>sOEMName+" "+Get localized string("at present, as an upgrade process is occurring on another computer!");Get localized string("Quit"))
+QUIT 4D
+End if 
+End if 
+If (<>sCurrentUser="")
+If ([Facility]TutorialData=True)
+<>sCurrentUser:="Admin"
+<>iCurrentLevel:=9
+Else 
+If (Application type=4D Server)
+<>sCurrentUser:="Server"
+<>iCurrentLevel:=9//Level for Manager  
+Else 
+<>sCurrentUser:="Manager"
+<>iCurrentLevel:=7//Level for Manager  
+End if 
+End if 
+End if 
+<>sAccessLevels:="7,6,4,4,4,8,8,7,6,9,"
+If (Length([Facility]AccessLevels)>17)
+<>sAccessLevels:=[Facility]AccessLevels
+End if 
+READ WRITE([UserLogins])
+QUERY([UserLogins];[UserLogins]Name="Admin")
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]Name:="Admin"
+[UserLogins]Password:="Storman"
+[UserLogins]AccessGroup:="YYYYYYYYYY"
+[UserLogins]AccessLevel:=9
+[UserLogins]UserID:="ADMIN"
+[UserLogins]Permissions:="YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+[UserLogins]Permissions:=[UserLogins]Permissions+"YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+SAVE RECORD([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Server")
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]Name:="Server"
+[UserLogins]Password:="lg4mn4ukc#"
+[UserLogins]AccessGroup:="YYYYYYYYYY"
+[UserLogins]AccessLevel:=9
+[UserLogins]UserID:="SERVE"
+[UserLogins]Permissions:="YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+[UserLogins]Permissions:=[UserLogins]Permissions+"YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+SAVE RECORD([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Manager")
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]Name:="Manager"
+[UserLogins]Password:="Manager"
+[UserLogins]AccessGroup:="YYYYYYYNNN"
+[UserLogins]AccessLevel:=7
+[UserLogins]UserID:="MANAG"
+[UserLogins]Permissions:="YYNNNYYYYYYYYNNYNNYYYNNYYNYNYYYYYYYYYYYYYYYYYYNNNNYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"+"YYYYYYYNNYNNNNNYYYNNNNNNNNNNNNNYYNNNNYYYYYYYNYYYYYNYYYYNYNNNYY"
+SAVE RECORD([UserLogins])
+End if 
+ALL RECORDS([UserLogins])
+If (<>sProduct="M@")
+QUERY([UserLogins];[UserLogins]Name="Admin")
+If (Records in selection([UserLogins])>1)
+QUERY SELECTION([UserLogins];[UserLogins]Facility#<>sHOFacility)
+DELETE SELECTION([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Sync")
+If (Records in selection([UserLogins])>1)
+QUERY SELECTION([UserLogins];[UserLogins]Facility#<>sHOFacility)
+DELETE SELECTION([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Daily")
+If (Records in selection([UserLogins])>1)
+QUERY SELECTION([UserLogins];[UserLogins]Facility#<>sHOFacility)
+DELETE SELECTION([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Manager")
+If (Records in selection([UserLogins])>1)
+QUERY SELECTION([UserLogins];[UserLogins]Facility#<>sHOFacility)
+DELETE SELECTION([UserLogins])
+End if 
+End if 
+QUERY([UserLogins];[UserLogins]Name="Daily")
+If (Records in selection([UserLogins])>1)
+DELETE SELECTION([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Daily")
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]Name:="Daily"
+[UserLogins]Password:="Dailyfor5"
+[UserLogins]AccessGroup:="YYYYYYYYYY"
+[UserLogins]AccessLevel:=9
+[UserLogins]UserID:="DAILY"
+SAVE RECORD([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Sync")
+If (Records in selection([UserLogins])>1)
+DELETE SELECTION([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="Sync")//SetSyncUser
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]Name:="Sync"
+[UserLogins]Password:="Syncit3"
+[UserLogins]AccessGroup:="YYYYYYYYYY"
+[UserLogins]AccessLevel:=9
+[UserLogins]RecordStatus:=2//0=Record Everything, 1=Don't Log Activity, 2=Dont Create EventLog, 3=Dont do either
+[UserLogins]UserID:="SYNC"
+SAVE RECORD([UserLogins])
+End if 
+If ([UserLogins]RecordStatus#2)
+[UserLogins]RecordStatus:=2
+SAVE RECORD([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="SyncAdd")//TriggerLog
+If (Records in selection([UserLogins])>1)
+DELETE SELECTION([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="SyncAdd")
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]Name:="SyncAdd"
+[UserLogins]Password:="Syncit3"
+[UserLogins]AccessGroup:="YYYYYYYYYY"
+[UserLogins]AccessLevel:=9
+[UserLogins]RecordStatus:=-2//-2 Write event but don't log activity but what would be a MOD is instead an ADD (assumes record does not exist)
+[UserLogins]UserID:="SYNCA"
+SAVE RECORD([UserLogins])
+End if 
+If ([UserLogins]RecordStatus#-2)
+[UserLogins]RecordStatus:=-2
+SAVE RECORD([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="AdminSupport")
+If (Records in selection([UserLogins])>1)
+DELETE SELECTION([UserLogins])
+End if 
+QUERY([UserLogins];[UserLogins]Name="AdminSupport")
+If (Records in selection([UserLogins])=0)
+CREATE RECORD([UserLogins])
+[UserLogins]Name:="AdminSupport"
+[UserLogins]Password:="NotKnown"
+[UserLogins]AccessGroup:="YYYYYYYYYY"
+[UserLogins]AccessLevel:=9
+[UserLogins]RecordStatus:=0
+[UserLogins]UserID:="ADMNS"
+SAVE RECORD([UserLogins])
+End if 
+READ ONLY([UserLogins])
+READ WRITE([Groups])
+READ WRITE([UserGroup])
+ALL RECORDS([Groups])
+If (Records in selection([Groups])=0)
+CREATE RECORD([Groups])
+[Groups]GroupID:="ADMIN"
+[Groups]Name:="Admin/Owner"
+[Groups]Override:=False
+[Groups]Permissions:="YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+SAVE RECORD([Groups])
+CREATE RECORD([Groups])
+[Groups]GroupID:="MANAG"
+[Groups]Name:="Managers"
+[Groups]Override:=False
+[Groups]Permissions:="YNNNNNNNYNYNNNNYNNYYYYNYNNYYNNYNYYYYYYYYYYNNNNNNNYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"+"YYYYYYYNNYNNNNNYYYNNNNNNNNNNNNNYNNNNNYNYYYYNYYYYYYNYYYYNYNNNYYNNNYYYN"
+SAVE RECORD([Groups])
+CREATE RECORD([Groups])
+[Groups]GroupID:="USERS"
+[Groups]Name:="Users"
+[Groups]Override:=False
+[Groups]Permissions:="NNNNNNNNNNNNNNNNNNNYYNNYNNNNNNNNYNYYYYYYNYNNNNNNNNYYYYYYYYYYYYYYYYYYYYYYYYYYYYNNN"+"NNNNNNNNNNNNNNNYNNNNNNNNNNNNNNNYNNNNNNNNYYYNNYNNYYNYYYYNNNNNYYNNNYNNN"
+SAVE RECORD([Groups])
+CREATE RECORD([UserGroup])
+[UserGroup]GroupID:="MANAG"
+[UserGroup]UserID:="MANAG"
+SAVE RECORD([UserGroup])
+CREATE RECORD([UserGroup])
+[UserGroup]GroupID:="ADMIN"
+[UserGroup]UserID:="ADMIN"
+SAVE RECORD([UserGroup])
+End if 
+READ ONLY([Groups])
+READ ONLY([UserGroup])
+UNLOAD RECORD([Groups])
+UNLOAD RECORD([UserGroup])
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+
+If ([Facility]ODBCPassword>"")
+CHANGE CURRENT USER("Administrator";"4Pickles")
+ARRAY TEXT($aUserNames;0)
+ARRAY LONGINT($aUserNumbers;0)
+GET USER LIST($aUserNames;$aUserNumbers)
+$i:=Find in array($aUserNames;"ODBCUser")
+If ($i>0)
+If (Is user deleted($aUserNumbers{$i})=False)
+Set user properties($aUserNumbers{$i};"ODBCUser";"";[Facility]ODBCPassword;0;Current date)
+Else 
+//Reactivate User?
+End if 
+Else 
+$i:=Set user properties(-2;"ODBCUser";"";[Facility]ODBCPassword;0;Current date)
+$Tickcount:=Tickcount+60
+Repeat 
+IDLE
+Until (Tickcount>$Tickcount)
+GET USER LIST($aUserNames;$aUserNumbers)
+$i:=Find in array($aUserNames;"ODBCUser")
+If ($i>0)
+If (Is user deleted($aUserNumbers{$i})=False)
+Set user properties($aUserNumbers{$i};"ODBCUser";"";[Facility]ODBCPassword;0;Current date)
+Else 
+//Reactivate User - how to do that?
+End if 
+End if 
+End if 
+End if 
+
+
+<>tEditLetter:=False
+<>tSendData:=False
+<>tEmulate:=False
+<>tPrintPDF:=False
+<>t4DBackup:=False
+<>t4DWrite:=False
+<>t4DDraw:=False
+<>t4DView:=False
+<>t4DODBC:=False
+<>t4DInternet:=False
+<>t4DPack:=False
+<>bLoggedIn:=True
+<>sOpenDataFile:=""
+If (<>iPlatform=3)
+<>sSeparator:="\\"//Windows
+Else 
+<>sSeparator:=":"//Macintosh
+End if 
+If ([Facility]InsuranceAgentType=0)
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]InsuranceAgentType:=3
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+ALL RECORDS([Facility])
+End if 
+If (Application type=4D Remote mode)//4D Client
+<>sStormanPath:=Get 4D folder(4D Client database folder)//◊sStormanPath:=Get 4D folder(3)+Structure file+◊sSeparator
+Else //Server & Standalone
+<>sStormanPath:=Data file
+$i:=Length(<>sStormanPath)
+While ($i>2) & (Substring(<>sStormanPath;$i;1)#<>sSeparator)
+$i:=$i-1
+End while 
+<>sStormanPath:=Substring(<>sStormanPath;1;$i)
+End if 
+If (Test path name(<>sStormanPath+"StormanFiles")#Is a folder)
+CREATE FOLDER(<>sStormanPath+"StormanFiles")
+End if 
+<>sDatafilePath:=<>sStormanPath
+<>sStormanPath:=<>sStormanPath+"StormanFiles"+<>sSeparator
+<>sBackupPath:=<>sStormanPath+"Backups"+<>sSeparator
+<>sLogsPath:=<>sStormanPath+"Logs"+<>sSeparator
+<>sExportPath:=<>sStormanPath+"Exports"+<>sSeparator
+<>sPreferencesPath:=<>sStormanPath+"Preferences"+<>sSeparator
+<>sPDFDocsPath:=<>sStormanPath+"PDFDocs"+<>sSeparator
+If (Application type#4D Remote mode)//SDD Added 23/7/13 Not in the 4D v13 version but for some reason 4D v12 errors on Client
+<>sWebPath:=Get 4D folder(HTML Root folder)
+End if 
+<>sResourcesPath:=Get 4D folder(Current resources folder)
+<>sAttachPath:=<>sResourcesPath+"Attachments"+<>sSeparator
+If (Test path name(<>sResourcesPath+"Tutorial")#Is a folder)
+CREATE FOLDER(<>sResourcesPath+"Tutorial")
+End if 
+<>sTutPath:=<>sResourcesPath+"Tutorial"+<>sSeparator
+InitPlugins 
+If (Test path name(<>sPDFDocsPath)#Is a folder)
+CREATE FOLDER(<>sPDFDocsPath)
+End if 
+If (Test path name(<>sBackupPath)#Is a folder)
+CREATE FOLDER(<>sBackupPath)
+End if 
+If (Test path name(<>sLogsPath)#Is a folder)
+CREATE FOLDER(<>sLogsPath)
+End if 
+If (Test path name(<>sAttachPath)#Is a folder)
+CREATE FOLDER(<>sAttachPath)
+End if 
+If (Test path name(<>sExportPath)#Is a folder)//Used by ExportDataOvernight & ExportRevJrnls
+CREATE FOLDER(<>sExportPath)
+End if 
+If (Test path name(<>sPreferencesPath)#Is a folder)
+CREATE FOLDER(<>sPreferencesPath)
+End if 
+If (Application type#4D Remote mode)
+If (<>sPreferencesPath="@ProgramData@") | (<>sPreferencesPath="@Shared@")
+ON ERR CALL("ErrorNone")
+If (Test path name(<>sPreferencesPath+"DatafileName.xml")=Is a document)
+DELETE DOCUMENT(<>sPreferencesPath+"DatafileName.xml")
+End if 
+$Doc:=Create document(<>sPreferencesPath+"DatafileName.xml")
+SEND PACKET($Doc;"<Datafilename>"+Data file+"</Datafilename>"+Char(13))
+CLOSE DOCUMENT($Doc)
+ON ERR CALL("ErrorLog")
+End if 
+End if 
+
+<>sGatePath:=""//Path to output file
+Case of 
+: ([Facility]GateSysType=2)
+<>sGatePath:=<>sTutPath+"PTI.dat"
+: ([Facility]GateSysType=4)
+<>sGatePath:=<>sTutPath+"PTI.dat"
+: ([Facility]GateSysType=5)
+<>sGatePath:=<>sTutPath+"Lock.dat"
+: ([Facility]GateSysType=7)
+<>sGatePath:=<>sTutPath+"Link.fil"
+: ([Facility]GateSysType=8)
+<>sGatePath:=<>sTutPath+"Link.fil"
+: ([Facility]GateSysType=9)
+<>sGatePath:=<>sTutPath+"Update.txt"
+: ([Facility]GateSysType=10)
+<>sGatePath:=<>sTutPath+"QSLINK.FIL"
+: ([Facility]GateSysType=11)
+<>sGatePath:=<>sTutPath+"axcys.dta"
+Else 
+//Do Nothing
+End case 
+<>iDesign:=0
+<>tLogging:=False
+<>tGateOn:=False
+<>tUtilities:=False
+<>iPrinttoFile:=0
+<>sGatePIN:=""
+<>sAgreeNo:=""
+<>iLoopCodeSecs:=0
+<>iWebServerCounter:=0
+
+//If it is a site then reset [Facility]SyncError field - Site export to MV uses this, if Storman crashes during the process the field is not cleared and will restart when Storman started again.
+If (<>sProduct#"M@")
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]SyncError:=""
+SAVE RECORD([Facility])
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+
+If (<>iPlatform=3) & ([Facility]PDFName<"  ") & ([Facility]UsePDFWriter=True)
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+[Facility]UsePDFWriter:=True
+[Facility]PDFName:="PDFCreator"
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+If (<>iPlatform=3) & ([Facility]UsePDFWriter=True) & (Application type#4D Server)
+ARRAY TEXT($aPrinters;0)
+PRINTERS LIST($aPrinters)
+$i:=Find in array($aPrinters;[Facility]PDFName)
+$j:=Find in array($aPrinters;"Microsoft Print to PDF")//11/12/15 DAM Added for Win 10 support
+If ($i<=0)
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+
+If ($j<0)
+$j:=Find in array($aPrinters;"PDFCreator")
+If ($j>0)
+[Facility]PDFName:="PDFCreator"
+//SAVE RECORD([Facility])
+Else 
+AlertMessage (Get localized string("The PDF printer")+" "+[Facility]PDFName+" "+Get localized string("UTLPXRI01");"OK";"http://my.storman.com/support/knowledgebase/utilities/pdfcreator/reinstalling.php?src=lm")
+[Facility]UsePDFWriter:=False
+[Facility]PDFName:=""
+//SAVE RECORD([Facility])
+End if 
+Else 
+[Facility]PDFName:="Microsoft Print to PDF"
+//SAVE RECORD([Facility])
+End if 
+
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End if 
+End if 
+ReadCountryCodeXML 
+ReadAUPostCode 
+If (Application type#4D Remote mode)//SDD Don't do this on Client as already done on server
+TrainingFile 
+End if 
+//When a file called 'SKBilling.xml' is placed in the 'Preferences' folder on the server, it is copied to the 'Extras' folder on the server.
+//4D then copies the file to the Client upon connection.   The Client then copies the file from its own 'Extras' folder to its own 'Preferences' folder.
+C_TEXT($MethodCalledOnError)
+C_LONGINT(viError)
+$MethodCalledOnError:=Method called on error
+viError:=0
+ON ERR CALL("ErrorNone")
+If (Application type=4D Server)
+If (Test path name(<>sPreferencesPath+"SKBilling.xml")=Is a document)
+If (Test path name(Get 4D folder(Current resources folder))#Is a folder)
+AlertMessage (Get localized string("Resources folder does not exist!"))
+Else 
+COPY DOCUMENT(<>sPreferencesPath+"SKBilling.xml";Get 4D folder(Current resources folder)+"SKBilling.xml";*)
+If (OK#1)
+AlertMessage (Get localized string("SKBilling.xml file was unable to be copied to the Resources folder!"))
+End if 
+End if 
+End if 
+End if 
+If (Application type=4D Remote mode)
+If (Test path name(Get 4D folder(Current resources folder)+"SKBilling.xml")=Is a document)
+COPY DOCUMENT(Get 4D folder(Current resources folder)+"SKBilling.xml";<>sPreferencesPath+"SKBilling.xml";*)
+If (OK#1)
+AlertMessage (Get localized string("SKBilling.xml file was unable to be copied to the Resources folder!"))
+End if 
+End if 
+End if 
+ON ERR CALL($MethodCalledOnError)
+If (viError#0)
+SyncRecordLog (Get localized string("SKBilling.xml copy to Extras folder failed! - Error")+" "+String(viError))
+End if 
+
+
+If (Application type#4D Remote mode)
+If (<>iPlatform=3)
+$Volume:=Substring(Data file;1;3)
+Else 
+$VolumePosition:=Position(":";Data file)
+$Volume:=Substring(Data file;1;$VolumePosition)
+End if 
+VOLUME ATTRIBUTES($Volume;$Size;$Used;$Free)
+If ($Size>0)
+If ($Free<1000000000)//1GB
+AlertMessage (Get localized string("Only")+" "+String(Round($Free*100/$Size;1))+"% ("+String(Round($Free/1024/1024;1))+" "+Get localized string("MB) of the disk space is available. This may cause severe performance problems!"))
+End if 
+End if 
+End if 
+InitArrays 
+ChangeSite 

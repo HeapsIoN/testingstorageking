@@ -1,0 +1,548 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): nicholas.wykes
+// Date and time: 14/12/09, 16:13:20
+// ----------------------------------------------------
+// Method: GoogleGeoPlot
+// Description
+// 
+//
+// Parameters
+// ----------------------------------------------------
+
+
+C_LONGINT($i)
+C_TEXT(vCoords)
+C_TEXT(vPrevCode;vReturnPrev)
+
+//Retrieve the Geocode for the entered Contact's address and then plot it on the graph
+$mailAddress:=Replace string([Contacts]MailAddress;Char(Carriage return);" ";*)
+
+If ($mailAddress="")
+$params:=[Contacts]MailSuburb+", "+[Contacts]MailCity+", "+[Contacts]MailState
+Else 
+$params:=$mailAddress+", "+[Contacts]MailSuburb+", "+[Contacts]MailCity+", "+[Contacts]MailState
+End if 
+
+
+
+
+vContGeo:=HTTP_GoogleGeocode ($params)
+$return:="0"
+WA EXECUTE JAVASCRIPT FUNCTION(*;"WAGMap";"showAddress";$return;vContGeo;$mailAddress+", "+[Contacts]MailSuburb+", "+[Contacts]MailCity+", "+[Contacts]MailState)
+WA EXECUTE JAVASCRIPT FUNCTION(*;"WAGMap";"confirmAlert";$return)
+
+If (vReturnPrev="1") & ($return="1")
+$Tickcount:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+10))
+WA EXECUTE JAVASCRIPT FUNCTION(*;"WAGMap";"confirmAlert";$return)
+End if 
+
+
+If ($return="1") | ($params=",@")
+AlertMessage ($params+" "+Get localized string("address not found! Try entering a more generalised address such as removing the Flat Number or the House Number before calculating."))
+vReturnPrev:="1"
+Else 
+//Calculation of distances between each facility and the Contact's address
+vDistCalced:=True
+$i:=0
+<>ProgressInd:=0
+Progress (Get localized string("Calculating distances")+"...")
+ARRAY REAL(asInstDistance;0)
+//vPrevDistance:="0"
+//vPrevCode:=""
+For ($i;1;Size of array(asInstSiteCode))
+INSERT IN ARRAY(asInstDistance;Size of array(asInstDistance)+1)
+QUERY([Facility];[Facility]FacilityCode=asInstSiteCode{$i})
+$strFacility:=""
+ReadCountryCodeXML 
+$pos:=Find in array(asCountryCodes;[Facility]Country)
+If ($pos>0)
+$strFacility:=asCountries{$pos}
+End if 
+
+If ($strFacility#asMailCountries{asMailCountries})
+asInstDistance{$i}:=9999999999
+Else 
+If ([Facility]State#[Contacts]MailState)
+asInstDistance{$i}:=9999999998
+Else 
+If ([Facility]Geocode#"")
+$loaded:="0"
+While ($loaded="0")
+$Tickcount:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+10))
+WA EXECUTE JAVASCRIPT FUNCTION(*;"WAGMap";"calcDistance";$loaded;vContGeo;[Facility]Geocode)
+End while 
+While ($return="") | ($return="0") | ($return=vPrevDistance) | ($return=vPrevDistance) & ([Facility]FacilityCode#vPrevCode)
+$Tickcount:=Tickcount
+Repeat 
+IDLE
+Until (Tickcount>($Tickcount+10))
+WA EXECUTE JAVASCRIPT FUNCTION(*;"WAGMap";"getDistance";$return)
+End while 
+vPrevDistance:=$return
+vPrevCode:=[Facility]FacilityCode
+asInstDistance{$i}:=Num($return)/1000
+Else 
+asInstDistance{$i}:=9999999997
+End if 
+End if 
+End if 
+End for 
+
+COPY ARRAY(asInstSiteCode;asMasterSiteCode)
+COPY ARRAY(asInstDistance;asMasterDistance)
+
+//Sort the arrays by their distance to the Contact's address
+ARRAY REAL(asInstPrice;Size of array(asInstSiteCode))
+For ($i;1;Size of array(asInstPrice))
+$initialsort:=asInstSort{$i}
+asInstPrice{$i}:=99999999
+For ($j;1;Size of array(<>asUTMonthlyRate{$initialsort}))
+If (<>asUTMonthlyRate{$initialsort}{$j}<asInstPrice{$i})
+asInstPrice{$i}:=<>asUTMonthlyRate{$initialsort}{$j}
+End if 
+End for 
+If (asInstDistance{$i}>=9999999997)
+asInstPrice{$i}:=asInstDistance{$i}
+End if 
+End for 
+
+If (asContactFacilitySort=1)
+SORT ARRAY(asInstDistance;asInstPrice;asInstSiteCode;asInstFacility;asInstSort;>)
+Else 
+SORT ARRAY(asInstPrice;asInstDistance;asInstSiteCode;asInstFacility;asInstSort;>)
+End if 
+
+$numFacilities:=0
+If (Size of array(asInstDistance)>0)
+$newvalue1:=asInstSort{1}
+$numFacilities:=1
+End if 
+If (Size of array(asInstDistance)>1)
+$newvalue2:=asInstSort{2}
+$numFacilities:=2
+End if 
+If (Size of array(asInstDistance)>2)
+$newvalue3:=asInstSort{3}
+$numFacilities:=3
+End if 
+
+//Set the list boxes on the Contacts screen to display the newly sorted facilities
+
+
+If ($numFacilities>0)
+COPY ARRAY(<>asRUnitType{$newvalue1};asRUnitType1)
+COPY ARRAY(<>asUTDescription{$newvalue1};asUTDescription1)
+COPY ARRAY(<>asUTSpecial{$newvalue1};asUTSpecial1)
+COPY ARRAY(<>asUTMonthlyRate{$newvalue1};asUTMonthlyRate1)
+COPY ARRAY(<>asUTCategory{$newvalue1};asUTCategory1)
+COPY ARRAY(<>asUTSCategory{$newvalue1};asUTSCategory1)
+COPY ARRAY(<>abUTVacant{$newvalue1};abUTVacant1)
+
+If (asInstDistance{vStartArray}=9999999999)
+$distVal1:="Out of country"
+Else 
+If (asInstDistance{vStartArray}=9999999998)
+$distVal1:="Out of state"
+Else 
+If (asInstDistance{vStartArray}=9999999997)
+$distVal1:="No Geocode"
+Else 
+$distVal1:=String(asInstDistance{vStartArray})+" km"
+End if 
+End if 
+End if 
+vFacilityText1:=<>asSiteCodes{$newvalue1}+" "+<>asFacilities{$newvalue1}+" ("+$distVal1+")"
+End if 
+
+If ($numFacilities>1)
+COPY ARRAY(<>asRUnitType{$newvalue2};asRUnitType2)
+COPY ARRAY(<>asUTDescription{$newvalue2};asUTDescription2)
+COPY ARRAY(<>asUTSpecial{$newvalue2};asUTSpecial2)
+COPY ARRAY(<>asUTMonthlyRate{$newvalue2};asUTMonthlyRate2)
+COPY ARRAY(<>asUTCategory{$newvalue2};asUTCategory2)
+COPY ARRAY(<>asUTSCategory{$newvalue2};asUTSCategory2)
+COPY ARRAY(<>abUTVacant{$newvalue2};abUTVacant2)
+
+If (asInstDistance{vStartArray+1}=9999999999)
+$distVal2:="Out of country"
+Else 
+If (asInstDistance{vStartArray+1}=9999999998)
+$distVal2:="Out of state"
+Else 
+If (asInstDistance{vStartArray+1}=9999999997)
+$distVal2:="No Geocode"
+Else 
+$distVal2:=String(asInstDistance{vStartArray+1})+" km"
+End if 
+End if 
+End if 
+vFacilityText2:=<>asSiteCodes{$newvalue2}+" "+<>asFacilities{$newvalue2}+" ("+$distVal2+")"
+End if 
+
+If ($numFacilities>2)
+COPY ARRAY(<>asRUnitType{$newvalue3};asRUnitType3)
+COPY ARRAY(<>asUTDescription{$newvalue3};asUTDescription3)
+COPY ARRAY(<>asUTSpecial{$newvalue3};asUTSpecial3)
+COPY ARRAY(<>asUTMonthlyRate{$newvalue3};asUTMonthlyRate3)
+COPY ARRAY(<>asUTCategory{$newvalue3};asUTCategory3)
+COPY ARRAY(<>asUTSCategory{$newvalue3};asUTSCategory3)
+COPY ARRAY(<>abUTVacant{$newvalue3};abUTVacant3)
+
+If (asInstDistance{vStartArray+2}=9999999999)
+$distVal3:="Out of country"
+Else 
+If (asInstDistance{vStartArray+2}=9999999998)
+$distVal3:="Out of state"
+Else 
+If (asInstDistance{vStartArray+2}=9999999997)
+$distVal3:="No Geocode"
+Else 
+$distVal3:=String(asInstDistance{vStartArray+2})+" km"
+End if 
+End if 
+End if 
+vFacilityText3:=<>asSiteCodes{$newvalue3}+" "+<>asFacilities{$newvalue3}+" ("+$distVal3+")"
+End if 
+
+If (asUCList#1)
+
+$j:=Size of array(asUTCategory1)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (asUTCategory1{$i}#asUCList{asUCList})
+DELETE FROM ARRAY(asRUnitType1;$i)
+DELETE FROM ARRAY(asUTDescription1;$i)
+DELETE FROM ARRAY(asUTSpecial1;$i)
+DELETE FROM ARRAY(asUTMonthlyRate1;$i)
+DELETE FROM ARRAY(asUTCategory1;$i)
+DELETE FROM ARRAY(asUTSCategory1;$i)
+DELETE FROM ARRAY(abUTVacant1;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(asUTCategory1)=0)
+APPEND TO ARRAY(asUTDescription1;"None Available")
+INSERT IN ARRAY(asRUnitType1;1)
+INSERT IN ARRAY(asUTSpecial1;1)
+INSERT IN ARRAY(asUTMonthlyRate1;1)
+INSERT IN ARRAY(asUTCategory1;1)
+INSERT IN ARRAY(asUTSCategory1;1)
+INSERT IN ARRAY(abUTVacant1;1)
+End if 
+
+$j:=Size of array(asUTCategory2)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (asUTCategory2{$i}#asUCList{asUCList})
+DELETE FROM ARRAY(asRUnitType2;$i)
+DELETE FROM ARRAY(asUTDescription2;$i)
+DELETE FROM ARRAY(asUTSpecial2;$i)
+DELETE FROM ARRAY(asUTMonthlyRate2;$i)
+DELETE FROM ARRAY(asUTCategory2;$i)
+DELETE FROM ARRAY(asUTSCategory2;$i)
+DELETE FROM ARRAY(abUTVacant2;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(asUTCategory2)=0)
+APPEND TO ARRAY(asUTDescription2;"None Available")
+INSERT IN ARRAY(asRUnitType2;1)
+INSERT IN ARRAY(asUTSpecial2;1)
+INSERT IN ARRAY(asUTMonthlyRate2;1)
+INSERT IN ARRAY(asUTCategory2;1)
+INSERT IN ARRAY(asUTSCategory2;1)
+INSERT IN ARRAY(abUTVacant2;1)
+End if 
+
+$j:=Size of array(asUTCategory3)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (asUTCategory3{$i}#asUCList{asUCList})
+DELETE FROM ARRAY(asRUnitType3;$i)
+DELETE FROM ARRAY(asUTDescription3;$i)
+DELETE FROM ARRAY(asUTSpecial3;$i)
+DELETE FROM ARRAY(asUTMonthlyRate3;$i)
+DELETE FROM ARRAY(asUTCategory3;$i)
+DELETE FROM ARRAY(asUTSCategory3;$i)
+DELETE FROM ARRAY(abUTVacant3;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(asUTCategory3)=0)
+APPEND TO ARRAY(asUTDescription3;"None Available")
+INSERT IN ARRAY(asRUnitType3;1)
+INSERT IN ARRAY(asUTSpecial3;1)
+INSERT IN ARRAY(asUTMonthlyRate3;1)
+INSERT IN ARRAY(asUTCategory3;1)
+INSERT IN ARRAY(asUTSCategory3;1)
+INSERT IN ARRAY(abUTVacant3;1)
+End if 
+
+End if 
+
+If (asSCList#1)
+
+$j:=Size of array(asUTSCategory1)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (asUTSCategory1{$i}#asSCList{asSCList})
+DELETE FROM ARRAY(asRUnitType1;$i)
+DELETE FROM ARRAY(asUTDescription1;$i)
+DELETE FROM ARRAY(asUTSpecial1;$i)
+DELETE FROM ARRAY(asUTMonthlyRate1;$i)
+DELETE FROM ARRAY(asUTCategory1;$i)
+DELETE FROM ARRAY(asUTSCategory1;$i)
+DELETE FROM ARRAY(abUTVacant1;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(asUTSCategory1)=0)
+APPEND TO ARRAY(asUTDescription1;"None Available")
+INSERT IN ARRAY(asRUnitType1;1)
+INSERT IN ARRAY(asUTSpecial1;1)
+INSERT IN ARRAY(asUTMonthlyRate1;1)
+INSERT IN ARRAY(asUTCategory1;1)
+INSERT IN ARRAY(asUTSCategory1;1)
+INSERT IN ARRAY(abUTVacant1;1)
+End if 
+
+$j:=Size of array(asUTSCategory2)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (asUTSCategory2{$i}#asSCList{asSCList})
+DELETE FROM ARRAY(asRUnitType2;$i)
+DELETE FROM ARRAY(asUTDescription2;$i)
+DELETE FROM ARRAY(asUTSpecial2;$i)
+DELETE FROM ARRAY(asUTMonthlyRate2;$i)
+DELETE FROM ARRAY(asUTCategory2;$i)
+DELETE FROM ARRAY(asUTSCategory2;$i)
+DELETE FROM ARRAY(abUTVacant2;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(asUTSCategory2)=0)
+APPEND TO ARRAY(asUTDescription2;"None Available")
+INSERT IN ARRAY(asRUnitType2;1)
+INSERT IN ARRAY(asUTSpecial2;1)
+INSERT IN ARRAY(asUTMonthlyRate2;1)
+INSERT IN ARRAY(asUTCategory2;1)
+INSERT IN ARRAY(asUTSCategory2;1)
+INSERT IN ARRAY(abUTVacant2;1)
+End if 
+
+$j:=Size of array(asUTSCategory3)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (asUTSCategory3{$i}#asSCList{asSCList})
+DELETE FROM ARRAY(asRUnitType3;$i)
+DELETE FROM ARRAY(asUTDescription3;$i)
+DELETE FROM ARRAY(asUTSpecial3;$i)
+DELETE FROM ARRAY(asUTMonthlyRate3;$i)
+DELETE FROM ARRAY(asUTCategory3;$i)
+DELETE FROM ARRAY(asUTSCategory3;$i)
+DELETE FROM ARRAY(abUTVacant3;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(asUTSCategory3)=0)
+APPEND TO ARRAY(asUTDescription3;"None Available")
+INSERT IN ARRAY(asRUnitType3;1)
+INSERT IN ARRAY(asUTSpecial3;1)
+INSERT IN ARRAY(asUTMonthlyRate3;1)
+INSERT IN ARRAY(asUTCategory3;1)
+INSERT IN ARRAY(asUTSCategory3;1)
+INSERT IN ARRAY(abUTVacant3;1)
+End if 
+
+End if 
+
+If (bShowOccupied=0)
+
+$j:=Size of array(abUTVacant1)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (abUTVacant1{$i}#True)
+DELETE FROM ARRAY(asRUnitType1;$i)
+DELETE FROM ARRAY(asUTDescription1;$i)
+DELETE FROM ARRAY(asUTSpecial1;$i)
+DELETE FROM ARRAY(asUTMonthlyRate1;$i)
+DELETE FROM ARRAY(asUTCategory1;$i)
+DELETE FROM ARRAY(asUTSCategory1;$i)
+DELETE FROM ARRAY(abUTVacant1;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(abUTVacant1)=0)
+APPEND TO ARRAY(asUTDescription1;"None Available")
+INSERT IN ARRAY(asRUnitType1;1)
+INSERT IN ARRAY(asUTSpecial1;1)
+INSERT IN ARRAY(asUTMonthlyRate1;1)
+INSERT IN ARRAY(asUTCategory1;1)
+INSERT IN ARRAY(asUTSCategory1;1)
+INSERT IN ARRAY(abUTVacant1;1)
+End if 
+
+$j:=Size of array(abUTVacant2)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (abUTVacant2{$i}#True)
+DELETE FROM ARRAY(asRUnitType2;$i)
+DELETE FROM ARRAY(asUTDescription2;$i)
+DELETE FROM ARRAY(asUTSpecial2;$i)
+DELETE FROM ARRAY(asUTMonthlyRate2;$i)
+DELETE FROM ARRAY(asUTCategory2;$i)
+DELETE FROM ARRAY(asUTSCategory2;$i)
+DELETE FROM ARRAY(abUTVacant2;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(abUTVacant2)=0)
+APPEND TO ARRAY(asUTDescription2;"None Available")
+INSERT IN ARRAY(asRUnitType2;1)
+INSERT IN ARRAY(asUTSpecial2;1)
+INSERT IN ARRAY(asUTMonthlyRate2;1)
+INSERT IN ARRAY(asUTCategory2;1)
+INSERT IN ARRAY(asUTSCategory2;1)
+INSERT IN ARRAY(abUTVacant2;1)
+End if 
+
+$j:=Size of array(abUTVacant3)
+
+For ($i;1;$j)
+If ($i<=$j)
+If (abUTVacant3{$i}#True)
+DELETE FROM ARRAY(asRUnitType3;$i)
+DELETE FROM ARRAY(asUTDescription3;$i)
+DELETE FROM ARRAY(asUTSpecial3;$i)
+DELETE FROM ARRAY(asUTMonthlyRate3;$i)
+DELETE FROM ARRAY(asUTCategory3;$i)
+DELETE FROM ARRAY(asUTSCategory3;$i)
+DELETE FROM ARRAY(abUTVacant3;$i)
+$i:=$i-1
+$j:=$j-1
+End if 
+End if 
+End for 
+
+If (Size of array(abUTVacant3)=0)
+APPEND TO ARRAY(asUTDescription3;"None Available")
+INSERT IN ARRAY(asRUnitType3;1)
+INSERT IN ARRAY(asUTSpecial3;1)
+INSERT IN ARRAY(asUTMonthlyRate3;1)
+INSERT IN ARRAY(asUTCategory3;1)
+INSERT IN ARRAY(asUTSCategory3;1)
+INSERT IN ARRAY(abUTVacant3;1)
+End if 
+
+End if 
+
+ARRAY LONGINT(aiRowColor1;Size of array(asUTSpecial1))
+ARRAY LONGINT(aiRowColor2;Size of array(asUTSpecial2))
+ARRAY LONGINT(aiRowColor3;Size of array(asUTSpecial3))
+
+For ($i;1;Size of array(asUTSpecial1))
+Case of 
+: (abUTVacant1{$i}=False)
+aiRowColor1{$i}:=0x00A6A6A6
+: (asUTSpecial1{$i}=True)
+aiRowColor1{$i}:=0x00FFFF00
+Else 
+Case of 
+: (<>sProduct="@B")
+aiRowColor1{$i}:=0x00E7F2F8
+: (<>sProduct="@R")
+aiRowColor1{$i}:=0x00FDF5F3
+: (<>sProduct="@T")
+aiRowColor1{$i}:=0x00F9F7FC
+Else 
+aiRowColor1{$i}:=0x00E8F6F9
+End case 
+End case 
+End for 
+
+For ($i;1;Size of array(asUTSpecial2))
+Case of 
+: (abUTVacant2{$i}=False)
+aiRowColor2{$i}:=0x00A6A6A6
+: (asUTSpecial2{$i}=True)
+aiRowColor2{$i}:=0x00FFFF00
+Else 
+Case of 
+: (<>sProduct="@B")
+aiRowColor2{$i}:=0x00E7F2F8
+: (<>sProduct="@R")
+aiRowColor2{$i}:=0x00FDF5F3
+: (<>sProduct="@T")
+aiRowColor2{$i}:=0x00F9F7FC
+Else 
+aiRowColor2{$i}:=0x00E8F6F9
+End case 
+End case 
+End for 
+
+For ($i;1;Size of array(asUTSpecial3))
+Case of 
+: (abUTVacant3{$i}=False)
+aiRowColor3{$i}:=0x00A6A6A6
+: (asUTSpecial3{$i}=True)
+aiRowColor3{$i}:=0x00FFFF00
+Else 
+Case of 
+: (<>sProduct="@B")
+aiRowColor3{$i}:=0x00E7F2F8
+: (<>sProduct="@R")
+aiRowColor3{$i}:=0x00FDF5F3
+: (<>sProduct="@T")
+aiRowColor3{$i}:=0x00F9F7FC
+Else 
+aiRowColor3{$i}:=0x00E8F6F9
+End case 
+End case 
+End for 
+
+//Setting the text mentioning distances to the facility
+
+
+<>ProgressInd:=100
+
+End if 

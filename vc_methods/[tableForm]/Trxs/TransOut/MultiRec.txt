@@ -1,0 +1,250 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): jonathon.wildon
+// Date and time: 12/07/16, 11:05:47
+// ----------------------------------------------------
+// Method: [Trxs].TransOut.MultiRec
+// Description
+// 
+// Multiple receipt button. Loads the 'new' cash sale form.
+// For everyone. Hides for KSS
+//
+// Parameters
+// ----------------------------------------------------
+
+REDUCE SELECTION([Trxs];0)
+REDUCE SELECTION([Customer];0)
+REDUCE SELECTION([Agreement];0)
+REDUCE SELECTION([Reservation];0)
+REDUCE SELECTION([Unit];0)
+vAmount:=0
+bAddRec:=1
+MoveInCall:=False
+bAdd:=1
+Repeat 
+If (vMisc)
+ARRAY DATE(aDate;0)
+ARRAY DATE(aDateFrom;0)
+ARRAY DATE(aDateTo;0)
+ARRAY REAL(aCost;0)
+ARRAY REAL(aQuantity;0)
+ARRAY REAL(aOrigQuantity;0)
+ARRAY TEXT(adDesc;0)
+ARRAY REAL(aNet;0)
+ARRAY REAL(aTax;0)
+ARRAY REAL(aTot;0)
+ARRAY TEXT(aNarration;0)
+ARRAY TEXT(asAnalysis;0)
+ARRAY BOOLEAN(abPrint;0)
+ARRAY LONGINT(aiPrimaryKey;0)
+ARRAY LONGINT(aiOrigPrimaryKey;0)
+aDate:=0
+aDateFrom:=0
+aDateTo:=0
+aCost:=0
+aQuantity:=0
+aOrigQuantity:=0
+adDesc:=0
+aNet:=0
+aTax:=0
+aTot:=0
+aNarration:=0
+asAnalysis:=0
+abPrint:=0
+aiPrimaryKey:=0
+aiOrigPrimaryKey:=0
+
+READ WRITE([Customer])
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"MISCL")
+If (Records in selection([Customer])=0)
+CREATE RECORD([Customer])
+[Customer]CustomerCode:=<>sFacility+"MISCL"
+[Customer]NextMatch:=1
+SAVE RECORD([Customer])
+End if 
+
+QUERY([Trxs];[Trxs]AgreeNo=(<>sFacility+"MISCL");*)
+QUERY([Trxs]; & ;[Trxs]Match=[Customer]NextMatch)
+
+While (Records in selection([Trxs])>0)
+[Customer]NextMatch:=[Customer]NextMatch+1
+QUERY([Trxs];[Trxs]AgreeNo=(<>sFacility+"MISCL");*)
+QUERY([Trxs]; & ;[Trxs]Match=[Customer]NextMatch)
+End while 
+
+SAVE RECORD([Customer])
+
+$Continue:=False
+If (Not(Semaphore("<>bNextCashSaleNo";1800)))
+$Continue:=True
+End if 
+
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+GET PROCESS VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+
+vCustNextMatch:=<>aiNextCashSaleNo{$arraypos}
+<>aiNextCashSaleNo{$arraypos}:=<>aiNextCashSaleNo{$arraypos}+1
+
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextCashSaleNo;<>aiNextCashSaleNo)
+End if 
+
+CLEAR SEMAPHORE("<>bNextCashSaleNo")
+Else 
+vCustNextMatch:=[Customer]NextMatch
+End if 
+READ ONLY([Customer])
+UNLOAD RECORD([Customer])
+
+End if 
+
+If (vMisc)// (Is compiled mode=False) & 
+If (<>sFacility#"KE@")
+vSpecialAnalysis:=""//10780
+vOriginalReceipt:=""//10780
+QUERY([Agreement];[Agreement]RAgreeNo=<>sFacility+"MISCL")
+QUERY([Customer];[Customer]CustomerCode=<>sFacility+"MISCL")
+If (Records in selection([Agreement])=0)
+CREATE RECORD([Agreement])
+[Agreement]AgreeNo:="MISCL"
+[Agreement]RAgreeNo:=<>sFacility+"MISCL"
+[Agreement]CustomerCode:=<>sFacility+"MISCL"
+[Agreement]ActiveAgreemt:=False
+[Agreement]MoveIn:=Current date
+SAVE RECORD([Agreement])
+End if 
+viCashMatch:=0
+DIALOG([Agreement];"MisclCash")
+vMisc:=True//Added by Hamid - 4/5/2015 - 9027
+READ WRITE([Trxs])
+Else 
+ADD RECORD(*)
+End if 
+Else 
+
+If (ShowHide)
+ADD RECORD(*)
+ShowHide:=False
+Else 
+ShowHide:=True
+bAbortArray:=1
+End if 
+
+
+End if 
+
+If (vMisc) & (<>sFacility="KE@")
+$Facility:=Substring([Trxs]CustomerCode;1;5)
+$Match:=[Trxs]Match
+//22/05/14 DAM Added for activity calculations
+ARRAY LONGINT(aSeqNo;Size of array(asAnalysis))
+Case of 
+: (bOKArray=1)
+//User clicked ok - write changes & new records
+For ($i;1;Size of array(aiPrimaryKey))
+If (aiPrimaryKey=0)
+//New record
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=$Facility+"MISCL"
+[Trxs]AgreeNo:=$Facility+"MISCL"
+[Trxs]TrxDate:=vDate
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=asAnalysis{$i}
+[Trxs]Description:=adDesc{$i}
+[Trxs]TaxAmt:=aTax{$i}
+[Trxs]TotAmt:=aTot{$i}
+[Trxs]Qty:=aQuantity{$i}
+[Trxs]Confirmed:=True
+[Trxs]Match:=$Match
+[Trxs]Narration:=aNarration{$i}
+[Trxs]PrintNarration:=abPrint{$i}
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt;[Trxs]TotAmt)
+SAVE RECORD([Trxs])
+aSeqNo{$i}:=[Trxs]SeqNo
+Else 
+//Existing record
+QUERY([Trxs];[Trxs]PrimaryKey=aiPrimaryKey)
+If (Records in selection([Trxs])>0)
+
+Else 
+//Transaction missing - recreate
+CREATE RECORD([Trxs])
+[Trxs]CustomerCode:=$Facility+"MISCL"
+[Trxs]AgreeNo:=$Facility+"MISCL"
+[Trxs]TrxDate:=vDate
+[Trxs]Charge:=True
+[Trxs]AnalysisCode:=asAnalysis{$i}
+[Trxs]Description:=adDesc{$i}
+[Trxs]TaxAmt:=aTax{$i}
+[Trxs]TotAmt:=aTot{$i}
+[Trxs]Qty:=aQuantity{$i}
+[Trxs]Confirmed:=True
+[Trxs]Match:=$Match
+[Trxs]Narration:=aNarration{$i}
+[Trxs]PrintNarration:=abPrint{$i}
+If ([Trxs]AnalysisCode#[Analysis]Code)
+RELATE ONE([Trxs]AnalysisCode)
+End if 
+TriggerSubTrx ([Trxs]AnalysisCode;[Trxs]TrxDate;[Trxs]TaxAmt;[Trxs]TotAmt)
+SAVE RECORD([Trxs])
+aSeqNo{$i}:=[Trxs]SeqNo
+End if 
+End if 
+End for 
+//Delete no longer required transactions
+
+For ($i;1;Size of array(aiPrimaryKey))
+$j:=Find in array(aiOrigPrimaryKey;aiPrimaryKey{$i})
+If ($j>0)
+DELETE FROM ARRAY(aiOrigPrimaryKey;$j)
+End if 
+End for 
+
+For ($i;1;Size of array(aiOrigPrimaryKey))
+QUERY([Trxs];[Trxs]PrimaryKey=aiOrigPrimaryKey)
+If (Records in selection([Trxs])>0)
+DELETE RECORD([Trxs])
+End if 
+End for 
+
+: (bAbortArray=1)
+//Do Nothing - user clicked cancel
+: (bDelete=1)
+//User clicked delete - wipe remaining transactions
+
+For ($i;1;Size of array(aiOrigPrimaryKey))
+QUERY([Trxs];[Trxs]PrimaryKey=aiOrigPrimaryKey)
+If (Records in selection([Trxs])>0)
+DELETE RECORD([Trxs])
+End if 
+End for 
+
+Else 
+//Do Nothing
+End case 
+
+QUERY([Trxs];[Trxs]AgreeNo=$Facility+"MISCL";*)
+QUERY([Trxs]; & ;[Trxs]Match=$Match;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+//22/05/14 DAM Added code to fill MiscDetls for MISCL
+ARRAY INTEGER($aType;4)
+$aType{1}:=8
+$aType{2}:=-3
+$aType{3}:=-3
+$aType{4}:=-2
+[Trxs]MiscDetls:=ArraysToText (->$aType;->asAnalysis;->aTax;->aTot;->aSeqNo)
+SAVE RECORD([Trxs])
+End if 
+Until (bAbortArray=1)
+TrxListSort 

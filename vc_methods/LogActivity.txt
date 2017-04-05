@@ -1,0 +1,100 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//This routine called by TriggerLog, TriggerSubTrx, CheckVersion
+//This routine called by Contacts, Reservation, UnitHistory
+C_LONGINT($0)//Error number -16000 indicates activity could not be saved as it is locked
+C_TEXT($1)//Facility to update
+C_DATE($2)//Date of activity record to adjust
+C_POINTER($3;$5;$7;$p)//Pointer to activity field to adjust
+C_REAL($4;$6;$8)//Amount to adjust by
+C_LONGINT($Tickcount)
+$0:=0
+If ([UserLogins]RecordStatus=0) | ([UserLogins]RecordStatus=2)//0=Record Everything, 1=Don't Log Activity, 2=Dont Create EventLog, 3=Dont do either
+Case of 
+: (Trigger event=On Deleting Record Event) & ($2=!00-00-00!)
+$0:=0//Allow delete of old recs with 00/00/00
+: ($2=!00-00-00!)
+$0:=-16020
+Else 
+CREATE RECORD([QueueLog])
+[QueueLog]Order:=20001
+[QueueLog]GateUnitCode:=$1
+[QueueLog]GateDate:=$2
+[QueueLog]GateMux:=Field($3)//Returns field number
+[QueueLog]GateChannel:=$4
+SAVE RECORD([QueueLog])
+If (Count parameters>=6)
+CREATE RECORD([QueueLog])
+[QueueLog]Order:=20002
+[QueueLog]GateUnitCode:=$1
+[QueueLog]GateDate:=$2
+[QueueLog]GateMux:=Field($5)//Returns field number
+[QueueLog]GateChannel:=$6
+SAVE RECORD([QueueLog])
+If (Field($5)=22)//[Activity]OccupUnitNo
+For ($i;1;7)
+CREATE RECORD([QueueLog])
+[QueueLog]Order:=20003+$i
+[QueueLog]GateUnitCode:=$1
+[QueueLog]GateDate:=$2+$i
+[QueueLog]GateMux:=Field($5)//Returns field number
+[QueueLog]GateChannel:=$6
+SAVE RECORD([QueueLog])
+End for 
+End if 
+End if 
+If (Count parameters>=8)
+CREATE RECORD([QueueLog])
+[QueueLog]Order:=20003
+[QueueLog]GateUnitCode:=$1
+[QueueLog]GateDate:=$2
+[QueueLog]GateMux:=Field($7)//Returns field number
+[QueueLog]GateChannel:=$8
+SAVE RECORD([QueueLog])
+End if 
+UNLOAD RECORD([QueueLog])
+If (False)//This was previously here instead of above - now in LogMonLoopCode
+READ WRITE([Activity])
+QUERY([Activity];[Activity]FacilityCode=$1;*)
+QUERY([Activity]; & ;[Activity]ActivityDate=$2)
+If (Records in selection([Activity])=0)
+CREATE RECORD([Activity])
+[Activity]FacilityCode:=$1
+[Activity]ActivityDate:=$2
+[Activity]ActivityWeek:=GetWeekMonthNo (1;$2)
+[Activity]ActivityMonth:=GetWeekMonthNo (2;$2)
+SAVE RECORD([Activity])
+End if 
+If (Locked([Activity]))
+<>tLocked:=True
+LOCKED BY([Activity];$Tickcount;$User;$Machine;$ProcessName)
+$Tickcount:=New process("WaitLocked";128000;"WaitLocked";$ProcessName+", #"+String($Tickcount)+", "+$User+", "+$Machine)
+//$Tickcount:=Tickcount+600  `Wait ten seconds if necessary
+While (Locked([Activity])) & (<>tLocked)// & (Tickcount<$Tickcount)  `Wait if locked
+IDLE
+LOAD RECORD([Activity])
+End while 
+<>tLocked:=False
+End if 
+If (Locked([Activity]))
+LOCKED BY([Activity];$Tickcount;$User;$Machine;$ProcessName)
+SyncRecordLog (Get localized string("Locked Activity caused error -16000 by process")+" "+$ProcessName+" "+Get localized string("No1")+" "+String($Tickcount)+", "+Get localized string("Machine")+"="+$Machine+", "+Get localized string("User")+"="+$User)
+$0:=-16000
+Else 
+$p:=$3
+$p->:=Round($p->+$4;2)
+If (Count parameters>=6)
+$p:=$5
+$p->:=Round($p->+$6;2)
+End if 
+If (Count parameters>=8)
+$p:=$7
+$p->:=Round($p->+$8;2)
+End if 
+[Activity]Updated:=True
+SAVE RECORD([Activity])
+End if 
+READ ONLY([Activity])
+UNLOAD RECORD([Activity])
+End if 
+End case 
+End if 

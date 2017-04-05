@@ -1,0 +1,298 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//C_LONGINT($Year)
+//C_LONGINT($Month)
+C_TEXT($UUID)
+C_BOOLEAN($CustCreate)
+C_BOOLEAN($Valid)
+C_TEXT(vCCExpiryMonth)
+C_TEXT(vCCExpiryYear)
+C_TEXT(vContractStartDateDayString;vContractStartDateMonthString)
+C_TEXT($EziDebitNewRefenrece;$tempCode;$PayerType;$Business;$merchantid;$expdate;$SharedSecret)
+
+If (Form event=On Clicked)
+If (vCCNo#"") & (vCCExpiryMonth#"") & (vCCExpiryYear#"")
+$Year:=vCCExpiryYear
+$Month:=vCCExpiryMonth
+If (Num($Year)>=Year of(Current date))
+If (Num($Year)>Year of(Current date))
+$Valid:=True
+End if 
+If (Num($Month)>=Month of(Current date))
+$Valid:=True
+End if 
+
+End if 
+If ($Valid=False)
+AlertMessage (Get localized string("Invalid date"))
+End if 
+End if 
+
+If ([Agreement]RAgreeNo>"")
+vContractStartDateYear:=Year of([Agreement]AuthCCSigned)
+vContractStartDateMonth:=Month of([Agreement]AuthCCSigned)
+vContractStartDateDay:=Day of([Agreement]AuthCCSigned)
+Else 
+vContractStartDateYear:=Year of(Current date)
+vContractStartDateMonth:=Month of(Current date)
+vContractStartDateDay:=Day of(Current date)
+End if 
+
+vContractStartDateMonthString:=PadStringLeft (String(vContractStartDateMonth);2;"0")
+vContractStartDateDayString:=PadStringLeft (String(vContractStartDateDay);2;"0")
+
+vContractStartDate:=String(vContractStartDateYear)+"-"+vContractStartDateMonthString+"-"+vContractStartDateDayString
+//If ($Valid=True)
+vCCExpiryMonth:=PadStringLeft (vCCExpiryMonth;2;"0")
+Else 
+$Valid:=True
+vContractStartDate:=""
+End if 
+
+If ($Valid=True)
+$Merchant:=GetTextNo ([Facility]MerchantDetails;1;",")
+
+If ($Merchant="EziDebit")
+vCustomerMob:=Replace string(vCustomerMob;"_";"")
+//If (vCustomerMob="")
+//AlertMessage ("Please enter Mobile phone.")
+//Else 
+$DigKey:=String(GetTextNo ([Facility]MerchantDetails;2;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;3;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;4;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;5;","))+"-"+String(GetTextNo ([Facility]MerchantDetails;6;","))
+If ([Customer]customerProfileID#"")
+$CustCreate:=True
+$Success:=WSC_EziEditCustomerDetails ($DigKey;"";[Customer]customerProfileID;"";[Agreement]AgreeNo;vCustomerName;vCustomerFirstName;vAddress1;vAddress2;vCustomerSuburb;vCustomerState;vCustomerPostZIPCode;vCustomerEmail;vCustomerMob;"No";"No";"No";"")
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully updated"))
+End if 
+Else 
+
+If ([Customer]DDProfileID="")
+$UUID:=Generate UUID
+
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;[Agreement]AgreeNo;vCustomerName;vCustomerFirstName;vAddress1;vAddress2;vCustomerSuburb;vCustomerState;vCustomerPostZIPCode;vCustomerEmail;vCustomerMob;vContractStartDate;"No";"No";"No";"";True;True)
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+$CustCreate:=True
+[Customer]customerProfileID:=$UUID
+End if 
+Else 
+
+If ([Customer]customerProfileID="")
+//$tempCode:=[Customer]CustomerCode
+//SAVE RECORD([Customer])
+//READ WRITE([Customer])
+//$EziDebitNewRefenrece:=CreateReferenceEziDebit ([Customer]CustomerCode;"CC")
+//QUERY([Customer];[Customer]CustomerCode=$tempCode)
+//[Customer]customerProfileID:=[Customer]CustomerCode
+$UUID:=Generate UUID
+
+$Success:=WSC_EziAddCustomer ($DigKey;$UUID;[Agreement]AgreeNo;vCustomerName;vCustomerFirstName;vAddress1;vAddress2;vCustomerSuburb;vCustomerState;vCustomerPostZIPCode;vCustomerEmail;vCustomerMob;vContractStartDate;"No";"No";"No";"";True;True)
+
+If ($Success="S") | ($Success="P")
+AlertMessage (Get localized string("Customer Profile successfully created"))
+$CustCreate:=True
+[Customer]customerProfileID:=$UUID
+End if 
+Else 
+$CustCreate:=True
+End if 
+
+End if 
+End if 
+
+If ($CustCreate)
+$Success2:=WSC_EziEditCustomerCreditCard ($DigKey;"";[Customer]customerProfileID;vCCName;vCCNo;vCCExpiryYear;vCCExpiryMonth;vCCVNo;"YES";"";True)
+If ($Success2="S") | ($Success2="P")
+AlertMessage (Get localized string("Customer Credit Card Profile successfully created"))
+vEziCCStatus:=Get localized string("Active")
+[Customer]CCName:=vCCName
+[Customer]CCNo:="000000000000"+Substring(vCCNo;Length(vCCNo)-3;4)
+//[Customer]CCNo:=Tokenizer ([Customer]CCNo;True)
+Encode256 (vCCNo)
+[Customer]CCExpiry:=vCCExpiryMonth+Substring(vCCExpiryYear;3;2)
+//[Customer]custPaymentProfID:=[Customer]CustomerCode
+//[Customer]DDPaymentProfileID:=""
+
+[Customer]SpecialOption:=54
+
+//2/11/15 DAM Added for MC
+If (vCCNo="51@") | (vCCNo="52@") | (vCCNo="53@") | (vCCNo="54@") | (vCCNo="55@")//MC
+[Customer]SpecialOption:=62
+End if 
+
+If (vCCNo="37@") | (vCCNo="34@")//It is an Amex card
+[Customer]SpecialOption:=55
+End if 
+If ((vCCNo="300@") | (vCCNo="301@") | (vCCNo="38@") | (vCCNo="39@") | (vCCNo="309@") | (vCCNo="302@") | (vCCNo="303@") | (vCCNo="304@") | (vCCNo="305@") | (vCCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+[Customer]SpecialOption:=56
+End if 
+
+ACCEPT
+Else 
+[Customer]custPaymentProfID:=""
+End if 
+
+vCCName:=""
+vCCNo:=""
+vCCExpiryMonth:=""
+vCCExpiryYear:=""
+OBJECT SET ENABLED(bEdit;True)
+OBJECT SET ENABLED(bDelCC;True)
+OBJECT SET ENABLED(bNew;False)
+
+OBJECT SET VISIBLE(vEziCCStatus;True)
+
+End if 
+//End if 
+End if 
+If ($Merchant="Cheq")
+$Expiry:=vCCExpiryMonth+Substring(vCCExpiryYear;3;2)
+$Success:=WSC_CheqStoreCC (True;0;vCCNo;$Expiry;[Agreement]RAgreeNo;vCustomerName;vAddress1+" "+vAddress2;vCustomerSuburb;vCustomerPostZIPCode;"";vCVV;GetTextNo ([Facility]MerchantDetails;3;",");GetTextNo ([Facility]MerchantDetails;4;","))
+
+If ($Success#"ERR@") & ($Success#"DEC@")
+[Customer]customerProfileID:=$Success
+[Customer]CCName:=vCCName
+[Customer]CCNo:="000000000000"+Substring(vCCNo;Length(vCCNo)-3;4)
+[Customer]CCExpiry:=vCCExpiryMonth+Substring(vCCExpiryYear;3;2)
+OBJECT SET ENABLED(bEdit;True)
+OBJECT SET ENABLED(bDelCC;True)
+OBJECT SET ENABLED(bNew;False)
+vCCName:=""
+vCCNo:=""
+vCCExpiryMonth:=""
+vCCExpiryYear:=""
+vCVV:=""
+OBJECT SET ENABLED(bAbort;False)
+SAVE RECORD([Customer])
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+ACCEPT
+End if 
+
+End if 
+
+//31/08/15 DAM Added for CardSave
+If ($Merchant="CardSave")
+ConfirmTwo ("A transaction of £1.00 will be processed to validate these details. Are you sure you wish to continue?")
+If (OK=1)
+C_TEXT($User;$PassW;$CustProf)
+$User:=Substring(GetTextNo ([Facility]MerchantDetails;3;",");1;20)
+$PassW:=Substring(GetTextNo ([Facility]MerchantDetails;4;",");1;20)
+$CustProf:=""
+$CustProf:=CardSaveUpload ($User;$PassW;1)
+
+If ($CustProf#"ERR@")
+[Customer]custPaymentProfID:=$CustProf
+[Customer]customerProfileID:=$CustProf
+
+//////////// fb9720 by eugene
+[Customer]CCName:=vCCName
+[Customer]CCNo:="000000000000"+Substring(vCCNo;Length(vCCNo)-3;4)
+[Customer]CCExpiry:=vCCExpiryMonth+Substring(vCCExpiryYear;3;2)
+
+//////////// fb9721 by eugene
+
+[Customer]SpecialOption:=54
+
+//2/11/15 DAM Added for MC
+If (vCCNo="51@") | (vCCNo="52@") | (vCCNo="53@") | (vCCNo="54@") | (vCCNo="55@")//MC
+[Customer]SpecialOption:=62
+End if 
+
+If (vCCNo="37@") | (vCCNo="34@")//It is an Amex card
+[Customer]SpecialOption:=55
+End if 
+If ((vCCNo="300@") | (vCCNo="301@") | (vCCNo="302@") | (vCCNo="38@") | (vCCNo="309@") | (vCCNo="39@") | (vCCNo="303@") | (vCCNo="304@") | (vCCNo="305@") | (vCCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+[Customer]SpecialOption:=56
+End if 
+
+End if 
+ACCEPT
+//////////// fb9727 by eugene
+vCCName:=""
+vCCNo:=""
+vCCExpiryMonth:=""
+vCCExpiryYear:=""
+
+End if 
+End if 
+
+
+
+If ($Merchant="Realex")//Added by Hamid - 2/11/2015
+$Business:="Business"
+$CustCreate:=False
+$merchantid:=GetTextNo ([Facility]MerchantDetails;3;",")
+$SharedSecret:=GetTextNo ([Facility]MerchantDetails;4;",")
+If ([Customer]customerProfileID="")// Create new customer
+$UUID:=Generate UUID//Ref
+$PayerType:="payer-new"
+$Success:=RealVaultPayerSetUpEdit ($merchantid;$UUID;$Business;vCustomerFirstName;vCustomerName;$PayerType;$SharedSecret)
+
+If ($Success="S")
+$CustCreate:=True
+[Customer]customerProfileID:=$UUID
+[Customer]custPaymentProfID:=$UUID
+AlertMessage (Get localized string("Customer Profile successfully created"))
+End if 
+
+Else //Edit customer
+$CustCreate:=True
+$PayerType:="payer-edit"
+$UUID:=[Customer]customerProfileID
+$Success:=RealVaultPayerSetUpEdit ($merchantid;$UUID;$Business;vCustomerFirstName;vCustomerName;$PayerType;$SharedSecret)
+If ($Success="S")
+AlertMessage (Get localized string("Customer Profile successfully updated"))
+Else 
+AlertMessage ($Success)
+End if 
+End if 
+
+If ($CustCreate)
+$ref:=$UUID
+$type:="VISA"//SWITCH  and LASER are same as VISA
+[Customer]SpecialOption:=54
+If (vCCNo="51@") | (vCCNo="52@") | (vCCNo="53@") | (vCCNo="54@") | (vCCNo="55@")//MC
+$type:="MC"
+[Customer]SpecialOption:=62
+End if 
+
+If (vCCNo="37@") | (vCCNo="34@")//It is an Amex card
+$type:="AMEX"
+[Customer]SpecialOption:=55
+End if 
+If ((vCCNo="300@") | (vCCNo="301@") | (vCCNo="38@") | (vCCNo="39@") | (vCCNo="309@") | (vCCNo="302@") | (vCCNo="303@") | (vCCNo="304@") | (vCCNo="305@") | (vCCNo="36@")) & (([Facility]Country#"US") & ([Facility]Country#"CA"))//10461 - adding new Diners CC number
+$type:="DINERS"
+[Customer]SpecialOption:=56
+End if 
+$expdate:=vCCExpiryMonth+Substring(vCCExpiryYear;3;4)
+If ($PayerType="payer-new")// Add CC details
+$Success2:=RealexAddCCDetails ($merchantid;$ref;$UUID;vCCNo;$expdate;vCCName;$type;$SharedSecret)
+Else // Edit // Add CC details
+$Success2:=RealexEditCCDetails ($merchantid;$ref;$UUID;vCCNo;$expdate;vCCName;$type;$SharedSecret)
+End if 
+If ($Success2="S")
+AlertMessage (Get localized string("Customer Credit Card Profile successfully created"))
+[Customer]CCName:=vCCName
+[Customer]CCNo:="000000000000"+Substring(vCCNo;Length(vCCNo)-3;4)
+[Customer]CCExpiry:=vCCExpiryMonth+Substring(vCCExpiryYear;3;2)
+ACCEPT
+Else 
+AlertMessage ($Success2)
+End if 
+vCCName:=""
+vCCNo:=""
+vCCExpiryMonth:=""
+vCCExpiryYear:=""
+OBJECT SET ENABLED(bEdit;True)
+OBJECT SET ENABLED(bDelCC;True)
+OBJECT SET ENABLED(bNew;False)
+End if 
+End if 
+
+End if 
+//End if 

@@ -1,0 +1,156 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 26/11/10 Modified to record in SyncLog if Facility record is locked when updating lastsyncdate and time
+C_TEXT($1)//Called by webserver
+C_LONGINT($i;$Pos;$SeqNo;$NextSeqNo;$Process)
+C_TEXT($FacilityCode;$cr;$VersionDate)
+C_TEXT($ProcessName;$4DUser;$SessionUser)
+C_DATE($Date)
+$FacilityCode:=SyncCheckValidSite ($1;False)
+$cr:=Char(13)+Char(10)
+$SeqNo:=0
+$Pos:=Find in array(<>asSiteCodes;[Facility]FacilityCode)
+If ($Pos>0)
+$SeqNo:=<>aiEventSeqNo{$Pos}+1
+End if 
+$NextSeqNo:=Num(SyncBlobtoText (SyncTagsToBlob ("<SeqNo>";->vbEventContent;->vbRecord;0)))
+If (vErrors="160")
+$SeqNo:=$NextSeqNo
+End if 
+$VersionDate:=SyncBlobtoText (SyncTagsToBlob ("<VersionDate>";->vbEventContent;->vbRecord;0))//Initialise
+If (vErrors="") & (<>iLoopCodeSecs>3)//Test if server is too busy
+Case of 
+: (<>iLoopCodeSecs>20)//Server is really struggling
+vErrors:="305-300"//Wait 5 mins
+: (<>iLoopCodeSecs>15)//Server is still struggling
+vErrors:="305-180"//Wait 3 mins
+: (<>iLoopCodeSecs>10)//Server is struggling
+vErrors:="305-120"//Wait 2 mins
+: (<>iLoopCodeSecs>8)//Server is slowing down
+vErrors:="305-60"//Wait 1 mins
+: (<>iLoopCodeSecs>5)//Server is starting to slow
+vErrors:="305-45"//Wait 30 secs
+: (<>iLoopCodeSecs>3)//Server is starting to slow
+vErrors:="305-30"//Wait 30 secs
+Else 
+vErrors:="305-20"//Wait 20 secs
+End case 
+If ($VersionDate<"050629") & (<>iLoopCodeSecs>9) & (<>iWebServerCounter<10)//No more than 10 in one cycle
+vErrors:="302"//As sending site will not recognise 305
+<>iWebServerCounter:=<>iWebServerCounter+1//Initialise & LogMonServer
+End if 
+End if 
+Case of 
+: (vErrors="40@")
+Case of 
+: (vErrors="405@")//Tell site to export datafile and upload to FTP server, then send instruction to import when finished
+$ErrorCode:=vErrors
+$ErrorDescription:="Site Export - "+vErrors
+
+: (vErrors="406@")//Tell site to export datafile and upload to FTP server, do Not sent instruction to MV to import when finished
+$ErrorCode:=vErrors
+$ErrorDescription:=Get localized string("Site Export")+" - "+vErrors
+End case 
+SyncRecordLog (Get localized string("Sent Site Export Code")+" - "+vErrors)
+TEXT TO BLOB("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;"UTF-8";vbEventContent)
+
+: (vErrors="3@")
+If (vErrors="301@")
+$ErrorCode:="301"
+$ErrorDescription:=Substring(vErrors;5)//IP Address
+Else 
+$ErrorCode:=vErrors
+$ErrorDescription:=Get localized string("Server Generated Delay")
+End if 
+SyncRecordLog (Get localized string("Sent Server Generated Code")+" - "+vErrors+" - IP:"+$1)
+TEXT TO BLOB("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;"UTF-8";vbEventContent)
+: (Records in selection([Facility])#1)
+$ErrorCode:="050"
+$ErrorDescription:="Invalid Facility Code"
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+". - "+Get localized string("Invalid Facility Code")+" - IP:"+$1)
+TEXT TO BLOB("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;"UTF-8";vbEventContent)
+: ([Facility]CentralAddress#$1) & ([Facility]CheckIPValid)
+$ErrorCode:="040"
+$ErrorDescription:=Get localized string("Invalid IP Address")
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+". - "+Get localized string("Invalid IP Address")+" - IP:"+$1)
+TEXT TO BLOB("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;"UTF-8";vbEventContent)
+: ($SeqNo#$NextSeqNo) & ($NextSeqNo>0) & ($SeqNo>0)
+If (($NextSeqNo+1)=$SeqNo)//HO is 1 greater than site then send again
+$ErrorCode:="001"
+$ErrorDescription:=Get localized string("Correctable SeqNo Mismatch Site")+":"+String($NextSeqNo)+" & MV:"+String($SeqNo)
+TEXT TO BLOB("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;"UTF-8";vbEventContent)
+QUERY([EventLog];[EventLog]FacilityCode=$FacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]SeqNo=$NextSeqNo)
+If (Records in selection([EventLog])>0)
+SyncGetEvents ($NextSeqNo)
+SyncRecordLog (Get localized string("Resent")+" "+String(Records in selection([EventLog]))+" "+Get localized string("Events for")+" "+$FacilityCode+" - "+Get localized string("Seq No")+" "+String($NextSeqNo))
+Else //SDD 31/7/11 Added else condition
+<>aiEventSeqNo{$Pos}:=<>aiEventSeqNo{$Pos}-1//SDD 31/7/11 Reduce the $NextSeqNo by 1 as it is too high and there are no records to resend
+SyncRecordLog ("Reduced EventSeqNo by 1 to "+String($NextSeqNo)+" for "+$FacilityCode)//Get localized string(
+End if 
+Else 
+If (vErrors="151") & ($NextSeqNo>$SeqNo) & ($NextSeqNo>3) & ($SeqNo>3)
+$ErrorCode:="151"//Get Site to reset past events and resend them - This would be set after restore from backup.
+Else 
+$ErrorCode:="150"//Site will report mismatch error.
+End if 
+$ErrorDescription:=Get localized string("Sequence Number Mismatch Site")+":"+String($NextSeqNo)+" & MV:"+String($SeqNo)
+SyncRecordLog (Get localized string("Attempted to Receive from site")+" "+$FacilityCode+" - "+$ErrorDescription+" - IP:"+$1)
+TEXT TO BLOB("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT("<ErrorCode>"+$ErrorCode+"</ErrorCode>"+$cr+"<ErrorDescription>"+$ErrorDescription+"</ErrorDescription>"+$cr;"UTF-8";vbEventContent)
+End if 
+Else 
+QUERY([EventLog];[EventLog]FacilityCode=$FacilityCode;*)
+QUERY([EventLog]; & ;[EventLog]SyncStatus=0)
+If (Records in selection([EventLog])>0)
+SyncGetEvents ($SeqNo;200)//Limit to 200 records otherwise causes problems at site
+READ WRITE([EventLog])
+FIRST RECORD([EventLog])
+For ($i;1;Records in selection([EventLog]))
+[EventLog]SyncStatus:=1
+[EventLog]SeqNo:=$SeqNo
+SET BLOB SIZE([EventLog]LogBlob;0)
+SAVE RECORD([EventLog])
+NEXT RECORD([EventLog])
+End for 
+READ ONLY([EventLog])
+UNLOAD RECORD([EventLog])
+If ($Pos>0)
+SyncRecordLog ("Setting Event Seq No to "+String($SeqNo)+" - SyncToSite #111")
+<>aiEventSeqNo{$Pos}:=$SeqNo
+End if 
+SyncRecordLog (Get localized string("Sent")+" "+String(Records in selection([EventLog]))+" "+Get localized string("Events for")+" "+$FacilityCode+" - "+Get localized string("Seq No")+" "+String($SeqNo))
+Else 
+$cr:=Char(13)+Char(10)//vDate is [Facility]VersionDate set in SyncCheckValidSites
+$Message:="<SiteHeader>"+[Facility]FacilityCode+"</SiteHeader>"+$cr+"<Version>"+String(<>iVersion)+String(vDate)+"</Version>"+$cr+"<SeqNo>"+String($SeqNo)+"</SeqNo>"+$cr
+TEXT TO BLOB($Message+"<ComputerDate>"+String(UTCDate (Current time;True;Current date))+"</ComputerDate>"+$cr+"<EventCount>0</EventCount>"+$cr+"<EOF>EOF</EOF>"+$cr;vbEventContent;Mac text without length;*)
+//CONVERT FROM TEXT($Message+"<ComputerDate>"+String(UTCDate (Current time;True;Current date))+"</ComputerDate>"+$cr+"<EventCount>0</EventCount>"+$cr+"<EOF>EOF</EOF>"+$cr;"UTF-8";vbEventContent)
+End if 
+READ WRITE([Facility])
+QUERY([Facility];[Facility]FacilityCode=$FacilityCode)
+If (Locked([Facility])=False)
+If (Length($VersionDate)>5)
+$Date:=GetDate (Num(Substring($VersionDate;5;2));Num(Substring($VersionDate;3;2));Num(Substring($VersionDate;1;2)))
+If ([Facility]VersionDate#$Date)
+[Facility]VersionDate:=$Date
+End if 
+End if 
+[Facility]LastSyncDate:=UTCDate (Current time;True;Current date)
+[Facility]LastSyncTime:=UTCTime (Current time;True)
+SAVE RECORD([Facility])
+Else 
+LOCKED BY([Facility];$Process;$4DUser;$SessionUser;$ProcessName)
+SyncRecordLog (Get localized string("Facility record")+" "+[Facility]FacilityCode+" "+Get localized string("is locked by process")+" "+$ProcessName+":"+String($Process)+":"+$4DUser+":"+$SessionUser+".  "+Get localized string("Unable to update LastSyncDate & Time."))
+End if 
+READ ONLY([Facility])
+LOAD RECORD([Facility])
+End case 
+<>iTrafficSent:=<>iTrafficSent+BLOB size(vbEventContent)
+If (bConfirm)//True for Debug mode
+BLOB TO DOCUMENT("BlobOut"+Replace string(String(Current time);":";"")+".txt";vbEventContent)
+End if 
+WEB SEND BLOB(vbEventContent;"";False)

@@ -1,0 +1,331 @@
+//%attributes = {"publishedSoap":true,"publishedWsdl":true,"lang":"en"} comment added and reserved by 4D.
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 22/04/10, 09:45:47
+// API Version: 1.0
+// ----------------------------------------------------
+// Method: WS_EditUnit
+// Description
+// This will add a unit for a particular unit type to an agreement
+//
+// Parameters
+// ----------------------------------------------------
+
+SOAP DECLARATION(WS_RAgreeNo;Is string var;SOAP input;"WS_RAgreeNo")
+SOAP DECLARATION(WS_MoveInDate;Is date;SOAP input;"WS_MoveInDate")
+SOAP DECLARATION(WS_RegularRent;Is real;SOAP input)
+SOAP DECLARATION(WS_NewRent;Is real;SOAP input)
+SOAP DECLARATION(WS_NewRentFrom;Is date;SOAP input)
+SOAP DECLARATION(WS_InsureValue;Is real;SOAP input)
+SOAP DECLARATION(WS_InsureCert;Is text;SOAP input)
+SOAP DECLARATION(WS_UnitNo;Is text;SOAP input)
+SOAP DECLARATION(WS_WebServicePassword;Is text;SOAP input)
+SOAP DECLARATION(WS_stDigAgmtID;Is text;SOAP input)
+SOAP DECLARATION(WS_inDigAgmtID;Is text;SOAP input)
+
+SOAP DECLARATION(WS_CustomerID;Is string var;SOAP output;"WS_CustomerID")
+SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP output)
+SOAP DECLARATION(WS_ORErrorCode;Is integer;SOAP output)
+SOAP DECLARATION(WS_ORErrorDescription;Is string var;SOAP output)
+
+
+$String:="Start WS_EditUnit"+Char(13)
+$String:=$String+"WS_RAgreeNo: "+WS_RAgreeNo+Char(13)
+$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+C_TEXT($pass)
+$pass:=WS_WebServicePassword
+$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+$String:=$String+"WS_RegularRent: "+String(WS_RegularRent)+Char(13)
+$String:=$String+"WS_NewRentFrom: "+String(WS_NewRentFrom)+Char(13)
+$String:=$String+"WS_InsureValue: "+String(WS_InsureValue)+Char(13)
+$String:=$String+"WS_InsureCert: "+WS_InsureCert+Char(13)
+$String:=$String+"WS_UnitNo: "+WS_UnitNo+Char(13)
+$String:=$String+"WS_stDigAgmtID: "+WS_stDigAgmtID+Char(13)
+$String:=$String+"WS_inDigAgmtID: "+WS_inDigAgmtID+Char(13)
+WSRecordLog ($String)
+
+
+READ WRITE([Agreement])
+READ WRITE([OtherChgs])
+READ WRITE([Unit])
+READ WRITE([Trxs])
+READ WRITE([Customer])
+
+LOAD RECORD([Agreement])
+LOAD RECORD([Unit])
+LOAD RECORD([Trxs])
+LOAD RECORD([Customer])
+
+WS_CustomerID:=""
+bAdd:=0
+bAll:=0
+asShowHistory:=0
+viMatch:=-1
+vInsureCertNo:=""
+
+QUERY([Facility];[Facility]FacilityCode=Substring(WS_RAgreeNo;1;5))
+
+If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+
+QUERY([Agreement];[Agreement]RAgreeNo=WS_RAgreeNo;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+
+If (Records in selection([Agreement])=1)
+WS_CustomerID:=[Agreement]CustomerCode
+
+TRACE
+
+QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+QUERY([Unit]; & ;[Unit]RUnitNo=WS_UnitNo)
+
+If (Records in selection([Unit])=1)
+[Unit]InsureCertNo:=WS_InsureCert
+
+//04/12/15 DAM Added to fix insure amount in a case 10049
+If ([Unit]InsureValue#WS_InsureValue) & ([Unit]InsureValue#0)
+[Agreement]InsureValue:=[Agreement]InsureValue-[Unit]InsureValue
+End if 
+
+[Unit]InsureValue:=WS_InsureValue
+[Unit]RentedValue:=WS_RegularRent
+[Unit]WeeklyRentedValue:=WS_RegularRent
+[Unit]DailyRentedValue:=WS_RegularRent
+If (WS_MoveInDate#!00-00-00!) & (String(WS_MoveInDate)#"00/00/00")
+[Unit]MoveIn:=WS_MoveInDate
+End if 
+[Unit]IncreaseFrom:=WS_NewRentFrom
+[Unit]WeeklyNewRentAmt:=WS_NewRent
+[Unit]DailyNewRent:=WS_NewRent
+[Unit]NewRentAmt:=WS_NewRent
+
+InsuranceCalc (True;False;True)
+
+//04/12/15 DAM Added to fix Total amount FB 10049
+If ([Unit]InsureValue#Old([Unit]InsureValue))
+[Agreement]InsureValue:=[Agreement]InsureValue+[Unit]InsureValue
+SAVE RECORD([Agreement])
+End if 
+
+//20/02/17 DM Added for KSS
+[Unit]stDigiAgmtID:=WS_stDigAgmtID
+[Unit]inDigiAgmtID:=WS_inDigAgmtID
+SAVE RECORD([Unit])
+//**Added by Hamid
+READ WRITE([UnitHistory])
+
+QUERY([UnitHistory];[UnitHistory]UnitNo=[Unit]RUnitNo;*)
+QUERY([UnitHistory]; & ;[UnitHistory]Casual=False;*)
+QUERY([UnitHistory]; & ;[UnitHistory]MoveOut=!00-00-00!;*)
+QUERY([UnitHistory]; & ;[UnitHistory]AgreeNo=[Agreement]RAgreeNo)
+If (Records in selection([UnitHistory])>0)
+[UnitHistory]stDigiAgmtID:=WS_stDigAgmtID
+[UnitHistory]inDigiAgmtID:=WS_inDigAgmtID
+SAVE RECORD([UnitHistory])
+End if 
+//**
+
+If (WS_NewRentFrom#!00-00-00!) & (String(WS_NewRentFrom)#"00/00/00")
+[Agreement]NewRentFrom:=WS_NewRentFrom
+SAVE RECORD([Agreement])
+End if 
+
+//WS_OLD=WS_Edit:=True
+WS_ORSuccess:=True
+WS_ORErrorCode:=0
+WS_ORErrorDescription:=""
+//WS_ORErrorDescription:="Unit successfully edited in database Storman."
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1007
+WS_ORErrorDescription:="Unit record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1015
+WS_ORErrorDescription:="Agreement record not found in database Storman."
+End if 
+Else 
+//WS_OLD=WS_Edit:=False
+WS_ORSuccess:=False
+WS_ORErrorCode:=1099
+WS_ORErrorDescription:="Web Service Password is incorrect."
+End if 
+
+READ ONLY([Agreement])
+READ ONLY([OtherChgs])
+UNLOAD RECORD([OtherChgs])
+READ ONLY([Unit])
+READ ONLY([Trxs])
+READ ONLY([Customer])
+READ ONLY([UnitHistory])
+UNLOAD RECORD([Agreement])
+UNLOAD RECORD([Unit])
+UNLOAD RECORD([Trxs])
+UNLOAD RECORD([Customer])
+UNLOAD RECORD([UnitHistory])
+
+$String:="End WS_EditUnit"+Char(13)
+$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+WSRecordLog ($String)
+
+
+ReadOnlyAll 
+UnloadAll 
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//Johnno - Original Method FB9894/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+// ----------------------------------------------------
+// User name (OS): robert.richardson
+// Date and time: 22/04/10, 09:45:47
+// ----------------------------------------------------
+// Method: WS_AddUnit
+// Description
+// This will add a unit for a particular unit type to an agreement
+//
+// Parameters
+// ----------------------------------------------------
+
+//SOAP DECLARATION(WS_RAgreeNo;Is String Var;SOAP Input;"WS_RAgreeNo")
+//SOAP DECLARATION(WS_MoveInDate;Is Date;SOAP Input;"WS_MoveInDate")
+//SOAP DECLARATION(WS_RegularRent;Is Real;SOAP Input)
+//SOAP DECLARATION(WS_NewRent;Is Real;SOAP Input)
+//SOAP DECLARATION(WS_NewRentFrom;Is Date;SOAP Input)
+//SOAP DECLARATION(WS_InsureValue;Is Real;SOAP Input)
+//SOAP DECLARATION(WS_InsureCert;Is Text;SOAP Input)
+//SOAP DECLARATION(WS_UnitNo;Is Text;SOAP Input)
+//SOAP DECLARATION(WS_WebServicePassword;Is Text;SOAP Input)
+//
+//  //WS_OLD=SOAP DECLARATION(WS_Edit;Is Boolean;SOAP Output;"WS_Edit")
+//SOAP DECLARATION(WS_CustomerID;Is String Var;SOAP Output;"WS_CustomerID")
+//SOAP DECLARATION(WS_ORSuccess;Is Boolean;SOAP Output)
+//SOAP DECLARATION(WS_ORErrorCode;Is Integer;SOAP Output)
+//SOAP DECLARATION(WS_ORErrorDescription;Is String Var;SOAP Output)
+//
+//$String:="Start WS_EditUnit"+Char(13)
+//$String:=$String+"WS_RAgreeNo: "+WS_RAgreeNo+Char(13)
+//$String:=$String+"WS_MoveInDate: "+String(WS_MoveInDate)+Char(13)
+//C_TEXT($pass)
+//$pass:=WS_WebServicePassword
+//$pass:=Replace string($pass;Substring($pass;1;Length($pass)-2);"X"*(Length($pass)-2))
+//$String:=$String+"WS_WebServicePassword: "+$pass+Char(13)
+//$String:=$String+"WS_RegularRent: "+String(WS_RegularRent)+Char(13)
+//$String:=$String+"WS_NewRentFrom: "+String(WS_NewRentFrom)+Char(13)
+//$String:=$String+"WS_InsureValue: "+String(WS_InsureValue)+Char(13)
+//$String:=$String+"WS_InsureCert: "+WS_InsureCert+Char(13)
+//$String:=$String+"WS_UnitNo: "+WS_UnitNo+Char(13)
+//WSRecordLog ($String)
+//
+//
+//READ WRITE([Agreement])
+//READ WRITE([OtherChgs])
+//READ WRITE([Unit])
+//READ WRITE([Trxs])
+//READ WRITE([Customer])
+//
+//LOAD RECORD([Agreement])
+//LOAD RECORD([Unit])
+//LOAD RECORD([Trxs])
+//LOAD RECORD([Customer])
+//
+//WS_CustomerID:="Invalid"
+//bAdd:=0
+//bAll:=0
+//asShowHistory:=0
+//viMatch:=-1
+//
+//QUERY([Facility];[Facility]FacilityCode=Substring(WS_RAgreeNo;1;5))
+//
+//If (WS_WebServicePassword=[Facility]ODBCPassword) & ([Facility]ODBCPassword#"")
+//
+//QUERY([Agreement];[Agreement]RAgreeNo=WS_RAgreeNo;*)
+//QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=True)
+//
+//If (Records in selection([Agreement])=1)
+//WS_CustomerID:=[Agreement]CustomerCode
+//
+//QUERY([Unit];[Unit]AgreeNo=[Agreement]RAgreeNo;*)
+//QUERY([Unit]; & ;[Unit]RUnitNo=WS_UnitNo)
+//
+//If (Records in selection([Unit])=1)
+//[Unit]InsureCertNo:=WS_InsureCert
+//[Unit]InsureValue:=WS_InsureValue
+//[Unit]RentedValue:=WS_RegularRent
+//[Unit]WeeklyRentedValue:=WS_RegularRent
+//[Unit]DailyRentedValue:=WS_RegularRent
+//If (WS_MoveInDate#!00/00/0000!)
+//[Unit]MoveIn:=WS_MoveInDate
+//End if 
+//[Unit]IncreaseFrom:=WS_NewRentFrom
+//[Unit]WeeklyNewRentAmt:=WS_NewRent
+//[Unit]DailyNewRent:=WS_NewRent
+//[Unit]NewRentAmt:=WS_NewRent
+//SAVE RECORD([Unit])
+//
+//[Agreement]InsureValue:=[Agreement]InsureValue+[Unit]InsureValue
+//SAVE RECORD([Agreement])
+//
+//If (WS_NewRentFrom#!00/00/0000!)
+//[Agreement]NewRentFrom:=WS_NewRentFrom
+//SAVE RECORD([Agreement])
+//End if 
+//
+//InsuranceCalc (True;False;True)
+//  //WS_OLD=WS_Edit:=True
+//WS_ORSuccess:=True
+//WS_ORErrorCode:=0
+//WS_ORErrorDescription:=""
+//  //WS_ORErrorDescription:="Unit successfully edited in database Storman."
+//Else 
+//  //WS_OLD=WS_Edit:=False
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1007
+//WS_ORErrorDescription:="Unit record not found in database Storman."
+//End if 
+//Else 
+//  //WS_OLD=WS_Edit:=False
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1015
+//WS_ORErrorDescription:="Agreement record not found in database Storman."
+//End if 
+//Else 
+//  //WS_OLD=WS_Edit:=False
+//WS_ORSuccess:=False
+//WS_ORErrorCode:=1099
+//WS_ORErrorDescription:="Web Service Password is incorrect."
+//End if 
+//
+//READ ONLY([Agreement])
+//READ ONLY([OtherChgs])
+//UNLOAD RECORD([OtherChgs])
+//READ ONLY([Unit])
+//READ ONLY([Trxs])
+//READ ONLY([Customer])
+//UNLOAD RECORD([Agreement])
+//UNLOAD RECORD([Unit])
+//UNLOAD RECORD([Trxs])
+//UNLOAD RECORD([Customer])
+//
+//$String:="End WS_EditUnit"+Char(13)
+//$String:=$String+"WS_CustomerID: "+WS_CustomerID+Char(13)
+//$String:=$String+"WS_ORSuccess: "+String(WS_ORSuccess)+Char(13)
+//$String:=$String+"WS_ORErrorCode: "+String(WS_ORErrorCode)+Char(13)
+//$String:=$String+"WS_ORErrorDescription: "+WS_ORErrorDescription+Char(13)
+//WSRecordLog ($String)
+//
+//
+//ReadOnlyAll 
+//UnloadAll 

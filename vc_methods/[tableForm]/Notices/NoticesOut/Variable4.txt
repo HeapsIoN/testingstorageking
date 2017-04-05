@@ -1,0 +1,98 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Duplicate Plan
+C_LONGINT($i;$FromPlan;$ToPlan;$DaysAfter)
+
+ConfirmTwo (Get localized string("Copy all of a notice plan or a single notice");Get localized string("All");Get localized string("Single"))
+
+If (OK=1)
+ORDER BY([Notices];[Notices]NoticePlanNo;<)
+$ToPlan:=[Notices]NoticePlanNo+1
+$FromPlan:=Num(RequestMessage (Get localized string("Copy all of Notice Plan number:");"0"))
+If (OK=1)
+ConfirmTwo (Get localized string("Copy Notices with Days After of '0' Zero as well?");Get localized string("Yes");Get localized string("No"))
+$DaysAfter:=OK//DAM Added this variable as Query sets OK varible
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+If ($DaysAfter=0)
+QUERY([Notices]; & ;[Notices]DaysAfter#0;*)
+End if 
+QUERY([Notices]; & ;[Notices]NoticePlanNo=$FromPlan)
+If (Records in selection([Notices])>0)
+$ToPlan:=Num(RequestMessage (Get localized string("Create a new Notice Plan number with")+" "+String(Records in selection([Notices]))+" "+Get localized string("Notices")+" :";String($ToPlan)))
+CREATE SET([Notices];"ToDo")
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=$ToPlan)
+If (Records in selection([Notices])=0)
+USE SET("ToDo")
+ConfirmTwo (Get localized string("Duplicate")+" "+String(Records in selection([Notices]))+" "+Get localized string("Notices to Plan number")+" "+String($ToPlan)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+FIRST RECORD([Notices])
+For ($i;1;Records in set("ToDo"))
+USE SET("ToDo")
+GOTO SELECTED RECORD([Notices];$i)
+DUPLICATE RECORD([Notices])
+[Notices]PrimaryKey:=0
+[Notices]NoticePlanNo:=$ToPlan
+SAVE RECORD([Notices])
+End for 
+End if 
+Else 
+AlertMessage (Get localized string("There is already Notice for Notice Plan No")+" "+String($ToPlan)+".")
+End if 
+Else 
+AlertMessage (Get localized string("There are no Notices for a Plan No")+" "+String($FromPlan)+"!")
+End if 
+End if 
+Else 
+GET HIGHLIGHTED RECORDS([Notices];"Selection")
+USE SET("Selection")
+CLEAR SET("Selection")
+$ToPlan:=[Notices]NoticePlanNo+1
+$ToPlan:=Num(RequestMessage (Get localized string("Copy to new Notice Plan number")+" :";String($ToPlan)))
+$Description:=[Notices]Description
+CREATE EMPTY SET([Notices];"ToDo")
+ADD TO SET([Notices];"ToDo")
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False;*)
+QUERY([Notices]; & ;[Notices]NoticePlanNo=$ToPlan;*)
+QUERY([Notices]; & ;[Notices]Description=$Description)
+If (Records in selection([Notices])=0)
+USE SET("ToDo")
+ConfirmTwo (Get localized string("Duplicate")+" "+$Description+" "+"Notice to Plan number"+" "+String($ToPlan)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+FIRST RECORD([Notices])
+For ($i;1;Records in set("ToDo"))
+USE SET("ToDo")
+GOTO SELECTED RECORD([Notices];$i)
+DUPLICATE RECORD([Notices])
+[Notices]PrimaryKey:=0
+[Notices]NoticePlanNo:=$ToPlan
+SAVE RECORD([Notices])
+End for 
+End if 
+Else 
+ConfirmTwo (Get localized string("Overwrite")+" "+$Description+" "+Get localized string("Notice on Plan number")+" "+String($ToPlan)+"?";Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+DELETE SELECTION([Notices])
+USE SET("ToDo")
+For ($i;1;Records in set("ToDo"))
+USE SET("ToDo")
+GOTO SELECTED RECORD([Notices];$i)
+DUPLICATE RECORD([Notices])
+[Notices]PrimaryKey:=0
+[Notices]NoticePlanNo:=$ToPlan
+SAVE RECORD([Notices])
+End for 
+End if 
+End if 
+End if 
+QUERY([Notices];[Notices]FacilityCode=<>sFacility;*)
+Case of 
+: (asNoticesDisplay=1)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+Else 
+QUERY([Notices]; & ;[Notices]NoticePlanNo=asNoticesDisplay{asNoticesDisplay};*)
+QUERY([Notices]; & ;[Notices]RuleNotice=False)
+End case 
+ORDER BY([Notices];[Notices]NoticePlanNo;>;[Notices]DaysAfter;>;[Notices]Description;>)

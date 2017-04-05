@@ -1,0 +1,111 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+// Bill Customer 
+
+C_TEXT($0;$1;$MerchantID;$2;$AccessToken;$4;$Resorce_ID;$GocardlessError)
+C_REAL($3;$Amount)
+
+$MerchantID:=$1
+$AccessToken:=$2
+$Amount:=$3
+$Resorce_ID:=$4
+
+$t:=Char(9)
+$TransactionResponse:=""
+$Batch:=""
+$Content:=""
+$Hash:=""
+$TCPID:=0
+$Buffer:=""
+$Status:=0
+
+//Server Details
+//For sandbox account
+If ([Facility]TestAccount)
+$ServerAddress:="sandbox.gocardless.com"
+Else 
+$ServerAddress:="gocardless.com"
+End if 
+
+
+
+$RequestURL:="/api/v1/bills"
+$ServerPort:="443"
+
+$TCP_ReceiveError:=0
+$Response:=""
+$Header:=""
+$Message:=""
+$cr:=Char(13)+Char(10)
+
+
+$Message:="bill%5Bamount%5D="+String($Amount)+"&bill%5Bpre_authorization_id%5D="+$Resorce_ID
+$Message:=Replace string($Message;"+";"%20")
+//$Message:=URLEncode ($Message)
+
+$Header:=$Header+"POST "+"https://"+$ServerAddress+$RequestURL+" HTTP/1.1"+$cr
+$Header:=$Header+"Host: "+$ServerAddress+$cr
+$Header:=$Header+"Accept: "+"application/json"+$cr
+$Header:=$Header+"Authorization: bearer "+$AccessToken+$cr
+$Header:=$Header+"Content-length: "+String(Length($Message))+$cr+$cr
+$Header:=$Header+$Message+$cr+$cr
+//SET TEXT TO PASTEBOARD($Header)
+SyncRecordLog ("GoCardless_CreateBill Header:"+$Header)
+
+$Error:=TCP_Open ($ServerAddress;443;$TCPID;2)
+If ($Error=0)
+$Error:=TCP_Send ($TCPID;$Header)
+$Reply:=""
+$WaitTime:=Current time+?00:01:30?//Timeout after 90 seconds
+
+Repeat //While a HTTP response is being received
+$Error:=TCP_Receive ($TCPID;$Buffer)
+$resp:=OK
+$Error:=TCP_State ($TCPID;$Status)
+$Reply:=$Reply+$Buffer
+If (Current time>$WaitTime)
+$Error:=1//Timeout
+End if 
+Until ($Status=0) | ($Error>0) | (($Buffer="") & (Length($Reply)>10))// & (Position($Reply;"result")>0))
+$Message:=$Reply
+SyncRecordLog ("GoCardless_CreateBill Message:"+$Message)
+$Error:=TCP_Close ($TCPID)
+If ($Message="")
+$0:="ERRTCP"
+End if 
+$Error:=TCP_Close ($TCPID)
+Else 
+$0:="ERRTCP"
+End if 
+
+If ($0="")
+$IDPos:=Position(String(Char(34))+"id"+String(Char(34));$Message)
+If ($IDPos>0)
+$Length:=Position(Char(34);$Message;$IDPos+6)
+$TrxId:=Substring($Message;$IDPos+6;$Length-$IDPos-6)
+[Trxs]CCTransID:=$TrxId
+$0:=$TrxId
+Else 
+
+$ERRPos:=Position(String(Char(34))+"errors"+String(Char(34))+":";$Message)
+If ($ERRPos>0)
+$Length:=Position(Char(34);$Message;$ERRPos+11)
+$GocardlessError:=Substring($Message;$ERRPos+10)
+$0:="ERR :"+$GocardlessError
+AlertMessage ("Direct Debit for Customer "+[Customer]CustomerName+" hasn't been processed successfully with Error :"+$GocardlessError)
+SyncRecordLog ("Direct Debit for Customer "+[Customer]CustomerName+" hasn't been processed successfully with Error :"+$GocardlessError)
+Else 
+AlertMessage ("Direct Debit for Customer "+[Customer]CustomerName+" hasn't been processed successfully")
+SyncRecordLog ("Direct Debit for Customer "+[Customer]CustomerName+" hasn't been processed successfully")
+$0:="ERRGoCardless"
+End if 
+READ WRITE([NotesHistory])
+CREATE RECORD([NotesHistory])
+[NotesHistory]CustomerCode:=[Customer]CustomerCode
+[NotesHistory]Note:=$Message
+[NotesHistory]NoteDate:=Current date
+[NotesHistory]NoteTime:=Current time
+[NotesHistory]UserLogin:="GoCardless"
+SAVE RECORD([NotesHistory])
+
+End if 
+End if 

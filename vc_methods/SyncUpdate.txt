@@ -1,0 +1,211 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 08/03/13 Removed unnecessary search of CHK events at line 15 below
+//Removed line #50 was 49 - ARRAY TEXT(◊asCustFix;0) - SDD 9/5/07
+C_LONGINT($0)//Record number of first event of the 500 to be processed
+C_BOOLEAN($1)//True=Site, False=HeadOffice
+C_LONGINT($i;$j;$SendTable)
+C_TEXT($CurrentUser)
+$0:=0
+$SendTable:=0
+ARRAY TEXT(<>asCustFix;0)
+ARRAY TEXT(<>asCustSend;0)
+READ WRITE([EventLog])
+CREATE SET([EventLog];"ToProcess")
+QUERY SELECTION([EventLog];[EventLog]EventType="CHK")//This section to remove duplicate CHK records for the same site
+If (Records in selection([EventLog])>1)
+//SDD 8/03/13 This is not possible for SyncStatus to be 0 at this point as all SyncStatus are 2 or 4 or 102
+//SDD so this is a waste of a search
+//$j:=0
+//SET QUERY DESTINATION(Into variable;$j)
+//QUERY([EventLog];[EventLog]FacilityCode=[EventLog]FacilityCode;*)
+//QUERY([EventLog]; & ;[EventLog]SyncStatus=0)  
+//SET QUERY DESTINATION(Into current selection)
+//If ($j>0)
+//DELETE SELECTION([EventLog])
+//Else 
+ARRAY TEXT($aFacility;0)
+ARRAY LONGINT($aRecNo;0)
+ARRAY TEXT($aBillPAnlys;0)
+ORDER BY([EventLog];[EventLog]FacilityCode;>;[EventLog]BillPAnlys;>;[EventLog]EventDate;<;[EventLog]EventTime;<)
+SELECTION TO ARRAY([EventLog]FacilityCode;$aFacility;[EventLog];$aRecNo;[EventLog]BillPAnlys;$aBillPAnlys)
+For ($i;2;Size of array($aFacility))
+If ($aFacility{$i}=$aFacility{$i-1}) & ($aBillPAnlys{$i}=$aBillPAnlys{$i-1})
+GOTO RECORD([EventLog];$aRecNo{$i-1})
+If ([EventLog]EventType="CHK") & ([EventLog]SyncStatus=2)//These conditions for safety
+DELETE RECORD([EventLog])
+End if 
+End if 
+End for 
+//End if 
+End if 
+USE SET("ToProcess")
+If ($1=True)//Check for Facility records arriving from SHOF, and if so remove Facility Events at site that would have been synced to SHOF
+SET QUERY DESTINATION(Into variable;$j)
+QUERY SELECTION([EventLog];[EventLog]EventTable=1;*)
+QUERY SELECTION([EventLog]; & ;[EventLog]SyncStatus=102)//It must have come from SHOF
+SET QUERY DESTINATION(Into current selection)
+If ($j>0)
+QUERY([EventLog];[EventLog]SyncStatus=100;*)//Waiting to be sent to SHOF
+QUERY([EventLog]; & ;[EventLog]EventTable=1)
+If (Records in selection([EventLog])>0)
+SyncRecordLog ("Removed "+String(Records in selection([EventLog]))+" Facility record events to be sent to SHOF as Facility event received from SHOF.")
+DELETE SELECTION([EventLog])
+End if 
+End if 
+End if 
+USE SET("ToProcess")
+CREATE EMPTY SET([EventLog];"Received")
+$CurrentUser:=SetSyncUser ("Sync";2)
+If (Records in selection([UserLogins])=1) & ([UserLogins]RecordStatus=2)
+ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>;[EventLog]EventTable;>;[EventLog]EventType;>)
+If (Records in selection([EventLog])>500)
+If (Records in selection([EventLog])>5000) & (Current time>vPanicTime)
+//Send message but only once - returns boolean
+SendEmail ("urgent@storman.com";Get localized string("URGENT - Central Server OverLoad");Get localized string("Automatic Message from Central Server")+" - "+[Facility]FacilityCode+" - "+String(Records in selection([EventLog]))+" "+Get localized string("recs with Status 2!"))
+vPanicTime:=Current time+?00:10:00?
+End if 
+REDUCE SELECTION([EventLog];500)
+ORDER BY([EventLog];[EventLog]EventDate;>;[EventLog]EventTime;>;[EventLog]EventTable;>;[EventLog]EventType;>)
+Else 
+vPanicTime:=?00:00:00?//Reset time when all is well again
+End if 
+If (<>sFacility="KE@")
+CREATE SET([EventLog];"Kennards")
+End if 
+$0:=Record number([EventLog])
+//ARRAY TEXT(◊asCustFix;0)
+
+FIRST RECORD([EventLog])
+For ($i;1;Records in selection([EventLog]))
+If ([EventLog]EventTable=0)
+Case of 
+: ([EventLog]EventType="CHK")//& ((<>sFacility#"KE@") | ((Current time>=?17:30:00?) & (Current time<=?19:00:00?)))  //Only process Checksums for KSS between 5:30 & 7:00
+SyncProcessCheck 
+Else 
+[EventLog]SyncStatus:=5//Not a checksum
+End case 
+Else //Table is not equal to 0
+Case of 
+: ([EventLog]EventType="CLT")//Clear Entire Table
+If ([EventLog]EventTable>0) & ([EventLog]EventTable<=Get last table number) & (Length([EventLog]FacilityCode)=5)
+$NoKeys:=Length([EventLog]KeyFields)/3
+$pTable:=Table([EventLog]EventTable)
+READ WRITE($pTable->)
+$pField:=Field([EventLog]EventTable;Num([EventLog]KeyFields))
+QUERY($pTable->;$pField->=[EventLog]FacilityCode+"@")
+DELETE SELECTION($pTable->)
+READ ONLY($pTable->)
+End if 
+[EventLog]SyncStatus:=3
+: ([EventLog]EventType="CLR")
+READ WRITE([Trxs])
+QUERY([Trxs];[Trxs]CustomerCode=[EventLog]KeyValue)
+DELETE SELECTION([Trxs])
+READ ONLY([Trxs])
+[EventLog]SyncStatus:=3
+: ([EventLog]EventType="SND")
+If ($SendTable=0)//Otherwise leave until next cycle - should only ever be done once at a time
+$SendTable:=[EventLog]EventTable
+[EventLog]SyncStatus:=3
+End if 
+Else 
+SyncUpdateRecord ($1;[EventLog]EventType)
+Case of 
+: ([EventLog]EventTable=1)
+ALL RECORDS([Facility])
+: ([EventLog]EventTable=6) & (Substring([EventLog]AgreeNo;1;5)#[EventLog]FacilityCode) & ([EventLog]EventType="MOD")
+[EventLog]FacilityCode:=Substring([EventLog]AgreeNo;1;5)
+[EventLog]SyncStatus:=0
+: ([EventLog]EventTable=26)
+QUERY([UserLogins];[UserLogins]Name="Sync")
+: ([EventLog]EventTable=10) & (<>sProduct="M@") & ([EventLog]EventType="MOD")
+UpdateOccupUnits (Date(GetKeyNo ([EventLog]KeyValue;2;True));[EventLog]FacilityCode)
+Else 
+//Do Nothing
+End case 
+End case 
+End if 
+If (Old([EventLog]SyncStatus)=102) & ([EventLog]SyncStatus=3)//SHOF event
+[EventLog]SyncStatus:=103
+End if 
+
+// 28/11/16 DAM Added check for locked records. Issue - run time error at KSS HOF
+//If (Locked([EventLog]))
+//LOCKED BY([EventLog];$Proc;$User;$Comp;$ProcName)
+//SyncRecordLog ("EventLog record is locked PK: "+String([EventLog]PrimaryKey)+" Process: "+String($Proc)+" User: "+String($User)+" Session: "+String($Comp)+" Process: "+String($ProcName))
+//End if 
+
+SAVE RECORD([EventLog])
+//SDD Stu had delays built in here - but don't think it will be necessary with 4Dv12
+NEXT RECORD([EventLog])
+End for 
+SyncRecordLog (Get localized string("Updated")+" "+String(Records in selection([EventLog]))+" "+Get localized string("Events"))
+USE SET("Received")
+If (Records in selection([EventLog])>0)
+//If (<>tClient=False)
+//AlertMessage (Get localized string("There are")+" "+String(Records in selection([EventLog]))+" "+Get localized string("records with errors in the synchronisation process. Will try again next sync cycle."))
+//End if 
+SyncRecordLog (Get localized string("Updating Errors")+":"+String(Records in selection([EventLog])))
+End if 
+//This is to send customers identified during CheckSum from HOF to site
+If (<>sProduct="M@") & ((Size of array(<>asCustSend)+Size of array(<>asCustFix))>0)
+SetSyncUser ("SyncAdd";-3)//Send as AD+ records
+For ($i;1;Size of array(<>asCustSend))
+$CustFix:=<>asCustSend{$i}
+SyncRecordLog ("Sent from HOF CreateCust for "+$CustFix)
+While ($CustFix>"") & (Position(",";$CustFix)>1)
+$NoKeys:=Position(",";$CustFix)
+SyncCreateCust (Substring($CustFix;1;$NoKeys-1))
+$CustFix:=Substring($CustFix;$NoKeys+1)
+End while 
+End for 
+For ($i;1;Size of array(<>asCustFix))//This to request customers from site identified during CheckSum
+LogEvent (<>asCustFix{$i};True;"FIX";0;"";Substring(<>asCustFix{$i};1;5);"";!00-00-00!;0)
+SyncRecordLog ("Sent from HOF FIX for "+<>asCustFix{$i})
+End for 
+End if 
+ARRAY TEXT(<>asCustFix;0)
+ARRAY TEXT(<>asCustSend;0)
+If (<>sProduct="M@") & (Size of array(<>asActivityFix)>0)
+For ($i;1;Size of array(<>asActivityFix))//This to request activity records from site identified during CheckSum
+LogEvent (<>asActivityFix{$i};True;"FIX";0;"";Substring(<>asActivityFix{$i};1;5);"";!00-00-00!;0)
+SyncRecordLog ("Sent from HOF FIX for "+<>asActivityFix{$i})
+End for 
+End if 
+ARRAY TEXT(<>asActivityFix;0)
+USE SET("ToProcess")
+//This is for the site end to identify incoming FIX records and send customers from Site to HOF
+QUERY SELECTION([EventLog];[EventLog]EventType="FIX")
+If (Records in selection([EventLog])>0) & (<>sProduct#"M@")
+SetSyncUser ("SyncAdd";-3)//Send as AD+ records
+For ($i;1;Records in selection([EventLog]))
+$CustFix:=[EventLog]LogDetail
+SyncRecordLog ("Sent from Site CreateCust for "+$CustFix)
+While ($CustFix>"") & (Position(",";$CustFix)>1)
+$NoKeys:=Position(",";$CustFix)
+SyncCreateCust (Substring($CustFix;1;$NoKeys-1))
+$CustFix:=Substring($CustFix;$NoKeys+1)
+End while 
+NEXT RECORD([EventLog])
+End for 
+End if 
+If ($SendTable>0)
+SyncCreateAllProc ($SendTable;<>sFacility;False;True;False;False;False;False)
+$SendTable:=0
+End if 
+SetSyncUser ($CurrentUser)
+Else 
+If (<>tClient=False)
+AlertMessage (Get localized string("Invalid Sync User Status of")+" "+String([UserLogins]RecordStatus)+" - "+Get localized string("Unable to Sync Data - Contact")+" "+<>sOEMName+" "+Get localized string("Support")+"!")
+End if 
+SyncRecordLog (Get localized string("Invalid Sync User Status of")+String([UserLogins]RecordStatus)+" - "+Get localized string("Unable to Sync Data"))
+SetSyncUser ($CurrentUser)
+End if 
+If (<>sFacility="KE@") & (<>sProduct="@V")
+KSSEventlog 
+CLEAR SET("Kennards")
+End if 
+CLEAR SET("ToProcess")
+CLEAR SET("Received")
+UNLOAD RECORD([EventLog])
+READ ONLY([EventLog])

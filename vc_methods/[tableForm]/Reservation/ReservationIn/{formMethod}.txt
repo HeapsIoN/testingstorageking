@@ -1,0 +1,1447 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+C_LONGINT(BRETURNPAYMENT)
+//If (Not(After ))
+
+//SDD 7/1/11 Bug in 4Dv12.1 as it is not updating [Customer]Balance so have changed it to a variable - we can put back when 4D fixes
+//SDD Bug seems to be in standalone only - works fine in Client
+//If (Application type#4D Remote Mode)
+If ([Customer]Balance>0)
+OBJECT SET COLOR(*;"Number777@";-3)//Set Red
+Else 
+OBJECT SET RGB COLORS(*;"Number777@";0x0006616D;0x00FFFFFF)
+End if 
+vrCustBalance:=[Customer]Balance
+REDRAW(vrCustBalance)
+//End if 
+MoveInCall:=True
+//15/11/16 RNE1 Set format
+If ([Reservation]DepositAmt>0)
+OBJECT SET FORMAT([Reservation]DepositAmt;<>sFormat)
+Else 
+OBJECT SET FORMAT([Reservation]DepositAmt;<>sFormatNeg)
+End if 
+If ([Reservation]Balance>0)
+OBJECT SET FORMAT([Reservation]Balance;<>sFormat)
+Else 
+OBJECT SET FORMAT([Reservation]Balance;<>sFormatNeg)
+End if 
+
+If ([Customer]Balance>0)
+OBJECT SET FORMAT([Customer]Balance;<>sFormat)
+Else 
+OBJECT SET FORMAT([Customer]Balance;<>sFormatNeg)
+End if 
+
+
+
+If (Form event#On Validate)
+SET AUTOMATIC RELATIONS(False;False)
+vRecalc:=False
+vPayments:=0
+If (Form event=On Load)
+C_LONGINT($i)
+C_TEXT($Key)
+C_REAL(vBalBrFwd;vDeposit)
+C_TEXT(vtRUnitNo)
+C_TEXT(vBank;vBankBranch;vBankAcct;vBankSuffix)
+C_TEXT(GERROR)
+GERROR:=""
+OBJECT SET TITLE(*;"Text109";Get localized string("Reason for Storing")+":")
+OBJECT SET TITLE(*;"Text24";Get localized string("Customer Name")+":")
+OBJECT SET TITLE(*;"Text4";Get localized string("Salutation")+":")
+OBJECT SET TITLE(*;"Text212";Get localized string("Salutation")+":")
+OBJECT SET TITLE(*;"Text187";Get localized string("Name")+":")
+OBJECT SET TITLE(*;"textCCExpiry";Get localized string("Expiry")+":")
+OBJECT SET TITLE(*;"Text148";Get localized string("Transactions")+"...")
+OBJECT SET TITLE(*;"Text57";Get localized string("Reservation Info")+":")
+OBJECT SET TITLE(*;"Text44";Get localized string("Email Address")+":")
+
+If ([Reservation]BoxnStore#"")
+OBJECT SET ENABLED(bBoxnStore;True)
+OBJECT SET VISIBLE(bBoxnStore;True)
+Else 
+OBJECT SET ENABLED(bBoxnStore;False)
+OBJECT SET VISIBLE(bBoxnStore;False)
+End if 
+
+//10/11/16 DAM Added for CC Encrypt
+vCCNoToDecrypt:=""
+//If ([Customer]CCNo#"")
+//vCCNoToDecrypt:=Tokenizer ([Customer]CCNo;False)
+//End if 
+
+///////////////fb 9025 by eugene, 27/05/2015///////////////////////
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False)
+If (Records in selection([MerchPlan])>0) & (<>sFacility#"ST@")
+OBJECT SET VISIBLE(bAddCharge;False)
+Else 
+OBJECT SET VISIBLE(bAddCharge;True)
+End if 
+///////////////////////
+//OBJECT SET FONT([Customer]Password;"%Password")
+
+//If ([Facility]Country=1)
+//SET VISIBLE(*;"vBank@";True)
+//SET VISIBLE([Customer]BankAcct;False)
+//Else 
+//SET VISIBLE(*;"vBank@";False)
+//SET VISIBLE([Customer]BankAcct;True)
+//End if 
+vNoteHistBody:=""
+vMisc:=False
+vFirstName:=Get localized string("First Name")+":"
+vtRUnitNo:=""
+vDeposit:=0
+
+LoadGradients 
+LoadBackground 
+If (Length([Reservation]RReserveNo)>5)
+SetFacility (False;Substring([Reservation]RReserveNo;1;5))
+Else 
+SetFacility (False;<>sFacility)
+End if 
+SetFormats 
+
+vStateCounty:=<>tStateCountry
+vPostCode:=<>tPostCode
+vCountyState:=<>tCountyState
+RELATE ONE([Reservation]CustomerCode)//Moved from above??  SDD 27/8/93
+VisibilityCCInfo 
+VisibiltyBankInfo 
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+
+$CustCharge:=Sum([Trxs]TotAmt)
+
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+[Customer]Balance:=$CustCharge-Sum([Trxs]TotAmt)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=True)
+
+$AgreeCharge:=Sum([Trxs]TotAmt)
+
+QUERY([Trxs];[Trxs]AgreeNo=[Reservation]RReserveNo;*)
+QUERY([Trxs]; & ;[Trxs]Charge=False)
+
+[Reservation]Balance:=$CustCharge-Sum([Trxs]TotAmt)
+
+vrCustBalance:=[Customer]Balance
+REDRAW(vrCustBalance)
+
+$Owing:=0
+SET QUERY DESTINATION(Into variable;$Owing)
+QUERY([Agreement];[Agreement]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Agreement]; & ;[Agreement]ActiveAgreemt=False;*)
+QUERY([Agreement]; & ;[Agreement]BalanceOwing#0)
+$ROWing:=0
+SET QUERY DESTINATION(Into current selection)
+SET QUERY DESTINATION(Into variable;$ROwing)
+QUERY([Reservation];[Reservation]ActiveReserve=True;*)
+QUERY([Reservation]; | ;[Reservation]Balance#0;*)
+QUERY([Reservation]; & ;[Reservation]CustomerCode=[Customer]CustomerCode)
+SET QUERY DESTINATION(Into current selection)
+//$Owing:=$Owing+[Customer]NoActiveAgreemts+$ROwing
+If ([Customer]NoActiveAgreemts>$ROwing)//-- 8762 -- By Hamid - 17/9/2015
+$Owing:=$Owing+[Customer]NoActiveAgreemts
+Else 
+$Owing:=$Owing+[Customer]NoActiveAgreemts+$ROwing
+End if 
+viOwing:=Get localized string("Total for")+" "+String($Owing)+" "+Get localized string("agreement(s)/reservation(s)")
+If (<>sProduct="M@")
+OBJECT SET VISIBLE(bCustomerSend;False)
+End if 
+OBJECT SET TITLE(*;"Text54";Get localized string("Licence")+" "+vStateCounty+":")
+Case of 
+: (<>sProduct="@B")
+varm1:=Get localized string("Expected Arrival")+":"
+varm3:=Get localized string("Use this screen to manage this customers reserved berths, expected arrival dates, deposits and photos.")
+varm4:=Get localized string("Reserved berths")+"..."
+varm15:=Get localized string("Use these icons to add / delete berths")
+varm16:=Get localized string("Boat Name")+":"
+varm17:=Get localized string("Berth")
+varm18:=Get localized string("Total Berths")+":"
+varm19:=Get localized string("Expected Arrival Time")+":"
+: (<>sProduct="@R")
+varm1:=Get localized string("Expected Rental")+":"
+varm3:=Get localized string("Use this screen to manage this customers reserved appliances, expected rental dates, deposits and photos.")
+varm4:=Get localized string("Reserved appliances")+"..."
+varm15:=Get localized string("Use these icons to add / delete support plans")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Support Plan")
+varm18:=Get localized string("Total Support Plans")+":"
+varm19:=Get localized string("Expected Rental Time")+":"
+: (<>sProduct="@C")
+varm1:=Get localized string("Expected Move In")+":"
+varm3:=Get localized string("Use this screen to manage this customers reserved spaces, expected move in dates, deposits and photos.")
+varm4:=Get localized string("Reserved spaces")+"..."
+varm15:=Get localized string("Use these icons to add / delete spaces")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Space")
+varm18:=Get localized string("Total Spaces")+":"
+varm19:=Get localized string("Expected Move In Time")+":"
+Else 
+varm1:=Get localized string("Expected Move In")+":"
+varm3:=Get localized string("Use this screen to manage this customers reserved units, expected move in dates, deposits and photos.")
+varm4:=Get localized string("Reserved units")+"..."
+varm15:=Get localized string("Use these icons to add / delete units")
+varm16:=Get localized string("Contact Person")+":"
+varm17:=Get localized string("Unit")
+varm18:=Get localized string("Total Units")+":"
+varm19:=Get localized string("Expected Move In Time")+":"
+End case 
+vCustInfo2:=Get localized string("Use this screen to manage the secondary contact, marketing & military info for your primary contact.")
+If ([Facility]SMSAcctDetails>"")
+OBJECT SET VISIBLE(*;"@SMS";False)
+Else 
+OBJECT SET ENABLED(bSend;False)
+End if 
+If (PermissionsControl (199;False)=False)
+OBJECT SET ENTERABLE([Unit]Deposit;False)
+OBJECT SET ENTERABLE([Reservation]DepositAmt;False)
+OBJECT SET ENTERABLE(vOthDeposit;False)
+End if 
+vtAlertNote:=[Customer]Notes
+If (<>bEnglishSpelling=False)
+ARRAY TEXT(asAccountType;3)
+asAccountType{1}:=Get localized string("Checking")
+asAccountType{2}:=Get localized string("Savings")
+asAccountType{3}:=Get localized string("Business Checking")
+asAccountType:=[Customer]AccountType
+End if 
+If ([Facility]Country="TH")
+OBJECT SET VISIBLE(*;"@WHT";True)
+ARRAY TEXT(asWHT;4)
+asWHT{1}:="0%"
+asWHT{2}:="3%"
+asWHT{3}:="5%"
+asWHT{4}:="10%"
+If ([Customer]AccountType>0)
+asWHT:=Find in array(asWHT;String([Customer]AccountType)+"%")
+Else 
+asWHT:=1
+End if 
+Else 
+OBJECT SET VISIBLE(*;"@WHT";False)
+End if 
+ARRAY TEXT(asShowHistory;4)
+asShowHistory{1}:=Get localized string("Unmatched + Most Recent Match")
+asShowHistory{2}:=Get localized string("Last Month")
+asShowHistory{3}:=Get localized string("Last 6 Months")
+asShowHistory{4}:=Get localized string("All Transactions")
+asShowHistory:=[Facility]ShowHistoryDefault
+bSwipe:=Num(GetTextNo ([Facility]MerchantDetails;7;","))
+If ([Customer]Delinquent=True)
+vDelinquent:="Delinquent"
+Else 
+vDelinquent:=""
+End if 
+If (bSwipe#1)
+OBJECT SET ENABLED(bLoadNew;False)
+End if 
+If (PermissionsControl (27;False)=False)
+OBJECT SET ENABLED(bEditCust;False)
+End if 
+If (PermissionsControl (31;False)=False)
+OBJECT SET ENTERABLE([Unit]QuotedRate;False)
+End if 
+If ([Facility]UseReceiptPrinter=False) & ([Facility]InvStatement=0)
+OBJECT SET ENABLED(bPrtRec;False)
+End if 
+OBJECT SET VISIBLE([Reservation]TaxExempt;[Facility]AllowTaxExempt)
+OBJECT SET VISIBLE(*;"lblTaxExempt";[Facility]AllowTaxExempt)
+vCustom1:=[Facility]Custom1
+vCustom2:=[Facility]Custom2
+vCustom3:=[Facility]Custom3
+vCustom4:=[Facility]Custom4
+vCustom5:=[Facility]MarketingTypeTitle
+vCustom6:=[Facility]CustomerTypeTitle
+vCustom7:=[Facility]BusinessTypeTitle
+If (vCustom1="")
+OBJECT SET VISIBLE(*;"@Custom1";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom1";True)
+End if 
+If (vCustom2="")
+OBJECT SET VISIBLE(*;"@Custom2";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom2";True)
+End if 
+If (vCustom3="")
+OBJECT SET VISIBLE(*;"@Custom3";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom3";True)
+End if 
+If (vCustom4="")
+OBJECT SET VISIBLE(*;"@Custom4";False)
+Else 
+OBJECT SET VISIBLE(*;"@Custom4";True)
+End if 
+
+//KSS SQL Stuff
+If (<>sFacility="KE@")
+OBJECT SET VISIBLE(*;"@TypeNat";True)
+
+End if 
+
+If (<>tABNName="ABN Number")
+Case of 
+: (Length([Customer]ABNNo)=11)
+vPath:=Get localized string("ABN Number")+":"
+: (Length([Customer]ABNNo)=9)
+vPath:="ACN Number:"
+Else 
+vPath:="ABN/ACN Number:"
+End case 
+Else 
+vPath:=<>tABNName+":"
+End if 
+OBJECT SET FORMAT([Customer]ABNNo;"##-###-###-###")
+OBJECT SET FORMAT([Customer]BankAcct;"###-### ##############")
+
+If ([Facility]Country="NZ")
+If ([Customer]BankAcct>"")
+vBank:=Substring([Customer]BankAcct;1;2)
+vBankBranch:=Substring([Customer]BankAcct;3;4)
+vBankAcct:=Substring([Customer]BankAcct;7;8)
+vBankSuffix:=Substring([Customer]BankAcct;15)
+Else 
+vBank:=""
+vBankBranch:=""
+vBankAcct:=""
+vBankSuffix:=""
+End if 
+OBJECT SET FILTER([Customer]BankAcct;"!0&"+Char(Double quote)+"0-9"+Char(Double quote)+"##-####  ########-###")
+End if 
+Case of 
+: ([Customer]PrimaryPhone=2)
+vPhone:=[Customer]PhoneBus
+: ([Customer]PrimaryPhone=3)
+vPhone:=[Customer]MobilePhone
+: ([Customer]PrimaryPhone=4)
+vPhone:=[Customer]MilCPhone
+Else 
+vPhone:=[Customer]PhonePrivate
+End case 
+If ([Facility]PhoneFormat>"")
+OBJECT SET FORMAT([Customer]PhonePrivate;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]PhoneBus;[Facility]PhoneFormat)
+If ([Customer]PrimaryPhone#3) | (<>bFormatMobile=True)
+OBJECT SET FORMAT(vPhone;[Facility]PhoneFormat)
+Else 
+OBJECT SET FORMAT(vPhone;"")//SDD 18/4/10 This was @ symbol which displayed it in the field
+End if 
+OBJECT SET FORMAT([Customer]FaxNo;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]AlternatePhone;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]AltBusiness;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]AltFax;[Facility]PhoneFormat)
+OBJECT SET FORMAT([Customer]MilCPhone;[Facility]PhoneFormat)
+End if 
+If (<>bFormatMobile=True) & ([Facility]MobileFormat>"")
+OBJECT SET FORMAT([Customer]MobilePhone;[Facility]MobileFormat)
+OBJECT SET FORMAT([Customer]AltMobile;[Facility]MobileFormat)
+If ([Customer]PrimaryPhone=3)
+OBJECT SET FORMAT(vPhone;[Facility]MobileFormat)
+End if 
+End if 
+QUERY([BillPlan];[BillPlan]PlanPeriod="Week";*)
+QUERY([BillPlan]; & ;[BillPlan]Inactive=False)
+If (Records in selection([BillPlan])<1)
+OBJECT SET VISIBLE([Reservation]Weekly;False)
+OBJECT SET VISIBLE(*;"@Weekly";False)
+End if 
+QUERY([BillPlan];[BillPlan]PlanPeriod="Month";*)
+QUERY([BillPlan]; & ;[BillPlan]Inactive=False)
+If (Records in selection([BillPlan])<1)
+OBJECT SET VISIBLE([Reservation]Weekly;True)
+[Reservation]Weekly:=True
+OBJECT SET ENTERABLE([Reservation]Weekly;False)
+OBJECT SET VISIBLE(*;"@Weekly";True)
+End if 
+If ([Reservation]AlertNote) & (Length([Customer]Notes)>1)
+BEEP
+//Open window(100;100;500;415;0;"Alert Message")
+Open window((Screen width/2)-200;(Screen height/2)-158;(Screen width/2)+200;(Screen height/2)+158;4;Get localized string("Alert Message"))
+DIALOG([Customer];"AlertMessage")
+CLOSE WINDOW
+End if 
+If (Current user#"Designer")
+OBJECT SET VISIBLE(bDelete;False)
+End if 
+If ([Facility]PhotoCompression<0)
+[Facility]PhotoCompression:=[Facility]PhotoCompression*-1
+End if 
+Case of 
+: ([Facility]PhotoCompression<=1000) & ([Facility]PhotoCompression>804)
+OBJECT SET VISIBLE(*;"TextOff";True)
+: ([Facility]PhotoCompression<=804) & ([Facility]PhotoCompression>608)
+OBJECT SET VISIBLE(*;"Text25%";True)
+: ([Facility]PhotoCompression<=608) & ([Facility]PhotoCompression>412)
+OBJECT SET VISIBLE(*;"Text50%";True)
+: ([Facility]PhotoCompression<=412) & ([Facility]PhotoCompression>216)
+OBJECT SET VISIBLE(*;"Text75%";True)
+: ([Facility]PhotoCompression<=216) & ([Facility]PhotoCompression>=0)
+OBJECT SET VISIBLE(*;"Text100%";True)
+Else 
+//do nothing
+End case 
+vText:=[Reservation]ReserveNo+", "+[Customer]CustomerCode+", "+[Customer]CustomerName+", "+[Reservation]UnitsReserved
+vName:=""
+If (Length([Reservation]CustomerCode)>5)
+OBJECT SET ENTERABLE(vName;False)
+vName:=[Customer]CustomerName
+End if 
+vBefp4:=True
+vDownload:=False
+tBoolean:=False//This is set if a MoveOut occurrs
+bHistory:=0
+bLastHist:=0
+vLastHist:=1
+RELATE MANY([Reservation]RReserveNo)
+QUERY([Letters];[Letters]AgreeNo=[Reservation]RReserveNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+QUERY([PhotosCards];[PhotosCards]Code=[Reservation]CustomerCode)
+ARRAY LONGINT(aiCheck;0)
+SELECTION TO ARRAY([PhotosCards]SeqNo;aiCheck)
+SORT ARRAY(aiCheck;>)
+QUERY SELECTION([PhotosCards];[PhotosCards]Size>0)
+vOldUser:=0
+If ([Reservation]ReserveNo="")
+READ WRITE([Facility])
+LOAD RECORD([Facility])
+$Continue:=False
+If (Not(Semaphore("<>bNextResNo";1800)))
+$Continue:=True
+End if 
+If ($Continue)
+//10285
+
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+GET PROCESS VARIABLE(-1;<>asAllSiteCodes;<>asAllSiteCodes)
+End if 
+$arraypos:=Find in array(<>asAllSiteCodes;[Facility]FacilityCode)
+
+Repeat 
+
+If (<>aiNextResNo{$arraypos}>[Facility]NextReserveNo)
+ConfirmTwo (Get localized string("It appears the next reservation number of")+" "+String([Facility]NextReserveNo;"00000000")+" "+Get localized string("is already in use. Do you wish to use the next number?");Get localized string("Yes");Get localized string("No"))
+If (OK=1)
+[Reservation]ReserveNo:=String(<>aiNextResNo{$arraypos};"00000000")
+[Facility]NextReserveNo:=<>aiNextResNo{$arraypos}+1
+Else 
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+End if 
+Else 
+[Reservation]ReserveNo:=String(<>aiNextResNo{$arraypos};"00000000")
+[Facility]NextReserveNo:=<>aiNextResNo{$arraypos}+1
+End if 
+<>aiNextResNo{$arraypos}:=[Facility]NextReserveNo
+$Key:=<>sFacility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+If (Application type=4D Remote mode)
+VARIABLE TO VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+End if 
+CLEAR SEMAPHORE("<>bNextResNo")
+Else 
+Repeat 
+
+[Reservation]ReserveNo:=String([Facility]NextReserveNo;"00000000")
+[Facility]NextReserveNo:=[Facility]NextReserveNo+1
+
+$Key:=<>sFacility+[Reservation]ReserveNo
+$i:=Find in field([Reservation]RReserveNo;$Key)
+
+Until ($i<0)
+End if 
+[Reservation]RReserveNo:=<>sFacility+[Reservation]ReserveNo
+[Reservation]TaxExempt:=[Facility]TaxFreeDefault
+SAVE RECORD([Facility])
+Else 
+If (Application type=4D Remote mode)
+GET PROCESS VARIABLE(-1;<>aiNextResNo;<>aiNextResNo)
+End if 
+End if 
+If ([Reservation]UserLogin="")
+[Reservation]UserLogin:=<>sCurrentUser
+End if 
+If (bAdd=1)
+QUERY([Analysis];[Analysis]Code=<>sFacility+"DP";*)
+QUERY([Analysis];[Analysis]BillMoveIn=True)
+If ([Facility]AgreeOnlyDeposit=True)
+[Reservation]DepositAmt:=0
+Else 
+[Reservation]DepositAmt:=[Analysis]DfltSellAmt
+End if 
+[Reservation]ActiveReserve:=True
+OBJECT SET ENABLED(bAgree;False)
+QUERY([Trxs];[Trxs]CustomerCode=[Customer]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]AnalysisCode=<>sFacility+"DP")
+If (([Reservation]DepositAmt=0) | (Records in selection([Trxs])=0)) & ([Reservation]Balance>=0)
+OBJECT SET ENABLED(bRefund;False)
+End if 
+OBJECT SET ENABLED(bProcess;False)
+OBJECT SET VISIBLE(bRestore;False)
+Else 
+OBJECT SET ENTERABLE([Reservation]CustomerCode;False)
+GOTO OBJECT([Customer]Notes)
+If ([Reservation]DepositAmt=0) & ([Reservation]Balance>=0)
+OBJECT SET ENABLED(bRefund;False)
+End if 
+End if 
+aPageNo:=1
+vLastPage:=1
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+vOthDeposit:=[Reservation]DepositAmt-Sum([Unit]ReserveDeposit)
+FIRST RECORD([Unit])
+vTotal:=0
+For ($i;1;Records in selection([Unit]))
+RELATE ONE([Unit]UnitTypeCode)
+If ([Reservation]Weekly=True)
+//vTotal:=Sum([UnitType]WeeklyRate
+vTotal:=vTotal+CalculateBaseRate (1;1)
+Else 
+//vTotal:=Sum([UnitType]MonthlyRate)
+vTotal:=vTotal+CalculateBaseRate (0;1)
+End if 
+NEXT RECORD([Unit])
+End for 
+FIRST RECORD([Unit])
+vQuote:=0
+For ($i;1;Records in selection([Unit]))
+vQuote:=vQuote+[Unit]QuotedRate
+NEXT RECORD([Unit])
+End for 
+FIRST RECORD([Unit])
+If ([Reservation]ActiveReserve=True)
+vActive:="Active"
+OBJECT SET VISIBLE(bRestore;False)
+Else 
+vActive:="Non-Active"//Cant use buttons once booking is inactive
+OBJECT SET VISIBLE(bAgree;False)
+OBJECT SET VISIBLE(bRefund;False)
+OBJECT SET VISIBLE(bProcess;False)
+//If (bAdd=0)
+OBJECT SET VISIBLE(bRestore;True)
+//End if 
+If (PermissionsControl (162;False)=False)
+OBJECT SET ENABLED(bRestore;False)
+End if 
+End if 
+If ([Reservation]ReservedDate=!00-00-00!)
+[Reservation]ReservedDate:=Current date
+End if 
+QUERY([Trxs];[Trxs]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([Trxs]; & ;[Trxs]AgreeNo=[Reservation]RReserveNo)
+If (Records in selection([Trxs])>0) & ([Trxs]DateBanked#!00-00-00!)
+OBJECT SET ENTERABLE([Reservation]DepositAmt;False)//Once transaction banked then cant modify
+OBJECT SET ENTERABLE([Reservation]DateDepPaid;False)
+End if 
+$i:=Find in array(asList1;[Customer]MarketSrce)
+If ($i>0)
+asList1:=$i
+Else 
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MS";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]MarketSrce)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList1;[MarketingTypes]Description)
+asList1:=Find in array(asList1;[Customer]MarketSrce)
+Else 
+asList1:=0
+End if 
+End if 
+$i:=Find in array(asList2;[Customer]CustType)
+If ($i>0)
+asList2:=$i
+Else 
+QUERY([MarketingTypes];[MarketingTypes]ListCode="CT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]CustType)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList2;[MarketingTypes]Description)
+asList2:=Find in array(asList2;[Customer]CustType)
+Else 
+asList2:=0
+End if 
+End if 
+$i:=Find in array(asList3;[Customer]BusType)
+If ($i>0)
+asList3:=$i
+Else 
+QUERY([MarketingTypes];[MarketingTypes]ListCode="BT";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]BusType)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList3;[MarketingTypes]Description)
+asList3:=Find in array(asList3;[Customer]BusType)
+Else 
+asList3:=0
+End if 
+End if 
+$i:=Find in array(asList4;[Customer]ReasonRenting)
+If ($i>0)
+asList4:=$i
+Else 
+QUERY([MarketingTypes];[MarketingTypes]ListCode="MW";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]ReasonRenting)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList4;[MarketingTypes]Description)
+asList4:=Find in array(asList4;[Customer]ReasonRenting)
+Else 
+asList4:=0
+End if 
+End if 
+
+$i:=Find in array(asListIDType;[Customer]IDType)
+If ($i>0)
+asListIDType:=$i
+Else 
+QUERY([MarketingTypes];[MarketingTypes]ListCode="FI";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Customer]IDType)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asListIDType;[MarketingTypes]Description)
+asListIDType:=Find in array(asListIDType;[Customer]ReasonRenting)
+Else 
+asListIDType:=1
+End if 
+End if 
+
+
+asList8:=Find in array(asList8;[Reservation]ReasonDeclined)
+If (asList8<0)
+QUERY([MarketingTypes];[MarketingTypes]ListCode="RD";*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+QUERY([MarketingTypes]; & ;[MarketingTypes]Description=[Reservation]ReasonDeclined)
+If (Records in selection([MarketingTypes])>0)
+APPEND TO ARRAY(asList8;[MarketingTypes]Description)
+asList8:=Find in array(asList8;[Reservation]ReasonDeclined)
+Else 
+asList8:=0
+End if 
+End if 
+//Set Marketing dropdowns to "<None>" if there is no value entered
+If ([Customer]MarketSrce="")
+asList1:=1
+End if 
+If ([Customer]CustType="")
+asList2:=1
+End if 
+If ([Customer]BusType="")
+asList3:=1
+End if 
+If ([Customer]ReasonRenting="")
+asList4:=1
+End if 
+If ([Customer]ReasonMoveout="")
+asList5:=1
+End if 
+asNotesList:=1
+
+
+If (Size of array(asList1)=0)
+OBJECT SET VISIBLE(asList1;False)
+OBJECT SET VISIBLE(*;"Text106";False)
+End if 
+If (Size of array(asList2)=0)
+OBJECT SET VISIBLE(asList2;False)
+OBJECT SET VISIBLE(*;"textTypeNat";False)
+End if 
+If (Size of array(asList3)=0)
+OBJECT SET VISIBLE(asList3;False)
+OBJECT SET VISIBLE(*;"Text108";False)
+End if 
+If (Size of array(asList4)=0)
+OBJECT SET VISIBLE(asList4;False)
+OBJECT SET VISIBLE(*;"Text109";False)
+End if 
+If (Size of array(asNotesList)=0) | (Size of array(asNotesList)=1)
+OBJECT SET VISIBLE(asNotesList;False)
+OBJECT SET VISIBLE(*;"Text164";False)
+OBJECT SET VISIBLE(*;"textAsNotesSort";False)
+OBJECT SET VISIBLE(*;"Picture10";False)
+End if 
+START TRANSACTION
+[Customer]TriggerUpdate:=True
+If ([Facility]UnitPerAgreement=True) & (Records in selection([Unit])>0)
+OBJECT SET VISIBLE(bSelect;False)
+OBJECT SET VISIBLE(*;"Picture33";False)
+Case of 
+: (<>sProduct="@B")
+varm15:=Get localized string("Use this icon to delete berths")
+: (<>sProduct="@R")
+varm15:=Get localized string("Use  this icon to delete appliances")
+: (<>sFacility="ST@")
+varm15:=Get localized string("Use  this icon to delete support plans")
+: (<>sProduct="@C")
+varm15:=Get localized string("Use  this icon to delete spaces")
+Else 
+varm15:=Get localized string("Use  this icon to delete units")
+End case 
+End if 
+If ([Customer]Balance>0)
+OBJECT SET COLOR(*;"Number777";-3)//Set Red
+Else 
+OBJECT SET RGB COLORS(*;"Number777";0x0006616D;0x00FFFFFF)
+End if 
+If (vName="")
+GOTO OBJECT(vName)
+End if 
+If ([Customer]ThreatLevel>0)
+vThreatLevel:=Get localized string("Threat Level")+": "+String([Customer]ThreatLevel)
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+OBJECT SET RGB COLORS(vThreatLevel;0x00FF0000;0x00FF0000)
+Else 
+OBJECT SET RGB COLORS(vThreatLevel;0x00FFA500;0x00FFA500)
+End if 
+Else 
+vThreatLevel:=""
+End if 
+
+If ([Facility]InvStatement>0)
+OBJECT SET VISIBLE(bReemailInvoice;True)
+OBJECT SET VISIBLE(bReprintInvoice;True)
+Else 
+OBJECT SET VISIBLE(bReemailInvoice;False)
+OBJECT SET VISIBLE(bReprintInvoice;False)
+End if 
+
+End if 
+If (Form event=On Load) | (aPageNo#1)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+If ((Form event=On Clicked) | (Form event=On Data Change)) & (bAbort#1)
+If ([Customer]PrimaryPhone#3) | (<>bFormatMobile=True)
+OBJECT SET FORMAT(vPhone;[Facility]PhoneFormat)
+Else 
+OBJECT SET FORMAT(vPhone;"")//SDD 18/4/10 This was @ symbol which displayed it in the field
+End if 
+If ([Customer]ThreatLevel>0)
+vThreatLevel:="Threat Level: "+String([Customer]ThreatLevel)
+If ([Customer]ThreatLevel>=[Facility]ThreatLevelAlert)
+OBJECT SET RGB COLORS(vThreatLevel;0x00FF0000;0x00FF0000)
+Else 
+OBJECT SET RGB COLORS(vThreatLevel;0x00FFA500;0x00FFA500)
+End if 
+Else 
+vThreatLevel:=""
+End if 
+If (aPageNo=1) & (Records in selection([Unit])=0) & ([Reservation]ActiveReserve=True)
+QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+End if 
+vQuote:=Sum([Unit]QuotedRate)
+[Reservation]DepositAmt:=Sum([Unit]ReserveDeposit)+vOthDeposit
+If ([Reservation]DepositAmt>0) | ([Reservation]Balance<0)
+OBJECT SET ENABLED(bRefund;True)
+End if 
+Case of 
+: ([Customer]PrimaryPhone=2)
+vPhone:=[Customer]PhoneBus
+: ([Customer]PrimaryPhone=3)
+vPhone:=[Customer]MobilePhone
+: ([Customer]PrimaryPhone=4)
+vPhone:=[Customer]MilCPhone
+Else 
+vPhone:=[Customer]PhonePrivate
+End case 
+If ([Customer]EmailAddress>"") & (([Facility]UsePDFWriter) | (<>iPlatform=2))
+OBJECT SET ENABLED(bEmailRec;True)
+OBJECT SET ENABLED(bReemailInvoice;True)
+OBJECT SET ENABLED(bEmailState;True)
+Else 
+OBJECT SET ENABLED(bEmailRec;False)
+OBJECT SET ENABLED(bReemailInvoice;False)
+OBJECT SET ENABLED(bEmailState;False)
+End if 
+If (<>iPrinttoFile>0)
+OBJECT SET ENABLED(bEmailRec;False)
+OBJECT SET ENABLED(bPrtRec;False)
+OBJECT SET ENABLED(bPrintRec;False)
+OBJECT SET ENABLED(bReemailInvoice;False)
+OBJECT SET ENABLED(bEmailState;False)
+OBJECT SET ENABLED(bReprintInvoice;False)
+OBJECT SET ENABLED(bPrintState;False)
+Else 
+OBJECT SET VISIBLE(*;"@file";False)
+End if 
+If (aPageNo#vLastPage)
+If (Records in selection([Customer])#1)//(aPageNo>=2) &
+AlertMessage (Get localized string("Please enter a customer name before continuing..."))
+aPageNo:=1
+Else 
+FORM GOTO PAGE(aPageNo)
+If (aPageNo=2)
+asCountries:=Find in array(asCountryCodes;[Customer]CountryCode)//asCountries
+asMailCountries:=Find in array(asCountryCodes;[Customer]MailCountryCode)//asMailCountries
+asAltCountries:=Find in array(asCountryCodes;[Customer]AltCountryCode)//asAltCountries
+HIGHLIGHT TEXT([Customer]CustomerName;Length([Customer]CustomerName)+1;Length([Customer]CustomerName)+1)
+End if 
+If (aPageNo=3)
+asCountries:=Find in array(asCountryCodes;[Customer]CountryCode)//asCountries
+asMailCountries:=Find in array(asCountryCodes;[Customer]MailCountryCode)//asMailCountries
+asAltCountries:=Find in array(asCountryCodes;[Customer]AltCountryCode)//asAltCountries
+End if 
+If (aPageNo=4)// & (bFirst=4)  `Access Page
+QUERY([Letters];[Letters]AgreeNo=[Reservation]RReserveNo)
+ORDER BY([Letters];[Letters]DateSent;<)
+QUERY([PhotosCards];[PhotosCards]Code=[Reservation]CustomerCode;*)
+QUERY([PhotosCards]; & ;[PhotosCards]Size>0)
+End if 
+If (aPageNo=5)
+vRecalc:=True
+
+End if 
+If (aPageNo=6)
+If (asNotesSortList=1)
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Reservation]CustomerCode)
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+tClear:=False
+Else 
+QUERY([NotesHistory];[NotesHistory]CustomerCode=[Reservation]CustomerCode;*)
+QUERY([NotesHistory];[NotesHistory]Category=asNotesSortList{asNotesSortList})
+ORDER BY([NotesHistory];[NotesHistory]NoteDate;<;[NotesHistory]NoteTime;<)
+End if 
+tClear:=False
+vRecalc:=True
+End if 
+If (aPageNo=8)
+QUERY([MarketingTypes];[MarketingTypes]CustType="ALL";*)
+QUERY([MarketingTypes]; | ;[MarketingTypes]CustType="@"+[Customer]CustType+"@";*)
+If (<>sProduct="M@")
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes]; & ;[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="KQ")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+
+$x:=Records in selection([MarketingTypes])
+
+If ($x>10)
+$x:=10
+End if 
+
+vQuestion1:=""
+vQuestion2:=""
+vQuestion3:=""
+vQuestion4:=""
+vQuestion5:=""
+vQuestion6:=""
+vQuestion7:=""
+vQuestion8:=""
+vQuestion9:=""
+vQuestion10:=""
+
+OBJECT SET VISIBLE([Reservation]KQ1;False)
+OBJECT SET VISIBLE([Reservation]KQ2;False)
+OBJECT SET VISIBLE([Reservation]KQ3;False)
+OBJECT SET VISIBLE([Reservation]KQ4;False)
+OBJECT SET VISIBLE([Reservation]KQ5;False)
+OBJECT SET VISIBLE([Reservation]KQ6;False)
+OBJECT SET VISIBLE([Reservation]KQ7;False)
+OBJECT SET VISIBLE([Reservation]KQ8;False)
+OBJECT SET VISIBLE([Reservation]KQ9;False)
+OBJECT SET VISIBLE([Reservation]KQ10;False)
+
+If ($x>0)
+FIRST RECORD([MarketingTypes])
+vQuestion1:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ1;True)
+If ($x>1)
+NEXT RECORD([MarketingTypes])
+vQuestion2:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ2;True)
+If ($x>2)
+NEXT RECORD([MarketingTypes])
+vQuestion3:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ3;True)
+If ($x>3)
+NEXT RECORD([MarketingTypes])
+vQuestion4:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ4;True)
+If ($x>4)
+NEXT RECORD([MarketingTypes])
+vQuestion5:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ5;True)
+If ($x>5)
+NEXT RECORD([MarketingTypes])
+vQuestion6:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ6;True)
+If ($x>6)
+NEXT RECORD([MarketingTypes])
+vQuestion7:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ7;True)
+If ($x>7)
+NEXT RECORD([MarketingTypes])
+vQuestion8:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ8;True)
+If ($x>8)
+NEXT RECORD([MarketingTypes])
+vQuestion9:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ9;True)
+If ($x>9)
+NEXT RECORD([MarketingTypes])
+vQuestion10:=[MarketingTypes]Description
+OBJECT SET VISIBLE([Reservation]KQ10;True)
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+
+If (<>sProduct="M@")
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sHOFacility;*)
+Else 
+QUERY([MarketingTypes];[MarketingTypes]Facility=<>sFacility;*)
+End if 
+QUERY([MarketingTypes]; & ;[MarketingTypes]ListCode="FF")
+ORDER BY([MarketingTypes];[MarketingTypes]SortOrder;>)
+
+$x:=Records in selection([MarketingTypes])
+
+If ($x>10)
+$x:=10
+End if 
+
+OBJECT SET VISIBLE([Reservation]KF1;False)
+OBJECT SET VISIBLE([Reservation]KF2;False)
+OBJECT SET VISIBLE([Reservation]KF3;False)
+OBJECT SET VISIBLE([Reservation]KF4;False)
+OBJECT SET VISIBLE([Reservation]KF5;False)
+OBJECT SET VISIBLE([Reservation]KF6;False)
+OBJECT SET VISIBLE([Reservation]KF7;False)
+OBJECT SET VISIBLE([Reservation]KF8;False)
+OBJECT SET VISIBLE([Reservation]KF9;False)
+OBJECT SET VISIBLE([Reservation]KF10;False)
+
+If ($x>0)
+FIRST RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF1";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF1;True)
+If ($x>1)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF2";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF2;True)
+If ($x>2)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF3";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF3;True)
+If ($x>3)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF4";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF4;True)
+If ($x>4)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF5";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF5;True)
+If ($x>5)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF6";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF6;True)
+If ($x>6)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF7";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF7;True)
+If ($x>7)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF8";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF8;True)
+If ($x>8)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF9";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF9;True)
+If ($x>9)
+NEXT RECORD([MarketingTypes])
+OBJECT SET TITLE(*;"ReserveKF10";[MarketingTypes]Description)
+OBJECT SET VISIBLE([Reservation]KF10;True)
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+End if 
+
+End if 
+vLastPage:=aPageNo
+If (aPageNo=1)
+OBJECT SET ENTERABLE([Reservation]CustomerCode;False)
+GOTO OBJECT([Customer]Notes)
+End if 
+End if 
+End if 
+vAmount:=0
+vTransID:=""
+vOriginalReceipt:=""
+vSpecialAnalysis:=""
+vAuthcode:=""
+If (bAddCharge=1) | (bAddRec=1) | (bAddCredit=1) | (bAddRefund=1)
+If (Modified record([Customer]))
+SAVE RECORD([Customer])
+End if 
+
+bFromMoveIn:=True
+vtReverse:=False
+vTransID:=""//10708
+vOriginalReceipt:=""//10708
+vAuthcode:=""
+If (bAddCredit=1) | (bAddRefund=1)
+vtReverse:=True
+LOAD RECORD([Trxs])
+
+If (bAddRefund=1) & ([Trxs]CCTransID>"")
+If (GetTextNo ([Facility]MerchantDetails;1;",")="EziDebit")//19/10/15 DAM Added for Ezdebit refunds
+vTransID:=[Trxs]OriginalReceipt
+vOriginalReceipt:=[Trxs]CCTransID
+Else 
+vTransID:=[Trxs]CCTransID
+vOriginalReceipt:=[Trxs]OriginalReceipt
+vAuthcode:=[Trxs]CCAuthNo
+End if 
+QUERY([Analysis];[Analysis]Code=<>sFacility+"@";*)
+QUERY([Analysis]; & ;[Analysis]Code=[Trxs]AnalysisCode)
+If ((GetTextNo ([Facility]DDAccountDetails;6;",")="EziDebit") & ([Analysis]SpecialOptions=57))//10852
+vTransID:=[Trxs]CCTransID
+vOriginalReceipt:=[Trxs]OriginalReceipt
+vAuthcode:=[Trxs]CCAuthNo
+End if 
+vAmount:=[Trxs]TotAmt
+vDate:=[Trxs]DateBanked
+vSpecialAnalysis:=[Trxs]AnalysisCode
+If (vDate=!00-00-00!)
+vDate:=[Trxs]TrxDate
+End if 
+End if 
+End if 
+If (bAddCharge=1) | (bAddCredit=1)
+FORM SET INPUT([Trxs];"ModCharges")
+End if 
+If (bAddRec=1) | (bAddRefund=1)
+ReservationAgreement:=True
+FORM SET INPUT([Trxs];"ModReceipts")
+End if 
+bBoth:=0
+READ WRITE([Trxs])
+Repeat 
+bPrtRec:=0
+bEmailReceipt:=0
+ADD RECORD([Trxs])
+If (bPrtRec=1)
+vRecNo:=Record number([Trxs])
+End if 
+Until (bBoth#1)
+If ([Trxs]CCTransID>"") | ([Trxs]CCAuthNo>"")//Dont allow Cancel even on failed CC trx as Note is written  SDD 21/11/05
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+READ ONLY([Trxs])
+viMatch:=-1
+vRecalc:=True
+End if 
+If (bMod=1)//| (Form event=On Double Clicked ) Does not work, causes problem's by registering double click's on area's outside the subform and on other page's of the main form
+
+If (Selected record number([Trxs])#0)
+bFromMoveIn:=True
+LOAD RECORD([Trxs])
+vtReverse:=([Trxs]TotAmt<0)
+If ([Trxs]Charge=True)
+$pqr:=148
+Else 
+$pqr:=149
+End if 
+If (PermissionsControl ($pqr))
+Case of 
+: (Current user="Designer") & (Shift down)
+FORM SET INPUT([Trxs];"TransactionIn")
+: ([Trxs]Charge=True)
+FORM SET INPUT([Trxs];"ModCharges")
+: ([Trxs]Charge=False)
+FORM SET INPUT([Trxs];"ModReceipts")
+Else 
+//do nothing
+End case 
+bPrtRec:=0
+bEmailReceipt:=0
+If ([Trxs]Match=0)
+viMatch:=-1
+Else 
+viMatch:=[Trxs]Match
+End if 
+READ WRITE([Trxs])
+MODIFY RECORD([Trxs])
+If (OK=1) | (bDelete=1)
+vRecalc:=True
+Else 
+viMatch:=0
+End if 
+READ ONLY([Trxs])
+If (bPrtRec=1)//This is done in ReCalc
+vRecNo:=Record number([Trxs])
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("NoTrxMod"))
+End if 
+bMod:=0
+End if 
+If (bPrtRec=1)
+PrintReceiptOption (True)
+//$PrtRecNo:=[Reservation]RReserveNo
+//LOAD RECORD([Transaction])
+//Case of 
+//: ([Transaction]Charge=True)
+//AlertMessage ("You cannot print a receipt for a charge!")
+//: ([Transaction]Charge=False)
+//$OK:=True
+//If ([Transaction]AnalysisCode#[Analysis]Code)
+//RELATE ONE([Transaction]AnalysisCode)
+//End if 
+//If ([Analysis]MinAmt#0)
+//If ([Transaction]TotAmt<[Analysis]MinAmt)
+//AlertMessage ("You cannot enter an amount for "+[Analysis]Description+" of less than "+String([Analysis]MinAmt)+".  Please re-enter!")
+//$OK:=False
+//End if 
+//End if 
+//If ([Analysis]MaxAmt#0)
+//If ([Transaction]TotAmt>[Analysis]MaxAmt)
+//AlertMessage ("You cannot enter an amount for "+[Analysis]Description+" of more than "+String([Analysis]MaxAmt)+".  Please re-enter!")
+//$OK:=False
+//End if 
+//End if 
+//If ($OK)
+//  //ACCEPT
+//If ([Facility]UseReceiptPrinter=True)
+//$Name:=Get current printer
+//SET CURRENT PRINTER([Facility]ReceiptName)
+//End if 
+//If ([Facility]UseCustomReceipt)
+//FORM SET OUTPUT([Facility];"ReceiptOnly")
+//SET PRINT OPTION(Orientation option;1)  //Portrait
+//SET PRINT OPTION(Number of copies option;[Facility]ReceiptCopies)
+//If ([Facility]PrtDialogInv) | ([Facility]UseReceiptPrinter=False)
+//PRINT SETTINGS
+//PRINT RECORD([Facility];>)
+//Else 
+//SET PRINT PREVIEW(False)
+//PRINT RECORD([Facility];>)
+//End if 
+//FORM SET OUTPUT([Facility];"Output")
+//Else 
+//FORM SET OUTPUT([Transaction];"InvRecNarrow")
+//SET PRINT OPTION(Orientation option;1)  //Portrait
+//SET PRINT OPTION(Number of copies option;[Facility]ReceiptCopies)
+//If ([Facility]PrtDialogInv) | ([Facility]UseReceiptPrinter=False)
+//PRINT SETTINGS
+//PRINT RECORD([Transaction];>)
+//Else 
+//SET PRINT PREVIEW(False)
+//PRINT RECORD([Transaction];>)
+//End if 
+//FORM SET OUTPUT([Transaction];"Output")
+//End if 
+//If ([Facility]UseReceiptPrinter=True)
+//SET CURRENT PRINTER($Name)
+//End if 
+//End if 
+//OBJECT SET ENABLED(bAbort;False)
+//Else 
+//  //do nothing
+//End case 
+//QUERY([Reservation];[Reservation]RReserveNo=$PrtRecNo)
+End if 
+If (bReturn=1)
+If (PermissionsControl (178))
+LOAD RECORD([Trxs])
+If ([Trxs]Charge=False) & ([Trxs]AgreeNo=[Reservation]RReserveNo) & ([Trxs]TotAmt>0)
+ChequeReturn 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("Please select the receipt that has been returned!"))
+End if 
+End if 
+End if 
+If (bReturnPayment=1)
+If (PermissionsControl (177))
+LOAD RECORD([Trxs])
+Case of 
+: ([Trxs]CCTransID>"")
+bFromMoveIn:=True
+vtReverse:=False
+vtReverse:=True
+vTransID:=[Trxs]CCTransID
+vAmount:=[Trxs]TotAmt
+vAuthcode:=[Trxs]CCAuthNo
+vOriginalReceipt:=[Trxs]OriginalReceipt
+vDate:=[Trxs]DateBanked
+vSpecialAnalysis:=[Trxs]AnalysisCode
+If (vDate=!00-00-00!)
+vDate:=[Trxs]TrxDate
+End if 
+FORM SET INPUT([Trxs];"ModReceipts")
+bBoth:=0
+READ WRITE([Trxs])
+Repeat 
+bPrtRec:=0
+bEmailReceipt:=0
+ADD RECORD([Trxs])
+If (bPrtRec=1)
+vRecNo:=Record number([Trxs])
+End if 
+Until (bBoth#1)
+If ([Trxs]CCTransID>"") | ([Trxs]CCAuthNo>"")//Dont allow Cancel even on failed CC trx as Note is written  SDD 21/11/05
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+READ ONLY([Trxs])
+viMatch:=-1
+vRecalc:=True
+: ([Trxs]Charge=False) & ([Trxs]AgreeNo=[Reservation]RReserveNo) & ([Trxs]TotAmt>0)
+RefundPayment 
+vRecalc:=True
+Else 
+AlertMessage (Get localized string("Please select the receipt that is being refunded!"))
+End case 
+End if 
+End if 
+If (asShowHistory#vLastHist)
+vRecalc:=True
+vLastHist:=asShowHistory
+End if 
+If (Modified([Reservation]ReservedDate))
+End if 
+
+//27/12/12 DAM Added for B&S
+If ([Reservation]BoxnStore#"") & (bBoxnStore=1)
+QUERY([BarCode];[BarCode]ReserveNo=[Reservation]RReserveNo)
+ARRAY TEXT(arUnitNo;0)
+ARRAY TEXT(arBarCode;0)
+ARRAY BOOLEAN(arActive;0)
+SELECTION TO ARRAY([BarCode]UnitNo;arUnitNo;[BarCode]Active;arActive;[BarCode]Code;arBarCode)
+
+//12/06/13 DAM added to dispay the boxes that have been billed to easy the staff job
+ARRAY BOOLEAN(arBilled;Size of array(arUnitNo))
+
+// all units 
+For ($j;1;Size of array(arUnitNo))
+// all transactions
+FIRST RECORD([Trxs])
+For ($r;1;Records in selection([Trxs]))
+//Only rent
+If ([Trxs]AnalysisCode="@RF")
+$Pos:=Position(Substring(arUnitNo{$j};6);[Trxs]Description)
+If ($Pos>0)
+arBilled{$j}:=True
+End if 
+End if 
+NEXT RECORD([Trxs])
+End for 
+End for 
+
+$WinRef:=Open form window([BarCode];"receive";5;Horizontally centered;Vertically centered)
+DIALOG([BarCode];"Receive")
+CLOSE WINDOW($WinRef)
+
+If (bContinue=1)
+VALIDATE TRANSACTION
+ACCEPT
+End if 
+End if 
+
+End if 
+If (vRecalc=True)
+ReCalc 
+vrCustBalance:=[Customer]Balance
+REDRAW(vrCustBalance)
+End if 
+End if 
+
+
+
+If (Form event=On Clicked) & (bAbort#1)// (During)
+//QUERY([Unit];[Unit]ReservedTo=[Reservation]RReserveNo)
+//[Reservation]DepositAmt:=Sum([Unit]ReserveDeposit)+vOthDeposit
+//vTotal:=0
+//For ($i;1;Records in selection([Unit]))
+//RELATE ONE([Unit]UnitTypeCode)
+//If ([Reservation]Weekly=True)
+//vTotal:=vTotal+[UnitType]WeeklyRate
+//Else 
+//vTotal:=vTotal+[UnitType]MonthlyRate
+//End if 
+//NEXT RECORD([Unit])
+//End for 
+vTotal:=vTotal
+vCount:=Records in selection([Unit])
+vAmount:=0
+vTransID:=""
+If (vCount#0)
+OBJECT SET ENABLED(bAgree;True)
+Else 
+OBJECT SET ENABLED(bAgree;False)
+End if 
+//07/07/15 DAM Added to disbale "Cancel" button when payment failed for Ezidebit
+If (GERROR="OK")
+OBJECT SET ENABLED(bAbort;False)
+If (In transaction)
+SAVE RECORD([Agreement])
+SAVE RECORD([Reservation])
+SAVE RECORD([Customer])
+VALIDATE TRANSACTION
+START TRANSACTION
+End if 
+End if 
+End if 
+
+
+
+If (Form event=On Validate)
+If ([Customer]CustType#Old([Customer]CustType))
+EmailMarketing (False)
+End if 
+SetFacility 
+QUERY([UserLogins];[UserLogins]Name=<>sCurrentUser)
+If ([Reservation]ActiveReserve)
+UpdateCalendar ([Reservation]ExpMoveIn;Old([Reservation]ExpMoveIn);"Customer "+[Customer]CustomerName+", Reservation "+[Reservation]ReserveNo+", is moving in to unit(s) "+[Reservation]UnitsReserved)
+Else 
+UpdateCalendar (!00-00-00!;Old([Reservation]ExpMoveIn);"Customer "+[Customer]CustomerName+", Reservation "+[Reservation]ReserveNo+", is moving in to unit(s) "+[Reservation]UnitsReserved)
+End if 
+If (bAgree=1)
+CustProcess (vtRUnitNo;10;True)
+End if 
+End if 
+
+
+
+If (Form event=On Load)
+C_TEXT(vtOtherAgreementsReservations)
+C_LONGINT($NumAgreements;$NumReservations)
+vtOtherAgreementsReservations:=""
+CREATE EMPTY SET([Agreement];"NumOtherAgreements")
+CREATE EMPTY SET([Reservation];"NumOtherReservations")
+If ([Reservation]RReserveNo>"")//If currently viewing a Reservation
+CREATE SET([Reservation];"CurrentReservation")
+SET QUERY DESTINATION(Into set;"NumOtherReservations")
+QUERY([Reservation];[Reservation]CustomerCode=[Reservation]CustomerCode)
+SET QUERY DESTINATION(Into set;"NumOtherAgreements")
+QUERY([Agreement];[Agreement]CustomerCode=[Reservation]CustomerCode)
+
+DIFFERENCE("NumOtherReservations";"CurrentReservation";"NumOtherReservations")
+CLEAR SET("CurrentReservation")
+
+Else //If currently viewing an Agreement
+CREATE SET([Agreement];"CurrentAgreement")
+SET QUERY DESTINATION(Into set;"NumOtherReservations")
+QUERY([Reservation];[Reservation]CustomerCode=[Agreement]CustomerCode)
+SET QUERY DESTINATION(Into set;"NumOtherAgreements")
+QUERY([Agreement];[Agreement]CustomerCode=[Agreement]CustomerCode)
+
+DIFFERENCE("NumOtherAgreements";"CurrentAgreement";"NumOtherAgreements")
+CLEAR SET("CurrentAgreement")
+
+End if 
+SET QUERY DESTINATION(Into current selection)
+$NumAgreements:=Records in set("NumOtherAgreements")
+$NumReservations:=Records in set("NumOtherReservations")
+If ($NumAgreements>0) | ($NumReservations>0)
+OBJECT SET VISIBLE(*;"OtherAgreeReserve@";True)
+If ([Agreement]RAgreeNo>"")//It's an Agreement
+Case of 
+: ($NumAgreements=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" "+Get localized string("Other Agreement")
+: ($NumAgreements>1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" "+Get localized string("Other Agreements")
+End case 
+If ($NumReservations>0)
+If ($NumAgreements>0)//If there were other Agreements
+If ($NumReservations=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumReservations)+" "+Get localized string("Reservation")
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumReservations)+" "+Get localized string("Reservations")
+End if 
+Else 
+If ($NumReservations=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Reservation")
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Reservations")
+End if 
+End if 
+End if 
+Else //It's a Reservation
+Case of 
+: ($NumReservations=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Other Reservation")
+: ($NumReservations>1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumReservations)+" "+Get localized string("Other Reservations")
+End case 
+If ($NumAgreements>0)
+If ($NumReservations>0)
+If ($NumAgreements=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumAgreements)+" "+Get localized string("Agreement")
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+" / "+String($NumAgreements)+" "+Get localized string("Agreements")
+End if 
+Else 
+If ($NumAgreements=1)
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" "+Get localized string("Agreement")
+Else 
+vtOtherAgreementsReservations:=vtOtherAgreementsReservations+String($NumAgreements)+" "+Get localized string("Agreements")
+End if 
+End if 
+End if 
+End if 
+Else 
+OBJECT SET VISIBLE(*;"OtherAgreeReserve@";False)
+End if 
+
+
+
+CLEAR SET("NumOtherAgreements")
+CLEAR SET("NumOtherReservations")
+vCount:=Records in selection([Unit])
+
+If ([Facility]BPay>1) & ([Facility]BillerCode #0) & ([Facility]Country="AU") & (GetTextNo ([Facility]BPayDigitalKey;1;",")#"")//10781 & 10847
+OBJECT SET VISIBLE(*;"TextCRN1";True)
+OBJECT SET VISIBLE(*;"TextCRN2";True)
+OBJECT SET VISIBLE(*;"bBPAY";True)
+If ([Customer]CRN#"")
+OBJECT SET ENABLED(*;"bBPAY";False)
+Else 
+OBJECT SET ENABLED(*;"bBPAY";True)
+End if 
+
+
+Else 
+OBJECT SET VISIBLE(*;"TextCRN1";False)
+OBJECT SET VISIBLE(*;"TextCRN2";False)
+OBJECT SET VISIBLE(*;"bBPAY";False)
+End if 
+
+End if 

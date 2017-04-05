@@ -1,0 +1,181 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+If (Form event=On Load)
+LoadListBoxColour 
+C_BOOLEAN(bModArray)
+OBJECT SET TITLE(*;"Text12";Get localized string("Discount")+":")
+OBJECT SET TITLE(*;"Text127";Get localized string("Total")+":")
+ARRAY DATE(aDate;0)
+ARRAY DATE(aDateFrom;0)
+ARRAY DATE(aDateTo;0)
+ARRAY REAL(aCost;0)
+ARRAY REAL(aQuantity;0)
+ARRAY REAL(aOrigQuantity;0)
+ARRAY TEXT(adDesc;0)
+ARRAY REAL(aNet;0)
+ARRAY REAL(aTax;0)
+ARRAY REAL(aTot;0)
+ARRAY TEXT(aNarration;0)
+ARRAY TEXT(asAnalysis;0)
+ARRAY BOOLEAN(abPrint;0)
+ARRAY LONGINT(aiPrimaryKey;0)
+ARRAY LONGINT(aiOrigPrimaryKey;0)
+aDate:=0
+aDateFrom:=0
+aDateTo:=0
+aCost:=0
+aQuantity:=0
+aOrigQuantity:=0
+adDesc:=0
+aNet:=0
+aTax:=0
+aTot:=0
+aNarration:=0
+asAnalysis:=0
+abPrint:=0
+aiPrimaryKey:=0
+aiOrigPrimaryKey:=0
+bDiscount:=False
+vDiscount:=0
+vrTotal:=0
+
+OBJECT SET ENABLED(bModArray;False)
+OBJECT SET ENABLED(bDeleteArray;False)
+//10/11/16 RNE1 Set format
+OBJECT SET FORMAT(*;"Column4";<>sFormat)
+OBJECT SET FORMAT(*;"Column5";<>sFormat)
+OBJECT SET FORMAT(*;"Column6";<>sFormat)
+OBJECT SET FORMAT(*;"Column9";<>sFormat)
+OBJECT SET FORMAT(*;"Variable5";<>sFormat)
+OBJECT SET FORMAT(*;"Variable4";<>sFormat)
+End if 
+
+If (Form event=On Data Change) | (Form event=On Clicked)
+If (bDiscount=True)
+bDiscount:=False
+vDiscount:=0
+QUERY([MerchPlan];[MerchPlan]MerchPlanID=<>sFacility+"@";*)
+QUERY([MerchPlan]; & ;[MerchPlan]Inactive=False)
+ORDER BY([MerchPlan];[MerchPlan]Priority;>;[MerchPlan]MerchPlanID;>)
+ARRAY TEXT(asTMAnalysisCodes;0)
+For ($i;1;Size of array(asAnalysis))
+$Find:=Find in array(asTMAnalysisCodes;asAnalysis{$i})
+If ($Find<=0)
+APPEND TO ARRAY(asTMAnalysisCodes;asAnalysis{$i})
+End if 
+End for 
+For ($i;1;Records in selection([MerchPlan]))
+$Qty:=0
+$Total:=0
+$KSSPercent:=0
+
+If ([MerchPlan]InventoryPack=False)
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+For ($k;1;Size of array(asAnalysis))
+If (asAnalysis{$k}=asTMAnalysisCodes{$j})
+$Qty:=$Qty+aQuantity{$k}
+$Total:=$Total+aTot{$k}
+End if 
+End for 
+End if 
+End for 
+
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+$aQty:=0
+$aTotal:=0
+For ($k;1;Size of array(asAnalysis))
+If (asAnalysis{$k}=asTMAnalysisCodes{$j})
+$aQty:=$aQty+aQuantity{$k}
+$aTotal:=$aTotal+aTot{$k}
+End if 
+End for 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-$Percent)/100);1)*$aQty)
+Else 
+$KSSPercent:=$KSSPercent+(Round(($aTotal/$aQty)*((100-[MerchPlan]PercDiscount)/100);1)*$aQty)
+End if 
+End if 
+End for 
+
+If ([MerchPlan]ItemQuantity<=$Qty)
+If ([MerchPlan]PercDiscount>0)
+If (<>sFacility="KE@")
+If ([MerchPlan]RepeatMP=True)
+//$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+//$NewTotal:=Round(($Total/$Qty)*((100-$Percent)/100);1)*$Qty
+vDiscount:=vDiscount+($Total-$KSSPercent)
+Else 
+//$NewTotal:=Round(($Total/$Qty)*((100-[MerchPlan]PercDiscount)/100);1)*$Qty
+vDiscount:=vDiscount+($Total-$KSSPercent)
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]PercDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total*((100-$Percent)/100)
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total*((100-[MerchPlan]PercDiscount)/100)
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Else 
+If ([MerchPlan]RepeatMP=True)
+$Percent:=[MerchPlan]FixedDiscount*(Int($Qty/[MerchPlan]ItemQuantity))
+$NewTotal:=$Total-$Percent
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+Else 
+$NewTotal:=$Total-[MerchPlan]FixedDiscount
+If ($NewTotal<0)
+$NewTotal:=0
+End if 
+vDiscount:=vDiscount+($Total-$NewTotal)
+End if 
+End if 
+Repeat 
+$k:=0
+For ($j;1;Size of array(asTMAnalysisCodes))
+$MerchString:="@"+asTMAnalysisCodes{$j}+"@"
+If ([MerchPlan]AnalysisCodes=$MerchString)
+DELETE FROM ARRAY(asTMAnalysisCodes;$j)
+$k:=1
+$j:=Size of array(asTMAnalysisCodes)+1
+End if 
+End for 
+Until ($k=0)
+End if 
+End if 
+
+NEXT RECORD([MerchPlan])
+End for 
+vDiscount:=Round(vDiscount*-1;2)
+vrTotal:=0
+For ($m;1;Size of array(aTot))
+vrTotal:=vrTotal+aTot{$m}
+End for 
+vrTotal:=vrTotal+vDiscount
+End if 
+
+If (Count in array(List Box1;True)>0)
+OBJECT SET ENABLED(bModArray;True)
+OBJECT SET ENABLED(bDeleteArray;True)
+Else 
+OBJECT SET ENABLED(bModArray;False)
+OBJECT SET ENABLED(bDeleteArray;False)
+End if 
+End if 
+
+
+If (Size of array(asAnalysis)>0)
+OBJECT SET ENABLED(bModArray;True)
+OBJECT SET ENABLED(bDeleteArray;True)
+Else 
+OBJECT SET ENABLED(bModArray;False)
+OBJECT SET ENABLED(bDeleteArray;False)
+End if 

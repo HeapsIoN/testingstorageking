@@ -1,0 +1,119 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//Function to do mathematical conversions
+C_TEXT($0)//Result
+C_LONGINT($1)//Conversion to perform
+//1=Decimal to Binary
+//2=Decimal to Hex
+//3=Binary to Hex
+//4=Hex to Decimal
+//5=Calculate Checksum as Twos complement
+//6=Hex to Binary
+//7=Binary to Decimal
+C_TEXT($2)//Number to convert
+C_LONGINT($3)//Optional desired length of result string required for type 1
+C_LONGINT($x;$y;$i;$Length)
+C_REAL($HexDec)
+C_TEXT($Hex)
+$0:=""
+$Hex:=""
+Case of 
+: ($1=1)
+$HexDec:=Num($2)
+For ($x;1;$3)
+$y:=$3-$x
+If ($HexDec>=(2^$y))
+$0:=$0+"1"
+$HexDec:=$HexDec-(2^$y)
+Else 
+$0:=$0+"0"
+End if 
+End for 
+: ($1=2)
+$Hex:=CalcBinHex (1;$2;32)
+$0:=CalcBinHex (3;$Hex)
+If (Count parameters=3)
+$0:=Substring($0;Length($0)+1-$3;$3)
+End if 
+: ($1=3) | ($1=7)
+$Length:=Length($2)
+$HexDec:=0
+For ($i;1;$Length)
+$x:=$Length+1-$i
+$y:=$i%4
+If ($y=0)
+If ($2[[$x]]="1")
+$HexDec:=$HexDec+8
+End if 
+$y:=Trunc($i/4;0)
+If ($HexDec<10)
+$Hex:=$Hex+String($HexDec)
+Else 
+$Hex:=$Hex+Char(55+$HexDec)
+End if 
+$HexDec:=0
+Else 
+If ($2[[$x]]="1")
+$HexDec:=$HexDec+(2^($y-1))
+End if 
+End if 
+End for 
+If ($HexDec>0)
+If ($HexDec<10)
+$Hex:=$Hex+String($HexDec)
+Else 
+$Hex:=$Hex+Char(55+$HexDec)
+End if 
+End if 
+$0:=""
+For ($i;1;Length($Hex))
+$0:=$0+$Hex[[Length($Hex)+1-$i]]
+End for 
+If ($1=7)
+$0:=CalcBinHex (4;$0)
+End if 
+: ($1=4) | ($1=6)
+$Length:=Length($2)
+$Hex:=""
+For ($i;1;$Length)
+If (Character code($2[[$i]])<60)
+$HexDec:=Num($2[[$i]])
+Else 
+$HexDec:=Character code($2[[$i]])-55
+End if 
+For ($x;1;4)
+$y:=4-$x
+If ($HexDec>=(2^$y))
+$Hex:=$Hex+"1"
+$HexDec:=$HexDec-(2^$y)
+Else 
+$Hex:=$Hex+"0"
+End if 
+End for 
+End for 
+$HexDec:=0
+$Length:=Length($Hex)
+For ($i;1;$Length)
+$x:=$Length+1-$i
+If ($Hex[[$x]]="1")
+$HexDec:=$HexDec+(2^($i-1))
+End if 
+End for 
+If ($1=4)
+$0:=String($HexDec)
+Else 
+$0:=CalcBinHex (1;String($HexDec);$3)
+End if 
+: ($1=5)
+$Length:=Length($2)
+$HexDec:=0
+For ($i;1;($Length/2))
+$Hex:=Substring($2;(($i-1)*2)+1;2)
+$HexDec:=$HexDec+Num(CalcBinHex (4;$Hex))
+End for 
+$Hex:=CalcBinHex (2;String($HexDec))
+$Hex:=Substring($Hex;Length($Hex)-1;2)
+$HexDec:=256-Num(CalcBinHex (4;$Hex))
+$0:=$2+CalcBinHex (2;String($HexDec);2)
+Else 
+AlertMessage (Get localized string("Procedure CalcBinHex cannot do a conversion of type")+" "+String($1)+"!!  "+Get localized string("Report to Support"))
+End case 

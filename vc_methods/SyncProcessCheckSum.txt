@@ -1,0 +1,173 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//SDD 16/2/11 Fixed up so it works properly
+C_TEXT($1;$2;$Host;$Site;$Result;$HOFCustToSend;$SiteCustToSend)//Error reports Host, Site
+C_TIME($Doc)
+C_TEXT($cr)
+C_LONGINT($i;$j)
+C_REAL($HostAmt;$SiteAmt)
+C_TEXT($HostCode;$SiteCode;$HostLCSD;$SiteLCSD;$HostNBD;$SiteNBD)
+C_LONGINT($HostLN;$SiteLN;$HostCount;$SiteCount;$HOFNoToFix;$SiteNoToFix)
+$cr:=Char(13)
+If (<>iPlatform=3)
+$cr:=$cr+Char(10)
+End if 
+$i:=1
+$File:=<>sLogsPath+"CheckSum"+[EventLog]FacilityCode+String(Day of(Current date);"00")+Substring(String(Current time);1;2)+".txt"
+While (Test path name($File)=Is a document)
+DELETE DOCUMENT($File)
+If (Test path name($File)=Is a document)
+$File:="1"+$File
+End if 
+End while 
+//$Report:=$Report+[Agreement]AgreeNo+Char(9)+String(Round([Agreement]BalanceOwing;2))+Char(9)+GetISODate ([Agreement]NextBillDate)+Char(9)
+//$Report:=$Report+GetISODate ([Agreement]LateCycleStDate)+Char(9)+String([Agreement]LastNotice)+Char(9)+String(Records in selection([Transaction]))+Char(13)
+//$Total:=$Total+Round([Agreement]BalanceOwing;2)
+$Host:=$1//HOF
+$Site:=$2//Site
+$Result:="CheckSum Result for Facility:"+[EventLog]FacilityCode+" - HOF then Site for each column"+$cr
+$Result:=$Result+"AgreeNo"+Char(9)+"BalOwing"+Char(9)+"NextBillDate"+Char(9)+"LCSDate"+Char(9)+"LastNotice"+Char(9)+"TrxCount"+$cr
+$HOFCustToSend:=""
+$SiteCustToSend:=""
+$HOFNoToFix:=0
+$SiteNoToFix:=0
+$Facility:=[EventLog]FacilityCode
+$Tickcount:=Tickcount+600//Allow 10 secs but don't get stuck in endless loop
+Repeat 
+$i:=Position(Char(13);$Host;0;*)
+$j:=Position(Char(13);$Site;0;*)
+$HostData:=Substring($Host;1;$i-1)
+$SiteData:=Substring($Site;1;$j-1)
+$Host:=Substring($Host;$i+1)
+$Site:=Substring($Site;$j+1)
+$i:=Position(Char(9);$HostData;0;*)
+$j:=Position(Char(9);$SiteData;0;*)
+$HostCode:=Substring($HostData;1;$i-1)
+$SiteCode:=Substring($SiteData;1;$j-1)
+$HostData:=Substring($HostData;$i+1)
+$SiteData:=Substring($SiteData;$j+1)
+$i:=Position(Char(9);$HostData;0;*)
+$j:=Position(Char(9);$SiteData;0;*)
+$HostAmt:=Round(Num(Substring($HostData;1;$i-1));2)
+$SiteAmt:=Round(Num(Substring($SiteData;1;$j-1));2)
+$HostData:=Substring($HostData;$i+1)
+$SiteData:=Substring($SiteData;$j+1)
+$i:=Position(Char(9);$HostData;0;*)
+$j:=Position(Char(9);$SiteData;0;*)
+$HostNBD:=Substring($HostData;1;$i-1)
+$SiteNBD:=Substring($SiteData;1;$j-1)
+$HostData:=Substring($HostData;$i+1)
+$SiteData:=Substring($SiteData;$j+1)
+$i:=Position(Char(9);$HostData;0;*)
+$j:=Position(Char(9);$SiteData;0;*)
+$HostLCSD:=Substring($HostData;1;$i-1)
+$SiteLCSD:=Substring($SiteData;1;$j-1)
+$HostData:=Substring($HostData;$i+1)
+$SiteData:=Substring($SiteData;$j+1)
+$i:=Position(Char(9);$HostData;0;*)
+$j:=Position(Char(9);$SiteData;0;*)
+$HostLN:=Round(Num(Substring($HostData;1;$i-1));2)
+$SiteLN:=Round(Num(Substring($SiteData;1;$j-1));2)
+$HostCount:=Round(Num(Substring($HostData;$i+1));0)
+$SiteCount:=Round(Num(Substring($SiteData;$j+1));0)
+While (($HostCode>$SiteCode) | ($HostCode="")) & ($SiteCode>"")
+$Result:=$Result+$SiteCode+Char(9)+"HNone"+Char(9)+String($SiteAmt;"###,###.00")+Char(9)
+$Result:=$Result+"HOF None"+Char(9)+$SiteNBD+Char(9)+"HOF None"+Char(9)+$SiteLCSD+Char(9)
+$Result:=$Result+"HNone"+Char(9)+String($SiteLN)+Char(9)+"HNone"+Char(9)+String($SiteCount)+$cr
+If ($SiteCode#"@MISCL") & (Length($SiteCode)>3)//Do not fix Miscl
+$SiteCustToSend:=$SiteCustToSend+$Facility+$SiteCode+","
+$SiteNoToFix:=$SiteNoToFix+1
+End if 
+$j:=Position(Char(13);$Site;0;*)
+$SiteData:=Substring($Site;1;$j-1)
+$Site:=Substring($Site;$j+1)
+$j:=Position(Char(9);$SiteData;0;*)
+$SiteCode:=Substring($SiteData;1;$j-1)
+$SiteData:=Substring($SiteData;$j+1)
+$j:=Position(Char(9);$SiteData;0;*)
+$SiteAmt:=Round(Num(Substring($SiteData;1;$j-1));2)
+$SiteData:=Substring($SiteData;$j+1)
+$j:=Position(Char(9);$SiteData;0;*)
+$SiteNBD:=Substring($SiteData;1;$j-1)
+$SiteData:=Substring($SiteData;$j+1)
+$j:=Position(Char(9);$SiteData;0;*)
+$SiteLCSD:=Substring($SiteData;1;$j-1)
+$SiteData:=Substring($SiteData;$j+1)
+$j:=Position(Char(9);$SiteData;0;*)
+$SiteLN:=Round(Num(Substring($SiteData;1;$j-1));2)
+$SiteCount:=Round(Num(Substring($SiteData;$j+1));0)
+End while 
+While (($HostCode<$SiteCode) | ($SiteCode="")) & ($HostCode>"")
+$Result:=$Result+$HostCode+Char(9)+String($HostAmt;"###,###.00")+Char(9)+"SNone"+Char(9)
+$Result:=$Result+$HostNBD+Char(9)+"SiteNone"+Char(9)+$HostLCSD+Char(9)+"SiteNone"+Char(9)
+$Result:=$Result+String($HostLN)+Char(9)+"SNone"+Char(9)+String($HostCount)+Char(9)+"SNone"+$cr
+If ($HostCode#"@MISCL") & (Length($HostCode)>3)//Do not fix miscellaneous
+$HOFCustToSend:=$HOFCustToSend+$Facility+$HostCode+","
+$HOFNoToFix:=$HOFNoToFix+1
+End if 
+$i:=Position(Char(13);$Host;0;*)
+$HostData:=Substring($Host;1;$i-1)
+$Host:=Substring($Host;$i+1)
+$i:=Position(Char(9);$HostData;0;*)
+$HostCode:=Substring($HostData;1;$i-1)
+$HostData:=Substring($HostData;$i+1)
+$i:=Position(Char(9);$HostData;0;*)
+$HostAmt:=Round(Num(Substring($HostData;1;$i-1));2)
+$HostData:=Substring($HostData;$i+1)
+$i:=Position(Char(9);$HostData;0;*)
+$HostNBD:=Substring($HostData;1;$i-1)
+$HostData:=Substring($HostData;$i+1)
+$i:=Position(Char(9);$HostData;0;*)
+$HostLCSD:=Substring($HostData;1;$i-1)
+$HostData:=Substring($HostData;$i+1)
+$i:=Position(Char(9);$HostData;0;*)
+$HostLN:=Round(Num(Substring($HostData;1;$i-1));2)
+$HostCount:=Round(Num(Substring($HostData;$i+1));0)
+End while 
+If ($HostCode=$SiteCode) & ($HostCode>"")
+If ($HostAmt#$SiteAmt) | ($HostNBD#$SiteNBD) | ($HostLCSD#$SiteLCSD) | ($HostLN#$SiteLN) | ($HostCount#$SiteCount)
+$Result:=$Result+$HostCode+Char(9)+String($HostAmt;"###,###.00")+Char(9)+String($SiteAmt;"###,###.00")+Char(9)
+$Result:=$Result+$HostNBD+Char(9)+$SiteNBD+Char(9)+$HostLCSD+Char(9)+$SiteLCSD+Char(9)
+$Result:=$Result+String($HostLN)+Char(9)+String($SiteLN)+Char(9)+String($HostCount)+Char(9)+String($SiteCount)+$cr
+If ($HostCode#"@MISCL") & (Length($HostCode)>3) & (Length($SiteCode)>3)//Do not fix miscellaneous
+If ($HostCount>$SiteCount)//If more HOF trxs then send from HOF else from Site
+$HOFCustToSend:=$HOFCustToSend+$Facility+$HostCode+","
+$HOFNoToFix:=$HOFNoToFix+1
+Else 
+$SiteCustToSend:=$SiteCustToSend+$Facility+$HostCode+","
+$SiteNoToFix:=$SiteNoToFix+1
+End if 
+End if 
+End if 
+End if 
+Until ($Host="") & ($Site="") | (Tickcount>$Tickcount)
+If ($SiteCustToSend>"")
+If ($SiteNoToFix<=5)
+INSERT IN ARRAY(<>asCustFix;0;1)
+<>asCustFix{1}:=$SiteCustToSend
+$Result:=$Result+$SiteCustToSend+" - These agreements automatically resynced from site to HOF so no further action required!"+$cr
+Else 
+$Result:=$Result+$SiteCustToSend+" - Too many agreements, so these need to be resynced from Site to HOF.  Please take appropriate action!"+$cr
+End if 
+End if 
+If ($HOFCustToSend>"")
+If ($HOFNoToFix<=5)
+INSERT IN ARRAY(<>asCustSend;0;1)
+<>asCustSend{1}:=$HOFCustToSend
+$Result:=$Result+$HOFCustToSend+" - These agreements automatically resynced from HOF to Site so no further action required!"+$cr
+Else 
+$Result:=$Result+$SiteCustToSend+" - Too many agreements, so these need to be resynced from HOF to Site.  Please take appropriate action!"+$cr
+End if 
+End if 
+$Doc:=Create document($File)
+SEND PACKET($Doc;$Result)
+CLOSE DOCUMENT($Doc)
+If ($HOFNoToFix>5) | ($SiteNoToFix>5)
+SendEmail ("urgent@storman.com";Get localized string("URGENT - CheckSum File Requires Action at")+" "+[EventLog]FacilityCode;$Result)
+//If ([Facility]FacilityCode="KE@")
+//SendEmail ("smalerts@kss.com.au";"URGENT - CheckSum File Requires Action at"+" "+[EventLog]FacilityCode;$Result)
+//End if 
+End if 
+If (<>iPlatform<3)
+SET DOCUMENT CREATOR(Document;"ttxt")
+SET DOCUMENT TYPE(Document;"TEXT")
+End if 

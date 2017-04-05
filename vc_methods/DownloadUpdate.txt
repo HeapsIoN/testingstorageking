@@ -1,0 +1,120 @@
+//%attributes = {"lang":"en"} comment added and reserved by 4D.
+//RWFR 81-83 Alert message does not display on Server 18/11/05
+C_LONGINT($2;$Status;$Error;$Version;$FTPID)
+C_LONGINT($Size)
+C_DATE($ModDate)
+C_TIME($ModTime)
+C_TEXT($1;$3;$Buffer;$Getfile)
+$ModDate:=!00-00-00!
+$ModTime:=?00:00:00?
+$FTPID:=0
+$Buffer:=""
+$Size:=0
+$Getfile:=$1
+$Version:=$2
+$FTPServerPath:=$3
+$Download:=True
+If (Test path name(<>sTutPath+"Updates")#0)
+CREATE FOLDER(<>sTutPath+"Updates")
+End if 
+GOTO XY(1;2)
+MESSAGE(Get localized string("Checking")+" "+<>sOEMName+" "+Get localized string("Update file - Please wait...")+"    ")
+$Error:=FTP_Login ("ftp.storman.com";"anonymous";"";$FTPID;$Buffer)
+If ($Error=0)
+If ($Getfile="") | ($Getfile="Auto")
+If (<>tClient)
+$Getfile:="Server"
+Else 
+$Getfile:="Storman"
+End if 
+If (<>iPlatform<3)
+$Getfile:=$Getfile+String($Version)+".dmg"
+Else 
+$Getfile:=$Getfile+String($Version)+".exe"
+End if 
+End if 
+
+//$Getfile = Central/Server413.exe'
+
+
+$Error:=FTP_GetFileInfo ($FTPID;"/updates/"+$FTPServerPath+$Getfile;$Size;$ModDate;$ModTime)
+$Status:=0
+Repeat 
+If (Test path name(<>sTutPath+"Updates"+<>sSeparator+$Getfile)=Is a document)
+If ($Size=Get document size(<>sTutPath+"Updates"+<>sSeparator+$Getfile))
+$Download:=False
+Else 
+DELETE DOCUMENT(<>sTutPath+"Updates"+<>sSeparator+$Getfile)
+End if 
+End if 
+If ($Status>0) & ($Download=True)
+OK:=0
+If ($1#"Auto")
+ConfirmTwo (Get localized string("The")+" "+Get localized string("File1")+" '"+$Getfile+"' "+Get localized string("Size")+":"+String($Size)+" "+Get localized string("was not downloaded correctly. Would you like to try again?");Get localized string("Yes");Get localized string("No"))
+End if 
+If (OK#1)
+$Status:=6
+End if 
+End if 
+If ($Download) & ($Status<5)
+$Error:=FTP_Receive ($FTPID;"/updates/"+$FTPServerPath+$Getfile;<>sTutPath+"Updates"+<>sSeparator+$Getfile;1)
+End if 
+$Status:=$Status+1
+Until ($Download=False) | ($Status>5)
+$Error:=FTP_Logout ($FTPID)
+If ($Download=False)
+If (<>tClient)
+If (Application type=4D Server)
+If (<>iPlatform<3)
+$Buffer:=""
+$Error:=IT_Decode (<>sTutPath+"Updates:"+$Getfile;$Buffer;8)
+LAUNCH EXTERNAL PROCESS($Buffer)
+AlertMessage (Get localized string("The update has been downloaded successfully. Please quit Storman Server and open the Updates folder inside Tutorial and move the new program files to the locations specified."))
+QUIT 4D(5)
+Else 
+AlertMessage (Get localized string("Storman Server is about to quit. Follow the installer instructions by clicking the Next button. When the installation process is complete, please relaunch Storman Server."))
+$Doc:=Create document(<>sTutPath+"Updates"+<>sSeparator+"Update.bat")
+$Packet:="timeout 120"+Char(Carriage return)+Char(Line feed)
+SEND PACKET($Doc;$Packet)
+$Packet:=$Getfile+" /S"
+SEND PACKET($Doc;$Packet)
+CLOSE DOCUMENT($Doc)
+LAUNCH EXTERNAL PROCESS(<>sTutPath+"Updates"+<>sSeparator+"Update.bat")
+QUIT 4D(5)
+End if 
+Else 
+AlertMessage (Get localized string("The")+" "+Get localized string("File1")+" "+$Getfile+" "+Get localized string("has been downloaded to the Updates folder. This must be installed on the server computer."))
+End if 
+Else 
+If (<>iPlatform<3)
+$Buffer:=""
+$Error:=IT_Decode (<>sTutPath+"Updates:"+$Getfile;$Buffer;8)
+LAUNCH EXTERNAL PROCESS($Buffer)
+If (Application type=4D Server)
+QUIT 4D(5)
+Else 
+AlertMessage (Get localized string("The update has been downloaded successfully. Please quit Storman and open the Updates folder inside Tutorial and move the new program files to the locations specified."))
+QUIT 4D
+End if 
+Else 
+AlertMessage (Get localized string("Storman is about to quit. Follow the installer instructions by clicking the Next button. When the installation process is complete, please relaunch Storman Server."))
+DELETE DOCUMENT("Datafile.txt")
+$Document:=Create document("Datafile.txt")
+If (OK=1)
+SEND PACKET($Document;Data file)
+CLOSE DOCUMENT($Document)
+End if 
+$Doc:=Create document(<>sTutPath+"Updates"+<>sSeparator+"Update.bat")
+$Packet:="timeout 120"+Char(Carriage return)+Char(Line feed)
+SEND PACKET($Doc;$Packet)
+$Packet:=$Getfile+" /S"
+SEND PACKET($Doc;$Packet)
+CLOSE DOCUMENT($Doc)
+LAUNCH EXTERNAL PROCESS(<>sTutPath+"Updates"+<>sSeparator+"Update.bat")
+QUIT 4D
+End if 
+End if 
+End if 
+Else 
+AlertMessage (Get localized string("The FTP server at storman.com is currently unavailable - please try again later, or contact Technical Support is the problem continues."))
+End if 
